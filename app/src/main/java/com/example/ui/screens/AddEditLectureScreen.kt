@@ -702,7 +702,7 @@ fun AddEditLectureScreen(
 
                                         text =
                                             "در حال ضبط صدای استاد: " +
-                                                formatDuration(
+                                                formatLectureDuration(
                                                     recordingDurationMs
                                                 ),
 
@@ -853,7 +853,7 @@ fun AddEditLectureScreen(
 
                                             text =
                                                 "مدت زمان: " +
-                                                    formatDuration(
+                                                    formatLectureDuration(
                                                         audioDurationMs
                                                     ),
 
@@ -1371,7 +1371,7 @@ fun AddEditLectureScreen(
 // تبدیل میلی‌ثانیه به زمان خوانا
 // ---------------------------------------------------------
 
-private fun formatDuration(
+private fun formatLectureDuration(
     millis: Long
 ): String {
 
