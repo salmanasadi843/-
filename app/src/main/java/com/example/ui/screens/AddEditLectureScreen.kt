@@ -52,7 +52,6 @@ import androidx.compose.material3.Text
 import androidx.compose.material3.TopAppBar
 import androidx.compose.material3.TopAppBarDefaults
 import androidx.compose.runtime.Composable
-import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.remember
@@ -101,6 +100,7 @@ fun AddEditLectureScreen(
     ) { uri ->
         uri?.let {
             viewModel.importAudioUri(it)
+
             Toast.makeText(
                 context,
                 "فایل صوتی بارگذاری شد",
@@ -114,9 +114,13 @@ fun AddEditLectureScreen(
         rememberLauncherForActivityResult(
             contract = ActivityResultContracts.RequestPermission()
         ) { isGranted ->
+
             if (isGranted) {
+
                 viewModel.audioRecorder.startRecording()
+
             } else {
+
                 Toast.makeText(
                     context,
                     "دسترسی میکروفون برای ضبط صدا لازم است",
@@ -127,38 +131,59 @@ fun AddEditLectureScreen(
 
     Scaffold(
         topBar = {
+
             TopAppBar(
+
                 title = {
+
                     Text(
                         text =
                             if (lectureId == null)
                                 "ثبت جلسه جدید کلاس"
                             else
                                 "ویرایش جلسه کلاس",
-                        style = MaterialTheme.typography.titleMedium,
-                        fontWeight = FontWeight.Bold
+                        style =
+                            MaterialTheme.typography.titleMedium,
+                        fontWeight =
+                            FontWeight.Bold
                     )
                 },
+
                 navigationIcon = {
-                    IconButton(onClick = onNavigateBack) {
+
+                    IconButton(
+                        onClick = onNavigateBack
+                    ) {
+
                         Icon(
                             imageVector =
                                 Icons.AutoMirrored.Filled.ArrowBack,
-                            contentDescription = "انصراف"
+                            contentDescription =
+                                "انصراف"
                         )
                     }
                 },
+
                 actions = {
+
                     Button(
+
                         onClick = {
+
                             if (title.isBlank()) {
+
                                 Toast.makeText(
                                     context,
                                     "لطفاً عنوان جلسه را وارد کنید",
                                     Toast.LENGTH_SHORT
                                 ).show()
+
                             } else {
-                                viewModel.saveCurrentForm(lectureId) { savedId ->
+
+                                viewModel.saveCurrentForm(
+                                    lectureId
+                                ) { savedId ->
+
                                     Toast.makeText(
                                         context,
                                         "اطلاعات جلسه با موفقیت ذخیره شد",
@@ -169,43 +194,65 @@ fun AddEditLectureScreen(
                                 }
                             }
                         },
-                        shape = RoundedCornerShape(12.dp),
-                        modifier = Modifier
-                            .padding(end = 8.dp)
-                            .testTag("save_lecture_button")
+
+                        shape =
+                            RoundedCornerShape(12.dp),
+
+                        modifier =
+                            Modifier
+                                .padding(end = 8.dp)
+                                .testTag(
+                                    "save_lecture_button"
+                                )
+
                     ) {
+
                         Icon(
-                            imageVector = Icons.Default.Check,
-                            contentDescription = null,
-                            modifier = Modifier.size(16.dp)
+                            imageVector =
+                                Icons.Default.Check,
+                            contentDescription =
+                                null,
+                            modifier =
+                                Modifier.size(16.dp)
                         )
 
                         Spacer(
-                            modifier = Modifier.width(4.dp)
+                            modifier =
+                                Modifier.width(4.dp)
                         )
 
                         Text("ذخیره")
                     }
                 },
-                colors = TopAppBarDefaults.topAppBarColors(
-                    containerColor =
-                        MaterialTheme.colorScheme.surface
-                )
+
+                colors =
+                    TopAppBarDefaults.topAppBarColors(
+                        containerColor =
+                            MaterialTheme
+                                .colorScheme
+                                .surface
+                    )
             )
         }
+
     ) { innerPadding ->
 
         Column(
-            modifier = Modifier
-                .fillMaxSize()
-                .padding(innerPadding)
-                .background(
-                    MaterialTheme.colorScheme.background
-                )
-                .verticalScroll(
-                    rememberScrollState()
-                )
-                .padding(16.dp),
+
+            modifier =
+                Modifier
+                    .fillMaxSize()
+                    .padding(innerPadding)
+                    .background(
+                        MaterialTheme
+                            .colorScheme
+                            .background
+                    )
+                    .verticalScroll(
+                        rememberScrollState()
+                    )
+                    .padding(16.dp),
+
             verticalArrangement =
                 Arrangement.spacedBy(16.dp)
         ) {
@@ -215,125 +262,178 @@ fun AddEditLectureScreen(
             // -------------------------------------------------
 
             ElevatedCard(
-                shape = RoundedCornerShape(18.dp),
+
+                shape =
+                    RoundedCornerShape(18.dp),
+
                 colors =
                     CardDefaults.elevatedCardColors(
                         containerColor =
-                            MaterialTheme.colorScheme.surface
+                            MaterialTheme
+                                .colorScheme
+                                .surface
                     )
+
             ) {
 
                 Column(
-                    modifier = Modifier.padding(16.dp),
+
+                    modifier =
+                        Modifier.padding(16.dp),
+
                     verticalArrangement =
                         Arrangement.spacedBy(12.dp)
                 ) {
 
                     Text(
-                        text = "۱. عنوان‌دهی و مشخصات جلسه",
+                        text =
+                            "۱. عنوان‌دهی و مشخصات جلسه",
+
                         style =
-                            MaterialTheme.typography.titleSmall,
-                        fontWeight = FontWeight.Bold,
+                            MaterialTheme
+                                .typography
+                                .titleSmall,
+
+                        fontWeight =
+                            FontWeight.Bold,
+
                         color =
-                            MaterialTheme.colorScheme.primary
+                            MaterialTheme
+                                .colorScheme
+                                .primary
                     )
 
                     OutlinedTextField(
+
                         value = title,
+
                         onValueChange = {
                             viewModel.formTitle.value = it
                         },
+
                         label = {
                             Text(
                                 "عنوان جلسه یا مبحث درس (الزامی)*"
                             )
                         },
+
                         placeholder = {
                             Text(
                                 "مثال: جلسه ۴ - شبکه‌های عصبی عمیق"
                             )
                         },
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .testTag(
-                                "lecture_title_input"
-                            ),
+
+                        modifier =
+                            Modifier
+                                .fillMaxWidth()
+                                .testTag(
+                                    "lecture_title_input"
+                                ),
+
                         shape =
                             RoundedCornerShape(12.dp),
+
                         singleLine = true
                     )
 
                     Row(
-                        modifier = Modifier.fillMaxWidth(),
+
+                        modifier =
+                            Modifier.fillMaxWidth(),
+
                         horizontalArrangement =
                             Arrangement.spacedBy(8.dp)
                     ) {
 
                         OutlinedTextField(
+
                             value = course,
+
                             onValueChange = {
                                 viewModel.formCourse.value = it
                             },
+
                             label = {
                                 Text("نام درس")
                             },
+
                             placeholder = {
                                 Text("مثال: هوش مصنوعی")
                             },
-                            modifier = Modifier
-                                .weight(1f)
-                                .testTag(
-                                    "lecture_course_input"
-                                ),
+
+                            modifier =
+                                Modifier
+                                    .weight(1f)
+                                    .testTag(
+                                        "lecture_course_input"
+                                    ),
+
                             shape =
                                 RoundedCornerShape(12.dp),
+
                             singleLine = true
                         )
 
                         OutlinedTextField(
+
                             value = professor,
+
                             onValueChange = {
                                 viewModel.formProfessor.value = it
                             },
+
                             label = {
                                 Text("نام استاد")
                             },
+
                             placeholder = {
                                 Text("مثال: دکتر مهدوی")
                             },
-                            modifier = Modifier
-                                .weight(1f)
-                                .testTag(
-                                    "lecture_professor_input"
-                                ),
+
+                            modifier =
+                                Modifier
+                                    .weight(1f)
+                                    .testTag(
+                                        "lecture_professor_input"
+                                    ),
+
                             shape =
                                 RoundedCornerShape(12.dp),
+
                             singleLine = true
                         )
                     }
 
                     OutlinedTextField(
+
                         value = tags,
+
                         onValueChange = {
                             viewModel.formTags.value = it
                         },
+
                         label = {
                             Text(
                                 "برچسب‌ها (با ویرگول جدا کنید)"
                             )
                         },
+
                         placeholder = {
                             Text(
                                 "امتحان, میان‌ترم, فصل۳, فرمول"
                             )
                         },
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .testTag(
-                                "lecture_tags_input"
-                            ),
+
+                        modifier =
+                            Modifier
+                                .fillMaxWidth()
+                                .testTag(
+                                    "lecture_tags_input"
+                                ),
+
                         shape =
                             RoundedCornerShape(12.dp),
+
                         singleLine = true
                     )
                 }
@@ -344,54 +444,80 @@ fun AddEditLectureScreen(
             // -------------------------------------------------
 
             ElevatedCard(
-                shape = RoundedCornerShape(18.dp),
+
+                shape =
+                    RoundedCornerShape(18.dp),
+
                 colors =
                     CardDefaults.elevatedCardColors(
                         containerColor =
-                            MaterialTheme.colorScheme.surface
+                            MaterialTheme
+                                .colorScheme
+                                .surface
                     )
             ) {
 
                 Column(
-                    modifier = Modifier.padding(16.dp),
+
+                    modifier =
+                        Modifier.padding(16.dp),
+
                     verticalArrangement =
                         Arrangement.spacedBy(12.dp)
                 ) {
 
                     Text(
+
                         text =
                             "۲. صوت کلاس (بارگذاری یا ضبط زنده)",
+
                         style =
-                            MaterialTheme.typography.titleSmall,
-                        fontWeight = FontWeight.Bold,
+                            MaterialTheme
+                                .typography
+                                .titleSmall,
+
+                        fontWeight =
+                            FontWeight.Bold,
+
                         color =
-                            MaterialTheme.colorScheme.primary
+                            MaterialTheme
+                                .colorScheme
+                                .primary
                     )
 
                     Row(
-                        modifier = Modifier.fillMaxWidth(),
+
+                        modifier =
+                            Modifier.fillMaxWidth(),
+
                         horizontalArrangement =
                             Arrangement.spacedBy(8.dp)
                     ) {
 
                         FilledTonalButton(
+
                             onClick = {
+
                                 audioPickerLauncher.launch(
                                     "audio/*"
                                 )
                             },
-                            modifier = Modifier
-                                .weight(1f)
-                                .testTag(
-                                    "upload_audio_button"
-                                ),
+
+                            modifier =
+                                Modifier
+                                    .weight(1f)
+                                    .testTag(
+                                        "upload_audio_button"
+                                    ),
+
                             shape =
                                 RoundedCornerShape(12.dp)
                         ) {
 
                             Icon(
                                 Icons.Default.UploadFile,
-                                contentDescription = null,
+                                contentDescription =
+                                    null,
                                 modifier =
                                     Modifier.size(18.dp)
                             )
@@ -408,6 +534,7 @@ fun AddEditLectureScreen(
                         }
 
                         Button(
+
                             onClick = {
 
                                 if (isRecording) {
@@ -428,7 +555,8 @@ fun AddEditLectureScreen(
                                             context,
                                             Manifest.permission.RECORD_AUDIO
                                         ) ==
-                                            PackageManager.PERMISSION_GRANTED
+                                            PackageManager
+                                                .PERMISSION_GRANTED
 
                                     if (hasMic) {
 
@@ -445,37 +573,53 @@ fun AddEditLectureScreen(
                                     }
                                 }
                             },
+
                             colors =
+
                                 if (isRecording)
-                                    ButtonDefaults.buttonColors(
-                                        containerColor =
-                                            MaterialTheme
-                                                .colorScheme
-                                                .error
-                                    )
+
+                                    ButtonDefaults
+                                        .buttonColors(
+                                            containerColor =
+                                                MaterialTheme
+                                                    .colorScheme
+                                                    .error
+                                        )
+
                                 else
-                                    ButtonDefaults.buttonColors(
-                                        containerColor =
-                                            MaterialTheme
-                                                .colorScheme
-                                                .secondary
+
+                                    ButtonDefaults
+                                        .buttonColors(
+                                            containerColor =
+                                                MaterialTheme
+                                                    .colorScheme
+                                                    .secondary
+                                        ),
+
+                            modifier =
+                                Modifier
+                                    .weight(1f)
+                                    .testTag(
+                                        "record_audio_button"
                                     ),
-                            modifier = Modifier
-                                .weight(1f)
-                                .testTag(
-                                    "record_audio_button"
-                                ),
+
                             shape =
                                 RoundedCornerShape(12.dp)
+
                         ) {
 
                             Icon(
+
                                 imageVector =
+
                                     if (isRecording)
                                         Icons.Default.Stop
                                     else
                                         Icons.Default.Mic,
-                                contentDescription = null,
+
+                                contentDescription =
+                                    null,
+
                                 modifier =
                                     Modifier.size(18.dp)
                             )
@@ -486,55 +630,67 @@ fun AddEditLectureScreen(
                             )
 
                             Text(
+
                                 if (isRecording)
                                     "توقف ضبط"
                                 else
                                     "ضبط صدای کلاس",
+
                                 fontSize = 13.sp
                             )
                         }
                     }
 
                     // Recording banner
+
                     AnimatedVisibility(
                         visible = isRecording
                     ) {
 
                         Surface(
+
                             shape =
                                 RoundedCornerShape(12.dp),
+
                             color =
                                 MaterialTheme
                                     .colorScheme
                                     .errorContainer
                                     .copy(alpha = 0.6f),
+
                             modifier =
                                 Modifier.fillMaxWidth()
                         ) {
 
                             Row(
+
                                 modifier =
                                     Modifier.padding(12.dp),
+
                                 verticalAlignment =
                                     Alignment.CenterVertically,
+
                                 horizontalArrangement =
                                     Arrangement.SpaceBetween
                             ) {
 
                                 Row(
+
                                     verticalAlignment =
                                         Alignment.CenterVertically
                                 ) {
 
                                     Box(
-                                        modifier = Modifier
-                                            .size(14.dp)
-                                            .clip(CircleShape)
-                                            .background(
-                                                MaterialTheme
-                                                    .colorScheme
-                                                    .error
-                                            )
+
+                                        modifier =
+                                            Modifier
+                                                .size(14.dp)
+                                                .clip(CircleShape)
+                                                .background(
+                                                    MaterialTheme
+                                                        .colorScheme
+                                                        .error
+                                                )
                                     )
 
                                     Spacer(
@@ -543,17 +699,21 @@ fun AddEditLectureScreen(
                                     )
 
                                     Text(
+
                                         text =
                                             "در حال ضبط صدای استاد: " +
                                                 formatDuration(
                                                     recordingDurationMs
                                                 ),
+
                                         style =
                                             MaterialTheme
                                                 .typography
                                                 .bodyMedium,
+
                                         fontWeight =
                                             FontWeight.Bold,
+
                                         color =
                                             MaterialTheme
                                                 .colorScheme
@@ -562,8 +722,10 @@ fun AddEditLectureScreen(
                                 }
 
                                 Row(
+
                                     horizontalArrangement =
                                         Arrangement.spacedBy(2.dp),
+
                                     verticalAlignment =
                                         Alignment.CenterVertically
                                 ) {
@@ -571,6 +733,7 @@ fun AddEditLectureScreen(
                                     repeat(5) { i ->
 
                                         val heightDp =
+
                                             (
                                                 (
                                                     amplitude *
@@ -588,6 +751,7 @@ fun AddEditLectureScreen(
                                                 .dp
 
                                         Box(
+
                                             modifier =
                                                 Modifier
                                                     .width(4.dp)
@@ -596,6 +760,7 @@ fun AddEditLectureScreen(
                                                         MaterialTheme
                                                             .colorScheme
                                                             .error,
+
                                                         RoundedCornerShape(
                                                             2.dp
                                                         )
@@ -608,44 +773,57 @@ fun AddEditLectureScreen(
                     }
 
                     // Attached Audio
+
                     if (!audioPath.isNullOrBlank()) {
 
                         Surface(
+
                             shape =
                                 RoundedCornerShape(12.dp),
+
                             color =
                                 MaterialTheme
                                     .colorScheme
                                     .surfaceVariant,
+
                             modifier =
                                 Modifier.fillMaxWidth()
                         ) {
 
                             Row(
+
                                 modifier =
                                     Modifier.padding(12.dp),
+
                                 verticalAlignment =
                                     Alignment.CenterVertically,
+
                                 horizontalArrangement =
                                     Arrangement.SpaceBetween
                             ) {
 
                                 Row(
+
                                     verticalAlignment =
                                         Alignment.CenterVertically,
+
                                     modifier =
                                         Modifier.weight(1f)
                                 ) {
 
                                     Icon(
+
                                         imageVector =
                                             Icons.Default.AudioFile,
+
                                         contentDescription =
                                             null,
+
                                         tint =
                                             MaterialTheme
                                                 .colorScheme
                                                 .primary,
+
                                         modifier =
                                             Modifier.size(24.dp)
                                     )
@@ -658,26 +836,32 @@ fun AddEditLectureScreen(
                                     Column {
 
                                         Text(
+
                                             text =
                                                 "صوت کلاس پیوست شده",
+
                                             style =
                                                 MaterialTheme
                                                     .typography
                                                     .labelMedium,
+
                                             fontWeight =
                                                 FontWeight.Bold
                                         )
 
                                         Text(
+
                                             text =
                                                 "مدت زمان: " +
                                                     formatDuration(
                                                         audioDurationMs
                                                     ),
+
                                             style =
                                                 MaterialTheme
                                                     .typography
                                                     .bodySmall,
+
                                             color =
                                                 MaterialTheme
                                                     .colorScheme
@@ -689,6 +873,7 @@ fun AddEditLectureScreen(
                                 Row {
 
                                     IconButton(
+
                                         onClick = {
 
                                             audioPath?.let { path ->
@@ -703,17 +888,24 @@ fun AddEditLectureScreen(
                                     ) {
 
                                         Icon(
+
                                             imageVector =
+
                                                 if (
                                                     isPlaying &&
                                                     activePath ==
                                                         audioPath
                                                 )
+
                                                     Icons.Default.Pause
+
                                                 else
+
                                                     Icons.Default.PlayArrow,
+
                                             contentDescription =
                                                 "پخش پیش‌نمایش",
+
                                             tint =
                                                 MaterialTheme
                                                     .colorScheme
@@ -722,6 +914,7 @@ fun AddEditLectureScreen(
                                     }
 
                                     IconButton(
+
                                         onClick = {
 
                                             viewModel
@@ -739,10 +932,13 @@ fun AddEditLectureScreen(
                                     ) {
 
                                         Icon(
+
                                             imageVector =
                                                 Icons.Default.Delete,
+
                                             contentDescription =
                                                 "حذف صوت",
+
                                             tint =
                                                 MaterialTheme
                                                     .colorScheme
@@ -761,8 +957,10 @@ fun AddEditLectureScreen(
             // -------------------------------------------------
 
             ElevatedCard(
+
                 shape =
                     RoundedCornerShape(18.dp),
+
                 colors =
                     CardDefaults.elevatedCardColors(
                         containerColor =
@@ -773,30 +971,39 @@ fun AddEditLectureScreen(
             ) {
 
                 Column(
+
                     modifier =
                         Modifier.padding(16.dp),
+
                     verticalArrangement =
                         Arrangement.spacedBy(12.dp)
                 ) {
 
                     Row(
+
                         modifier =
                             Modifier.fillMaxWidth(),
+
                         horizontalArrangement =
                             Arrangement.SpaceBetween,
+
                         verticalAlignment =
                             Alignment.CenterVertically
                     ) {
 
                         Text(
+
                             text =
                                 "۳. متن پیاده‌شده و تبدیل صوت به متن",
+
                             style =
                                 MaterialTheme
                                     .typography
                                     .titleSmall,
+
                             fontWeight =
                                 FontWeight.Bold,
+
                             color =
                                 MaterialTheme
                                     .colorScheme
@@ -804,11 +1011,11 @@ fun AddEditLectureScreen(
                         )
 
                         // -------------------------------------------------
-                        // دکمه جدید:
-                        // تبدیل فایل صوتی موجود به متن
+                        // دکمه تبدیل فایل صوتی موجود به متن
                         // -------------------------------------------------
 
                         OutlinedButton(
+
                             onClick = {
 
                                 if (audioPath.isNullOrBlank()) {
@@ -825,11 +1032,14 @@ fun AddEditLectureScreen(
                                         .transcribeCurrentAudio()
                                 }
                             },
+
                             enabled =
                                 !audioPath.isNullOrBlank() &&
                                     !isAiLoading,
+
                             shape =
                                 RoundedCornerShape(12.dp),
+
                             modifier =
                                 Modifier.testTag(
                                     "speech_to_text_button"
@@ -839,18 +1049,24 @@ fun AddEditLectureScreen(
                             if (isAiLoading) {
 
                                 CircularProgressIndicator(
+
                                     modifier =
                                         Modifier.size(16.dp),
-                                    strokeWidth = 2.dp
+
+                                    strokeWidth =
+                                        2.dp
                                 )
 
                             } else {
 
                                 Icon(
+
                                     imageVector =
                                         Icons.Default.GraphicEq,
+
                                     contentDescription =
                                         null,
+
                                     modifier =
                                         Modifier.size(16.dp)
                                 )
@@ -862,47 +1078,57 @@ fun AddEditLectureScreen(
                             )
 
                             Text(
+
                                 text =
+
                                     if (isAiLoading)
                                         "در حال تبدیل..."
                                     else
                                         "تبدیل صوت به متن",
+
                                 fontSize = 12.sp
                             )
                         }
                     }
 
-                    // -------------------------------------------------
                     // وضعیت عملیات هوش مصنوعی
-                    // -------------------------------------------------
 
                     AnimatedVisibility(
                         visible = isAiLoading
                     ) {
 
                         Surface(
+
                             shape =
                                 RoundedCornerShape(12.dp),
+
                             color =
                                 MaterialTheme
                                     .colorScheme
                                     .primaryContainer
                                     .copy(alpha = 0.5f),
+
                             modifier =
                                 Modifier.fillMaxWidth()
                         ) {
 
                             Row(
+
                                 modifier =
                                     Modifier.padding(12.dp),
+
                                 verticalAlignment =
                                     Alignment.CenterVertically
                             ) {
 
                                 CircularProgressIndicator(
+
                                     modifier =
                                         Modifier.size(18.dp),
-                                    strokeWidth = 2.dp,
+
+                                    strokeWidth =
+                                        2.dp,
+
                                     color =
                                         MaterialTheme
                                             .colorScheme
@@ -915,20 +1141,28 @@ fun AddEditLectureScreen(
                                 )
 
                                 Text(
+
                                     text =
+
                                         if (
                                             aiOperationTitle
                                                 .isNotBlank()
                                         )
+
                                             aiOperationTitle
+
                                         else
+
                                             "در حال پردازش فایل صوتی...",
+
                                     style =
                                         MaterialTheme
                                             .typography
                                             .bodySmall,
+
                                     fontWeight =
                                         FontWeight.Bold,
+
                                     color =
                                         MaterialTheme
                                             .colorScheme
@@ -938,32 +1172,37 @@ fun AddEditLectureScreen(
                         }
                     }
 
-                    // -------------------------------------------------
                     // نمایش خطا
-                    // -------------------------------------------------
 
                     if (!aiError.isNullOrBlank()) {
 
                         Surface(
+
                             shape =
                                 RoundedCornerShape(10.dp),
+
                             color =
                                 MaterialTheme
                                     .colorScheme
                                     .errorContainer,
+
                             modifier =
                                 Modifier.fillMaxWidth()
                         ) {
 
                             Text(
+
                                 text =
                                     aiError ?: "",
+
                                 modifier =
                                     Modifier.padding(12.dp),
+
                                 style =
                                     MaterialTheme
                                         .typography
                                         .bodySmall,
+
                                 color =
                                     MaterialTheme
                                         .colorScheme
@@ -972,27 +1211,32 @@ fun AddEditLectureScreen(
                         }
                     }
 
-                    // -------------------------------------------------
                     // AI Polish Button
-                    // -------------------------------------------------
 
                     Row(
+
                         modifier =
                             Modifier.fillMaxWidth(),
+
                         horizontalArrangement =
                             Arrangement.End
                     ) {
 
                         FilledTonalButton(
+
                             onClick = {
+
                                 viewModel
                                     .polishTranscriptInForm()
                             },
+
                             enabled =
                                 !isAiLoading &&
                                     transcript.isNotBlank(),
+
                             shape =
                                 RoundedCornerShape(10.dp),
+
                             modifier =
                                 Modifier.testTag(
                                     "ai_polish_button"
@@ -1002,17 +1246,23 @@ fun AddEditLectureScreen(
                             if (isAiLoading) {
 
                                 CircularProgressIndicator(
+
                                     modifier =
                                         Modifier.size(14.dp),
-                                    strokeWidth = 2.dp
+
+                                    strokeWidth =
+                                        2.dp
                                 )
 
                             } else {
 
                                 Icon(
+
                                     Icons.Default.AutoAwesome,
+
                                     contentDescription =
                                         null,
+
                                     modifier =
                                         Modifier.size(14.dp)
                                 )
@@ -1024,45 +1274,60 @@ fun AddEditLectureScreen(
                             )
 
                             Text(
+
                                 "اصلاح ساختار و نگارش با هوش مصنوعی ✨",
+
                                 fontSize = 12.sp
                             )
                         }
                     }
 
-                    // -------------------------------------------------
                     // Transcript Text Field
-                    // -------------------------------------------------
 
                     OutlinedTextField(
-                        value = transcript,
+
+                        value =
+                            transcript,
+
                         onValueChange = {
-                            viewModel.formTranscript.value = it
+
+                            viewModel
+                                .formTranscript
+                                .value = it
                         },
+
                         placeholder = {
 
                             Text(
+
                                 text =
                                     "متن صحبت‌های استاد در اینجا نمایش داده شده و پیاده‌سازی می‌شود. همچنین می‌توانید متن را ویرایش یا به آن نکاتی اضافه کنید...",
+
                                 style =
                                     MaterialTheme
                                         .typography
                                         .bodyMedium,
-                                lineHeight = 22.sp
+
+                                lineHeight =
+                                    22.sp
                             )
                         },
+
                         modifier =
+
                             Modifier
                                 .fillMaxWidth()
                                 .height(280.dp)
                                 .testTag(
                                     "lecture_transcript_input"
                                 ),
+
                         shape =
                             RoundedCornerShape(12.dp)
                     )
 
                     // Word count
+
                     val wordCount =
                         remember(transcript) {
 
@@ -1077,12 +1342,15 @@ fun AddEditLectureScreen(
                         }
 
                     Text(
+
                         text =
                             "تعداد کلمات: $wordCount کلمه",
+
                         style =
                             MaterialTheme
                                 .typography
                                 .labelSmall,
+
                         color =
                             MaterialTheme
                                 .colorScheme
@@ -1102,9 +1370,33 @@ fun AddEditLectureScreen(
 // ---------------------------------------------------------
 // تبدیل میلی‌ثانیه به زمان خوانا
 // ---------------------------------------------------------
-)
 
-     else {
+private fun formatDuration(
+    millis: Long
+): String {
+
+    val totalSeconds =
+        millis / 1000
+
+    val hours =
+        totalSeconds / 3600
+
+    val minutes =
+        (totalSeconds % 3600) / 60
+
+    val seconds =
+        totalSeconds % 60
+
+    return if (hours > 0) {
+
+        String.format(
+            "%02d:%02d:%02d",
+            hours,
+            minutes,
+            seconds
+        )
+
+    } else {
 
         String.format(
             "%02d:%02d",
