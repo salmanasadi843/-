@@ -1,0 +1,6 @@
+{
+  "name": "استادیار",
+  "description": "نرم‌افزار بارگذاری کلاس درس استاد همراه صوت، تبدیل صوت به متن، ویرایش، عنوان‌دهی، جستجوی پیشرفته و هوش مصنوعی",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
