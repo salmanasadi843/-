@@ -16,6 +16,10 @@ import org.json.JSONObject
 import java.io.File
 import java.util.concurrent.TimeUnit
 
+data class TranscriptionProgress(val stage:String,val percent:Int,val uploadedBytes:Long=0L,val totalBytes:Long=0L,val elapsedMs:Long=0L,val etaMs:Long?=null,val detail:String="")
+
+private class ProgressRequestBody(private val file:File,private val type:okhttp3.MediaType,private val cb:(Long,Long)->Unit):okhttp3.RequestBody(){ override fun contentType()=type; override fun contentLength()=file.length(); override fun writeTo(sink:okio.BufferedSink){val total=contentLength();var sent=0L;val b=ByteArray(64*1024);file.inputStream().use{input->while(true){val n=input.read(b);if(n<=0)break;sink.write(b,0,n);sent+=n;cb(sent,total)}}}}
+
 object GeminiApiService {
     private const val TAG = "GeminiApiService"
     private const val MODEL = "gemini-3.5-flash"
@@ -133,6 +137,7 @@ object GeminiApiService {
                 .post(body)
                 .build()
 
+            report("در حال تبدیل گفتار به متن",65,audioFile.length(),audioFile.length(),detail="تشخیص گفتار و استخراج متن فارسی در حال انجام است")
             val response =
                 client.newCall(request).execute()
 
@@ -324,9 +329,7 @@ $rawTranscript
     // تبدیل فایل صوتی ضبط‌شده به متن
     // ============================================================
 
-    suspend fun transcribeAudioFile(
-        filePath: String
-    ): Result<String> = withContext(Dispatchers.IO) {
+    suspend fun transcribeAudioFile(filePath:String,onProgress:(TranscriptionProgress)->Unit={}):Result<String> = withContext(Dispatchers.IO) {
 
         val apiKey = getApiKey()
 
@@ -339,7 +342,9 @@ $rawTranscript
         }
 
         try {
-
+            val startedAt=System.currentTimeMillis()
+            fun report(stage:String,p:Int,uploaded:Long=0L,total:Long=0L,eta:Long?=null,detail:String=""){onProgress(TranscriptionProgress(stage,p.coerceIn(0,100),uploaded,total,System.currentTimeMillis()-startedAt,eta,detail))}
+            report("در حال بررسی فایل صوتی",2,detail="فرمت، حجم و سلامت فایل بررسی می‌شود")
             val audioFile = File(filePath)
 
             if (!audioFile.exists()) {
@@ -366,6 +371,8 @@ $rawTranscript
                 "flac" -> "audio/flac"
                 else -> "audio/mp4"
             }
+
+            report("در حال آماده‌سازی ارسال",5,total=audioFile.length(),detail="اتصال امن برای ارسال فایل در حال آماده‌سازی است")
 
             // شروع آپلود فایل
             val uploadUrl =
@@ -433,12 +440,10 @@ $rawTranscript
                 )
             }
 
-            // ارسال فایل صوتی
-            val uploadBody =
-                audioFile.asRequestBody(
-                    mimeType.toMediaType()
-                )
-
+            report("در حال ارسال فایل صوتی",8,total=audioFile.length(),detail="فایل در حال ارسال به سرور است")
+            val uploadStartedAt=System.currentTimeMillis()
+            var last=-1
+            val uploadBody=ProgressRequestBody(audioFile,mimeType.toMediaType()){sent,total->val p=if(total>0)((sent*100)/total).toInt() else 0;if(p!=last||sent==total){last=p;val el=(System.currentTimeMillis()-uploadStartedAt).coerceAtLeast(1);val eta=if(sent>0&&total>sent)((total-sent)*el/sent)else null;report("در حال ارسال فایل صوتی",8+p*42/100,sent,total,eta,"ارسال $p% فایل")}}
             val uploadRequest = Request.Builder()
                 .url(resumableUploadUrl)
                 .post(uploadBody)
@@ -474,6 +479,7 @@ $rawTranscript
                 )
             }
 
+            report("ارسال فایل کامل شد",52,audioFile.length(),audioFile.length(),0,"فایل با موفقیت دریافت شد")
             val uploadJson =
                 JSONObject(uploadResponseBody)
 
@@ -505,6 +511,7 @@ $rawTranscript
                 )
             }
 
+            report("فایل دریافت شد؛ در صف پردازش",56,audioFile.length(),audioFile.length(),detail="هوش مصنوعی در حال آماده‌سازی فایل صوتی است")
             // درخواست تبدیل صوت به متن
             val prompt = """
 این فایل صوتی، صدای یک استاد و یک جلسه آموزشی به زبان فارسی است.
@@ -656,6 +663,7 @@ $rawTranscript
                 }
             }
 
+            report("متن دریافت شد؛ در حال تکمیل",88,audioFile.length(),audioFile.length(),detail="متن خام دریافت شده و در حال آماده‌سازی نهایی است")
             val transcript =
                 textBuilder
                     .toString()
@@ -669,6 +677,7 @@ $rawTranscript
                 )
             }
 
+            report("تبدیل صوت به متن کامل شد",100,audioFile.length(),audioFile.length(),0,"متن با موفقیت آماده شد")
             Result.success(transcript)
 
         } catch (e: Exception) {
