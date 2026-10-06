@@ -137,7 +137,6 @@ object GeminiApiService {
                 .post(body)
                 .build()
 
-            report("در حال تبدیل گفتار به متن",65,audioFile.length(),audioFile.length(),detail="تشخیص گفتار و استخراج متن فارسی در حال انجام است")
             val response =
                 client.newCall(request).execute()
 
@@ -602,6 +601,8 @@ $rawTranscript
                             )
                     )
                     .build()
+
+            report("در حال تبدیل گفتار به متن",65,audioFile.length(),audioFile.length(),detail="تشخیص گفتار و استخراج متن فارسی در حال انجام است")
 
             val response =
                 client.newCall(request).execute()
