@@ -1,6 +1,8 @@
 package com.example.data.local
 
 import android.content.Context
+import android.security.keystore.KeyGenParameterSpec
+import android.security.keystore.KeyProperties
 import android.util.Base64
 import java.nio.charset.StandardCharsets
 import java.security.KeyStore
@@ -75,9 +77,26 @@ object ApiKeyStore {
         }
 
         val generator =
-            KeyGenerator.getInstance("AES", ANDROID_KEYSTORE)
+            KeyGenerator.getInstance(
+                KeyProperties.KEY_ALGORITHM_AES,
+                ANDROID_KEYSTORE
+            )
 
-        generator.init(256)
+        val spec =
+            KeyGenParameterSpec.Builder(
+                KEY_ALIAS,
+                KeyProperties.PURPOSE_ENCRYPT or
+                    KeyProperties.PURPOSE_DECRYPT
+            )
+                .setKeySize(256)
+                .setBlockModes(KeyProperties.BLOCK_MODE_GCM)
+                .setEncryptionPaddings(
+                    KeyProperties.ENCRYPTION_PADDING_NONE
+                )
+                .setRandomizedEncryptionRequired(true)
+                .build()
+
+        generator.init(spec)
 
         return generator.generateKey()
     }
@@ -101,7 +120,14 @@ object ApiKeyStore {
         val combined =
             ByteArray(iv.size + encrypted.size)
 
-        System.arraycopy(iv, 0, combined, 0, iv.size)
+        System.arraycopy(
+            iv,
+            0,
+            combined,
+            0,
+            iv.size
+        )
+
         System.arraycopy(
             encrypted,
             0,
@@ -118,13 +144,24 @@ object ApiKeyStore {
 
     private fun decrypt(encoded: String): String {
         val combined =
-            Base64.decode(encoded, Base64.NO_WRAP)
+            Base64.decode(
+                encoded,
+                Base64.NO_WRAP
+            )
 
         require(combined.size > 12)
 
-        val iv = combined.copyOfRange(0, 12)
+        val iv =
+            combined.copyOfRange(
+                0,
+                12
+            )
+
         val encrypted =
-            combined.copyOfRange(12, combined.size)
+            combined.copyOfRange(
+                12,
+                combined.size
+            )
 
         val cipher =
             Cipher.getInstance("AES/GCM/NoPadding")
