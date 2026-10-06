@@ -285,7 +285,7 @@ fun SettingsScreen(
                 Column(modifier = Modifier.padding(18.dp)) {
                     Text("GROQ — تبدیل صوت به متن", style = MaterialTheme.typography.titleLarge)
                     Spacer(Modifier.height(6.dp))
-                    Text("Groq با مدل Whisper برای تبدیل سریع فایل صوتی به متن فارسی استفاده می‌شود و در صورت خطای Gemini می‌تواند موتور دوم باشد.", style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                    Text("Groq با مدل Whisper برای تبدیل سریع فایل صوتی به متن فارسی استفاده می‌شود و موتور اصلی تبدیل صوت و پردازش متن برنامه است.", style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
                     Spacer(Modifier.height(12.dp))
                     OutlinedTextField(value = groqKey, onValueChange = { groqKey = it; status = null }, modifier = Modifier.fillMaxWidth(), label = { Text("Groq API Key") }, placeholder = { Text("کلید Groq را وارد کنید") }, singleLine = true, visualTransformation = PasswordVisualTransformation(), leadingIcon = { Icon(Icons.Default.Key, contentDescription = null) })
                     Spacer(Modifier.height(10.dp))
@@ -294,7 +294,7 @@ fun SettingsScreen(
                         OutlinedButton(onClick = { GroqApiService.deleteSavedApiKey(context); groqKey = ""; status = "کلید Groq حذف شد."; statusIsError = false }) { Text("حذف") }
                     }
                     Spacer(Modifier.height(8.dp))
-                    Text("اولویت تبدیل صوت: Gemini ← در صورت خطا → Groq", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.primary)
+                    Text("اولویت هوش مصنوعی: Groq ← در صورت خطا → Gemini", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.primary)
                 }
             }
             Text(
