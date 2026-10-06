@@ -3,27 +3,27 @@ package com.example.ui.theme
 import androidx.compose.ui.graphics.Color
 
 // Academic Palette
-val PrimaryLight = Color(0xFF1E40AF)
+val PrimaryLight = Color(0xFF355C55)
 val OnPrimaryLight = Color(0xFFFFFFFF)
-val PrimaryContainerLight = Color(0xFFDBEAFE)
-val OnPrimaryContainerLight = Color(0xFF1E3A8A)
+val PrimaryContainerLight = Color(0xFFDDEAE5)
+val OnPrimaryContainerLight = Color(0xFF173B34)
 
-val SecondaryLight = Color(0xFF0F766E)
+val SecondaryLight = Color(0xFF7A5C3E)
 val OnSecondaryLight = Color(0xFFFFFFFF)
-val SecondaryContainerLight = Color(0xFFCCFBF1)
-val OnSecondaryContainerLight = Color(0xFF115E59)
+val SecondaryContainerLight = Color(0xFFF1E5D6)
+val OnSecondaryContainerLight = Color(0xFF4B3522)
 
-val TertiaryLight = Color(0xFFB45309)
+val TertiaryLight = Color(0xFF8A6A2F)
 val OnTertiaryLight = Color(0xFFFFFFFF)
-val TertiaryContainerLight = Color(0xFFFEF3C7)
-val OnTertiaryContainerLight = Color(0xFF78350F)
+val TertiaryContainerLight = Color(0xFFF4EBD2)
+val OnTertiaryContainerLight = Color(0xFF4D3A17)
 
-val BackgroundLight = Color(0xFFF8FAFC)
-val OnBackgroundLight = Color(0xFF0F172A)
-val SurfaceLight = Color(0xFFFFFFFF)
-val OnSurfaceLight = Color(0xFF0F172A)
-val SurfaceVariantLight = Color(0xFFF1F5F9)
-val OnSurfaceVariantLight = Color(0xFF475569)
+val BackgroundLight = Color(0xFFF5F1E8)
+val OnBackgroundLight = Color(0xFF292B28)
+val SurfaceLight = Color(0xFFFFFCF6)
+val OnSurfaceLight = Color(0xFF292B28)
+val SurfaceVariantLight = Color(0xFFEAE5DA)
+val OnSurfaceVariantLight = Color(0xFF514F49)
 
 // Dark Theme Colors
 val PrimaryDark = Color(0xFF60A5FA)
