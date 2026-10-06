@@ -224,12 +224,14 @@ ${currentLecture.transcript}
                     }) {
                         Icon(imageVector = Icons.Default.Share, contentDescription = "اشتراک‌گذاری")
                     }
+                    if (isTeacher) {
                     IconButton(onClick = { showDeleteConfirmDialog = true }) {
                         Icon(
                             imageVector = Icons.Default.Delete,
                             contentDescription = "حذف",
                             tint = MaterialTheme.colorScheme.error
                         )
+                    }
                     }
                 },
                 colors = TopAppBarDefaults.topAppBarColors(
