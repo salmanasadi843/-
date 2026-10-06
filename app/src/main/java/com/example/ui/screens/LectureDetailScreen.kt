@@ -254,8 +254,8 @@ ${currentLecture.transcript}
                         viewModel.audioPlayer.togglePlayPause(currentLecture.audioFilePath)
                     },
                     onSeekTo = { viewModel.audioPlayer.seekTo(it) },
-                    onSkipBackward = { viewModel.audioPlayer.skipBackward(10000) },
-                    onSkipForward = { viewModel.audioPlayer.skipForward(10000) },
+                    onSkipBackward = { viewModel.audioPlayer.skipBackward(15000) },
+                    onSkipForward = { viewModel.audioPlayer.skipForward(15000) },
                     onSpeedChange = { viewModel.audioPlayer.setSpeed(it) }
                 )
             }
@@ -434,11 +434,11 @@ fun AudioPlayerCard(
                 Surface(
                     onClick = {
                         val nextSpeed = when (playbackSpeed) {
+                            0.75f -> 1.0f
                             1.0f -> 1.25f
                             1.25f -> 1.5f
                             1.5f -> 2.0f
-                            2.0f -> 0.75f
-                            else -> 1.0f
+                            else -> 0.75f
                         }
                         onSpeedChange(nextSpeed)
                     },
@@ -473,7 +473,7 @@ fun AudioPlayerCard(
                     IconButton(onClick = onSkipBackward, modifier = Modifier.size(36.dp)) {
                         Icon(
                             imageVector = Icons.Default.FastRewind,
-                            contentDescription = "۱۰ ثانیه به عقب",
+                            contentDescription = "۱۵ ثانیه به عقب",
                             tint = MaterialTheme.colorScheme.primary
                         )
                     }
@@ -497,7 +497,7 @@ fun AudioPlayerCard(
                     IconButton(onClick = onSkipForward, modifier = Modifier.size(36.dp)) {
                         Icon(
                             imageVector = Icons.Default.FastForward,
-                            contentDescription = "۱۰ ثانیه به جلو",
+                            contentDescription = "۱۵ ثانیه به جلو",
                             tint = MaterialTheme.colorScheme.primary
                         )
                     }
