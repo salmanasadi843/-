@@ -1377,6 +1377,20 @@ fun AddEditLectureScreen(
 // تبدیل میلی‌ثانیه به زمان خوانا
 // ---------------------------------------------------------
 
+private fun formatElapsed(ms: Long): String {
+    val totalSeconds = max(0L, ms / 1000L)
+    val minutes = totalSeconds / 60L
+    val seconds = totalSeconds % 60L
+    return if (minutes > 0) "${minutes}د ${seconds}ث" else "${seconds}ث"
+}
+
+private fun formatBytes(bytes: Long): String {
+    if (bytes < 1024L) return "${bytes} بایت"
+    val kb = bytes / 1024L
+    if (kb < 1024L) return "${kb} کیلوبایت"
+    return "${kb / 1024L} مگابایت"
+}
+
 private fun formatLectureDuration(
     millis: Long
 ): String {
