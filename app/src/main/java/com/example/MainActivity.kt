@@ -20,6 +20,7 @@ import com.example.ui.screens.AddEditLectureScreen
 import com.example.ui.screens.HomeScreen
 import com.example.ui.screens.LectureDetailScreen
 import com.example.ui.screens.MainViewModel
+import com.example.ui.screens.SettingsScreen
 import com.example.ui.screens.Screen
 import com.example.ui.theme.MyApplicationTheme
 
@@ -97,6 +98,14 @@ fun OstadYarApp(viewModel: MainViewModel = viewModel()) {
                 },
                 onNavigateToEdit = { editId ->
                     viewModel.navigateTo(Screen.AddEdit(editId))
+                }
+            )
+        }
+        Screen.Settings -> {
+            SettingsScreen(
+                viewModel = viewModel,
+                onNavigateBack = {
+                    viewModel.navigateBack()
                 }
             )
         }
