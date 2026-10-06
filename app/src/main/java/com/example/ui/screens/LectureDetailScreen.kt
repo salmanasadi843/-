@@ -510,7 +510,7 @@ fun AudioPlayerCard(
     }
 }
 
-@Composable
+@OptIn(ExperimentalLayoutApi::class)
 @Composable
 fun TranscriptTab(
     lecture: LectureEntity,
