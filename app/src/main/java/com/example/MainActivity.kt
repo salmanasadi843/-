@@ -75,8 +75,9 @@ fun OstadYarApp(viewModel: MainViewModel = viewModel()) {
                     viewModel.navigateBack()
                 },
                 onNavigateToEdit = { editId ->
-                    viewModel.navigateTo(Screen.AddEdit(editId))
-                }
+                    if (userRole == com.example.ui.screens.UserRole.TEACHER) viewModel.navigateTo(Screen.AddEdit(editId))
+                },
+                isTeacher = userRole == com.example.ui.screens.UserRole.TEACHER
             )
         }
         is Screen.AddEdit -> {
