@@ -34,6 +34,7 @@ import androidx.compose.material.icons.filled.Person
 import androidx.compose.material.icons.filled.PlayArrow
 import androidx.compose.material.icons.filled.School
 import androidx.compose.material.icons.filled.Search
+import androidx.compose.material.icons.filled.Settings
 import androidx.compose.material.icons.filled.Star
 import androidx.compose.material.icons.outlined.StarOutline
 import androidx.compose.material3.Card
@@ -140,6 +141,17 @@ fun HomeScreen(
                     containerColor = MaterialTheme.colorScheme.surface
                 ),
                 actions = {
+                    IconButton(
+                        onClick = { viewModel.navigateTo(Screen.Settings) },
+                        modifier = Modifier.testTag("settings_button")
+                    ) {
+                        Icon(
+                            imageVector = Icons.Default.Settings,
+                            contentDescription = "تنظیمات",
+                            tint = MaterialTheme.colorScheme.onSurfaceVariant
+                        )
+                    }
+
                     IconButton(
                         onClick = { showAdvancedFilters = !showAdvancedFilters },
                         modifier = Modifier.testTag("toggle_filters_button")
