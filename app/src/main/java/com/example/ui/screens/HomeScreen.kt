@@ -250,7 +250,7 @@ private fun SessionCard(
                 Text(lecture.title, fontWeight = FontWeight.Bold, maxLines = 2, overflow = TextOverflow.Ellipsis)
                 Spacer(Modifier.height(4.dp))
                 Text(
-                    "PersianDateUtils.format(lecture.dateMillis)${if (lecture.professorName.isNotBlank()) "  •  ${lecture.professorName}" else ""}",
+                    "${PersianDateUtils.format(lecture.dateMillis)}${if (lecture.professorName.isNotBlank()) "  •  ${lecture.professorName}" else ""}",
                     style = MaterialTheme.typography.bodySmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant
                 )
