@@ -49,6 +49,7 @@ import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
+import kotlin.math.max
 import androidx.compose.material3.TopAppBar
 import androidx.compose.material3.TopAppBarDefaults
 import androidx.compose.runtime.Composable
@@ -93,6 +94,7 @@ fun AddEditLectureScreen(
     val isAiLoading by viewModel.isAiLoading.collectAsState()
     val aiOperationTitle by viewModel.aiOperationTitle.collectAsState()
     val aiError by viewModel.aiError.collectAsState()
+    val transcriptionProgress by viewModel.transcriptionProgress.collectAsState()
 
     // File picker launcher for audio files
     val audioPickerLauncher = rememberLauncherForActivityResult(
@@ -1091,83 +1093,87 @@ fun AddEditLectureScreen(
                         }
                     }
 
-                    // وضعیت عملیات هوش مصنوعی
+                    // نمایش ریزمرحله‌های واقعی تبدیل صوت به متن
 
-                    AnimatedVisibility(
-                        visible = isAiLoading
-                    ) {
+                    AnimatedVisibility(visible = isAiLoading) {
+                        val progress = transcriptionProgress
+                        val percent = progress?.percent ?: 0
+                        val eta = progress?.etaMs
+                        val elapsed = progress?.elapsedMs ?: 0L
 
                         Surface(
-
-                            shape =
-                                RoundedCornerShape(12.dp),
-
-                            color =
-                                MaterialTheme
-                                    .colorScheme
-                                    .primaryContainer
-                                    .copy(alpha = 0.5f),
-
-                            modifier =
-                                Modifier.fillMaxWidth()
+                            shape = RoundedCornerShape(14.dp),
+                            color = MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.55f),
+                            modifier = Modifier.fillMaxWidth()
                         ) {
-
-                            Row(
-
-                                modifier =
-                                    Modifier.padding(12.dp),
-
-                                verticalAlignment =
-                                    Alignment.CenterVertically
+                            Column(
+                                modifier = Modifier.padding(14.dp),
+                                verticalArrangement = Arrangement.spacedBy(8.dp)
                             ) {
+                                Row(
+                                    modifier = Modifier.fillMaxWidth(),
+                                    horizontalArrangement = Arrangement.SpaceBetween,
+                                    verticalAlignment = Alignment.CenterVertically
+                                ) {
+                                    Text(
+                                        text = progress?.stage ?: aiOperationTitle.ifBlank { "در حال پردازش فایل صوتی..." },
+                                        style = MaterialTheme.typography.bodyMedium,
+                                        fontWeight = FontWeight.Bold,
+                                        color = MaterialTheme.colorScheme.primary
+                                    )
+                                    Text(
+                                        text = if (percent > 0) "${percent}٪" else "…",
+                                        style = MaterialTheme.typography.labelLarge,
+                                        fontWeight = FontWeight.Bold
+                                    )
+                                }
 
-                                CircularProgressIndicator(
-
-                                    modifier =
-                                        Modifier.size(18.dp),
-
-                                    strokeWidth =
-                                        2.dp,
-
-                                    color =
-                                        MaterialTheme
-                                            .colorScheme
-                                            .primary
+                                androidx.compose.material3.LinearProgressIndicator(
+                                    progress = { (percent / 100f).coerceIn(0f, 1f) },
+                                    modifier = Modifier.fillMaxWidth()
                                 )
 
-                                Spacer(
-                                    modifier =
-                                        Modifier.width(8.dp)
+                                progress?.detail?.takeIf { it.isNotBlank() }?.let {
+                                    Text(it, style = MaterialTheme.typography.bodySmall)
+                                }
+
+                                Row(
+                                    modifier = Modifier.fillMaxWidth(),
+                                    horizontalArrangement = Arrangement.SpaceBetween
+                                ) {
+                                    Text("زمان سپری‌شده: ${formatElapsed(elapsed)}", style = MaterialTheme.typography.labelSmall)
+                                    Text(
+                                        if (eta != null && eta > 0) "زمان باقی‌مانده: ${formatElapsed(eta)}"
+                                        else "زمان باقی‌مانده: در حال محاسبه",
+                                        style = MaterialTheme.typography.labelSmall
+                                    )
+                                }
+
+                                if (progress != null && progress.totalBytes > 0L) {
+                                    Text(
+                                        "ارسال فایل: ${formatBytes(progress.uploadedBytes)} از ${formatBytes(progress.totalBytes)}",
+                                        style = MaterialTheme.typography.labelSmall
+                                    )
+                                }
+
+                                val stages = listOf(
+                                    "بررسی فایل",
+                                    "آماده‌سازی ارسال",
+                                    "ارسال فایل",
+                                    "فایل دریافت شد",
+                                    "تبدیل گفتار به متن",
+                                    "تکمیل متن"
                                 )
-
-                                Text(
-
-                                    text =
-
-                                        if (
-                                            aiOperationTitle
-                                                .isNotBlank()
+                                Column(verticalArrangement = Arrangement.spacedBy(3.dp)) {
+                                    stages.forEach { stage ->
+                                        val active = progress?.stage?.contains(stage) == true
+                                        Text(
+                                            text = (if (active) "● " else "○ ") + stage,
+                                            style = MaterialTheme.typography.labelSmall,
+                                            color = if (active) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant
                                         )
-
-                                            aiOperationTitle
-
-                                        else
-
-                                            "در حال پردازش فایل صوتی...",
-
-                                    style =
-                                        MaterialTheme
-                                            .typography
-                                            .bodySmall,
-
-                                    fontWeight =
-                                        FontWeight.Bold,
-
-                                    color =
-                                        MaterialTheme
-                                            .colorScheme
-                                            .primary
-                                )
+                                    }
+                                }
                             }
                         }
                     }
