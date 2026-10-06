@@ -579,6 +579,19 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
         }
     }
 
+
+    private suspend fun aiTextWithGroqFirst(
+        groqCall: suspend () -> Result<String>,
+        geminiCall: suspend () -> Result<String>
+    ): Result<String> {
+        if (GroqApiService.hasApiKey(getApplication<Application>())) {
+            val groqResult = groqCall()
+            if (groqResult.isSuccess) return groqResult
+            Log.w(TAG, "Groq failed; falling back to Gemini", groqResult.exceptionOrNull())
+        }
+        return geminiCall()
+    }
+
     fun testGeminiConnection(
         onComplete: (String?) -> Unit
     ) {
@@ -706,66 +719,52 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
     // ---------------------------------------------------------
 
     fun transcribeCurrentAudio() {
-
-        val audioPath =
-            formAudioPath.value
-
+        val audioPath = formAudioPath.value
         if (audioPath.isNullOrBlank()) {
-
-            _aiError.value =
-                "ابتدا یک فایل صوتی ضبط یا بارگذاری کنید."
-
+            _aiError.value = "ابتدا یک فایل صوتی ضبط یا بارگذاری کنید."
             return
         }
 
-        val audioFile =
-            File(audioPath)
-
-        if (!audioFile.exists()) {
-
-            _aiError.value =
-                "فایل صوتی پیدا نشد."
-
-            return
-        }
-
-        if (audioFile.length() == 0L) {
-
-            _aiError.value =
-                "فایل صوتی خالی است."
-
+        val audioFile = File(audioPath)
+        if (!audioFile.exists() || audioFile.length() == 0L) {
+            _aiError.value = "فایل صوتی معتبر نیست."
             return
         }
 
         viewModelScope.launch {
-
             _isAiLoading.value = true
             _transcriptionProgress.value = TranscriptionProgress(
-                "شروع تبدیل صوت به متن",
+                "شروع تبدیل صوت به متن با Groq",
                 0,
                 totalBytes = audioFile.length(),
-                detail = "در حال آماده‌سازی..."
+                detail = "Groq موتور اصلی تبدیل صوت به متن است."
             )
-
-            _aiOperationTitle.value = "در حال تبدیل فایل صوتی استاد به متن..."
+            _aiOperationTitle.value = "در حال تبدیل فایل صوتی استاد به متن با Groq..."
             _aiError.value = null
 
             try {
+                val groqAvailable = GroqApiService.hasApiKey(getApplication<Application>())
+                var result: Result<String>
 
-                var result =
-                    GeminiApiService.transcribeAudioFile(audioPath) { progress ->
+                if (groqAvailable) {
+                    result = GroqApiService.transcribeAudioFile(audioPath) { progress ->
                         _transcriptionProgress.value = progress
                         _aiOperationTitle.value = progress.stage
                     }
-
-                if (result.isFailure && GroqApiService.hasApiKey(getApplication<Application>())) {
-                    _transcriptionProgress.value = TranscriptionProgress(
-                        "انتقال به Groq",
-                        60,
-                        totalBytes = audioFile.length(),
-                        detail = "Gemini پاسخ مناسب نداد؛ موتور دوم برای تبدیل صوت به متن فعال شد."
-                    )
-                    result = GroqApiService.transcribeAudioFile(audioPath) { progress ->
+                    if (result.isFailure) {
+                        _transcriptionProgress.value = TranscriptionProgress(
+                            "Groq ناموفق بود؛ انتقال به Gemini",
+                            60,
+                            totalBytes = audioFile.length(),
+                            detail = "در صورت خطای Groq، Gemini به عنوان مسیر پشتیبان فعال می‌شود."
+                        )
+                        result = GeminiApiService.transcribeAudioFile(audioPath) { progress ->
+                            _transcriptionProgress.value = progress
+                            _aiOperationTitle.value = progress.stage
+                        }
+                    }
+                } else {
+                    result = GeminiApiService.transcribeAudioFile(audioPath) { progress ->
                         _transcriptionProgress.value = progress
                         _aiOperationTitle.value = progress.stage
                     }
@@ -776,24 +775,12 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
                     _aiError.value = null
                 }.onFailure { error ->
                     Log.e(TAG, "Audio transcription failed", error)
-                    _aiError.value = error.localizedMessage
-                        ?: "تبدیل فایل صوتی به متن ناموفق بود."
+                    _aiError.value = error.localizedMessage ?: "تبدیل فایل صوتی به متن ناموفق بود."
                 }
-
             } catch (e: Exception) {
-
-                Log.e(
-                    TAG,
-                    "Audio transcription exception",
-                    e
-                )
-
-                _aiError.value =
-                    e.localizedMessage
-                        ?: "خطا در تبدیل فایل صوتی به متن."
-
+                Log.e(TAG, "Audio transcription exception", e)
+                _aiError.value = e.localizedMessage ?: "خطا در تبدیل فایل صوتی."
             } finally {
-
                 _isAiLoading.value = false
             }
         }
@@ -831,9 +818,9 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
             _aiError.value = null
 
             val result =
-                GeminiApiService.summarizeLecture(
-                    current.transcript,
-                    current.title
+                aiTextWithGroqFirst(
+                    groqCall = { GroqApiService.summarizeLecture(current.transcript, current.title) },
+                    geminiCall = { GeminiApiService.summarizeLecture(current.transcript, current.title) }
                 )
 
             result.onSuccess { summary ->
@@ -885,8 +872,9 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
             _aiError.value = null
 
             val result =
-                GeminiApiService.extractKeyPoints(
-                    current.transcript
+                aiTextWithGroqFirst(
+                    groqCall = { GroqApiService.extractKeyPoints(current.transcript) },
+                    geminiCall = { GeminiApiService.extractKeyPoints(current.transcript) }
                 )
 
             result.onSuccess { keyPoints ->
@@ -938,8 +926,9 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
             _aiError.value = null
 
             val result =
-                GeminiApiService.generateQuiz(
-                    current.transcript
+                aiTextWithGroqFirst(
+                    groqCall = { GroqApiService.generateQuiz(current.transcript) },
+                    geminiCall = { GeminiApiService.generateQuiz(current.transcript) }
                 )
 
             result.onSuccess { quizJson ->
@@ -999,9 +988,9 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
             _aiError.value = null
 
             val result =
-                GeminiApiService.askLectureQuestion(
-                    current.transcript,
-                    question
+                aiTextWithGroqFirst(
+                    groqCall = { GroqApiService.askLectureQuestion(current.transcript, question) },
+                    geminiCall = { GeminiApiService.askLectureQuestion(current.transcript, question) }
                 )
 
             result.onSuccess { answer ->
@@ -1050,7 +1039,10 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
             _aiError.value = null
 
             val result =
-                GeminiApiService.polishTranscript(raw)
+                aiTextWithGroqFirst(
+                groqCall = { GroqApiService.polishTranscript(raw) },
+                geminiCall = { GeminiApiService.polishTranscript(raw) }
+            )
 
             result.onSuccess { polished ->
 
