@@ -41,7 +41,7 @@ class AudioPlayerManager(private val context: Context) {
                     try {
                         _currentPosition.value = player.currentPosition
                         _duration.value = player.duration
-                        handler.postDelayed(this, 250)
+                        handler.postDelayed(this, 200)
                     } catch (e: Exception) {
                         // Player might be released
                     }
@@ -89,6 +89,7 @@ class AudioPlayerManager(private val context: Context) {
             }
 
             mediaPlayer = player
+            handler.removeCallbacks(progressRunnable)
             handler.post(progressRunnable)
         } catch (e: Exception) {
             Log.e(TAG, "Failed to play audio from $path", e)
@@ -127,19 +128,19 @@ class AudioPlayerManager(private val context: Context) {
         }
     }
 
-    fun skipForward(deltaMs: Int = 10000) {
+    fun skipForward(deltaMs: Int = 15000) {
         val newPos = (_currentPosition.value + deltaMs).coerceAtMost(_duration.value)
         seekTo(newPos)
     }
 
-    fun skipBackward(deltaMs: Int = 10000) {
+    fun skipBackward(deltaMs: Int = 15000) {
         val newPos = (_currentPosition.value - deltaMs).coerceAtLeast(0)
         seekTo(newPos)
     }
 
     fun setSpeed(speed: Float) {
         _playbackSpeed.value = speed
-        mediaPlayer?.let { applyPlaybackSpeed(speed, it) }
+        mediaPlayer?.let { applyPlaybackSpeed(speed.coerceIn(0.5f, 2.0f), it) }
     }
 
     private fun applyPlaybackSpeed(speed: Float, player: MediaPlayer? = mediaPlayer) {
@@ -168,6 +169,8 @@ class AudioPlayerManager(private val context: Context) {
             Log.e(TAG, "Error releasing player", e)
         } finally {
             mediaPlayer = null
+            currentFilePath = null
+            _activeFilePath.value = null
         }
     }
 }
