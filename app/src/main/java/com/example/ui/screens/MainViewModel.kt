@@ -22,6 +22,7 @@ import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
+import android.content.Context
 import org.json.JSONArray
 import java.io.File
 import java.io.FileOutputStream
@@ -51,6 +52,8 @@ data class QuizQuestion(
     val explanation: String
 )
 
+enum class UserRole { TEACHER, STUDENT }
+
 data class FilterCriteria(
     val query: String = "",
     val course: String? = null,
@@ -64,6 +67,17 @@ data class FilterCriteria(
 class MainViewModel(application: Application) : AndroidViewModel(application) {
 
     private val TAG = "MainViewModel"
+
+    private val rolePrefs = application.getSharedPreferences("ostadyar_role", Context.MODE_PRIVATE)
+    private val _userRole = MutableStateFlow(
+        if (rolePrefs.getString("role", "TEACHER") == "STUDENT") UserRole.STUDENT else UserRole.TEACHER
+    )
+    val userRole: StateFlow<UserRole> = _userRole.asStateFlow()
+
+    fun setUserRole(role: UserRole) {
+        _userRole.value = role
+        rolePrefs.edit().putString("role", role.name).apply()
+    }
 
     private val database = AppDatabase.getDatabase(application)
     val repository = LectureRepository(database.lectureDao())
