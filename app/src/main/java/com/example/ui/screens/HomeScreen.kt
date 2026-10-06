@@ -80,6 +80,7 @@ import java.util.Locale
 @Composable
 fun HomeScreen(
     viewModel: MainViewModel,
+    userRole: UserRole,
     onNavigateToAdd: () -> Unit,
     onNavigateToDetail: (Long) -> Unit
 ) {
@@ -130,7 +131,7 @@ fun HomeScreen(
                                 )
                             )
                             Text(
-                                text = "کلاس درس هوشمند و پیاده‌سازی صوت",
+                                text = if (userRole == UserRole.TEACHER) "مدیریت و تدوین درس" else "مطالعه و یادگیری",
                                 style = MaterialTheme.typography.bodySmall,
                                 color = MaterialTheme.colorScheme.onSurfaceVariant
                             )
@@ -141,6 +142,19 @@ fun HomeScreen(
                     containerColor = MaterialTheme.colorScheme.surface
                 ),
                 actions = {
+                    Surface(
+                        onClick = { viewModel.setUserRole(if (userRole == UserRole.TEACHER) UserRole.STUDENT else UserRole.TEACHER) },
+                        shape = RoundedCornerShape(20.dp),
+                        color = MaterialTheme.colorScheme.secondaryContainer
+                    ) {
+                        Text(
+                            text = if (userRole == UserRole.TEACHER) "استاد" else "شاگرد",
+                            style = MaterialTheme.typography.labelLarge,
+                            color = MaterialTheme.colorScheme.onSecondaryContainer,
+                            modifier = Modifier.padding(horizontal = 12.dp, vertical = 7.dp)
+                        )
+                    }
+
                     IconButton(
                         onClick = { viewModel.navigateTo(Screen.Settings) },
                         modifier = Modifier.testTag("settings_button")
@@ -278,7 +292,7 @@ fun HomeScreen(
             }
 
             // Advanced Filters Expandable Section
-            AnimatedVisibility(visible = showAdvancedFilters) {
+            AnimatedVisibility(visible = false) {
                 Card(
                     modifier = Modifier
                         .fillMaxWidth()
