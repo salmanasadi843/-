@@ -105,7 +105,8 @@ fun LectureDetailScreen(
     lectureId: Long,
     viewModel: MainViewModel,
     onNavigateBack: () -> Unit,
-    onNavigateToEdit: (Long) -> Unit
+    onNavigateToEdit: (Long) -> Unit,
+    isTeacher: Boolean = true
 ) {
     val lecture by viewModel.selectedLecture.collectAsState()
     val context = LocalContext.current
@@ -125,7 +126,7 @@ fun LectureDetailScreen(
     val chatMessages by viewModel.chatMessages.collectAsState()
 
     var selectedTabIndex by remember { mutableIntStateOf(0) }
-    val tabTitles = listOf("متن پیاده‌شده", "خلاصه و نکات هوشمند", "آزمونک کلاسی", "گفت‌وگو با جزوه")
+    val tabTitles = listOf("متن درس", "خلاصه و نکات", "گفت‌وگو با جزوه")
 
     var showDeleteConfirmDialog by remember { mutableStateOf(false) }
     var chatInputText by remember { mutableStateOf("") }
@@ -198,9 +199,9 @@ fun LectureDetailScreen(
                             tint = if (currentLecture.isFavorite) MaterialTheme.colorScheme.tertiary else MaterialTheme.colorScheme.onSurfaceVariant
                         )
                     }
-                    IconButton(onClick = { onNavigateToEdit(lectureId) }, modifier = Modifier.testTag("detail_edit_button")) {
+                    if (isTeacher) { IconButton(onClick = { onNavigateToEdit(lectureId) }, modifier = Modifier.testTag("detail_edit_button")) {
                         Icon(imageVector = Icons.Default.Edit, contentDescription = "ویرایش")
-                    }
+                        } }
                     IconButton(onClick = {
                         val shareIntent = Intent(Intent.ACTION_SEND).apply {
                             type = "text/plain"
