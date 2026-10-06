@@ -44,7 +44,7 @@ object PersianDateUtils {
         val gDays = intArrayOf(0,31,59,90,120,151,181,212,243,273,304,334)
         var days = 365 * gy2 + (gy2 + 3) / 4 - (gy2 + 99) / 100 + (gy2 + 399) / 400
         days += gDays[gm2] + gd2
-        if (gm2 > 1 && GregorianCalendar(gy,1,1).isLeapYear) days++
+        if (gm2 > 1 && GregorianCalendar(gy,1,1).isLeapYear()) days++
         var jDays = days - 79
         val jNp = jDays / 12053
         jDays %= 12053
