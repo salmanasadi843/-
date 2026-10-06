@@ -47,6 +47,7 @@ class MainActivity : ComponentActivity() {
 @Composable
 fun OstadYarApp(viewModel: MainViewModel = viewModel()) {
     val currentScreen by viewModel.currentScreen.collectAsState()
+    val userRole by viewModel.userRole.collectAsState()
 
     // Handle system back button properly
     BackHandler(enabled = currentScreen !is Screen.Home) {
