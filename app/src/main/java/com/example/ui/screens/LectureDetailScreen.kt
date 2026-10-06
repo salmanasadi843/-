@@ -736,7 +736,6 @@ fun AiSummaryTab(
 }
 
 @Composable
-@Composable
 fun QuizTab(
     quiz: List<QuizQuestion>,
     selectedAnswers: Map<Int, Int>,
