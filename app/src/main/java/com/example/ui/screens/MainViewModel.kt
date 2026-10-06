@@ -10,6 +10,7 @@ import com.example.audio.AudioPlayerManager
 import com.example.audio.AudioRecorderManager
 import com.example.audio.SpeechRecognizerHelper
 import com.example.data.api.GeminiApiService
+import com.example.data.api.TranscriptionProgress
 import com.example.data.local.AppDatabase
 import com.example.data.local.LectureEntity
 import com.example.data.repository.LectureRepository
@@ -166,6 +167,9 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
     private val _aiError = MutableStateFlow<String?>(null)
     val aiError: StateFlow<String?> =
         _aiError.asStateFlow()
+
+    private val _transcriptionProgress = MutableStateFlow<TranscriptionProgress?>(null)
+    val transcriptionProgress: StateFlow<TranscriptionProgress?> = _transcriptionProgress.asStateFlow()
 
     private val _chatMessages =
         MutableStateFlow<List<ChatMessage>>(emptyList())
@@ -730,17 +734,23 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
         viewModelScope.launch {
 
             _isAiLoading.value = true
+            _transcriptionProgress.value = TranscriptionProgress(
+                "شروع تبدیل صوت به متن",
+                0,
+                totalBytes = audioFile.length(),
+                detail = "در حال آماده‌سازی..."
+            )
 
-            _aiOperationTitle.value =
-                "در حال تبدیل فایل صوتی استاد به متن..."
-
+            _aiOperationTitle.value = "در حال تبدیل فایل صوتی استاد به متن..."
             _aiError.value = null
 
             try {
 
                 val result =
-                    GeminiApiService
-                        .transcribeAudioFile(audioPath)
+                    GeminiApiService.transcribeAudioFile(audioPath) { progress ->
+                        _transcriptionProgress.value = progress
+                        _aiOperationTitle.value = progress.stage
+                    }
 
                 result.onSuccess { transcript ->
 
@@ -779,6 +789,10 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
                 _isAiLoading.value = false
             }
         }
+    }
+
+    fun clearTranscriptionProgress() {
+        _transcriptionProgress.value = null
     }
 
     // ---------------------------------------------------------
