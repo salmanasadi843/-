@@ -58,6 +58,7 @@ fun OstadYarApp(viewModel: MainViewModel = viewModel()) {
         is Screen.Home -> {
             HomeScreen(
                 viewModel = viewModel,
+                userRole = userRole,
                 onNavigateToAdd = {
                     viewModel.navigateTo(Screen.AddEdit(null))
                 },
