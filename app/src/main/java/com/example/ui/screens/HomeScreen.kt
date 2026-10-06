@@ -251,46 +251,6 @@ fun HomeScreen(
                 )
             }
 
-            // Quick Filter Chips Row
-            LazyRow(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .padding(vertical = 4.dp),
-                contentPadding = PaddingValues(horizontal = 16.dp),
-                horizontalArrangement = Arrangement.spacedBy(8.dp)
-            ) {
-                item {
-                    FilterChip(
-                        selected = onlyAudio,
-                        onClick = { viewModel.toggleFilterOnlyWithAudio() },
-                        label = { Text("دارای صوت 🎙️") },
-                        leadingIcon = {
-                            Icon(Icons.Default.Mic, contentDescription = null, modifier = Modifier.size(16.dp))
-                        }
-                    )
-                }
-                item {
-                    FilterChip(
-                        selected = onlyAi,
-                        onClick = { viewModel.toggleFilterOnlyWithAiSummary() },
-                        label = { Text("خلاصه هوش مصنوعی ✨") },
-                        leadingIcon = {
-                            Icon(Icons.Default.AutoAwesome, contentDescription = null, modifier = Modifier.size(16.dp))
-                        }
-                    )
-                }
-                item {
-                    FilterChip(
-                        selected = onlyFav,
-                        onClick = { viewModel.toggleFilterOnlyFavorites() },
-                        label = { Text("نشان‌شده‌ها ⭐") },
-                        leadingIcon = {
-                            Icon(Icons.Default.Star, contentDescription = null, modifier = Modifier.size(16.dp))
-                        }
-                    )
-                }
-            }
-
             // Advanced Filters Expandable Section
             AnimatedVisibility(visible = false) {
                 Card(
