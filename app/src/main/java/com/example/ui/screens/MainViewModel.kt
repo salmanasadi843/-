@@ -31,6 +31,7 @@ sealed class Screen {
     data class Detail(val lectureId: Long) : Screen()
     data class AddEdit(val lectureId: Long? = null) : Screen()
     data class AiStudy(val lectureId: Long) : Screen()
+    object Settings : Screen()
 }
 
 data class ChatMessage(
@@ -180,6 +181,8 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
     val formAudioDurationMs = MutableStateFlow(0L)
 
     init {
+        GeminiApiService.configure(application)
+
         viewModelScope.launch {
             repository.seedInitialDataIfEmpty()
         }
@@ -319,7 +322,8 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
             }
 
             is Screen.Detail,
-            is Screen.AddEdit -> {
+            is Screen.AddEdit,
+            Screen.Settings -> {
 
                 audioPlayer.stop()
                 speechRecognizer.stopListening()
@@ -544,6 +548,25 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
             _selectedLecture.value = null
 
             onDeleted()
+        }
+    }
+
+    fun testGeminiConnection(
+        onComplete: (String?) -> Unit
+    ) {
+        viewModelScope.launch {
+            val result = GeminiApiService.generateContent(
+                prompt = "پاسخ را فقط با کلمه «آماده» بده."
+            )
+
+            result.onSuccess {
+                onComplete(null)
+            }.onFailure { error ->
+                onComplete(
+                    error.localizedMessage
+                        ?: "اتصال به Gemini ناموفق بود."
+                )
+            }
         }
     }
 
