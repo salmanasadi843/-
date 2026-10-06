@@ -95,8 +95,6 @@ import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.example.data.local.LectureEntity
-import java.text.SimpleDateFormat
-import java.util.Date
 import java.util.Locale
 
 @OptIn(ExperimentalMaterial3Api::class, ExperimentalLayoutApi::class)
@@ -121,12 +119,10 @@ fun LectureDetailScreen(
     val aiOperationTitle by viewModel.aiOperationTitle.collectAsState()
     val aiError by viewModel.aiError.collectAsState()
 
-    val parsedQuiz by viewModel.parsedQuiz.collectAsState()
-    val quizSelectedAnswers by viewModel.quizSelectedAnswers.collectAsState()
     val chatMessages by viewModel.chatMessages.collectAsState()
 
     var selectedTabIndex by remember { mutableIntStateOf(0) }
-    val tabTitles = listOf("متن درس", "خلاصه و نکات", "گفت‌وگو با جزوه")
+    val tabTitles = listOf("مطالعه جلسه", "خلاصه و نکات", "پرسش از جزوه")
 
     var showDeleteConfirmDialog by remember { mutableStateOf(false) }
     var chatInputText by remember { mutableStateOf("") }
@@ -352,15 +348,7 @@ ${currentLecture.transcript}
                     onGenerateSummary = { viewModel.generateAiSummary(lectureId) },
                     onExtractKeyPoints = { viewModel.extractAiKeyPoints(lectureId) }
                 )
-                2 -> QuizTab(
-                    quiz = parsedQuiz,
-                    selectedAnswers = quizSelectedAnswers,
-                    isAiLoading = isAiLoading,
-                    onOptionSelected = { qIdx, optIdx -> viewModel.answerQuiz(qIdx, optIdx) },
-                    onGenerateQuiz = { viewModel.generateAiQuiz(lectureId) },
-                    onResetAnswers = { viewModel.resetQuizAnswers() }
-                )
-                3 -> ChatWithLectureTab(
+                2 -> ChatWithLectureTab(
                     messages = chatMessages,
                     isAiLoading = isAiLoading,
                     inputText = chatInputText,
@@ -528,85 +516,117 @@ fun TranscriptTab(
     onEditClick: () -> Unit,
     onCopyClick: () -> Unit
 ) {
-    val wordCount = remember(lecture.transcript) {
-        lecture.transcript.split(Regex("\\s+")).filter { it.isNotBlank() }.size
-    }
-    val readMinutes = (wordCount / 180).coerceAtLeast(1)
+    val scrollState = rememberScrollState()
+    val hasText = lecture.transcript.isNotBlank()
+    val tags = lecture.tags.split(",").map { it.trim() }.filter { it.isNotBlank() }
 
     Column(
         modifier = Modifier
             .fillMaxSize()
-            .verticalScroll(rememberScrollState())
-            .padding(16.dp)
+            .verticalScroll(scrollState)
+            .padding(horizontal = 18.dp, vertical = 16.dp)
     ) {
-        // Quick Stats & Actions
-        Row(
-            modifier = Modifier.fillMaxWidth(),
-            horizontalArrangement = Arrangement.SpaceBetween,
-            verticalAlignment = Alignment.CenterVertically
-        ) {
+        Text(
+            text = PersianDateUtils.format(lecture.dateMillis),
+            style = MaterialTheme.typography.labelMedium,
+            color = MaterialTheme.colorScheme.primary
+        )
+        Spacer(Modifier.height(6.dp))
+        Text(
+            text = lecture.title,
+            style = MaterialTheme.typography.headlineSmall,
+            fontWeight = FontWeight.Bold,
+            lineHeight = 32.sp
+        )
+        if (lecture.courseName.isNotBlank() || lecture.professorName.isNotBlank()) {
+            Spacer(Modifier.height(6.dp))
             Text(
-                text = "$wordCount کلمه • حدود $readMinutes دقیقه مطالعه",
-                style = MaterialTheme.typography.labelMedium,
+                text = listOf(lecture.courseName, lecture.professorName)
+                    .filter { it.isNotBlank() }
+                    .joinToString("  •  "),
+                style = MaterialTheme.typography.bodyMedium,
                 color = MaterialTheme.colorScheme.onSurfaceVariant
             )
-
-            Row(horizontalArrangement = Arrangement.spacedBy(4.dp)) {
-                IconButton(onClick = onCopyClick) {
-                    Icon(
-                        imageVector = Icons.Default.ContentCopy,
-                        contentDescription = "کپی متن",
-                        tint = MaterialTheme.colorScheme.primary
-                    )
-                }
-                IconButton(onClick = onEditClick) {
-                    Icon(
-                        imageVector = Icons.Default.Edit,
-                        contentDescription = "ویرایش متن",
-                        tint = MaterialTheme.colorScheme.primary
-                    )
-                }
-            }
         }
 
-        Spacer(modifier = Modifier.height(10.dp))
-
-        if (lecture.transcript.isBlank()) {
-            Box(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .padding(32.dp),
-                contentAlignment = Alignment.Center
-            ) {
-                Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                    Text(
-                        text = "هنوز متنی برای این جلسه ثبت نشده است.",
-                        style = MaterialTheme.typography.bodyMedium,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant
-                    )
-                    Spacer(modifier = Modifier.height(12.dp))
-                    Button(onClick = onEditClick) {
-                        Text("ثبت یا تبدیل صوت به متن")
+        if (tags.isNotEmpty()) {
+            Spacer(Modifier.height(14.dp))
+            FlowRow(horizontalArrangement = Arrangement.spacedBy(6.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                tags.forEach { tag ->
+                    Surface(
+                        shape = RoundedCornerShape(10.dp),
+                        color = MaterialTheme.colorScheme.primaryContainer
+                    ) {
+                        Text(
+                            tag,
+                            modifier = Modifier.padding(horizontal = 9.dp, vertical = 5.dp),
+                            style = MaterialTheme.typography.labelMedium,
+                            color = MaterialTheme.colorScheme.onPrimaryContainer
+                        )
                     }
                 }
             }
-        } else {
-            Card(
+        }
+
+        Spacer(Modifier.height(20.dp))
+
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.End
+        ) {
+            TextButton(onClick = onCopyClick) {
+                Icon(Icons.Default.ContentCopy, null, modifier = Modifier.size(17.dp))
+                Spacer(Modifier.width(5.dp))
+                Text("کپی متن")
+            }
+            if (lecture.transcript.isBlank()) {
+                TextButton(onClick = onEditClick) {
+                    Text("افزودن متن")
+                }
+            }
+        }
+
+        if (!hasText) {
+            Surface(
+                modifier = Modifier.fillMaxWidth(),
                 shape = RoundedCornerShape(16.dp),
-                colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
-                modifier = Modifier.fillMaxWidth()
+                color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.45f)
+            ) {
+                Column(
+                    modifier = Modifier.padding(24.dp),
+                    horizontalAlignment = Alignment.CenterHorizontally
+                ) {
+                    Icon(Icons.Default.MenuBook, null, modifier = Modifier.size(42.dp), tint = MaterialTheme.colorScheme.primary)
+                    Spacer(Modifier.height(10.dp))
+                    Text("متن این جلسه هنوز آماده نشده است.", style = MaterialTheme.typography.titleMedium)
+                    Text(
+                        "استاد می‌تواند صوت جلسه را به متن تبدیل و متن را ویرایش کند.",
+                        style = MaterialTheme.typography.bodyMedium,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        textAlign = TextAlign.Center
+                    )
+                }
+            }
+        } else {
+            Surface(
+                modifier = Modifier.fillMaxWidth(),
+                shape = RoundedCornerShape(18.dp),
+                color = MaterialTheme.colorScheme.surface
             ) {
                 Text(
                     text = lecture.transcript,
-                    style = MaterialTheme.typography.bodyLarge.copy(lineHeight = 28.sp),
-                    modifier = Modifier.padding(18.dp)
+                    modifier = Modifier.padding(horizontal = 18.dp, vertical = 20.dp),
+                    style = MaterialTheme.typography.bodyLarge.copy(
+                        lineHeight = 32.sp
+                    ),
+                    textAlign = TextAlign.Start
                 )
             }
         }
+        Spacer(Modifier.height(32.dp))
     }
 }
 
-@Composable
 fun AiSummaryTab(
     lecture: LectureEntity,
     isAiLoading: Boolean,
