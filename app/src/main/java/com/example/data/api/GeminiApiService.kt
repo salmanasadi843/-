@@ -1,7 +1,9 @@
 package com.example.data.api
 
+import android.content.Context
 import android.util.Log
 import com.example.BuildConfig
+import com.example.data.local.ApiKeyStore
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import okhttp3.MediaType.Companion.toMediaType
@@ -19,6 +21,31 @@ object GeminiApiService {
     private const val MODEL = "gemini-3.5-flash"
     private const val BASE_URL = "https://generativelanguage.googleapis.com/v1beta/models"
 
+    @Volatile
+    private var appContext: Context? = null
+
+    fun configure(context: Context) {
+        appContext = context.applicationContext
+    }
+
+    fun getSavedApiKey(context: Context): String {
+        return ApiKeyStore.getGeminiApiKey(context) ?: ""
+    }
+
+    fun saveApiKey(
+        context: Context,
+        apiKey: String
+    ) {
+        ApiKeyStore.saveGeminiApiKey(context, apiKey)
+        configure(context)
+    }
+
+    fun deleteSavedApiKey(
+        context: Context
+    ) {
+        ApiKeyStore.removeGeminiApiKey(context)
+    }
+
     private val client = OkHttpClient.Builder()
         .connectTimeout(60, TimeUnit.SECONDS)
         .readTimeout(60, TimeUnit.SECONDS)
@@ -26,9 +53,17 @@ object GeminiApiService {
         .build()
 
     private fun getApiKey(): String {
+        val savedKey = appContext?.let {
+            ApiKeyStore.getGeminiApiKey(it)
+        }
+
+        if (!savedKey.isNullOrBlank()) {
+            return savedKey
+        }
+
         return try {
             BuildConfig.GEMINI_API_KEY
-        } catch (e: Exception) {
+        } catch (_: Exception) {
             ""
         }
     }
@@ -43,7 +78,7 @@ object GeminiApiService {
         if (apiKey.isBlank() || apiKey == "MY_GEMINI_API_KEY") {
             return@withContext Result.failure(
                 IllegalStateException(
-                    "کلید هوش مصنوعی (GEMINI_API_KEY) در فایل تنظیمات مشخص نشده است. لطفاً کلید معتبر را در بخش Secrets وارد کنید."
+                    "کلید Gemini تنظیم نشده است. لطفاً از بخش «تنظیمات» یک کلید معتبر وارد کنید."
                 )
             )
         }
