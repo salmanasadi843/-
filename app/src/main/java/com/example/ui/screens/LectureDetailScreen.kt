@@ -511,6 +511,7 @@ fun AudioPlayerCard(
 }
 
 @Composable
+@Composable
 fun TranscriptTab(
     lecture: LectureEntity,
     onEditClick: () -> Unit,
@@ -627,6 +628,7 @@ fun TranscriptTab(
     }
 }
 
+@Composable
 fun AiSummaryTab(
     lecture: LectureEntity,
     isAiLoading: Boolean,
@@ -733,6 +735,7 @@ fun AiSummaryTab(
     }
 }
 
+@Composable
 @Composable
 fun QuizTab(
     quiz: List<QuizQuestion>,
