@@ -252,7 +252,7 @@ fun HomeScreen(
             }
 
             // Advanced Filters Expandable Section
-            AnimatedVisibility(visible = false) {
+            AnimatedVisibility(visible = showAdvancedFilters) {
                 Card(
                     modifier = Modifier
                         .fillMaxWidth()
