@@ -10,6 +10,7 @@ import com.example.audio.AudioPlayerManager
 import com.example.audio.AudioRecorderManager
 import com.example.audio.SpeechRecognizerHelper
 import com.example.data.api.GeminiApiService
+import com.example.data.api.GroqApiService
 import com.example.data.api.TranscriptionProgress
 import com.example.data.local.AppDatabase
 import com.example.data.local.LectureEntity
@@ -68,6 +69,11 @@ data class FilterCriteria(
 class MainViewModel(application: Application) : AndroidViewModel(application) {
 
     private val TAG = "MainViewModel"
+
+    init {
+        GeminiApiService.configure(application)
+        GroqApiService.configure(application)
+    }
 
     private val rolePrefs = application.getSharedPreferences("ostadyar_role", Context.MODE_PRIVATE)
     private val _userRole = MutableStateFlow(
@@ -746,30 +752,32 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
 
             try {
 
-                val result =
+                var result =
                     GeminiApiService.transcribeAudioFile(audioPath) { progress ->
                         _transcriptionProgress.value = progress
                         _aiOperationTitle.value = progress.stage
                     }
 
-                result.onSuccess { transcript ->
-
-                    formTranscript.value =
-                        transcript
-
-                    _aiError.value = null
-
-                }.onFailure { error ->
-
-                    Log.e(
-                        TAG,
-                        "Audio transcription failed",
-                        error
+                if (result.isFailure && GroqApiService.hasApiKey(getApplication<Application>())) {
+                    _transcriptionProgress.value = TranscriptionProgress(
+                        "انتقال به Groq",
+                        60,
+                        totalBytes = audioFile.length(),
+                        detail = "Gemini پاسخ مناسب نداد؛ موتور دوم برای تبدیل صوت به متن فعال شد."
                     )
+                    result = GroqApiService.transcribeAudioFile(audioPath) { progress ->
+                        _transcriptionProgress.value = progress
+                        _aiOperationTitle.value = progress.stage
+                    }
+                }
 
-                    _aiError.value =
-                        error.localizedMessage
-                            ?: "تبدیل فایل صوتی به متن ناموفق بود."
+                result.onSuccess { transcript ->
+                    formTranscript.value = transcript
+                    _aiError.value = null
+                }.onFailure { error ->
+                    Log.e(TAG, "Audio transcription failed", error)
+                    _aiError.value = error.localizedMessage
+                        ?: "تبدیل فایل صوتی به متن ناموفق بود."
                 }
 
             } catch (e: Exception) {
