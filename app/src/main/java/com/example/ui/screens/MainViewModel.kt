@@ -187,6 +187,7 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
 
     // Add/Edit Lecture Form State
     val formTitle = MutableStateFlow("")
+    val formDateText = MutableStateFlow("")
     val formCourse = MutableStateFlow("")
     val formProfessor = MutableStateFlow("")
     val formTags = MutableStateFlow("")
@@ -452,6 +453,7 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
                 if (lecture != null) {
 
                     formTitle.value = lecture.title
+                    formDateText.value = PersianDateUtils.format(lecture.dateMillis)
                     formCourse.value = lecture.courseName
                     formProfessor.value = lecture.professorName
                     formTags.value = lecture.tags
@@ -465,6 +467,7 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
         } else {
 
             formTitle.value = ""
+            formDateText.value = PersianDateUtils.format(System.currentTimeMillis())
             formCourse.value = ""
             formProfessor.value = ""
             formTags.value = ""
@@ -500,9 +503,10 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
                     title = title,
                     courseName = formCourse.value.trim(),
                     professorName = formProfessor.value.trim(),
-                    dateMillis =
-                        existing?.dateMillis
-                            ?: System.currentTimeMillis(),
+                    dateMillis = PersianDateUtils.parse(
+                        formDateText.value,
+                        existing?.dateMillis ?: System.currentTimeMillis()
+                    ),
                     audioFilePath =
                         formAudioPath.value,
                     audioDurationMs =
