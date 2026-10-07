@@ -53,7 +53,7 @@ fun OstadYarApp(viewModel: MainViewModel = viewModel()) {
     val userRole by viewModel.userRole.collectAsState()
 
     // Handle system back button properly
-    BackHandler(enabled = currentScreen !is Screen.Home) {
+    BackHandler(enabled = true) {
         viewModel.navigateBack()
     }
 
