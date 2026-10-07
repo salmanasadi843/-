@@ -92,6 +92,7 @@ import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.example.data.local.LectureEntity
+import java.io.File
 import java.util.Locale
 
 private fun formatDuration(milliseconds: Long): String {
