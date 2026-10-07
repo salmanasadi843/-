@@ -40,15 +40,10 @@ fun CourseScreen(
     Scaffold(
         topBar = {
             TopAppBar(
-                title = {
-                    Column {
-                        Text(className, fontWeight = FontWeight.Bold)
-                        Text("درس‌های این کلاس", style = MaterialTheme.typography.bodySmall)
-                    }
-                },
+                title = { Text(className, fontWeight = FontWeight.Bold) },
                 navigationIcon = {
                     IconButton(onClick = onBack) {
-                        Icon(Icons.Default.ArrowBack, "بازگشت")
+                        Icon(Icons.Default.ArrowBack, contentDescription = "بازگشت")
                     }
                 }
             )
@@ -59,13 +54,13 @@ fun CourseScreen(
                     editingCourse = null
                     showDialog = true
                 }) {
-                    Icon(Icons.Default.Add, "درس جدید")
+                    Icon(Icons.Default.Add, contentDescription = "بحث جدید")
                 }
             }
         }
     ) { padding ->
         LazyColumn(
-            Modifier.fillMaxSize().padding(padding),
+            modifier = Modifier.fillMaxSize().padding(padding),
             contentPadding = PaddingValues(16.dp),
             verticalArrangement = Arrangement.spacedBy(10.dp)
         ) {
@@ -76,10 +71,10 @@ fun CourseScreen(
                             Modifier.padding(20.dp),
                             verticalArrangement = Arrangement.spacedBy(8.dp)
                         ) {
-                            Text("هنوز درسی برای این کلاس ثبت نشده است.", fontWeight = FontWeight.Bold)
+                            Text("هنوز بحثی برای این کلاس ثبت نشده است.", fontWeight = FontWeight.Bold)
                             if (userRole == UserRole.TEACHER) {
                                 Text(
-                                    "برای ایجاد اولین درس، روی دکمه + پایین صفحه بزنید.",
+                                    "برای افزودن بحث، روی دکمه + پایین صفحه بزنید.",
                                     color = MaterialTheme.colorScheme.onSurfaceVariant
                                 )
                             }
@@ -89,36 +84,39 @@ fun CourseScreen(
             }
 
             items(courses, key = { it.id }) { course ->
-                Card(Modifier.fillMaxWidth().clickable { onOpenCourse(course.id) }) {
-                    Row(Modifier.padding(16.dp), verticalAlignment = Alignment.CenterVertically) {
+                Card(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .clickable { onOpenCourse(course.id) }
+                ) {
+                    Row(
+                        modifier = Modifier.padding(16.dp),
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
                         Icon(
                             Icons.Default.MenuBook,
-                            null,
+                            contentDescription = null,
                             tint = MaterialTheme.colorScheme.primary,
-                            modifier = Modifier.size(40.dp)
+                            modifier = Modifier.size(36.dp)
                         )
                         Spacer(Modifier.width(12.dp))
                         Column(Modifier.weight(1f)) {
-                            Text(course.name, fontWeight = FontWeight.Bold)
-                            if (course.teacherName.isNotBlank()) {
-                                Text(
-                                    "استاد: " + course.teacherName,
-                                    style = MaterialTheme.typography.bodySmall
-                                )
-                            }
-                            if (course.description.isNotBlank()) {
-                                Text(course.description, style = MaterialTheme.typography.bodySmall)
-                            }
+                            Text(course.name, fontWeight = FontWeight.Bold, style = MaterialTheme.typography.titleMedium)
+                            Text(
+                                "تاریخ: " + PersianDateUtils.format(course.createdAtMillis),
+                                style = MaterialTheme.typography.bodyMedium,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant
+                            )
                         }
                         if (userRole == UserRole.TEACHER) {
                             IconButton(onClick = {
                                 editingCourse = course
                                 showDialog = true
                             }) {
-                                Icon(Icons.Default.Edit, "ویرایش درس")
+                                Icon(Icons.Default.Edit, contentDescription = "ویرایش بحث")
                             }
                             IconButton(onClick = { showDeleteDialog = course }) {
-                                Icon(Icons.Default.Delete, "حذف درس")
+                                Icon(Icons.Default.Delete, contentDescription = "حذف بحث")
                             }
                         }
                     }
@@ -134,15 +132,17 @@ fun CourseScreen(
                 showDialog = false
                 editingCourse = null
             },
-            onSave = { name, teacher, description ->
+            onSave = { title, dateText ->
+                val fallbackDate = editingCourse?.createdAtMillis ?: System.currentTimeMillis()
+                val dateMillis = PersianDateUtils.parse(dateText, fallbackDate)
                 viewModel.saveCourse(
                     CourseEntity(
                         id = editingCourse?.id ?: 0L,
                         classId = classId,
-                        name = name.trim(),
-                        teacherName = teacher.trim(),
-                        description = description.trim(),
-                        createdAtMillis = editingCourse?.createdAtMillis ?: System.currentTimeMillis()
+                        name = title.trim(),
+                        teacherName = editingCourse?.teacherName ?: "",
+                        description = "",
+                        createdAtMillis = dateMillis
                     )
                 )
                 showDialog = false
@@ -154,22 +154,16 @@ fun CourseScreen(
     showDeleteDialog?.let { course ->
         AlertDialog(
             onDismissRequest = { showDeleteDialog = null },
-            title = { Text("حذف درس") },
-            text = {
-                Text("آیا درس «" + course.name + "» حذف شود؟")
-            },
+            title = { Text("حذف بحث") },
+            text = { Text("آیا بحث «" + course.name + "» حذف شود؟") },
             confirmButton = {
                 TextButton(onClick = {
                     viewModel.deleteCourse(course)
                     showDeleteDialog = null
-                }) {
-                    Text("حذف")
-                }
+                }) { Text("حذف") }
             },
             dismissButton = {
-                TextButton(onClick = { showDeleteDialog = null }) {
-                    Text("انصراف")
-                }
+                TextButton(onClick = { showDeleteDialog = null }) { Text("انصراف") }
             }
         )
     }
@@ -179,42 +173,38 @@ fun CourseScreen(
 private fun CourseEditorDialog(
     course: CourseEntity?,
     onDismiss: () -> Unit,
-    onSave: (String, String, String) -> Unit
+    onSave: (String, String) -> Unit
 ) {
-    var name by remember(course?.id) { mutableStateOf(course?.name ?: "") }
-    var teacher by remember(course?.id) { mutableStateOf(course?.teacherName ?: "") }
-    var description by remember(course?.id) { mutableStateOf(course?.description ?: "") }
+    var title by remember(course?.id) { mutableStateOf(course?.name ?: "") }
+    var dateText by remember(course?.id) {
+        mutableStateOf(PersianDateUtils.format(course?.createdAtMillis ?: System.currentTimeMillis()))
+    }
 
     AlertDialog(
         onDismissRequest = onDismiss,
-        title = { Text(if (course == null) "ایجاد درس جدید" else "ویرایش درس") },
+        title = { Text(if (course == null) "بحث جدید" else "ویرایش بحث") },
         text = {
             Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
                 OutlinedTextField(
-                    value = name,
-                    onValueChange = { name = it },
-                    label = { Text("نام درس") },
-                    placeholder = { Text("مثلاً: اصول فقه") },
-                    singleLine = true
+                    value = title,
+                    onValueChange = { title = it },
+                    label = { Text("عنوان بحث") },
+                    placeholder = { Text("مثلاً: حجیت خبر واحد") },
+                    singleLine = true,
+                    modifier = Modifier.fillMaxWidth()
                 )
                 OutlinedTextField(
-                    value = teacher,
-                    onValueChange = { teacher = it },
-                    label = { Text("نام استاد") },
-                    singleLine = true
-                )
-                OutlinedTextField(
-                    value = description,
-                    onValueChange = { description = it },
-                    label = { Text("توضیحات") },
-                    minLines = 2
+                    value = dateText,
+                    onValueChange = { dateText = it },
+                    label = { Text("تاریخ") },
+                    placeholder = { Text("مثلاً: ۱۴۰۵/۰۷/۱۵") },
+                    singleLine = true,
+                    modifier = Modifier.fillMaxWidth()
                 )
             }
         },
         confirmButton = {
-            TextButton(enabled = name.isNotBlank(), onClick = {
-                onSave(name, teacher, description)
-            }) {
+            TextButton(enabled = title.isNotBlank(), onClick = { onSave(title, dateText) }) {
                 Text("ذخیره")
             }
         },
@@ -242,17 +232,16 @@ fun CourseDetailScreen(
 
     val lectures = allLectures.filter {
         it.courseId == courseId ||
-            (course?.name?.isNotBlank() == true &&
-                it.courseName.equals(course?.name, ignoreCase = true))
+            (course?.name?.isNotBlank() == true && it.courseName.equals(course?.name, ignoreCase = true))
     }
 
     Scaffold(
         topBar = {
             TopAppBar(
-                title = { Text(course?.name ?: "درس", fontWeight = FontWeight.Bold) },
+                title = { Text(course?.name ?: "بحث", fontWeight = FontWeight.Bold) },
                 navigationIcon = {
                     IconButton(onClick = onBack) {
-                        Icon(Icons.Default.ArrowBack, "بازگشت")
+                        Icon(Icons.Default.ArrowBack, contentDescription = "بازگشت")
                     }
                 },
                 actions = {
@@ -264,33 +253,20 @@ fun CourseDetailScreen(
         }
     ) { padding ->
         LazyColumn(
-            Modifier.fillMaxSize().padding(padding),
+            modifier = Modifier.fillMaxSize().padding(padding),
             contentPadding = PaddingValues(16.dp),
             verticalArrangement = Arrangement.spacedBy(10.dp)
         ) {
-            item {
-                Text("جلسات", style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Bold)
-            }
             if (lectures.isEmpty()) {
                 item {
-                    Text(
-                        "هنوز جلسه‌ای به این درس متصل نشده است.",
-                        color = MaterialTheme.colorScheme.onSurfaceVariant
-                    )
+                    Text("هنوز جلسه‌ای برای این بحث ثبت نشده است.", color = MaterialTheme.colorScheme.onSurfaceVariant)
                 }
             }
             items(lectures, key = { it.id }) { lecture ->
                 Card(Modifier.fillMaxWidth().clickable { onOpenSession(lecture.id) }) {
                     Column(Modifier.padding(16.dp)) {
                         Text(lecture.title, fontWeight = FontWeight.Bold)
-                        Text(PersianDateUtils.format(lecture.dateMillis), style = MaterialTheme.typography.bodySmall)
-                        if (lecture.tags.isNotBlank()) {
-                            Text(
-                                lecture.tags,
-                                style = MaterialTheme.typography.labelSmall,
-                                color = MaterialTheme.colorScheme.primary
-                            )
-                        }
+                        Text("تاریخ: " + PersianDateUtils.format(lecture.dateMillis), style = MaterialTheme.typography.bodySmall)
                     }
                 }
             }
