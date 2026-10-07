@@ -123,6 +123,10 @@ fun HomeScreen(
                         )
                     }
 
+                    IconButton(onClick = { viewModel.openClasses() }) {
+                        Icon(Icons.Default.School, contentDescription = "کلاس‌ها")
+                    }
+
                     IconButton(
                         onClick = {
                             viewModel.navigateTo(Screen.Settings)
