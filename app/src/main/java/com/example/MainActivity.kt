@@ -84,16 +84,20 @@ fun OstadYarApp(viewModel: MainViewModel = viewModel()) {
             )
         }
         is Screen.AddEdit -> {
-            AddEditLectureScreen(
-                lectureId = screen.lectureId,
-                viewModel = viewModel,
-                onNavigateBack = {
-                    viewModel.navigateBack()
-                },
-                onSaved = { savedId ->
-                    viewModel.navigateTo(Screen.Detail(savedId))
-                }
-            )
+            if (userRole == com.example.ui.screens.UserRole.TEACHER) {
+                AddEditLectureScreen(
+                    lectureId = screen.lectureId,
+                    viewModel = viewModel,
+                    onNavigateBack = {
+                        viewModel.navigateBack()
+                    },
+                    onSaved = { savedId ->
+                        viewModel.navigateTo(Screen.Detail(savedId))
+                    }
+                )
+            } else {
+                viewModel.navigateTo(Screen.Home)
+            }
         }
         is Screen.AiStudy -> {
             LectureDetailScreen(
@@ -103,7 +107,9 @@ fun OstadYarApp(viewModel: MainViewModel = viewModel()) {
                     viewModel.navigateBack()
                 },
                 onNavigateToEdit = { editId ->
-                    viewModel.navigateTo(Screen.AddEdit(editId))
+                    if (userRole == com.example.ui.screens.UserRole.TEACHER) {
+                        viewModel.navigateTo(Screen.AddEdit(editId))
+                    }
                 }
             )
         }
