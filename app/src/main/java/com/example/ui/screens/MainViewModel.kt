@@ -11,6 +11,7 @@ import com.example.audio.AudioRecorderManager
 import com.example.audio.SpeechRecognizerHelper
 import com.example.data.api.GeminiApiService
 import com.example.data.api.GroqApiService
+import com.example.data.api.SpeechmaticsApiService
 import com.example.data.api.TranscriptionProgress
 import com.example.data.local.AppDatabase
 import com.example.data.local.LectureEntity
@@ -73,6 +74,7 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
     init {
         GeminiApiService.configure(application)
         GroqApiService.configure(application)
+        SpeechmaticsApiService.configure(application)
     }
 
     private val rolePrefs = application.getSharedPreferences("ostadyar_role", Context.MODE_PRIVATE)
@@ -734,47 +736,66 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
         viewModelScope.launch {
             _isAiLoading.value = true
             _transcriptionProgress.value = TranscriptionProgress(
-                "شروع تبدیل صوت به متن با Groq",
+                "شروع تبدیل صوت به متن",
                 0,
                 totalBytes = audioFile.length(),
-                detail = "Groq موتور اصلی تبدیل صوت به متن است."
+                detail = "ترتیب استفاده: Groq → Speechmatics → Gemini"
             )
-            _aiOperationTitle.value = "در حال تبدیل فایل صوتی استاد به متن با Groq..."
+            _aiOperationTitle.value = "در حال تبدیل فایل صوتی..."
             _aiError.value = null
 
             try {
-                val groqAvailable = GroqApiService.hasApiKey(getApplication<Application>())
                 var result: Result<String>
 
-                if (groqAvailable) {
+                if (GroqApiService.hasApiKey(getApplication<Application>())) {
+                    _aiOperationTitle.value = "مرحله ۱ از ۳: Groq"
                     result = GroqApiService.transcribeAudioFile(audioPath) { progress ->
                         _transcriptionProgress.value = progress
                         _aiOperationTitle.value = progress.stage
                     }
-                    if (result.isFailure) {
-                        _transcriptionProgress.value = TranscriptionProgress(
-                            "Groq ناموفق بود؛ انتقال به Gemini",
-                            60,
-                            totalBytes = audioFile.length(),
-                            detail = "در صورت خطای Groq، Gemini به عنوان مسیر پشتیبان فعال می‌شود."
-                        )
-                        result = GeminiApiService.transcribeAudioFile(audioPath) { progress ->
-                            _transcriptionProgress.value = progress
-                            _aiOperationTitle.value = progress.stage
-                        }
+                    if (result.isSuccess) {
+                        result.onSuccess { formTranscript.value = it }
+                        return@launch
                     }
-                } else {
-                    result = GeminiApiService.transcribeAudioFile(audioPath) { progress ->
+                    Log.w(TAG, "Groq transcription failed; trying Speechmatics", result.exceptionOrNull())
+                }
+
+                if (SpeechmaticsApiService.hasApiKey(getApplication<Application>())) {
+                    _aiOperationTitle.value = "مرحله ۲ از ۳: Speechmatics"
+                    _transcriptionProgress.value = TranscriptionProgress(
+                        "انتقال به Speechmatics",
+                        25,
+                        totalBytes = audioFile.length(),
+                        detail = "Groq موفق نشد؛ Speechmatics به‌عنوان مسیر دوم فعال شد."
+                    )
+                    result = SpeechmaticsApiService.transcribeAudioFile(audioPath) { progress ->
                         _transcriptionProgress.value = progress
                         _aiOperationTitle.value = progress.stage
                     }
+                    if (result.isSuccess) {
+                        result.onSuccess { formTranscript.value = it }
+                        return@launch
+                    }
+                    Log.w(TAG, "Speechmatics transcription failed; trying Gemini", result.exceptionOrNull())
+                }
+
+                _aiOperationTitle.value = "مرحله ۳ از ۳: Gemini"
+                _transcriptionProgress.value = TranscriptionProgress(
+                    "انتقال به Gemini",
+                    30,
+                    totalBytes = audioFile.length(),
+                    detail = "Groq و Speechmatics در دسترس نبودند یا ناموفق بودند؛ Gemini مسیر پشتیبان نهایی است."
+                )
+                result = GeminiApiService.transcribeAudioFile(audioPath) { progress ->
+                    _transcriptionProgress.value = progress
+                    _aiOperationTitle.value = progress.stage
                 }
 
                 result.onSuccess { transcript ->
                     formTranscript.value = transcript
                     _aiError.value = null
                 }.onFailure { error ->
-                    Log.e(TAG, "Audio transcription failed", error)
+                    Log.e(TAG, "All transcription providers failed", error)
                     _aiError.value = error.localizedMessage ?: "تبدیل فایل صوتی به متن ناموفق بود."
                 }
             } catch (e: Exception) {
