@@ -13,6 +13,7 @@ data class LectureEntity(
     val dateMillis: Long = System.currentTimeMillis(),
     val audioFilePath: String? = null,
     val audioUrl: String? = null,
+    val audioUrl: String? = null,
     val audioDurationMs: Long = 0L,
     val transcript: String = "",
     val aiSummary: String? = null,
