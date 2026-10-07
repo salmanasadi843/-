@@ -19,6 +19,9 @@ interface LectureDao {
     @Query("SELECT * FROM lectures WHERE id = :id")
     fun observeLectureById(id: Long): Flow<LectureEntity?>
 
+    @Query("SELECT * FROM lectures WHERE courseId = :courseId ORDER BY dateMillis DESC")
+    fun getLecturesByCourse(courseId: Long): Flow<List<LectureEntity>>
+
     @Query("""
         SELECT * FROM lectures 
         WHERE title LIKE '%' || :query || '%' 
