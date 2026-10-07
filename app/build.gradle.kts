@@ -11,11 +11,8 @@ plugins {
 android {
     namespace = "com.example"
 
-    compileSdk {
-        version = release(36) {
-            minorApiLevel = 1
-        }
-    }
+    // Use the stable Android 16 API level available on GitHub-hosted runners.
+    compileSdk = 36
 
     defaultConfig {
         applicationId = "com.aistudio.lecturehub.kqmzv"
