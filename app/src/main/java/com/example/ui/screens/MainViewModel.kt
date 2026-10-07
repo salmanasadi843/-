@@ -36,7 +36,7 @@ sealed class Screen {
     data class ClassDetail(val classId: Long) : Screen()
     data class CourseDetail(val courseId: Long) : Screen()
     data class Detail(val lectureId: Long) : Screen()
-    data class AddEdit(val lectureId: Long? = null) : Screen()
+    data class AddEdit(val lectureId: Long? = null, val courseId: Long? = null) : Screen()
     data class AiStudy(val lectureId: Long) : Screen()
     object Settings : Screen()
 }
@@ -204,6 +204,8 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
     val formTitle = MutableStateFlow("")
     val formDateText = MutableStateFlow("")
     val formCourse = MutableStateFlow("")
+    val formCourseId = MutableStateFlow<Long?>(null)
+    val formClassId = MutableStateFlow<Long?>(null)
     val formProfessor = MutableStateFlow("")
     val formTags = MutableStateFlow("")
     val formTranscript = MutableStateFlow("")
@@ -335,7 +337,7 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
             loadLecture(screen.lectureId)
 
         } else if (screen is Screen.AddEdit) {
-            initForm(screen.lectureId)
+            initForm(screen.lectureId, screen.courseId)
         }
 
         _currentScreen.value = screen
@@ -485,7 +487,7 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
         }
     }
 
-    private fun initForm(lectureId: Long?) {
+    private fun initForm(lectureId: Long?, courseId: Long? = null) {
 
         if (lectureId != null) {
 
@@ -499,6 +501,8 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
                     formTitle.value = lecture.title
                     formDateText.value = PersianDateUtils.format(lecture.dateMillis)
                     formCourse.value = lecture.courseName
+                    formCourseId.value = lecture.courseId
+                    formClassId.value = lecture.classId
                     formProfessor.value = lecture.professorName
                     formTags.value = lecture.tags
                     formTranscript.value = lecture.transcript
@@ -513,6 +517,8 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
             formTitle.value = ""
             formDateText.value = PersianDateUtils.format(System.currentTimeMillis())
             formCourse.value = ""
+            formCourseId.value = courseId
+            formClassId.value = null
             formProfessor.value = ""
             formTags.value = ""
             formTranscript.value = ""
@@ -548,6 +554,8 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
                     title = title,
                     courseName = formCourse.value.trim(),
                     professorName = formProfessor.value.trim(),
+                    classId = formClassId.value,
+                    courseId = formCourseId.value,
                     dateMillis = PersianDateUtils.parse(
                         formDateText.value,
                         existing?.dateMillis ?: System.currentTimeMillis()
