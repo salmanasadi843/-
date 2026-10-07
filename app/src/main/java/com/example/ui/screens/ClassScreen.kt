@@ -9,7 +9,7 @@ import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.ArrowBack
 import androidx.compose.material.icons.filled.School
 import androidx.compose.material3.*
-import androidx.compose.runtime.Composable
+import androidx.compose.runtime.*
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.ui.Alignment
@@ -21,7 +21,7 @@ import androidx.compose.ui.unit.dp
 @Composable
 fun ClassScreen(viewModel: MainViewModel,userRole: UserRole,onOpenClass:(Long)->Unit,onBack:()->Unit){
  val classes by viewModel.repository.allClasses.collectAsState(initial=emptyList())
- Scaffold(topBar={TopAppBar(title={Text("کلاس‌های من",fontWeight=FontWeight.Bold)},navigationIcon={IconButton(onClick=onBack){Icon(Icons.Default.ArrowBack,"بازگشت")}})},floatingActionButton={if(userRole==UserRole.TEACHER)FloatingActionButton(onClick={}){Icon(Icons.Default.Add,"کلاس جدید")}}){p->
+ Scaffold(topBar={TopAppBar(title={Text("کلاس‌های من",fontWeight=FontWeight.Bold)},navigationIcon={IconButton(onClick=onBack){Icon(Icons.Default.ArrowBack,"بازگشت")}})},floatingActionButton={if(userRole==UserRole.TEACHER)FloatingActionButton(onClick={showAdd=true}){Icon(Icons.Default.Add,"کلاس جدید")}}){p->
   if(classes.isEmpty())Box(Modifier.fillMaxSize().padding(p),contentAlignment=Alignment.Center){Text(if(userRole==UserRole.TEACHER)"هنوز کلاسی ایجاد نشده است." else "هنوز کلاسی برای مطالعه وجود ندارد.",color=MaterialTheme.colorScheme.onSurfaceVariant)}
   else LazyColumn(Modifier.fillMaxSize().padding(p),contentPadding=PaddingValues(16.dp),verticalArrangement=Arrangement.spacedBy(10.dp)){
    items(classes,key={it.id}){item->Card(Modifier.fillMaxWidth().clickable{onOpenClass(item.id)}){Row(Modifier.padding(16.dp),verticalAlignment=Alignment.CenterVertically){
