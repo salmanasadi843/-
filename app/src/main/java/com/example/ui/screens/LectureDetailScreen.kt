@@ -249,16 +249,17 @@ ${currentLecture.transcript}
                 .padding(innerPadding)
                 .background(MaterialTheme.colorScheme.background)
         ) {
-            // Audio Player Bar (if audio is attached)
-            if (!currentLecture.audioFilePath.isNullOrBlank()) {
+            // فایل محلی اولویت دارد؛ در صورت نبودن آن، لینک صوت استفاده می‌شود.
+            val playableAudio = currentLecture.audioFilePath?.takeIf { File(it).exists() } ?: currentLecture.audioUrl
+            if (!playableAudio.isNullOrBlank()) {
                 AudioPlayerCard(
-                    filePath = currentLecture.audioFilePath,
-                    audioDurationMs = if (duration > 0 && activePath == currentLecture.audioFilePath) duration.toLong() else currentLecture.audioDurationMs,
+                    filePath = playableAudio,
+                    audioDurationMs = if (duration > 0 && activePath == playableAudio) duration.toLong() else currentLecture.audioDurationMs,
                     currentPositionMs = if (activePath == currentLecture.audioFilePath) currentPos else 0,
                     isPlaying = isPlaying && activePath == currentLecture.audioFilePath,
                     playbackSpeed = playbackSpeed,
                     onPlayToggle = {
-                        viewModel.audioPlayer.togglePlayPause(currentLecture.audioFilePath)
+                        viewModel.audioPlayer.togglePlayPause(playableAudio)
                     },
                     onSeekTo = { viewModel.audioPlayer.seekTo(it) },
                     onSkipBackward = { viewModel.audioPlayer.skipBackward(15000) },
