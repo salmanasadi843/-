@@ -25,8 +25,7 @@ fun HomeScreen(
     userRole: UserRole,
     onNavigateToAdd: () -> Unit,
     onNavigateToDetail: (Long) -> Unit,
-    onNavigateToAiSummary: (Long) -> Unit,
-    onNavigateToAiQuestion: (Long) -> Unit
+    onNavigateToAiSummary: (Long) -> Unit
 ) {
     val lectures by viewModel.lectures.collectAsState()
     val allCourses by viewModel.repository.allCourses.collectAsState(initial = emptyList())
@@ -34,7 +33,6 @@ fun HomeScreen(
     val isPlaying by viewModel.audioPlayer.isPlaying.collectAsState()
     val activeAudioPath by viewModel.audioPlayer.activeFilePath.collectAsState()
     var selectedCourse by remember { mutableStateOf<String?>(null) }
-    var aiAction by remember { mutableStateOf<String?>(null) }
 
     val visibleLectures = if (selectedCourse == null) lectures
     else lectures.filter { it.courseName == selectedCourse }
@@ -46,8 +44,6 @@ fun HomeScreen(
     val courseCounts = remember(lectures) {
         lectures.groupingBy { it.courseName }.eachCount()
     }
-
-    if (aiAction != null) { AiSessionDialog(action = aiAction!!, lectures = lectures, onDismiss = { aiAction = null }, onSummary = onNavigateToAiSummary, onQuestion = onNavigateToAiQuestion) }
 
     Scaffold(
         topBar = {
@@ -124,7 +120,7 @@ fun HomeScreen(
             Spacer(Modifier.height(14.dp))
 
             if (searchQuery.isBlank() && selectedCourse == null) {
-                AiActionsCard(onSummary = { if (lectures.isNotEmpty()) aiAction = "summary" }, onQuestion = { if (lectures.isNotEmpty()) aiAction = "question" }, enabled = lectures.isNotEmpty())
+                AiActionsCard(onSummary = { if (lectures.isNotEmpty()) onNavigateToAiSummary(lectures.first().id) }, onNewLesson = onNavigateToAdd)
                 Spacer(Modifier.height(18.dp))
                 Text("کلاس‌ها و درس‌ها", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
                 Spacer(Modifier.height(5.dp))
@@ -183,29 +179,23 @@ fun HomeScreen(
 }
 
 @Composable
-private fun AiActionsCard(onSummary: () -> Unit, onQuestion: () -> Unit, enabled: Boolean) {
+private fun AiActionsCard(onSummary: () -> Unit, onNewLesson: () -> Unit) {
     Card(Modifier.fillMaxWidth(), shape = RoundedCornerShape(18.dp), colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface), elevation = CardDefaults.cardElevation(1.dp)) {
-        Column(Modifier.padding(14.dp)) {
-            Text("دسترسی سریع", fontWeight = FontWeight.Bold, style = MaterialTheme.typography.titleSmall)
-            Spacer(Modifier.height(10.dp))
-            Row(horizontalArrangement = Arrangement.spacedBy(8.dp), modifier = Modifier.fillMaxWidth()) {
-                FilledTonalButton(onClick = onSummary, enabled = enabled, modifier = Modifier.weight(1f), shape = RoundedCornerShape(13.dp)) {
-                    Icon(Icons.Default.AutoAwesome, contentDescription = null, modifier = Modifier.size(18.dp)); Spacer(Modifier.width(5.dp)); Text("خلاصه هوشمند")
-                }
-                OutlinedButton(onClick = onQuestion, enabled = enabled, modifier = Modifier.weight(1f), shape = RoundedCornerShape(13.dp)) {
-                    Icon(Icons.Default.QuestionAnswer, contentDescription = null, modifier = Modifier.size(18.dp)); Spacer(Modifier.width(5.dp)); Text("پرسش جدید")
-                }
+        Row(Modifier.padding(12.dp), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+            FilledTonalButton(onClick = onSummary, modifier = Modifier.weight(1f), shape = RoundedCornerShape(13.dp)) {
+                Icon(Icons.Default.AutoAwesome, contentDescription = null, modifier = Modifier.size(18.dp))
+                Spacer(Modifier.width(5.dp))
+                Text("خلاصه هوشمند")
+            }
+            OutlinedButton(onClick = onNewLesson, modifier = Modifier.weight(1f), shape = RoundedCornerShape(13.dp)) {
+                Icon(Icons.Default.MenuBook, contentDescription = null, modifier = Modifier.size(18.dp))
+                Spacer(Modifier.width(5.dp))
+                Text("درس جدید")
             }
         }
     }
 }
 
-@Composable
-private fun AiSessionDialog(action: String, lectures: List<LectureEntity>, onDismiss: () -> Unit, onSummary: (Long) -> Unit, onQuestion: (Long) -> Unit) {
-    AlertDialog(onDismissRequest = onDismiss, title = { Text(if (action == "summary") "انتخاب جلسه برای خلاصه هوشمند" else "انتخاب جلسه برای پرسش جدید") },
-        text = { Column(verticalArrangement = Arrangement.spacedBy(2.dp)) { lectures.take(20).forEach { lecture -> TextButton(onClick = { onDismiss(); if (action == "summary") onSummary(lecture.id) else onQuestion(lecture.id) }, modifier = Modifier.fillMaxWidth()) { Text(lecture.title, maxLines = 2, overflow = TextOverflow.Ellipsis) } } } },
-        confirmButton = { TextButton(onClick = onDismiss) { Text("انصراف") } })
-}
 @Composable
 private fun CourseCard(
     courseName: String,
