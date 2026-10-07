@@ -31,7 +31,7 @@ import java.io.FileOutputStream
 
 sealed class Screen {
     object Home : Screen()
-    data class Detail(val lectureId: Long) : Screen()
+    data class Detail(val lectureId: Long, val initialTabIndex: Int = 0) : Screen()
     data class AddEdit(val lectureId: Long? = null) : Screen()
     data class AiStudy(val lectureId: Long) : Screen()
     object Settings : Screen()
