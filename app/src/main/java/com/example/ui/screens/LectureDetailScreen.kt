@@ -116,7 +116,8 @@ fun LectureDetailScreen(
     viewModel: MainViewModel,
     onNavigateBack: () -> Unit,
     onNavigateToEdit: (Long) -> Unit,
-    isTeacher: Boolean = true
+    isTeacher: Boolean = true,
+    initialTabIndex: Int = 0
 ) {
     val lecture by viewModel.selectedLecture.collectAsState()
     val context = LocalContext.current
@@ -133,7 +134,7 @@ fun LectureDetailScreen(
 
     val chatMessages by viewModel.chatMessages.collectAsState()
 
-    var selectedTabIndex by remember { mutableIntStateOf(0) }
+    var selectedTabIndex by remember { mutableIntStateOf(initialTabIndex.coerceIn(0, 2)) }
     val tabTitles = listOf("مطالعه جلسه", "خلاصه و نکات", "پرسش از جزوه")
 
     var showDeleteConfirmDialog by remember { mutableStateOf(false) }
