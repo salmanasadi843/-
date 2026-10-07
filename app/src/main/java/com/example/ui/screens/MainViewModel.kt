@@ -89,7 +89,7 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
     }
 
     private val database = AppDatabase.getDatabase(application)
-    val repository = LectureRepository(database.lectureDao())
+    val repository = LectureRepository(database.lectureDao(), database.classDao(), database.courseDao())
 
     val audioPlayer = AudioPlayerManager(application)
     val audioRecorder = AudioRecorderManager(application)
