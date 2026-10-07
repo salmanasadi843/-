@@ -16,6 +16,7 @@ object ApiKeyStore {
     private const val PREFS = "ostadyar_secure_settings"
     private const val KEY_NAME = "gemini_api_key"
     private const val GROK_KEY_NAME = "grok_api_key"
+    private const val SPEECHMATICS_KEY_NAME = "speechmatics_api_key"
 
     private const val ANDROID_KEYSTORE = "AndroidKeyStore"
     private const val KEY_ALIAS = "ostadyar_api_key_key"
@@ -35,6 +36,27 @@ object ApiKeyStore {
 
     fun removeGrokApiKey(context: Context) {
         context.getSharedPreferences(PREFS, Context.MODE_PRIVATE).edit().remove(GROK_KEY_NAME).apply()
+    }
+
+    fun saveSpeechmaticsApiKey(context: Context, apiKey: String) {
+        val cleanKey = apiKey.trim()
+        val prefs = context.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
+        if (cleanKey.isBlank()) {
+            prefs.edit().remove(SPEECHMATICS_KEY_NAME).apply()
+            return
+        }
+        prefs.edit().putString(SPEECHMATICS_KEY_NAME, encrypt(cleanKey)).apply()
+    }
+
+    fun getSpeechmaticsApiKey(context: Context): String? {
+        val encoded = context.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
+            .getString(SPEECHMATICS_KEY_NAME, null) ?: return null
+        return try { decrypt(encoded) } catch (_: Exception) { null }
+    }
+
+    fun removeSpeechmaticsApiKey(context: Context) {
+        context.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
+            .edit().remove(SPEECHMATICS_KEY_NAME).apply()
     }
 
     fun saveGeminiApiKey(
