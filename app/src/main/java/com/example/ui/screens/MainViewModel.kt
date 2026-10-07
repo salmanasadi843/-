@@ -32,6 +32,7 @@ import java.io.FileOutputStream
 
 sealed class Screen {
     object Home : Screen()
+    object Classes : Screen()
     data class ClassDetail(val classId: Long) : Screen()
     data class CourseDetail(val courseId: Long) : Screen()
     data class Detail(val lectureId: Long) : Screen()
@@ -351,6 +352,7 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
                 _currentScreen.value = Screen.Detail(id)
             }
 
+            Screen.Classes,
             is Screen.ClassDetail,
             is Screen.CourseDetail -> {
                 _currentScreen.value = Screen.Home
@@ -369,6 +371,8 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
             Screen.Home -> {}
         }
     }
+
+    fun openClasses() { _currentScreen.value = Screen.Classes }
 
     fun openClass(classId: Long) { _currentScreen.value = Screen.ClassDetail(classId) }
 
