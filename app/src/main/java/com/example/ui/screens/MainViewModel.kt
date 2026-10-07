@@ -520,6 +520,16 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
             formCourseId.value = courseId
             formClassId.value = null
             formProfessor.value = ""
+            if (courseId != null) {
+                viewModelScope.launch {
+                    repository.getCourse(courseId)?.let { course ->
+                        formCourse.value = course.name
+                        formCourseId.value = course.id
+                        formClassId.value = course.classId
+                        formProfessor.value = course.teacherName
+                    }
+                }
+            }
             formTags.value = ""
             formTranscript.value = ""
             formAudioPath.value = null
