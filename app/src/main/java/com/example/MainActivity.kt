@@ -64,6 +64,12 @@ fun OstadYarApp(viewModel: MainViewModel = viewModel()) {
                 },
                 onNavigateToDetail = { lectureId ->
                     viewModel.navigateTo(Screen.Detail(lectureId))
+                },
+                onNavigateToAiSummary = { lectureId ->
+                    viewModel.navigateTo(Screen.Detail(lectureId, 1))
+                },
+                onNavigateToAiQuestion = { lectureId ->
+                    viewModel.navigateTo(Screen.Detail(lectureId, 2))
                 }
             )
         }
@@ -77,7 +83,8 @@ fun OstadYarApp(viewModel: MainViewModel = viewModel()) {
                 onNavigateToEdit = { editId ->
                     if (userRole == com.example.ui.screens.UserRole.TEACHER) viewModel.navigateTo(Screen.AddEdit(editId))
                 },
-                isTeacher = userRole == com.example.ui.screens.UserRole.TEACHER
+                isTeacher = userRole == com.example.ui.screens.UserRole.TEACHER,
+                initialTabIndex = screen.initialTabIndex
             )
         }
         is Screen.AddEdit -> {
