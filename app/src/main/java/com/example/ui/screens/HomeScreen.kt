@@ -16,6 +16,7 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import java.io.File
 import com.example.data.local.LectureEntity
 
 @OptIn(ExperimentalMaterial3Api::class)
@@ -164,10 +165,10 @@ fun HomeScreen(
                         items(visibleLectures, key = { it.id }) { lecture ->
                             SessionCard(
                                 lecture,
-                                isPlaying && activeAudioPath == lecture.audioFilePath,
+                                isPlaying && activeAudioPath == (lecture.audioFilePath?.takeIf { File(it).exists() } ?: lecture.audioUrl),
                                 { onNavigateToDetail(lecture.id) }
                             ) {
-                                lecture.audioFilePath?.let { viewModel.audioPlayer.togglePlayPause(it) }
+                                (lecture.audioFilePath?.takeIf { File(it).exists() } ?: lecture.audioUrl)?.let { viewModel.audioPlayer.togglePlayPause(it) }
                             }
                         }
                         item { Spacer(Modifier.height(80.dp)) }
@@ -203,6 +204,7 @@ private fun CourseCard(
     professorName: String,
     onClick: () -> Unit
 ) {
+    val playableAudio = lecture.audioFilePath?.takeIf { File(it).exists() } ?: lecture.audioUrl
     Card(
         Modifier.fillMaxWidth().clickable(onClick = onClick),
         colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
@@ -254,13 +256,13 @@ private fun SessionCard(
             Surface(
                 Modifier.size(42.dp),
                 shape = RoundedCornerShape(12.dp),
-                color = if (lecture.audioFilePath != null) MaterialTheme.colorScheme.primaryContainer
+                color = if (!playableAudio.isNullOrBlank()) MaterialTheme.colorScheme.primaryContainer
                 else MaterialTheme.colorScheme.surfaceVariant
             ) {
                 Box(contentAlignment = Alignment.Center) {
-                    IconButton(onClick = onPlay, enabled = lecture.audioFilePath != null) {
+                    IconButton(onClick = onPlay, enabled = !playableAudio.isNullOrBlank()) {
                         Icon(
-                            if (lecture.audioFilePath != null) Icons.Default.PlayArrow else Icons.Default.GraphicEq,
+                            if (!playableAudio.isNullOrBlank()) Icons.Default.PlayArrow else Icons.Default.GraphicEq,
                             contentDescription = null,
                             tint = MaterialTheme.colorScheme.primary
                         )
