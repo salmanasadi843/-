@@ -205,6 +205,7 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
     val formTags = MutableStateFlow("")
     val formTranscript = MutableStateFlow("")
     val formAudioPath = MutableStateFlow<String?>(null)
+    val formAudioUrl = MutableStateFlow("")
     val formAudioDurationMs = MutableStateFlow(0L)
 
     init {
@@ -485,6 +486,7 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
             formTags.value = ""
             formTranscript.value = ""
             formAudioPath.value = null
+            formAudioUrl.value = ""
             formAudioDurationMs.value = 0L
         }
 
@@ -521,6 +523,8 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
                     ),
                     audioFilePath =
                         formAudioPath.value,
+                    audioUrl =
+                        formAudioUrl.value.trim().ifBlank { null },
                     audioDurationMs =
                         formAudioDurationMs.value,
                     transcript =
