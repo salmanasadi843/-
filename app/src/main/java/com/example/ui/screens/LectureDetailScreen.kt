@@ -315,58 +315,17 @@ ${currentLecture.transcript}
                 }
             }
 
-            // Tabs
-            ScrollableTabRow(
-                selectedTabIndex = selectedTabIndex,
-                containerColor = MaterialTheme.colorScheme.surface,
-                contentColor = MaterialTheme.colorScheme.primary,
-                edgePadding = 16.dp
-            ) {
-                tabTitles.forEachIndexed { index, title ->
-                    Tab(
-                        selected = selectedTabIndex == index,
-                        onClick = { selectedTabIndex = index },
-                        text = {
-                            Text(
-                                text = title,
-                                fontWeight = if (selectedTabIndex == index) FontWeight.Bold else FontWeight.Normal
-                            )
-                        }
-                    )
+            // محتوای مطالعه به صورت یک صفحه پیوسته نمایش داده می‌شود؛ بدون تب.
+            TranscriptTab(
+                lecture = currentLecture,
+                onEditClick = { onNavigateToEdit(lectureId) },
+                onCopyClick = {
+                    val clipboard = context.getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager
+                    val clip = ClipData.newPlainText("جزوه کلاس", currentLecture.transcript)
+                    clipboard.setPrimaryClip(clip)
+                    Toast.makeText(context, "متن در حافظه کپی شد", Toast.LENGTH_SHORT).show()
                 }
-            }
-
-            // Tab Content
-            when (selectedTabIndex) {
-                0 -> TranscriptTab(
-                    lecture = currentLecture,
-                    onEditClick = { onNavigateToEdit(lectureId) },
-                    onCopyClick = {
-                        val clipboard = context.getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager
-                        val clip = ClipData.newPlainText("جزوه کلاس", currentLecture.transcript)
-                        clipboard.setPrimaryClip(clip)
-                        Toast.makeText(context, "متن در حافظه کپی شد", Toast.LENGTH_SHORT).show()
-                    }
-                )
-                1 -> AiSummaryTab(
-                    lecture = currentLecture,
-                    isAiLoading = isAiLoading,
-                    onGenerateSummary = { viewModel.generateAiSummary(lectureId) },
-                    onExtractKeyPoints = { viewModel.extractAiKeyPoints(lectureId) }
-                )
-                2 -> ChatWithLectureTab(
-                    messages = chatMessages,
-                    isAiLoading = isAiLoading,
-                    inputText = chatInputText,
-                    onInputTextChange = { chatInputText = it },
-                    onSendMessage = {
-                        if (chatInputText.isNotBlank()) {
-                            viewModel.askAiQuestion(chatInputText.trim())
-                            chatInputText = ""
-                        }
-                    }
-                )
-            }
+            )
         }
     }
 }
