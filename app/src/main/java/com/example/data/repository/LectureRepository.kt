@@ -2,13 +2,32 @@ package com.example.data.repository
 
 import com.example.data.local.LectureDao
 import com.example.data.local.LectureEntity
+import com.example.data.local.ClassEntity
+import com.example.data.local.CourseEntity
+import com.example.data.local.ClassDao
+import com.example.data.local.CourseDao
 import kotlinx.coroutines.flow.Flow
 
-class LectureRepository(private val lectureDao: LectureDao) {
+class LectureRepository(
+    private val lectureDao: LectureDao,
+    private val classDao: ClassDao,
+    private val courseDao: CourseDao
+) {
 
     val allLectures: Flow<List<LectureEntity>> = lectureDao.getAllLectures()
     val allCourses: Flow<List<String>> = lectureDao.getAllCourseNames()
     val allProfessors: Flow<List<String>> = lectureDao.getAllProfessorNames()
+    val allClasses: Flow<List<ClassEntity>> = classDao.getAllClasses()
+    val allCoursesDetailed: Flow<List<CourseEntity>> = courseDao.getAll()
+
+    fun coursesForClass(classId: Long): Flow<List<CourseEntity>> = courseDao.getByClass(classId)
+
+    suspend fun getClass(id: Long): ClassEntity? = classDao.getById(id)
+    suspend fun getCourse(id: Long): CourseEntity? = courseDao.getById(id)
+    suspend fun saveClass(item: ClassEntity): Long = if (item.id == 0L) classDao.insert(item) else { classDao.update(item); item.id }
+    suspend fun saveCourse(item: CourseEntity): Long = if (item.id == 0L) courseDao.insert(item) else { courseDao.update(item); item.id }
+    suspend fun deleteClass(item: ClassEntity) = classDao.delete(item)
+    suspend fun deleteCourse(item: CourseEntity) = courseDao.delete(item)
 
     fun searchLectures(query: String): Flow<List<LectureEntity>> =
         lectureDao.searchLectures(query)
