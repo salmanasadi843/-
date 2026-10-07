@@ -67,9 +67,6 @@ fun OstadYarApp(viewModel: MainViewModel = viewModel()) {
                 },
                 onNavigateToAiSummary = { lectureId ->
                     viewModel.navigateTo(Screen.Detail(lectureId, 1))
-                },
-                onNavigateToAiQuestion = { lectureId ->
-                    viewModel.navigateTo(Screen.Detail(lectureId, 2))
                 }
             )
         }
