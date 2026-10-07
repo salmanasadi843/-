@@ -142,15 +142,8 @@ fun HomeScreen(
         },
 
         floatingActionButton = {
-            if (userRole == UserRole.TEACHER) {
-                FloatingActionButton(
-                    onClick = onNavigateToAdd
-                ) {
-                    Icon(
-                        Icons.Default.Add,
-                        contentDescription = "افزودن جلسه"
-                    )
-                }
+            FloatingActionButton(onClick = { viewModel.openClasses() }) {
+                Icon(Icons.Default.School, contentDescription = "کلاس‌ها")
             }
         }
     ) { padding ->
