@@ -34,9 +34,11 @@ fun CourseScreen(classId:Long,viewModel:MainViewModel,userRole:UserRole,onOpenCo
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun CourseDetailScreen(courseId:Long,viewModel:MainViewModel,onOpenSession:(Long)->Unit,onBack:()->Unit){
- val lectures by viewModel.repository.lecturesForCourse(courseId).collectAsState(initial=emptyList())
- var title by remember{mutableStateOf("درس")}
- LaunchedEffect(courseId){title=viewModel.repository.getCourse(courseId)?.name ?: "درس"}
+ val allLectures by viewModel.repository.allLectures.collectAsState(initial=emptyList())
+ var course by remember{mutableStateOf<CourseEntity?>(null)}
+ LaunchedEffect(courseId){course=viewModel.repository.getCourse(courseId)}
+ val lectures = allLectures.filter { it.courseId == courseId || (course?.name?.isNotBlank() == true && it.courseName.equals(course?.name, ignoreCase = true)) }
+ val title = course?.name ?: "درس"
  Scaffold(topBar={TopAppBar(title={Text(title,fontWeight=FontWeight.Bold)},navigationIcon={IconButton(onClick=onBack){Icon(Icons.Default.ArrowBack,"بازگشت")}})}){p->
   LazyColumn(Modifier.fillMaxSize().padding(p),contentPadding=PaddingValues(16.dp),verticalArrangement=Arrangement.spacedBy(10.dp)){
    item{Text("جلسات",style=MaterialTheme.typography.titleLarge,fontWeight=FontWeight.Bold)}
