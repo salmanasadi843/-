@@ -1,74 +1,169 @@
 package com.example.ui.theme
 
-import android.os.Build
 import androidx.compose.foundation.isSystemInDarkTheme
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.darkColorScheme
-import androidx.compose.material3.dynamicDarkColorScheme
-import androidx.compose.material3.dynamicLightColorScheme
 import androidx.compose.material3.lightColorScheme
 import androidx.compose.runtime.Composable
-import androidx.compose.ui.platform.LocalContext
-
-private val DarkColorScheme = darkColorScheme(
-    primary = PrimaryDark,
-    onPrimary = OnPrimaryDark,
-    primaryContainer = PrimaryContainerDark,
-    onPrimaryContainer = OnPrimaryContainerDark,
-    secondary = SecondaryDark,
-    onSecondary = OnSecondaryDark,
-    secondaryContainer = SecondaryContainerDark,
-    onSecondaryContainer = OnSecondaryContainerDark,
-    tertiary = TertiaryDark,
-    onTertiary = OnTertiaryDark,
-    tertiaryContainer = TertiaryContainerDark,
-    onTertiaryContainer = OnTertiaryContainerDark,
-    background = BackgroundDark,
-    onBackground = OnBackgroundDark,
-    surface = SurfaceDark,
-    onSurface = OnSurfaceDark,
-    surfaceVariant = SurfaceVariantDark,
-    onSurfaceVariant = OnSurfaceVariantDark
-)
-
-private val LightColorScheme = lightColorScheme(
-    primary = PrimaryLight,
-    onPrimary = OnPrimaryLight,
-    primaryContainer = PrimaryContainerLight,
-    onPrimaryContainer = OnPrimaryContainerLight,
-    secondary = SecondaryLight,
-    onSecondary = OnSecondaryLight,
-    secondaryContainer = SecondaryContainerLight,
-    onSecondaryContainer = OnSecondaryContainerLight,
-    tertiary = TertiaryLight,
-    onTertiary = OnTertiaryLight,
-    tertiaryContainer = TertiaryContainerLight,
-    onTertiaryContainer = OnTertiaryContainerLight,
-    background = BackgroundLight,
-    onBackground = OnBackgroundLight,
-    surface = SurfaceLight,
-    onSurface = OnSurfaceLight,
-    surfaceVariant = SurfaceVariantLight,
-    onSurfaceVariant = OnSurfaceVariantLight
-)
 
 @Composable
 fun MyApplicationTheme(
+    appTheme: AppThemeMode = AppThemeMode.PURPLE,
     darkTheme: Boolean = isSystemInDarkTheme(),
-    dynamicColor: Boolean = false, // Set to false to preserve crisp branded academic colors
     content: @Composable () -> Unit,
 ) {
-    val colorScheme = when {
-        dynamicColor && Build.VERSION.SDK_INT >= Build.VERSION_CODES.S -> {
-            val context = LocalContext.current
-            if (darkTheme) dynamicDarkColorScheme(context) else dynamicLightColorScheme(context)
-        }
-        darkTheme -> DarkColorScheme
-        else -> LightColorScheme
+    val lightScheme = when (appTheme) {
+        AppThemeMode.PURPLE -> lightColorScheme(
+            primary = PurplePrimaryLight,
+            onPrimary = PurpleOnPrimaryLight,
+            primaryContainer = PurplePrimaryContainerLight,
+            onPrimaryContainer = PurpleOnPrimaryContainerLight,
+            secondary = PurpleSecondaryLight,
+            onSecondary = PurpleOnSecondaryLight,
+            secondaryContainer = PurpleSecondaryContainerLight,
+            onSecondaryContainer = PurpleOnSecondaryContainerLight,
+            tertiary = PurpleTertiaryLight,
+            onTertiary = PurpleOnTertiaryLight,
+            tertiaryContainer = PurpleTertiaryContainerLight,
+            onTertiaryContainer = PurpleOnTertiaryContainerLight,
+            background = BackgroundLight,
+            onBackground = OnBackgroundLight,
+            surface = SurfaceLight,
+            onSurface = OnSurfaceLight,
+            surfaceVariant = SurfaceVariantLight,
+            onSurfaceVariant = OnSurfaceVariantLight
+        )
+        AppThemeMode.BLUE -> lightColorScheme(
+            primary = BluePrimaryLight,
+            onPrimary = BlueOnPrimaryLight,
+            primaryContainer = BluePrimaryContainerLight,
+            onPrimaryContainer = BlueOnPrimaryContainerLight,
+            secondary = BlueSecondaryLight,
+            onSecondary = BlueOnSecondaryLight,
+            secondaryContainer = BlueSecondaryContainerLight,
+            onSecondaryContainer = BlueOnSecondaryContainerLight,
+            tertiary = BlueTertiaryLight,
+            onTertiary = BlueOnTertiaryLight,
+            tertiaryContainer = BlueTertiaryContainerLight,
+            onTertiaryContainer = BlueOnTertiaryContainerLight,
+            background = BackgroundLight,
+            onBackground = OnBackgroundLight,
+            surface = SurfaceLight,
+            onSurface = OnSurfaceLight,
+            surfaceVariant = SurfaceVariantLight,
+            onSurfaceVariant = OnSurfaceVariantLight
+        )
+        AppThemeMode.GREEN -> lightColorScheme(
+            primary = GreenPrimaryLight,
+            onPrimary = GreenOnPrimaryLight,
+            primaryContainer = GreenPrimaryContainerLight,
+            onPrimaryContainer = GreenOnPrimaryContainerLight,
+            secondary = GreenSecondaryLight,
+            onSecondary = GreenOnSecondaryLight,
+            secondaryContainer = GreenSecondaryContainerLight,
+            onSecondaryContainer = GreenOnSecondaryContainerLight,
+            tertiary = GreenTertiaryLight,
+            onTertiary = GreenOnTertiaryLight,
+            tertiaryContainer = GreenTertiaryContainerLight,
+            onTertiaryContainer = GreenOnTertiaryContainerLight,
+            background = BackgroundLight,
+            onBackground = OnBackgroundLight,
+            surface = SurfaceLight,
+            onSurface = OnSurfaceLight,
+            surfaceVariant = SurfaceVariantLight,
+            onSurfaceVariant = OnSurfaceVariantLight
+        )
+        AppThemeMode.ORANGE -> lightColorScheme(
+            primary = OrangePrimaryLight,
+            onPrimary = OrangeOnPrimaryLight,
+            primaryContainer = OrangePrimaryContainerLight,
+            onPrimaryContainer = OrangeOnPrimaryContainerLight,
+            secondary = OrangeSecondaryLight,
+            onSecondary = OrangeOnSecondaryLight,
+            secondaryContainer = OrangeSecondaryContainerLight,
+            onSecondaryContainer = OrangeOnSecondaryContainerLight,
+            tertiary = OrangeTertiaryLight,
+            onTertiary = OrangeOnTertiaryLight,
+            tertiaryContainer = OrangeTertiaryContainerLight,
+            onTertiaryContainer = OrangeOnTertiaryContainerLight,
+            background = BackgroundLight,
+            onBackground = OnBackgroundLight,
+            surface = SurfaceLight,
+            onSurface = OnSurfaceLight,
+            surfaceVariant = SurfaceVariantLight,
+            onSurfaceVariant = OnSurfaceVariantLight
+        )
+    }
+
+    val darkScheme = when (appTheme) {
+        AppThemeMode.PURPLE -> darkColorScheme(
+            primary = PurplePrimaryDark,
+            onPrimary = PurpleOnPrimaryDark,
+            primaryContainer = PurplePrimaryContainerDark,
+            onPrimaryContainer = PurpleOnPrimaryContainerDark,
+            secondary = PurpleSecondaryDark,
+            onSecondary = PurpleOnSecondaryDark,
+            tertiary = PurpleTertiaryDark,
+            onTertiary = PurpleOnTertiaryDark,
+            background = BackgroundDark,
+            onBackground = OnBackgroundDark,
+            surface = SurfaceDark,
+            onSurface = OnSurfaceDark,
+            surfaceVariant = SurfaceVariantDark,
+            onSurfaceVariant = OnSurfaceVariantDark
+        )
+        AppThemeMode.BLUE -> darkColorScheme(
+            primary = BluePrimaryDark,
+            onPrimary = BlueOnPrimaryDark,
+            primaryContainer = BluePrimaryContainerDark,
+            onPrimaryContainer = BlueOnPrimaryContainerDark,
+            secondary = BlueSecondaryDark,
+            onSecondary = BlueOnSecondaryDark,
+            tertiary = BlueTertiaryDark,
+            onTertiary = BlueOnTertiaryDark,
+            background = BackgroundDark,
+            onBackground = OnBackgroundDark,
+            surface = SurfaceDark,
+            onSurface = OnSurfaceDark,
+            surfaceVariant = SurfaceVariantDark,
+            onSurfaceVariant = OnSurfaceVariantDark
+        )
+        AppThemeMode.GREEN -> darkColorScheme(
+            primary = GreenPrimaryDark,
+            onPrimary = GreenOnPrimaryDark,
+            primaryContainer = GreenPrimaryContainerDark,
+            onPrimaryContainer = GreenOnPrimaryContainerDark,
+            secondary = GreenSecondaryDark,
+            onSecondary = GreenOnSecondaryDark,
+            tertiary = GreenTertiaryDark,
+            onTertiary = GreenOnTertiaryDark,
+            background = BackgroundDark,
+            onBackground = OnBackgroundDark,
+            surface = SurfaceDark,
+            onSurface = OnSurfaceDark,
+            surfaceVariant = SurfaceVariantDark,
+            onSurfaceVariant = OnSurfaceVariantDark
+        )
+        AppThemeMode.ORANGE -> darkColorScheme(
+            primary = OrangePrimaryDark,
+            onPrimary = OrangeOnPrimaryDark,
+            primaryContainer = OrangePrimaryContainerDark,
+            onPrimaryContainer = OrangeOnPrimaryContainerDark,
+            secondary = OrangeSecondaryDark,
+            onSecondary = OrangeOnSecondaryDark,
+            tertiary = OrangeTertiaryDark,
+            onTertiary = OrangeOnTertiaryDark,
+            background = BackgroundDark,
+            onBackground = OnBackgroundDark,
+            surface = SurfaceDark,
+            onSurface = OnSurfaceDark,
+            surfaceVariant = SurfaceVariantDark,
+            onSurfaceVariant = OnSurfaceVariantDark
+        )
     }
 
     MaterialTheme(
-        colorScheme = colorScheme,
+        colorScheme = if (darkTheme) darkScheme else lightScheme,
         typography = Typography,
         content = content
     )
