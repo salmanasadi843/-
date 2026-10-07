@@ -31,7 +31,8 @@ abstract class AppDatabase : RoomDatabase() {
                         teacherName TEXT NOT NULL,
                         description TEXT NOT NULL,
                         term TEXT NOT NULL,
-                        createdAtMillis INTEGER NOT NULL
+                        createdAtMillis INTEGER NOT NULL,
+                        FOREIGN KEY(classId) REFERENCES classes(id) ON DELETE CASCADE
                     )
                 """.trimIndent())
                 database.execSQL("""
