@@ -21,7 +21,7 @@ fun CourseScreen(classId:Long,viewModel:MainViewModel,userRole:UserRole,onOpenCo
  val courses by viewModel.repository.coursesForClass(classId).collectAsState(initial=emptyList())
  var className by remember{mutableStateOf("کلاس")}
  LaunchedEffect(classId){className=viewModel.repository.getClass(classId)?.name ?: "کلاس"}
- Scaffold(topBar={TopAppBar(title={Column{Text(className,fontWeight=FontWeight.Bold);Text("درس‌های این کلاس",style=MaterialTheme.typography.bodySmall)}},navigationIcon={IconButton(onClick=onBack){Icon(Icons.Default.ArrowBack,"بازگشت")}})}){p->
+ Scaffold(topBar={TopAppBar(title={Column{Text(className,fontWeight=FontWeight.Bold);Text("درس‌های این کلاس",style=MaterialTheme.typography.bodySmall)}},navigationIcon={IconButton(onClick=onBack){Icon(Icons.Default.ArrowBack,"بازگشت")}},actions={if(viewModel.userRole.value==UserRole.TEACHER)IconButton(onClick=onNewSession){Icon(Icons.Default.Add,"جلسه جدید")}})}){p->
   LazyColumn(Modifier.fillMaxSize().padding(p),contentPadding=PaddingValues(16.dp),verticalArrangement=Arrangement.spacedBy(10.dp)){
    if(courses.isEmpty())item{Text("هنوز درسی برای این کلاس ثبت نشده است.",color=MaterialTheme.colorScheme.onSurfaceVariant)}
    items(courses,key={it.id}){course->Card(Modifier.fillMaxWidth().clickable{onOpenCourse(course.id)}){Row(Modifier.padding(16.dp),verticalAlignment=Alignment.CenterVertically){
@@ -33,7 +33,7 @@ fun CourseScreen(classId:Long,viewModel:MainViewModel,userRole:UserRole,onOpenCo
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-fun CourseDetailScreen(courseId:Long,viewModel:MainViewModel,onOpenSession:(Long)->Unit,onBack:()->Unit){
+fun CourseDetailScreen(courseId:Long,viewModel:MainViewModel,onOpenSession:(Long)->Unit,onNewSession:()->Unit,onBack:()->Unit){
  val allLectures by viewModel.repository.allLectures.collectAsState(initial=emptyList())
  var course by remember{mutableStateOf<CourseEntity?>(null)}
  LaunchedEffect(courseId){course=viewModel.repository.getCourse(courseId)}
