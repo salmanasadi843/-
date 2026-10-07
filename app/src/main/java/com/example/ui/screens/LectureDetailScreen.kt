@@ -506,6 +506,7 @@ fun TranscriptTab(
             fontWeight = FontWeight.Bold,
             lineHeight = 32.sp
         )
+
         if (lecture.courseName.isNotBlank() || lecture.professorName.isNotBlank()) {
             Spacer(Modifier.height(6.dp))
             Text(
@@ -517,42 +518,35 @@ fun TranscriptTab(
             )
         }
 
-        if (tags.isNotEmpty()) {
-            Spacer(Modifier.height(14.dp))
-            FlowRow(horizontalArrangement = Arrangement.spacedBy(6.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
-                tags.forEach { tag ->
-                    Surface(
-                        shape = RoundedCornerShape(10.dp),
-                        color = MaterialTheme.colorScheme.primaryContainer
-                    ) {
-                        Text(
-                            tag,
-                            modifier = Modifier.padding(horizontal = 9.dp, vertical = 5.dp),
-                            style = MaterialTheme.typography.labelMedium,
-                            color = MaterialTheme.colorScheme.onPrimaryContainer
-                        )
+        Spacer(Modifier.height(18.dp))
+
+        // متن اصلی همیشه بخش محوری مطالعه است و قبل از خلاصه و کلیدواژه‌ها می‌آید.
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.SpaceBetween,
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            Text(
+                text = "متن اصلی درس",
+                style = MaterialTheme.typography.titleLarge,
+                fontWeight = FontWeight.Bold
+            )
+
+            Row {
+                TextButton(onClick = onCopyClick) {
+                    Icon(Icons.Default.ContentCopy, null, modifier = Modifier.size(17.dp))
+                    Spacer(Modifier.width(5.dp))
+                    Text("کپی")
+                }
+                if (!hasText) {
+                    TextButton(onClick = onEditClick) {
+                        Text("افزودن متن")
                     }
                 }
             }
         }
 
-        Spacer(Modifier.height(20.dp))
-
-        Row(
-            modifier = Modifier.fillMaxWidth(),
-            horizontalArrangement = Arrangement.End
-        ) {
-            TextButton(onClick = onCopyClick) {
-                Icon(Icons.Default.ContentCopy, null, modifier = Modifier.size(17.dp))
-                Spacer(Modifier.width(5.dp))
-                Text("کپی متن")
-            }
-            if (lecture.transcript.isBlank()) {
-                TextButton(onClick = onEditClick) {
-                    Text("افزودن متن")
-                }
-            }
-        }
+        Spacer(Modifier.height(8.dp))
 
         if (!hasText) {
             Surface(
@@ -564,9 +558,18 @@ fun TranscriptTab(
                     modifier = Modifier.padding(24.dp),
                     horizontalAlignment = Alignment.CenterHorizontally
                 ) {
-                    Icon(Icons.Default.MenuBook, null, modifier = Modifier.size(42.dp), tint = MaterialTheme.colorScheme.primary)
+                    Icon(
+                        Icons.Default.MenuBook,
+                        null,
+                        modifier = Modifier.size(42.dp),
+                        tint = MaterialTheme.colorScheme.primary
+                    )
                     Spacer(Modifier.height(10.dp))
-                    Text("متن این جلسه هنوز آماده نشده است.", style = MaterialTheme.typography.titleMedium)
+                    Text(
+                        "متن این جلسه هنوز آماده نشده است.",
+                        style = MaterialTheme.typography.titleMedium
+                    )
+                    Spacer(Modifier.height(6.dp))
                     Text(
                         "استاد می‌تواند صوت جلسه را به متن تبدیل و متن را ویرایش کند.",
                         style = MaterialTheme.typography.bodyMedium,
@@ -584,14 +587,107 @@ fun TranscriptTab(
                 Text(
                     text = lecture.transcript,
                     modifier = Modifier.padding(horizontal = 18.dp, vertical = 20.dp),
-                    style = MaterialTheme.typography.bodyLarge.copy(
-                        lineHeight = 32.sp
-                    ),
+                    style = MaterialTheme.typography.bodyLarge.copy(lineHeight = 32.sp),
                     textAlign = TextAlign.Start
                 )
             }
         }
-        Spacer(Modifier.height(32.dp))
+
+        // خلاصه دقیقاً بعد از متن اصلی قرار می‌گیرد.
+        Spacer(Modifier.height(28.dp))
+        Text(
+            text = "خلاصه بحث",
+            style = MaterialTheme.typography.titleLarge,
+            fontWeight = FontWeight.Bold
+        )
+        Spacer(Modifier.height(8.dp))
+        Surface(
+            modifier = Modifier.fillMaxWidth(),
+            shape = RoundedCornerShape(16.dp),
+            color = MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.45f)
+        ) {
+            Text(
+                text = lecture.aiSummary?.takeIf { it.isNotBlank() }
+                    ?: "هنوز خلاصه‌ای برای این جلسه تولید نشده است.",
+                modifier = Modifier.padding(16.dp),
+                style = MaterialTheme.typography.bodyLarge.copy(lineHeight = 28.sp),
+                color = if (lecture.aiSummary.isNullOrBlank())
+                    MaterialTheme.colorScheme.onSurfaceVariant
+                else
+                    MaterialTheme.colorScheme.onPrimaryContainer
+            )
+        }
+
+        // کلیدواژه‌ها بعد از خلاصه قرار می‌گیرند.
+        Spacer(Modifier.height(24.dp))
+        Text(
+            text = "کلیدواژه‌ها و مباحث اصلی",
+            style = MaterialTheme.typography.titleLarge,
+            fontWeight = FontWeight.Bold
+        )
+        Spacer(Modifier.height(10.dp))
+
+        if (tags.isNotEmpty()) {
+            FlowRow(
+                horizontalArrangement = Arrangement.spacedBy(7.dp),
+                verticalArrangement = Arrangement.spacedBy(7.dp)
+            ) {
+                tags.forEach { tag ->
+                    Surface(
+                        shape = RoundedCornerShape(10.dp),
+                        color = MaterialTheme.colorScheme.secondaryContainer
+                    ) {
+                        Text(
+                            tag,
+                            modifier = Modifier.padding(horizontal = 10.dp, vertical = 6.dp),
+                            style = MaterialTheme.typography.labelLarge,
+                            color = MaterialTheme.colorScheme.onSecondaryContainer
+                        )
+                    }
+                }
+            }
+        } else if (!lecture.aiKeyPoints.isNullOrBlank()) {
+            Surface(
+                modifier = Modifier.fillMaxWidth(),
+                shape = RoundedCornerShape(16.dp),
+                color = MaterialTheme.colorScheme.surface
+            ) {
+                Text(
+                    text = lecture.aiKeyPoints,
+                    modifier = Modifier.padding(16.dp),
+                    style = MaterialTheme.typography.bodyLarge.copy(lineHeight = 27.sp)
+                )
+            }
+        } else {
+            Text(
+                "هنوز کلیدواژه‌ای برای این جلسه ثبت نشده است.",
+                style = MaterialTheme.typography.bodyMedium,
+                color = MaterialTheme.colorScheme.onSurfaceVariant
+            )
+        }
+
+        if (!lecture.aiKeyPoints.isNullOrBlank() && tags.isNotEmpty()) {
+            Spacer(Modifier.height(20.dp))
+            Text(
+                text = "نکات کلیدی",
+                style = MaterialTheme.typography.titleMedium,
+                fontWeight = FontWeight.Bold
+            )
+            Spacer(Modifier.height(8.dp))
+            Surface(
+                modifier = Modifier.fillMaxWidth(),
+                shape = RoundedCornerShape(16.dp),
+                color = MaterialTheme.colorScheme.surface
+            ) {
+                Text(
+                    text = lecture.aiKeyPoints,
+                    modifier = Modifier.padding(16.dp),
+                    style = MaterialTheme.typography.bodyLarge.copy(lineHeight = 27.sp)
+                )
+            }
+        }
+
+        Spacer(Modifier.height(36.dp))
     }
 }
 
