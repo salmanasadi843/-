@@ -32,6 +32,8 @@ import java.io.FileOutputStream
 
 sealed class Screen {
     object Home : Screen()
+    data class ClassDetail(val classId: Long) : Screen()
+    data class CourseDetail(val courseId: Long) : Screen()
     data class Detail(val lectureId: Long) : Screen()
     data class AddEdit(val lectureId: Long? = null) : Screen()
     data class AiStudy(val lectureId: Long) : Screen()
@@ -349,6 +351,11 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
                 _currentScreen.value = Screen.Detail(id)
             }
 
+            is Screen.ClassDetail,
+            is Screen.CourseDetail -> {
+                _currentScreen.value = Screen.Home
+            }
+
             is Screen.Detail,
             is Screen.AddEdit,
             Screen.Settings -> {
@@ -361,6 +368,26 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
 
             Screen.Home -> {}
         }
+    }
+
+    fun openClass(classId: Long) { _currentScreen.value = Screen.ClassDetail(classId) }
+
+    fun openCourse(courseId: Long) { _currentScreen.value = Screen.CourseDetail(courseId) }
+
+    fun saveClass(item: com.example.data.local.ClassEntity, onSaved: (Long) -> Unit = {}) {
+        viewModelScope.launch { onSaved(repository.saveClass(item)) }
+    }
+
+    fun saveCourse(item: com.example.data.local.CourseEntity, onSaved: (Long) -> Unit = {}) {
+        viewModelScope.launch { onSaved(repository.saveCourse(item)) }
+    }
+
+    fun deleteClass(item: com.example.data.local.ClassEntity, onDeleted: () -> Unit = {}) {
+        viewModelScope.launch { repository.deleteClass(item); onDeleted() }
+    }
+
+    fun deleteCourse(item: com.example.data.local.CourseEntity, onDeleted: () -> Unit = {}) {
+        viewModelScope.launch { repository.deleteCourse(item); onDeleted() }
     }
 
     fun setSearchQuery(query: String) {
