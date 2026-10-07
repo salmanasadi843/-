@@ -22,6 +22,8 @@ class LectureRepository(
 
     fun coursesForClass(classId: Long): Flow<List<CourseEntity>> = courseDao.getByClass(classId)
 
+    fun lecturesForCourse(courseId: Long): Flow<List<LectureEntity>> = lectureDao.getLecturesByCourse(courseId)
+
     suspend fun getClass(id: Long): ClassEntity? = classDao.getById(id)
     suspend fun getCourse(id: Long): CourseEntity? = courseDao.getById(id)
     suspend fun saveClass(item: ClassEntity): Long = if (item.id == 0L) classDao.insert(item) else { classDao.update(item); item.id }
