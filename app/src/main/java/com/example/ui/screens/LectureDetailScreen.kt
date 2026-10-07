@@ -67,11 +67,9 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Scaffold
-import androidx.compose.material3.ScrollableTabRow
 import androidx.compose.material3.Slider
 import androidx.compose.material3.SliderDefaults
 import androidx.compose.material3.Surface
-import androidx.compose.material3.Tab
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.material3.TopAppBar
@@ -80,7 +78,6 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
-import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
@@ -116,8 +113,7 @@ fun LectureDetailScreen(
     viewModel: MainViewModel,
     onNavigateBack: () -> Unit,
     onNavigateToEdit: (Long) -> Unit,
-    isTeacher: Boolean = true,
-    initialTabIndex: Int = 0
+    isTeacher: Boolean = true
 ) {
     val lecture by viewModel.selectedLecture.collectAsState()
     val context = LocalContext.current
@@ -133,9 +129,6 @@ fun LectureDetailScreen(
     val aiError by viewModel.aiError.collectAsState()
 
     val chatMessages by viewModel.chatMessages.collectAsState()
-
-    var selectedTabIndex by remember { mutableIntStateOf(initialTabIndex.coerceIn(0, 2)) }
-    val tabTitles = listOf("مطالعه جلسه", "خلاصه و نکات", "پرسش از جزوه")
 
     var showDeleteConfirmDialog by remember { mutableStateOf(false) }
     var chatInputText by remember { mutableStateOf("") }
