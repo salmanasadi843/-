@@ -97,6 +97,18 @@ import androidx.compose.ui.unit.sp
 import com.example.data.local.LectureEntity
 import java.util.Locale
 
+private fun formatDuration(milliseconds: Long): String {
+    val totalSeconds = (milliseconds / 1000L).coerceAtLeast(0L)
+    val hours = totalSeconds / 3600L
+    val minutes = (totalSeconds % 3600L) / 60L
+    val seconds = totalSeconds % 60L
+    return if (hours > 0) {
+        String.format(Locale.US, "%d:%02d:%02d", hours, minutes, seconds)
+    } else {
+        String.format(Locale.US, "%02d:%02d", minutes, seconds)
+    }
+}
+
 @OptIn(ExperimentalMaterial3Api::class, ExperimentalLayoutApi::class)
 @Composable
 fun LectureDetailScreen(
