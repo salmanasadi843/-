@@ -10,6 +10,8 @@ data class LectureEntity(
     val title: String,
     val courseName: String,
     val professorName: String,
+    val classId: Long? = null,
+    val courseId: Long? = null,
     val dateMillis: Long = System.currentTimeMillis(),
     val audioFilePath: String? = null,
     val audioUrl: String? = null,
