@@ -82,6 +82,7 @@ fun AddEditLectureScreen(
     val tags by viewModel.formTags.collectAsState()
     val transcript by viewModel.formTranscript.collectAsState()
     val audioPath by viewModel.formAudioPath.collectAsState()
+    val audioUrl by viewModel.formAudioUrl.collectAsState()
     val audioDurationMs by viewModel.formAudioDurationMs.collectAsState()
 
     val isRecording by viewModel.audioRecorder.isRecording.collectAsState()
@@ -1013,6 +1014,35 @@ fun AddEditLectureScreen(
                         )
 
                         // -------------------------------------------------
+                        // لینک صوت آنلاین؛ فایل محلی در اولویت است و این لینک مسیر جایگزین است.
+                        Column(
+                            modifier = Modifier.fillMaxWidth(),
+                            verticalArrangement = Arrangement.spacedBy(8.dp)
+                        ) {
+                            Text(
+                                "لینک صوت",
+                                style = MaterialTheme.typography.titleSmall,
+                                fontWeight = FontWeight.Bold
+                            )
+                            OutlinedTextField(
+                                value = audioUrl,
+                                onValueChange = { viewModel.formAudioUrl.value = it },
+                                modifier = Modifier.fillMaxWidth(),
+                                singleLine = true,
+                                placeholder = { Text("https://example.com/audio.mp3") },
+                                label = { Text("نشانی اینترنتی صوت") },
+                                supportingText = {
+                                    Text(
+                                        if (audioPath.isNullOrBlank())
+                                            "اگر فایل محلی در دسترس نباشد، پخش از این لینک انجام می‌شود."
+                                        else
+                                            "فایل محلی اولویت دارد؛ در صورت خرابی یا نبودن آن از این لینک استفاده می‌شود."
+                                    )
+                                },
+                                shape = RoundedCornerShape(12.dp)
+                            )
+                        }
+
                         // دکمه تبدیل فایل صوتی موجود به متن
                         // -------------------------------------------------
 
