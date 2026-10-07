@@ -222,7 +222,7 @@ fun HomeScreen(
                             )
                         }
                     },
-                    onNewLesson = onNavigateToAdd
+                    onNewLesson = if (userRole == UserRole.TEACHER) onNavigateToAdd else null
                 )
 
                 Spacer(
@@ -392,7 +392,7 @@ fun HomeScreen(
 @Composable
 private fun AiActionsCard(
     onSummary: () -> Unit,
-    onNewLesson: () -> Unit
+    onNewLesson: (() -> Unit)?
 ) {
 
     Card(
@@ -432,23 +432,22 @@ private fun AiActionsCard(
                 Text("خلاصه هوشمند")
             }
 
-            OutlinedButton(
-                onClick = onNewLesson,
-                modifier = Modifier.weight(1f),
-                shape = RoundedCornerShape(13.dp)
-            ) {
-
-                Icon(
-                    Icons.Default.MenuBook,
-                    contentDescription = null,
-                    modifier = Modifier.size(18.dp)
-                )
-
-                Spacer(
-                    modifier = Modifier.width(5.dp)
-                )
-
-                Text("درس جدید")
+            if (onNewLesson != null) {
+                OutlinedButton(
+                    onClick = onNewLesson,
+                    modifier = Modifier.weight(1f),
+                    shape = RoundedCornerShape(13.dp)
+                ) {
+                    Icon(
+                        Icons.Default.MenuBook,
+                        contentDescription = null,
+                        modifier = Modifier.size(18.dp)
+                    )
+                    Spacer(
+                        modifier = Modifier.width(5.dp)
+                    )
+                    Text("درس جدید")
+                }
             }
         }
     }
