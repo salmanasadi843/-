@@ -344,33 +344,57 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
     }
 
     fun navigateBack() {
-
-        when (_currentScreen.value) {
-
+        when (val screen = _currentScreen.value) {
             is Screen.AiStudy -> {
-                val id =
-                    (_currentScreen.value as Screen.AiStudy).lectureId
-
-                _currentScreen.value = Screen.Detail(id)
+                _currentScreen.value = Screen.Detail(screen.lectureId)
             }
-
-            Screen.Classes,
-            is Screen.ClassDetail,
-            is Screen.CourseDetail -> {
+            Screen.Classes -> {
                 _currentScreen.value = Screen.Home
             }
-
-            is Screen.Detail,
-            is Screen.AddEdit,
-            Screen.Settings -> {
-
+            is Screen.ClassDetail -> {
+                _currentScreen.value = Screen.Classes
+            }
+            is Screen.CourseDetail -> {
+                viewModelScope.launch {
+                    val course = repository.getCourse(screen.courseId)
+                    _currentScreen.value = course?.let { Screen.ClassDetail(it.classId) } ?: Screen.Classes
+                }
+            }
+            is Screen.Detail -> {
                 audioPlayer.stop()
                 speechRecognizer.stopListening()
-
+                viewModelScope.launch {
+                    val lecture = repository.getLecture(screen.lectureId)
+                    _currentScreen.value = when {
+                        lecture?.courseId != null -> Screen.CourseDetail(lecture.courseId)
+                        else -> Screen.Home
+                    }
+                }
+            }
+            is Screen.AddEdit -> {
+                audioPlayer.stop()
+                speechRecognizer.stopListening()
+                if (screen.courseId != null) {
+                    _currentScreen.value = Screen.CourseDetail(screen.courseId)
+                } else if (screen.lectureId != null) {
+                    viewModelScope.launch {
+                        val lecture = repository.getLecture(screen.lectureId)
+                        _currentScreen.value = if (lecture?.courseId != null) {
+                            Screen.CourseDetail(lecture.courseId)
+                        } else {
+                            Screen.Home
+                        }
+                    }
+                } else {
+                    _currentScreen.value = Screen.Home
+                }
+            }
+            Screen.Settings -> {
                 _currentScreen.value = Screen.Home
             }
-
-            Screen.Home -> {}
+            Screen.Home -> {
+                // Keep the app open on Home.
+            }
         }
     }
 
