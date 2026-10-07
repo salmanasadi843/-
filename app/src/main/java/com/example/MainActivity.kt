@@ -80,7 +80,7 @@ fun OstadYarApp(viewModel: MainViewModel = viewModel()) {
             CourseScreen(screen.classId,viewModel,userRole,{id->viewModel.openCourse(id)},{viewModel.navigateBack()})
         }
         is Screen.CourseDetail -> {
-            CourseDetailScreen(screen.courseId,viewModel,{id->viewModel.navigateTo(Screen.Detail(id))},{viewModel.navigateBack()})
+            CourseDetailScreen(screen.courseId,viewModel,{id->viewModel.navigateTo(Screen.Detail(id))},{viewModel.navigateTo(Screen.AddEdit(null,screen.courseId))},{viewModel.navigateBack()})
         }
         is Screen.Detail -> {
             LectureDetailScreen(
