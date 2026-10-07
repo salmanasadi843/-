@@ -46,6 +46,7 @@ import androidx.compose.ui.text.input.VisualTransformation
 import androidx.compose.ui.unit.dp
 import com.example.data.api.GeminiApiService
 import com.example.data.api.GroqApiService
+import com.example.data.api.SpeechmaticsApiService
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -56,6 +57,7 @@ fun SettingsScreen(
     val context = LocalContext.current
 
     var groqKey by remember { mutableStateOf(GroqApiService.getSavedApiKey(context)) }
+    var speechmaticsKey by remember { mutableStateOf(SpeechmaticsApiService.getSavedApiKey(context)) }
 
     var apiKey by remember {
         mutableStateOf(
@@ -297,6 +299,58 @@ fun SettingsScreen(
                     Text("اولویت هوش مصنوعی: Groq ← در صورت خطا → Gemini", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.primary)
                 }
             }
+            Card(
+                colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
+                elevation = CardDefaults.cardElevation(2.dp),
+                modifier = Modifier.fillMaxWidth()
+            ) {
+                Column(modifier = Modifier.padding(18.dp)) {
+                    Text("Speechmatics — تبدیل صوت به متن", style = MaterialTheme.typography.titleLarge)
+                    Spacer(Modifier.height(6.dp))
+                    Text(
+                        "Speechmatics به‌عنوان موتور دوم تبدیل صوت به متن استفاده می‌شود؛ اگر Groq ناموفق باشد، برنامه به‌صورت خودکار سراغ Speechmatics می‌رود.",
+                        style = MaterialTheme.typography.bodyMedium,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                    Spacer(Modifier.height(12.dp))
+                    OutlinedTextField(
+                        value = speechmaticsKey,
+                        onValueChange = { speechmaticsKey = it; status = null },
+                        modifier = Modifier.fillMaxWidth(),
+                        label = { Text("Speechmatics API Key") },
+                        placeholder = { Text("کلید Speechmatics را وارد کنید") },
+                        singleLine = true,
+                        visualTransformation = PasswordVisualTransformation(),
+                        leadingIcon = { Icon(Icons.Default.Key, contentDescription = null) }
+                    )
+                    Spacer(Modifier.height(10.dp))
+                    Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                        Button(
+                            onClick = {
+                                SpeechmaticsApiService.saveApiKey(context, speechmaticsKey)
+                                status = "کلید Speechmatics با موفقیت ذخیره شد."
+                                statusIsError = false
+                            },
+                            enabled = speechmaticsKey.isNotBlank()
+                        ) { Text("ذخیره Speechmatics") }
+                        OutlinedButton(
+                            onClick = {
+                                SpeechmaticsApiService.deleteSavedApiKey(context)
+                                speechmaticsKey = ""
+                                status = "کلید Speechmatics حذف شد."
+                                statusIsError = false
+                            }
+                        ) { Text("حذف") }
+                    }
+                    Spacer(Modifier.height(8.dp))
+                    Text(
+                        "اولویت تبدیل صوت: ۱) Groq  ۲) Speechmatics  ۳) Gemini",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.primary
+                    )
+                }
+            }
+
             Text(
                 "کلید واردشده داخل APK ثابت قرار نمی‌گیرد و برای هر نصب می‌تواند جداگانه تنظیم شود.",
                 style = MaterialTheme.typography.bodySmall,
