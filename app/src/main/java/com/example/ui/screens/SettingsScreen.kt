@@ -1,6 +1,11 @@
 package com.example.ui.screens
 
+import androidx.compose.foundation.BorderStroke
+import androidx.compose.foundation.background
+import androidx.compose.foundation.border
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
@@ -10,6 +15,7 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
@@ -39,6 +45,7 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.input.PasswordVisualTransformation
@@ -47,12 +54,16 @@ import androidx.compose.ui.unit.dp
 import com.example.data.api.GeminiApiService
 import com.example.data.api.GroqApiService
 import com.example.data.api.SpeechmaticsApiService
+import com.example.ui.theme.AppThemeMode
+import com.example.ui.theme.themeAccent
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun SettingsScreen(
     viewModel: MainViewModel,
-    onNavigateBack: () -> Unit
+    onNavigateBack: () -> Unit,
+    currentTheme: AppThemeMode = AppThemeMode.PURPLE,
+    onThemeChanged: (AppThemeMode) -> Unit = {}
 ) {
     val context = LocalContext.current
 
@@ -93,6 +104,66 @@ fun SettingsScreen(
                 .padding(16.dp),
             verticalArrangement = Arrangement.spacedBy(16.dp)
         ) {
+            Card(
+                colors = CardDefaults.cardColors(
+                    containerColor = MaterialTheme.colorScheme.surface
+                ),
+                elevation = CardDefaults.cardElevation(2.dp),
+                modifier = Modifier.fillMaxWidth()
+            ) {
+                Column(modifier = Modifier.padding(18.dp)) {
+                    Text(
+                        "ظاهر برنامه",
+                        style = MaterialTheme.typography.titleLarge
+                    )
+                    Spacer(Modifier.height(6.dp))
+                    Text(
+                        "رنگ مورد علاقه‌تان را انتخاب کنید. تغییر تم بلافاصله روی کل برنامه اعمال می‌شود.",
+                        style = MaterialTheme.typography.bodyMedium,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                    Spacer(Modifier.height(14.dp))
+
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.spacedBy(8.dp)
+                    ) {
+                        ThemeChoiceCard(
+                            mode = AppThemeMode.PURPLE,
+                            selected = currentTheme == AppThemeMode.PURPLE,
+                            onClick = { onThemeChanged(AppThemeMode.PURPLE) },
+                            modifier = Modifier.weight(1f)
+                        )
+                        ThemeChoiceCard(
+                            mode = AppThemeMode.BLUE,
+                            selected = currentTheme == AppThemeMode.BLUE,
+                            onClick = { onThemeChanged(AppThemeMode.BLUE) },
+                            modifier = Modifier.weight(1f)
+                        )
+                    }
+
+                    Spacer(Modifier.height(8.dp))
+
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.spacedBy(8.dp)
+                    ) {
+                        ThemeChoiceCard(
+                            mode = AppThemeMode.GREEN,
+                            selected = currentTheme == AppThemeMode.GREEN,
+                            onClick = { onThemeChanged(AppThemeMode.GREEN) },
+                            modifier = Modifier.weight(1f)
+                        )
+                        ThemeChoiceCard(
+                            mode = AppThemeMode.ORANGE,
+                            selected = currentTheme == AppThemeMode.ORANGE,
+                            onClick = { onThemeChanged(AppThemeMode.ORANGE) },
+                            modifier = Modifier.weight(1f)
+                        )
+                    }
+                }
+            }
+
             Card(
                 colors = CardDefaults.cardColors(
                     containerColor = MaterialTheme.colorScheme.surface
@@ -356,6 +427,65 @@ fun SettingsScreen(
                 style = MaterialTheme.typography.bodySmall,
                 color = MaterialTheme.colorScheme.onSurfaceVariant
             )
+        }
+    }
+}
+
+
+@Composable
+private fun ThemeChoiceCard(
+    mode: AppThemeMode,
+    selected: Boolean,
+    onClick: () -> Unit,
+    modifier: Modifier = Modifier
+) {
+    val accent = themeAccent(mode)
+
+    Card(
+        modifier = modifier
+            .clickable(onClick = onClick)
+            .border(
+                width = if (selected) 2.dp else 1.dp,
+                color = if (selected) accent else MaterialTheme.colorScheme.outlineVariant,
+                shape = MaterialTheme.shapes.medium
+            ),
+        colors = CardDefaults.cardColors(
+            containerColor = if (selected)
+                accent.copy(alpha = 0.08f)
+            else
+                MaterialTheme.colorScheme.surface
+        ),
+        elevation = CardDefaults.cardElevation(
+            defaultElevation = if (selected) 3.dp else 0.dp
+        )
+    ) {
+        Column(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(vertical = 12.dp, horizontal = 8.dp),
+            horizontalAlignment = Alignment.CenterHorizontally
+        ) {
+            Box(
+                modifier = Modifier
+                    .size(34.dp)
+                    .background(accent, CircleShape)
+                    .border(2.dp, Color.White, CircleShape)
+                    .border(1.dp, accent, CircleShape)
+            )
+            Spacer(Modifier.height(8.dp))
+            Text(
+                text = mode.title,
+                style = MaterialTheme.typography.labelLarge,
+                color = if (selected) accent else MaterialTheme.colorScheme.onSurface
+            )
+            if (selected) {
+                Spacer(Modifier.height(2.dp))
+                Text(
+                    "انتخاب‌شده",
+                    style = MaterialTheme.typography.labelMedium,
+                    color = accent
+                )
+            }
         }
     }
 }
