@@ -37,6 +37,7 @@ class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         enableEdgeToEdge()
+        AuthPreferences.attach(this)
         setContent {
             var appTheme by remember {
                 mutableStateOf(ThemePreferences.load(this@MainActivity))
@@ -66,8 +67,21 @@ fun OstadYarApp(
     viewModel: MainViewModel = viewModel(),
     onThemeChanged: (AppThemeMode) -> Unit = {}
 ) {
+    var authenticated by remember { mutableStateOf(AuthPreferences.isLoggedIn(LocalContext.current)) }
+    var userRole by remember { mutableStateOf(AuthPreferences.currentRole(LocalContext.current)) }
     val currentScreen by viewModel.currentScreen.collectAsState()
-    val userRole by viewModel.userRole.collectAsState()
+
+    if (!authenticated) {
+        BackHandler(enabled = false) { }
+        AuthScreen(
+            onAuthenticated = { role ->
+                userRole = role
+                viewModel.setUserRole(role)
+                authenticated = true
+            }
+        )
+        return
+    }
 
     BackHandler(enabled = true) {
         viewModel.navigateBack()
