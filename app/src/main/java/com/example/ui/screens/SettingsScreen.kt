@@ -25,6 +25,7 @@ import androidx.compose.material.icons.filled.CheckCircle
 import androidx.compose.material.icons.filled.DeleteOutline
 import androidx.compose.material.icons.filled.Key
 import androidx.compose.material.icons.filled.NetworkCheck
+import androidx.compose.material.icons.filled.Logout
 import androidx.compose.material.icons.filled.Visibility
 import androidx.compose.material.icons.filled.VisibilityOff
 import androidx.compose.material3.Button
@@ -64,7 +65,8 @@ fun SettingsScreen(
     viewModel: MainViewModel,
     onNavigateBack: () -> Unit,
     currentTheme: AppThemeMode = AppThemeMode.PURPLE,
-    onThemeChanged: (AppThemeMode) -> Unit = {}
+    onThemeChanged: (AppThemeMode) -> Unit = {},
+    onLogout: () -> Unit = {}
 ) {
     val context = LocalContext.current
 
@@ -449,6 +451,31 @@ fun SettingsScreen(
                         style = MaterialTheme.typography.bodySmall,
                         color = MaterialTheme.colorScheme.primary
                     )
+                }
+            }
+
+            Card(
+                colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
+                elevation = CardDefaults.cardElevation(2.dp),
+                modifier = Modifier.fillMaxWidth()
+            ) {
+                Column(modifier = Modifier.padding(18.dp)) {
+                    Text("حساب کاربری", style = MaterialTheme.typography.titleLarge)
+                    Spacer(Modifier.height(6.dp))
+                    Text(
+                        "برای تغییر حساب یا ورود با نقش کاربری دیگر، ابتدا از حساب فعلی خارج شوید.",
+                        style = MaterialTheme.typography.bodyMedium,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                    Spacer(Modifier.height(12.dp))
+                    OutlinedButton(
+                        onClick = onLogout,
+                        modifier = Modifier.fillMaxWidth()
+                    ) {
+                        Icon(Icons.Default.Logout, contentDescription = null)
+                        Spacer(Modifier.width(8.dp))
+                        Text("خروج از حساب")
+                    }
                 }
             }
 
