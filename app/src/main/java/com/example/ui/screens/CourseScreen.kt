@@ -2,6 +2,7 @@ package com.example.ui.screens
 
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.material.icons.Icons
@@ -66,7 +67,11 @@ fun CourseScreen(
         ) {
             if (courses.isEmpty()) {
                 item {
-                    Card(Modifier.fillMaxWidth()) {
+                    Card(
+                        Modifier.fillMaxWidth(),
+                        shape = RoundedCornerShape(18.dp),
+                        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface)
+                    ) {
                         Column(
                             Modifier.padding(20.dp),
                             verticalArrangement = Arrangement.spacedBy(8.dp)
@@ -93,12 +98,20 @@ fun CourseScreen(
                         modifier = Modifier.padding(16.dp),
                         verticalAlignment = Alignment.CenterVertically
                     ) {
-                        Icon(
-                            Icons.Default.MenuBook,
-                            contentDescription = null,
-                            tint = MaterialTheme.colorScheme.primary,
-                            modifier = Modifier.size(36.dp)
-                        )
+                        Surface(
+                            modifier = Modifier.size(46.dp),
+                            shape = RoundedCornerShape(13.dp),
+                            color = MaterialTheme.colorScheme.primaryContainer
+                        ) {
+                            Box(contentAlignment = Alignment.Center) {
+                                Icon(
+                                    Icons.Default.MenuBook,
+                                    contentDescription = null,
+                                    tint = MaterialTheme.colorScheme.primary,
+                                    modifier = Modifier.size(25.dp)
+                                )
+                            }
+                        }
                         Spacer(Modifier.width(12.dp))
                         Column(Modifier.weight(1f)) {
                             Text(course.name, fontWeight = FontWeight.Bold, style = MaterialTheme.typography.titleMedium)
@@ -154,8 +167,8 @@ fun CourseScreen(
     showDeleteDialog?.let { course ->
         AlertDialog(
             onDismissRequest = { showDeleteDialog = null },
-            title = { Text("حذف بحث") },
-            text = { Text("آیا بحث «" + course.name + "» حذف شود؟") },
+            title = { Text("حذف درس") },
+            text = { Text("آیا درس «" + course.name + "» حذف شود؟") },
             confirmButton = {
                 TextButton(onClick = {
                     viewModel.deleteCourse(course)
@@ -188,7 +201,7 @@ private fun CourseEditorDialog(
                 OutlinedTextField(
                     value = title,
                     onValueChange = { title = it },
-                    label = { Text("عنوان بحث") },
+                    label = { Text("عنوان درس") },
                     placeholder = { Text("مثلاً: حجیت خبر واحد") },
                     singleLine = true,
                     modifier = Modifier.fillMaxWidth()
