@@ -21,6 +21,8 @@ import androidx.compose.ui.platform.LocalLayoutDirection
 import androidx.compose.ui.unit.LayoutDirection
 import androidx.lifecycle.viewmodel.compose.viewModel
 import com.example.ui.screens.AddEditLectureScreen
+import com.example.ui.screens.AuthPreferences
+import com.example.ui.screens.AuthScreen
 import com.example.ui.screens.ClassScreen
 import com.example.ui.screens.ClassSessionsScreen
 import com.example.ui.screens.HomeScreen
