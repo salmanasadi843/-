@@ -16,6 +16,8 @@ object AuthPreferences {
     private const val APP_ID = "1:72182911776:android:bd94d0b630f72977a87d45"
     private const val PROJECT_ID = "salmanasadi843-9149"
     private const val STORAGE_BUCKET = "salmanasadi843-9149.firebasestorage.app"
+    // حساب اصلی استاد در درس‌یار؛ مستقل از حساب یادنو است.
+    private const val PRIMARY_TEACHER_EMAIL = "salmanasadi843@gmail.com"
 
     private fun ensureFirebase(context: Context) {
         if (FirebaseApp.getApps(context).isEmpty()) {
@@ -164,10 +166,13 @@ object AuthPreferences {
                             return@addOnCompleteListener
                         }
 
+                        val isPrimaryTeacher =
+                            normalizedEmail == PRIMARY_TEACHER_EMAIL
                         val roleValue = snapshot.getString("role")
-                        val role = when (roleValue) {
-                            UserRole.TEACHER.name -> UserRole.TEACHER
-                            UserRole.STUDENT.name -> UserRole.STUDENT
+                        val role = when {
+                            isPrimaryTeacher -> UserRole.TEACHER
+                            roleValue == UserRole.TEACHER.name -> UserRole.TEACHER
+                            roleValue == UserRole.STUDENT.name -> UserRole.STUDENT
                             else -> {
                                 onResult(
                                     Result.failure(
@@ -179,9 +184,38 @@ object AuthPreferences {
                                 return@addOnCompleteListener
                             }
                         }
-                        val name = snapshot.getString("name").orEmpty()
-                        cacheProfile(context, role, name)
-                        onResult(Result.success(role))
+                        val name = snapshot.getString("name").orEmpty().ifBlank {
+                            if (isPrimaryTeacher) "سلمان اسدی" else ""
+                        }
+
+                        if (isPrimaryTeacher &&
+                            (roleValue != UserRole.TEACHER.name || snapshot.getString("name").isNullOrBlank())
+                        ) {
+                            val teacherProfile = hashMapOf<String, Any>(
+                                "email" to normalizedEmail,
+                                "name" to name,
+                                "role" to UserRole.TEACHER.name,
+                                "updatedAt" to FieldValue.serverTimestamp()
+                            )
+                            firestore(context).collection("users").document(user.uid)
+                                .set(teacherProfile, com.google.firebase.firestore.SetOptions.merge())
+                                .addOnCompleteListener { updateTask ->
+                                    if (!updateTask.isSuccessful) {
+                                        onResult(
+                                            Result.failure(
+                                                updateTask.exception
+                                                    ?: IllegalStateException("تنظیم نقش استاد انجام نشد.")
+                                            )
+                                        )
+                                        return@addOnCompleteListener
+                                    }
+                                    cacheProfile(context, UserRole.TEACHER, name)
+                                    onResult(Result.success(UserRole.TEACHER))
+                                }
+                        } else {
+                            cacheProfile(context, role, name)
+                            onResult(Result.success(role))
+                        }
                     }
             }
     }
@@ -233,12 +267,25 @@ object AuthPreferences {
                 }
 
                 val snapshot = task.result
-                val role = if (snapshot.getString("role") == UserRole.TEACHER.name) {
+                val userEmail = user.email?.trim()?.lowercase().orEmpty()
+                val role = if (
+                    userEmail == PRIMARY_TEACHER_EMAIL ||
+                    snapshot.getString("role") == UserRole.TEACHER.name
+                ) {
                     UserRole.TEACHER
-                } else {
+                } else if (snapshot.getString("role") == UserRole.STUDENT.name) {
                     UserRole.STUDENT
+                } else {
+                    onResult(
+                        Result.failure(
+                            IllegalStateException("نقش این حساب در Firebase مشخص نشده است.")
+                        )
+                    )
+                    return@addOnCompleteListener
                 }
-                val name = snapshot.getString("name").orEmpty()
+                val name = snapshot.getString("name").orEmpty().ifBlank {
+                    if (userEmail == PRIMARY_TEACHER_EMAIL) "سلمان اسدی" else ""
+                }
                 cacheProfile(context, role, name)
                 onResult(Result.success(role))
             }
