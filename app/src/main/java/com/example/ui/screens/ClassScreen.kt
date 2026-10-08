@@ -8,7 +8,6 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.ArrowBack
-import androidx.compose.material.icons.filled.CalendarToday
 import androidx.compose.material.icons.filled.School
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
@@ -31,13 +30,11 @@ fun ClassScreen(
     var name by remember { mutableStateOf("") }
     var teacher by remember { mutableStateOf("") }
     var term by remember { mutableStateOf("") }
-    var dateText by remember { mutableStateOf(PersianDateUtils.format(System.currentTimeMillis())) }
 
     fun resetForm() {
         name = ""
         teacher = ""
         term = ""
-        dateText = PersianDateUtils.format(System.currentTimeMillis())
     }
 
     Scaffold(
@@ -129,14 +126,8 @@ fun ClassScreen(
                                     Text("استاد: " + item.teacherName, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
                                 }
                                 Spacer(Modifier.height(7.dp))
-                                Row(verticalAlignment = Alignment.CenterVertically) {
-                                    Icon(Icons.Default.CalendarToday, null, Modifier.size(16.dp), tint = MaterialTheme.colorScheme.secondary)
-                                    Spacer(Modifier.width(5.dp))
-                                    Text(PersianDateUtils.format(item.classDateMillis), style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
-                                    if (item.term.isNotBlank()) {
-                                        Spacer(Modifier.width(10.dp))
-                                        Text(item.term, style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
-                                    }
+                                if (item.term.isNotBlank()) {
+                                    Text(item.term, style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
                                 }
                                 Spacer(Modifier.height(8.dp))
                                 Text("مشاهده جلسات  ›", style = MaterialTheme.typography.labelLarge, fontWeight = FontWeight.SemiBold, color = MaterialTheme.colorScheme.primary)
@@ -157,7 +148,6 @@ fun ClassScreen(
                 Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
                     OutlinedTextField(name, { name = it }, label = { Text("نام کلاس") }, placeholder = { Text("مثلاً اصول فقه") }, singleLine = true, modifier = Modifier.fillMaxWidth())
                     OutlinedTextField(teacher, { teacher = it }, label = { Text("نام استاد") }, singleLine = true, modifier = Modifier.fillMaxWidth())
-                    OutlinedTextField(dateText, { dateText = it }, label = { Text("تاریخ کلاس") }, placeholder = { Text("۱۴۰۵/۰۷/۱۶") }, singleLine = true, modifier = Modifier.fillMaxWidth(), leadingIcon = { Icon(Icons.Default.CalendarToday, null) })
                     OutlinedTextField(term, { term = it }, label = { Text("ترم / نیمسال (اختیاری)") }, singleLine = true, modifier = Modifier.fillMaxWidth())
                 }
             },
@@ -170,7 +160,6 @@ fun ClassScreen(
                                 name = name.trim(),
                                 teacherName = teacher.trim(),
                                 term = term.trim(),
-                                classDateMillis = PersianDateUtils.parse(dateText, System.currentTimeMillis())
                             )
                         )
                         showAdd = false
