@@ -5,10 +5,8 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.darkColorScheme
 import androidx.compose.material3.lightColorScheme
 import androidx.compose.runtime.Composable
+import androidx.compose.ui.graphics.Color
 
-// هویت بصری فعلی درس‌یار عمداً ثابت است.
-// تم‌های متعدد در نسخه فعلی کنار گذاشته شده‌اند تا هیچ بخش یاسی/بنفش/سبز/نارنجی
-// به‌صورت ناخواسته وارد رابط نشود. ساختار AppThemeMode برای تم‌های آینده حفظ شده است.
 @Composable
 fun MyApplicationTheme(
     appTheme: AppThemeMode = AppThemeMode.PURPLE,
@@ -33,7 +31,9 @@ fun MyApplicationTheme(
         surface = SurfaceLight,
         onSurface = OnSurfaceLight,
         surfaceVariant = SurfaceVariantLight,
-        onSurfaceVariant = OnSurfaceVariantLight
+        onSurfaceVariant = OnSurfaceVariantLight,
+        outline = Color(0xFFBDB6A9),
+        outlineVariant = Color(0xFFDDD7CB)
     )
 
     val darkScheme = darkColorScheme(
