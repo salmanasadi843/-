@@ -2,7 +2,7 @@ package com.example
 
 import android.os.Bundle
 import androidx.activity.ComponentActivity
-import androidx.activity.compose.BackHandler
+import androidx.activity.BackHandler
 import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
 import androidx.compose.foundation.layout.fillMaxSize
@@ -21,13 +21,14 @@ import androidx.compose.ui.platform.LocalLayoutDirection
 import androidx.compose.ui.unit.LayoutDirection
 import androidx.lifecycle.viewmodel.compose.viewModel
 import com.example.ui.screens.AddEditLectureScreen
-import com.example.ui.screens.HomeScreen
 import com.example.ui.screens.ClassScreen
 import com.example.ui.screens.ClassSessionsScreen
+import com.example.ui.screens.HomeScreen
 import com.example.ui.screens.LectureDetailScreen
 import com.example.ui.screens.MainViewModel
-import com.example.ui.screens.SettingsScreen
 import com.example.ui.screens.Screen
+import com.example.ui.screens.SettingsScreen
+import com.example.ui.screens.UserRole
 import com.example.ui.theme.AppThemeMode
 import com.example.ui.theme.MyApplicationTheme
 import com.example.ui.theme.ThemePreferences
@@ -42,7 +43,6 @@ class MainActivity : ComponentActivity() {
             }
 
             MyApplicationTheme(appTheme = appTheme) {
-                // Persian is an RTL language - provide RTL layout direction for authentic typography and alignment
                 CompositionLocalProvider(LocalLayoutDirection provides LayoutDirection.Rtl) {
                     Surface(
                         modifier = Modifier.fillMaxSize(),
@@ -69,7 +69,6 @@ fun OstadYarApp(
     val currentScreen by viewModel.currentScreen.collectAsState()
     val userRole by viewModel.userRole.collectAsState()
 
-    // Handle system back button properly
     BackHandler(enabled = true) {
         viewModel.navigateBack()
     }
@@ -79,72 +78,72 @@ fun OstadYarApp(
             HomeScreen(
                 viewModel = viewModel,
                 userRole = userRole,
-                onNavigateToAdd = {
-                    viewModel.navigateTo(Screen.AddEdit(null))
-                },
-                onNavigateToDetail = { lectureId ->
-                    viewModel.navigateTo(Screen.Detail(lectureId))
-                },
-                onNavigateToAiSummary = { lectureId ->
-                    viewModel.navigateTo(Screen.Detail(lectureId))
-                }
+                onNavigateToAdd = { viewModel.openClasses() },
+                onNavigateToDetail = { lectureId -> viewModel.navigateTo(Screen.Detail(lectureId)) },
+                onNavigateToAiSummary = { lectureId -> viewModel.navigateTo(Screen.Detail(lectureId)) }
             )
         }
+
         Screen.Classes -> {
-            ClassScreen(viewModel,userRole,{id->viewModel.openClass(id)},{viewModel.navigateBack()})
+            ClassScreen(
+                viewModel = viewModel,
+                userRole = userRole,
+                onOpenClass = { id -> viewModel.openClass(id) },
+                onBack = { viewModel.navigateBack() }
+            )
         }
+
         is Screen.ClassDetail -> {
-            ClassSessionsScreen(screen.classId,viewModel,userRole,{id->viewModel.navigateTo(Screen.Detail(id))},{viewModel.navigateTo(Screen.AddEdit(null,screen.classId))},{viewModel.navigateBack()})
+            ClassSessionsScreen(
+                classId = screen.classId,
+                viewModel = viewModel,
+                userRole = userRole,
+                onOpenSession = { id -> viewModel.navigateTo(Screen.Detail(id)) },
+                onNewSession = { viewModel.navigateTo(Screen.AddEdit(null, screen.classId)) },
+                onBack = { viewModel.navigateBack() }
+            )
         }
+
         is Screen.Detail -> {
             LectureDetailScreen(
                 lectureId = screen.lectureId,
                 viewModel = viewModel,
-                onNavigateBack = {
-                    viewModel.navigateBack()
-                },
+                onNavigateBack = { viewModel.navigateBack() },
                 onNavigateToEdit = { editId ->
-                    if (userRole == com.example.ui.screens.UserRole.TEACHER) viewModel.navigateTo(Screen.AddEdit(editId))
+                    if (userRole == UserRole.TEACHER) viewModel.navigateTo(Screen.AddEdit(editId))
                 },
-                isTeacher = userRole == com.example.ui.screens.UserRole.TEACHER,
+                isTeacher = userRole == UserRole.TEACHER
             )
         }
+
         is Screen.AddEdit -> {
-            if (userRole == com.example.ui.screens.UserRole.TEACHER) {
+            if (userRole == UserRole.TEACHER) {
                 AddEditLectureScreen(
                     lectureId = screen.lectureId,
                     viewModel = viewModel,
-                    onNavigateBack = {
-                        viewModel.navigateBack()
-                    },
-                    onSaved = { savedId ->
-                        viewModel.navigateTo(Screen.Detail(savedId))
-                    }
+                    onNavigateBack = { viewModel.navigateBack() },
+                    onSaved = { savedId -> viewModel.navigateTo(Screen.Detail(savedId)) }
                 )
             } else {
                 viewModel.navigateTo(Screen.Home)
             }
         }
+
         is Screen.AiStudy -> {
             LectureDetailScreen(
                 lectureId = screen.lectureId,
                 viewModel = viewModel,
-                onNavigateBack = {
-                    viewModel.navigateBack()
-                },
+                onNavigateBack = { viewModel.navigateBack() },
                 onNavigateToEdit = { editId ->
-                    if (userRole == com.example.ui.screens.UserRole.TEACHER) {
-                        viewModel.navigateTo(Screen.AddEdit(editId))
-                    }
+                    if (userRole == UserRole.TEACHER) viewModel.navigateTo(Screen.AddEdit(editId))
                 }
             )
         }
+
         Screen.Settings -> {
             SettingsScreen(
                 viewModel = viewModel,
-                onNavigateBack = {
-                    viewModel.navigateBack()
-                },
+                onNavigateBack = { viewModel.navigateBack() },
                 currentTheme = ThemePreferences.load(LocalContext.current),
                 onThemeChanged = onThemeChanged
             )
