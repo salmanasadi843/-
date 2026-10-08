@@ -7,6 +7,7 @@ import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.AutoAwesome
+import androidx.compose.material.icons.filled.CalendarToday
 import androidx.compose.material.icons.filled.PlayArrow
 import androidx.compose.material.icons.filled.Settings
 import androidx.compose.material.icons.filled.School
@@ -80,13 +81,13 @@ fun HomeScreen(
                 }
             } else {
                 item {
-                    Card(Modifier.fillMaxWidth(), RoundedCornerShape(24.dp), colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.primary)) {
+                    Card(Modifier.fillMaxWidth(), RoundedCornerShape(24.dp), colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.primaryContainer)) {
                         Column(Modifier.padding(22.dp)) {
-                            Text("مطالعه را ادامه دهید", style = MaterialTheme.typography.headlineSmall, fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.onPrimary)
+                            Text("مطالعه را ادامه دهید", style = MaterialTheme.typography.headlineSmall, fontWeight = FontWeight.Bold)
                             Spacer(Modifier.height(5.dp))
-                            Text("کلاس را انتخاب کنید و وارد جلسه موردنظر شوید.", color = MaterialTheme.colorScheme.onPrimary.copy(alpha = 0.82f))
+                            Text("کلاس را انتخاب کنید و وارد جلسه موردنظر شوید.", color = MaterialTheme.colorScheme.onSurfaceVariant)
                             Spacer(Modifier.height(14.dp))
-                            Button(onClick = viewModel::openClasses, Modifier.fillMaxWidth(), colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.secondary, contentColor = MaterialTheme.colorScheme.onSecondary)) {
+                            Button(onClick = viewModel::openClasses, Modifier.fillMaxWidth()) {
                                 Icon(Icons.Default.School, null)
                                 Spacer(Modifier.width(7.dp))
                                 Text("مشاهده کلاس‌ها")
@@ -151,6 +152,9 @@ fun HomeScreen(
                             HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant)
                             Spacer(Modifier.height(10.dp))
                             Row(verticalAlignment = Alignment.CenterVertically) {
+                                Icon(Icons.Default.CalendarToday, null, Modifier.size(16.dp), tint = MaterialTheme.colorScheme.secondary)
+                                Spacer(Modifier.width(5.dp))
+                                Text("تاریخ کلاس: " + PersianDateUtils.format(classItem.classDateMillis), style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
                                 Spacer(Modifier.weight(1f))
                                 Text(classLectures.size.toString() + " جلسه", style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
                             }
@@ -190,9 +194,9 @@ private fun HomeActionCard(
         Column(Modifier.padding(16.dp)) {
             Icon(icon, null, tint = MaterialTheme.colorScheme.secondary)
             Spacer(Modifier.height(10.dp))
-            Text(title, fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.onPrimary)
+            Text(title, fontWeight = FontWeight.Bold)
             Spacer(Modifier.height(4.dp))
-            Text(subtitle, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onPrimary.copy(alpha = 0.78f))
+            Text(subtitle, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
         }
     }
 }

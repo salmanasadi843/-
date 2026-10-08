@@ -441,7 +441,7 @@ fun AddEditLectureScreen(
                     Text(
 
                         text =
-                            "۲. صوت کلاس (بارگذاری یا ضبط زنده)",
+                            "۲. صوت جلسه",
 
                         style =
                             MaterialTheme
@@ -612,6 +612,18 @@ fun AddEditLectureScreen(
                             )
                         }
                     }
+
+                    OutlinedTextField(
+                        value = audioUrl,
+                        onValueChange = { viewModel.formAudioUrl.value = it },
+                        label = { Text("لینک صوت (اختیاری)") },
+                        placeholder = { Text("https://...") },
+                        singleLine = true,
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .testTag("audio_url_input"),
+                        shape = RoundedCornerShape(12.dp)
+                    )
 
                     // Recording banner
 
@@ -981,36 +993,6 @@ fun AddEditLectureScreen(
                                     .colorScheme
                                     .primary
                         )
-
-                        // -------------------------------------------------
-                        // لینک صوت آنلاین؛ فایل محلی در اولویت است و این لینک مسیر جایگزین است.
-                        Column(
-                            modifier = Modifier.fillMaxWidth(),
-                            verticalArrangement = Arrangement.spacedBy(8.dp)
-                        ) {
-                            Text(
-                                "لینک صوت",
-                                style = MaterialTheme.typography.titleSmall,
-                                fontWeight = FontWeight.Bold
-                            )
-                            OutlinedTextField(
-                                value = audioUrl,
-                                onValueChange = { viewModel.formAudioUrl.value = it },
-                                modifier = Modifier.fillMaxWidth(),
-                                singleLine = true,
-                                placeholder = { Text("https://example.com/audio.mp3") },
-                                label = { Text("نشانی اینترنتی صوت") },
-                                supportingText = {
-                                    Text(
-                                        if (audioPath.isNullOrBlank())
-                                            "اگر فایل محلی در دسترس نباشد، پخش از این لینک انجام می‌شود."
-                                        else
-                                            "فایل محلی اولویت دارد؛ در صورت خرابی یا نبودن آن از این لینک استفاده می‌شود."
-                                    )
-                                },
-                                shape = RoundedCornerShape(12.dp)
-                            )
-                        }
 
                         // دکمه تبدیل فایل صوتی موجود به متن
                         // -------------------------------------------------
