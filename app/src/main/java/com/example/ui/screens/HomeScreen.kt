@@ -110,7 +110,7 @@ fun HomeScreen(
                                 Modifier
                                     .weight(1f)
                                     .clickable {
-                                        recentLectures.firstOrNull()?.let(onNavigateToAiSummary)
+                                        recentLectures.firstOrNull()?.let { lecture -> onNavigateToAiSummary(lecture.id) }
                                     },
                                 shape = RoundedCornerShape(20.dp),
                                 colors = CardDefaults.cardColors(
