@@ -58,6 +58,7 @@ import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.ExperimentalMaterial3Api
+import androidx.compose.material3.FilledTonalButton
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
@@ -91,6 +92,8 @@ import androidx.compose.ui.unit.sp
 import com.example.data.local.LectureEntity
 import java.io.File
 import java.util.Locale
+import com.example.ui.theme.TagPillBg
+import com.example.ui.theme.TagPillText
 
 private fun formatDuration(milliseconds: Long): String {
     val totalSeconds = (milliseconds / 1000L).coerceAtLeast(0L)
@@ -686,6 +689,7 @@ fun TranscriptTab(
 
         Spacer(Modifier.height(36.dp))
     }
+}
 }
 
 @Composable
