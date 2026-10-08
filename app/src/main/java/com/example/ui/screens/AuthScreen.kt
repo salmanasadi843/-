@@ -28,17 +28,18 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
-import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.platform.LocalContext
 
 @Composable
 fun AuthScreen(
     onAuthenticated: (UserRole) -> Unit
 ) {
+    val context = LocalContext.current
     var registerMode by remember { mutableStateOf(false) }
     var name by remember { mutableStateOf("") }
     var email by remember { mutableStateOf("") }
@@ -173,7 +174,7 @@ fun AuthScreen(
                                 error = null
                                 loading = true
                                 AuthPreferences.sendPasswordReset(
-                                    context = androidx.compose.ui.platform.LocalContext.current,
+                                    context = context,
                                     email = email
                                 ) { result ->
                                     loading = false
@@ -212,7 +213,6 @@ fun AuthScreen(
 
                     Button(
                         onClick = {
-                            val context = androidx.compose.ui.platform.LocalContext.current
                             val normalizedEmail = email.trim().lowercase()
                             error = null
                             resetSent = false
