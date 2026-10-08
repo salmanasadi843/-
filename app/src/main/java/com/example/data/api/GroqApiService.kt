@@ -96,7 +96,7 @@ object GroqApiService {
             val info = MediaCodec.BufferInfo()
 
             fun openChunk() {
-                val out = File(dir, "part_\${index + 1}.m4a")
+                val out = File(dir, "part_${index + 1}.m4a")
                 muxer = MediaMuxer(out.absolutePath, MediaMuxer.OutputFormat.MUXER_OUTPUT_MPEG_4)
                 trackIndex = muxer!!.addTrack(audioFormat)
                 muxer!!.start()
@@ -138,22 +138,22 @@ object GroqApiService {
         file: File,
         onProgress: (TranscriptionProgress) -> Unit
     ): Result<String> {
-        val dir = File(context.cacheDir, "groq_chunks_\${System.currentTimeMillis()}")
+        val dir = File(context.cacheDir, "groq_chunks_${System.currentTimeMillis()}")
         return try {
             onProgress(TranscriptionProgress("تقسیم فایل صوتی", 5, totalBytes = file.length(), detail = "فایل طولانی است؛ صوت به بخش‌های ۱۰ دقیقه‌ای تقسیم می‌شود."))
             val chunks = splitAudioIntoChunks(file, dir)
             if (chunks.isEmpty()) return Result.failure(Exception("تقسیم فایل صوتی ناموفق بود."))
             val texts = mutableListOf<String>()
             chunks.forEachIndexed { i, chunk ->
-                onProgress(TranscriptionProgress("تبدیل بخش \${i + 1} از \${chunks.size}", 10 + i * 80 / chunks.size, totalBytes = file.length(), detail = "در حال ارسال بخش \${i + 1} از \${chunks.size}"))
+                onProgress(TranscriptionProgress("تبدیل بخش ${i + 1} از ${chunks.size}", 10 + i * 80 / chunks.size, totalBytes = file.length(), detail = "در حال ارسال بخش ${i + 1} از ${chunks.size}"))
                 val r = transcribeSingleFile(key, chunk) { p ->
                     val mapped = 10 + i * 80 / chunks.size + p.percent.coerceIn(0, 100) * 80 / chunks.size / 100
-                    onProgress(p.copy(stage = "تبدیل بخش \${i + 1} از \${chunks.size}", percent = mapped.coerceIn(10, 95)))
+                    onProgress(p.copy(stage = "تبدیل بخش ${i + 1} از ${chunks.size}", percent = mapped.coerceIn(10, 95)))
                 }
                 if (r.isFailure) return Result.failure(r.exceptionOrNull()!!)
                 texts += r.getOrThrow()
             }
-            onProgress(TranscriptionProgress("تبدیل صوت به متن کامل شد", 100, file.length(), file.length(), detail = "\${chunks.size} بخش با موفقیت به هم متصل شد."))
+            onProgress(TranscriptionProgress("تبدیل صوت به متن کامل شد", 100, file.length(), file.length(), detail = "${chunks.size} بخش با موفقیت به هم متصل شد."))
             Result.success(texts.joinToString("\n\n"))
         } finally { dir.deleteRecursively() }
     }
