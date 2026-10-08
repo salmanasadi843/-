@@ -28,6 +28,7 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.font.FontWeight
@@ -44,6 +45,8 @@ fun AuthScreen(
     var password by remember { mutableStateOf("") }
     var role by remember { mutableStateOf(UserRole.STUDENT) }
     var error by remember { mutableStateOf<String?>(null) }
+    var loading by remember { mutableStateOf(false) }
+    var resetSent by remember { mutableStateOf(false) }
 
     Surface(
         modifier = Modifier.fillMaxSize(),
@@ -162,6 +165,39 @@ fun AuthScreen(
                         shape = RoundedCornerShape(14.dp)
                     )
 
+                    if (!registerMode) {
+                        Spacer(Modifier.height(6.dp))
+                        TextButton(
+                            onClick = {
+                                resetSent = false
+                                error = null
+                                loading = true
+                                AuthPreferences.sendPasswordReset(
+                                    context = androidx.compose.ui.platform.LocalContext.current,
+                                    email = email
+                                ) { result ->
+                                    loading = false
+                                    result.fold(
+                                        onSuccess = { resetSent = true },
+                                        onFailure = { error = it.message ?: "ارسال ایمیل بازیابی انجام نشد." }
+                                    )
+                                }
+                            },
+                            modifier = Modifier.fillMaxWidth()
+                        ) {
+                            Text("بازیابی رمز عبور")
+                        }
+                    }
+
+                    if (resetSent) {
+                        Text(
+                            "اگر این ایمیل در سامانه ثبت شده باشد، لینک تغییر رمز برای شما ارسال می‌شود.",
+                            modifier = Modifier.fillMaxWidth(),
+                            color = MaterialTheme.colorScheme.primary,
+                            style = MaterialTheme.typography.bodySmall
+                        )
+                    }
+
                     if (error != null) {
                         Spacer(Modifier.height(8.dp))
                         Text(
@@ -176,23 +212,40 @@ fun AuthScreen(
 
                     Button(
                         onClick = {
+                            val context = androidx.compose.ui.platform.LocalContext.current
                             val normalizedEmail = email.trim().lowercase()
-                            val result = if (registerMode) {
+                            error = null
+                            resetSent = false
+                            loading = true
+                            if (registerMode) {
                                 AuthPreferences.register(
+                                    context = context,
                                     email = normalizedEmail,
                                     password = password,
                                     role = role,
                                     name = name.trim()
-                                )
+                                ) { result ->
+                                    loading = false
+                                    result.fold(
+                                        onSuccess = { loggedRole -> onAuthenticated(loggedRole) },
+                                        onFailure = { error = it.message ?: "ساخت حساب انجام نشد." }
+                                    )
+                                }
                             } else {
-                                AuthPreferences.login(normalizedEmail, password)
+                                AuthPreferences.login(
+                                    context = context,
+                                    email = normalizedEmail,
+                                    password = password
+                                ) { result ->
+                                    loading = false
+                                    result.fold(
+                                        onSuccess = { loggedRole -> onAuthenticated(loggedRole) },
+                                        onFailure = { error = it.message ?: "ایمیل یا رمز عبور نادرست است." }
+                                    )
+                                }
                             }
-
-                            result.fold(
-                                onSuccess = { loggedRole -> onAuthenticated(loggedRole) },
-                                onFailure = { error = it.message ?: "اطلاعات واردشده صحیح نیست." }
-                            )
                         },
+                        enabled = !loading,
                         modifier = Modifier.fillMaxWidth().height(52.dp),
                         shape = RoundedCornerShape(14.dp),
                         colors = ButtonDefaults.buttonColors(
@@ -200,7 +253,7 @@ fun AuthScreen(
                             contentColor = MaterialTheme.colorScheme.onPrimary
                         )
                     ) {
-                        Text(if (registerMode) "ساخت حساب" else "ورود", fontWeight = FontWeight.Bold)
+                        Text(if (loading) "در حال پردازش..." else if (registerMode) "ساخت حساب" else "ورود", fontWeight = FontWeight.Bold)
                     }
 
                     Spacer(Modifier.height(14.dp))
