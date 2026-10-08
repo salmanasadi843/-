@@ -143,16 +143,41 @@ object AuthPreferences {
                 firestore(context).collection("users").document(user.uid).get()
                     .addOnCompleteListener { profileTask ->
                         if (!profileTask.isSuccessful) {
-                            val role = currentRole(context)
-                            onResult(Result.success(role))
+                            onResult(
+                                Result.failure(
+                                    profileTask.exception
+                                        ?: IllegalStateException("دریافت نقش کاربر از Firebase انجام نشد.")
+                                )
+                            )
                             return@addOnCompleteListener
                         }
 
                         val snapshot = profileTask.result
-                        val role = if (snapshot.getString("role") == UserRole.TEACHER.name) {
-                            UserRole.TEACHER
-                        } else {
-                            UserRole.STUDENT
+                        if (!snapshot.exists()) {
+                            onResult(
+                                Result.failure(
+                                    IllegalStateException(
+                                        "پروفایل این حساب در Firebase وجود ندارد. نقش کاربر مشخص نشده است."
+                                    )
+                                )
+                            )
+                            return@addOnCompleteListener
+                        }
+
+                        val roleValue = snapshot.getString("role")
+                        val role = when (roleValue) {
+                            UserRole.TEACHER.name -> UserRole.TEACHER
+                            UserRole.STUDENT.name -> UserRole.STUDENT
+                            else -> {
+                                onResult(
+                                    Result.failure(
+                                        IllegalStateException(
+                                            "نقش این حساب در Firebase مشخص نشده است. مقدار role باید TEACHER یا STUDENT باشد."
+                                        )
+                                    )
+                                )
+                                return@addOnCompleteListener
+                            }
                         }
                         val name = snapshot.getString("name").orEmpty()
                         cacheProfile(context, role, name)
