@@ -1,5 +1,6 @@
 package com.example.ui.screens
 
+import android.app.DatePickerDialog
 import android.Manifest
 import android.content.pm.PackageManager
 import android.widget.Toast
@@ -49,7 +50,9 @@ import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
 import kotlin.math.max
+import java.util.Calendar
 import androidx.compose.material3.TopAppBar
 import androidx.compose.material3.TopAppBarDefaults
 import androidx.compose.runtime.Composable
@@ -78,6 +81,7 @@ fun AddEditLectureScreen(
 
     val title by viewModel.formTitle.collectAsState()
     val professor by viewModel.formProfessor.collectAsState()
+    val dateText by viewModel.formDateText.collectAsState()
     val tags by viewModel.formTags.collectAsState()
     val transcript by viewModel.formTranscript.collectAsState()
     val audioPath by viewModel.formAudioPath.collectAsState()
@@ -374,6 +378,41 @@ fun AddEditLectureScreen(
 
                             singleLine = true
                         )
+                    }
+
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.spacedBy(8.dp),
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        OutlinedTextField(
+                            value = dateText,
+                            onValueChange = { viewModel.formDateText.value = it },
+                            label = { Text("تاریخ جلسه") },
+                            readOnly = true,
+                            modifier = Modifier.weight(1f),
+                            shape = RoundedCornerShape(12.dp),
+                            singleLine = true
+                        )
+                        TextButton(
+                            onClick = {
+                                val millis = runCatching { PersianDateUtils.parse(dateText, System.currentTimeMillis()) }
+                                    .getOrDefault(System.currentTimeMillis())
+                                val cal = Calendar.getInstance().apply { timeInMillis = millis }
+                                DatePickerDialog(
+                                    context,
+                                    { _, year, month, day ->
+                                        val selected = Calendar.getInstance().apply {
+                                            set(year, month, day, 12, 0, 0)
+                                            set(Calendar.MILLISECOND, 0)
+                                        }
+                                        viewModel.formDateText.value = PersianDateUtils.format(selected.timeInMillis)
+                                    },
+                                    cal.get(Calendar.YEAR), cal.get(Calendar.MONTH), cal.get(Calendar.DAY_OF_MONTH)
+                                ).show()
+                            },
+                            modifier = Modifier.height(52.dp)
+                        ) { Text("تغییر") }
                     }
 
                     OutlinedTextField(
