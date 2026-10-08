@@ -77,7 +77,6 @@ fun AddEditLectureScreen(
     val context = LocalContext.current
 
     val title by viewModel.formTitle.collectAsState()
-    val course by viewModel.formCourse.collectAsState()
     val professor by viewModel.formProfessor.collectAsState()
     val tags by viewModel.formTags.collectAsState()
     val transcript by viewModel.formTranscript.collectAsState()
@@ -316,7 +315,7 @@ fun AddEditLectureScreen(
 
                         label = {
                             Text(
-                                "عنوان جلسه یا مبحث درس (الزامی)*"
+                                "عنوان جلسه (الزامی)*"
                             )
                         },
 
@@ -347,36 +346,6 @@ fun AddEditLectureScreen(
                         horizontalArrangement =
                             Arrangement.spacedBy(8.dp)
                     ) {
-
-                        OutlinedTextField(
-
-                            value = course,
-
-                            onValueChange = {
-                                viewModel.formCourse.value = it
-                            },
-
-                            label = {
-                                Text("نام درس")
-                            },
-
-                            placeholder = {
-                                Text("مثال: هوش مصنوعی")
-                            },
-
-                            modifier =
-                                Modifier
-                                    .weight(1f)
-                                    .testTag(
-                                        "lecture_course_input"
-                                    ),
-
-                            shape =
-                                RoundedCornerShape(12.dp),
-
-                            singleLine = true
-                        )
-
                         OutlinedTextField(
 
                             value = professor,
@@ -547,7 +516,7 @@ fun AddEditLectureScreen(
 
                                     Toast.makeText(
                                         context,
-                                        "صوت ضبط شد و به درس الصاق گردید",
+                                        "صوت ضبط شد و به جلسه الصاق گردید",
                                         Toast.LENGTH_SHORT
                                     ).show()
 
