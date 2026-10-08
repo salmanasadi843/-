@@ -186,6 +186,39 @@ object AuthPreferences {
             }
     }
 
+    fun refreshProfile(
+        context: Context,
+        onResult: (Result<UserRole>) -> Unit
+    ) {
+        val user = auth(context).currentUser
+        if (user == null) {
+            onResult(Result.failure(IllegalStateException("کاربری وارد نشده است.")))
+            return
+        }
+
+        firestore(context).collection("users").document(user.uid).get()
+            .addOnCompleteListener { task ->
+                if (!task.isSuccessful) {
+                    onResult(
+                        Result.failure(
+                            task.exception ?: IllegalStateException("دریافت پروفایل کاربر انجام نشد.")
+                        )
+                    )
+                    return@addOnCompleteListener
+                }
+
+                val snapshot = task.result
+                val role = if (snapshot.getString("role") == UserRole.TEACHER.name) {
+                    UserRole.TEACHER
+                } else {
+                    UserRole.STUDENT
+                }
+                val name = snapshot.getString("name").orEmpty()
+                cacheProfile(context, role, name)
+                onResult(Result.success(role))
+            }
+    }
+
     fun logout(context: Context) {
         auth(context).signOut()
         context.getSharedPreferences(PREFS, Context.MODE_PRIVATE).edit().clear().apply()
