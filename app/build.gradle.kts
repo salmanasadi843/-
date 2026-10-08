@@ -111,6 +111,7 @@ dependencies {
 
     implementation(libs.converter.moshi)
     implementation(libs.firebase.ai)
+    implementation(libs.firebase.firestore)
 
     implementation(libs.firebase.appcheck.recaptcha)
     implementation(libs.firebase.appcheck.debug)
