@@ -15,13 +15,6 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
-import com.example.ui.theme.BluePrimaryContainerLight
-import com.example.ui.theme.BluePrimaryLight
-import com.example.ui.theme.BackgroundLight
-import com.example.ui.theme.OnBackgroundLight
-import com.example.ui.theme.SurfaceLight
-import com.example.ui.theme.PurplePrimaryContainerLight
-import com.example.ui.theme.PurplePrimaryLight
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -38,24 +31,9 @@ fun HomeScreen(
     val recentLectures = lectures.take(5)
     val isTeacher = userRole == UserRole.TEACHER
 
-    val rolePrimary = if (isTeacher) PurplePrimaryLight else BluePrimaryLight
-    val rolePrimaryContainer =
-        if (isTeacher) PurplePrimaryContainerLight else BluePrimaryContainerLight
-
-    val roleOnPrimaryContainer =
-        if (isTeacher) com.example.ui.theme.PurpleOnPrimaryContainerLight
-        else com.example.ui.theme.BlueOnPrimaryContainerLight
-
-    val roleScheme = MaterialTheme.colorScheme.copy(
-        primary = rolePrimary,
-        primaryContainer = rolePrimaryContainer,
-        onPrimaryContainer = roleOnPrimaryContainer,
-        background = BackgroundLight,
-        onBackground = OnBackgroundLight,
-        surface = SurfaceLight
-    )
-
-    MaterialTheme(colorScheme = roleScheme) {
+    // The whole app now shares the cream + navy + gold visual identity.
+    // Teacher/student differences are expressed through actions and labels, not unrelated colors.
+    Scaffold(
         Scaffold(
             containerColor = MaterialTheme.colorScheme.background,
             topBar = {
@@ -337,5 +315,4 @@ fun HomeScreen(
                 item { Spacer(Modifier.height(72.dp)) }
             }
         }
-    }
-}
+  }
