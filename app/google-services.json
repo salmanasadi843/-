@@ -1,0 +1,29 @@
+{
+  "project_info": {
+    "project_number": "72182911776",
+    "project_id": "salmanasadi843-9149a",
+    "storage_bucket": "salmanasadi843-9149a.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:72182911776:android:bd94d0b630f72977a87d45",
+        "android_client_info": {
+          "package_name": "com.aistudio.lecturehub.kqmzv"
+        }
+      },
+      "oauth_client": [],
+      "api_key": [
+        {
+          "current_key": "AIzaSyCuVR2qgUAepZhLbEUPAOK3XoZK86YSkdE"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": []
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}
