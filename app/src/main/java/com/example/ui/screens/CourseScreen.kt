@@ -55,7 +55,7 @@ fun CourseScreen(
                     editingCourse = null
                     showDialog = true
                 }) {
-                    Icon(Icons.Default.Add, contentDescription = "بحث جدید")
+                    Icon(Icons.Default.Add, contentDescription = "درس جدید")
                 }
             }
         }
@@ -76,10 +76,10 @@ fun CourseScreen(
                             Modifier.padding(20.dp),
                             verticalArrangement = Arrangement.spacedBy(8.dp)
                         ) {
-                            Text("هنوز بحثی برای این کلاس ثبت نشده است.", fontWeight = FontWeight.Bold)
+                            Text("هنوز درسی برای این کلاس ثبت نشده است.", fontWeight = FontWeight.Bold)
                             if (userRole == UserRole.TEACHER) {
                                 Text(
-                                    "برای افزودن بحث، روی دکمه + پایین صفحه بزنید.",
+                                    "برای افزودن درس، روی دکمه + پایین صفحه بزنید.",
                                     color = MaterialTheme.colorScheme.onSurfaceVariant
                                 )
                             }
@@ -126,10 +126,10 @@ fun CourseScreen(
                                 editingCourse = course
                                 showDialog = true
                             }) {
-                                Icon(Icons.Default.Edit, contentDescription = "ویرایش بحث")
+                                Icon(Icons.Default.Edit, contentDescription = "ویرایش درس")
                             }
                             IconButton(onClick = { showDeleteDialog = course }) {
-                                Icon(Icons.Default.Delete, contentDescription = "حذف بحث")
+                                Icon(Icons.Default.Delete, contentDescription = "حذف درس")
                             }
                         }
                     }
@@ -195,7 +195,7 @@ private fun CourseEditorDialog(
 
     AlertDialog(
         onDismissRequest = onDismiss,
-        title = { Text(if (course == null) "بحث جدید" else "ویرایش بحث") },
+        title = { Text(if (course == null) "درس جدید" else "ویرایش درس") },
         text = {
             Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
                 OutlinedTextField(
