@@ -82,7 +82,7 @@ fun HomeScreen(
                 item {
                     Card(Modifier.fillMaxWidth(), RoundedCornerShape(24.dp), colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.primary)) {
                         Column(Modifier.padding(22.dp)) {
-                            Text("مطالعه را ادامه دهید", style = MaterialTheme.typography.headlineSmall, fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.onPrimary)
+                            Text("مطالعه را ادامه دهید", style = MaterialTheme.typography.headlineSmall, fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.onSurface)
                             Spacer(Modifier.height(5.dp))
                             Text("کلاس را انتخاب کنید و وارد جلسه موردنظر شوید.", color = MaterialTheme.colorScheme.onPrimary.copy(alpha = 0.82f))
                             Spacer(Modifier.height(14.dp))
