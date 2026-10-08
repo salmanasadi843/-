@@ -2,12 +2,16 @@ package com.example.data.local
 
 import android.content.Context
 import androidx.room.Database
-import androidx.room.migration.Migration
-import androidx.sqlite.db.SupportSQLiteDatabase
 import androidx.room.Room
 import androidx.room.RoomDatabase
+import androidx.room.migration.Migration
+import androidx.sqlite.db.SupportSQLiteDatabase
 
-@Database(entities = [LectureEntity::class, ClassEntity::class, CourseEntity::class], version = 3, exportSchema = false)
+@Database(
+    entities = [LectureEntity::class, ClassEntity::class, CourseEntity::class],
+    version = 4,
+    exportSchema = false
+)
 abstract class AppDatabase : RoomDatabase() {
     abstract fun lectureDao(): LectureDao
     abstract fun classDao(): ClassDao
@@ -31,8 +35,7 @@ abstract class AppDatabase : RoomDatabase() {
                         teacherName TEXT NOT NULL,
                         description TEXT NOT NULL,
                         term TEXT NOT NULL,
-                        createdAtMillis INTEGER NOT NULL,
-                        FOREIGN KEY(classId) REFERENCES classes(id) ON DELETE CASCADE
+                        createdAtMillis INTEGER NOT NULL
                     )
                 """.trimIndent())
                 database.execSQL("""
@@ -49,6 +52,19 @@ abstract class AppDatabase : RoomDatabase() {
             }
         }
 
+        private val MIGRATION_3_4 = object : Migration(3, 4) {
+            override fun migrate(database: SupportSQLiteDatabase) {
+                database.execSQL(
+                    "ALTER TABLE classes ADD COLUMN classDateMillis INTEGER NOT NULL DEFAULT 0"
+                )
+                // برای کلاس‌های قدیمی، تاریخ کلاس را فعلاً برابر تاریخ ایجاد رکورد قرار می‌دهیم
+                // تا داده قبلی از بین نرود و تاریخ خالی نمایش داده نشود.
+                database.execSQL(
+                    "UPDATE classes SET classDateMillis = createdAtMillis WHERE classDateMillis = 0"
+                )
+            }
+        }
+
         @Volatile
         private var INSTANCE: AppDatabase? = null
 
@@ -59,9 +75,9 @@ abstract class AppDatabase : RoomDatabase() {
                     AppDatabase::class.java,
                     "ostadyar_lecture_database"
                 )
-                .addMigrations(MIGRATION_1_2, MIGRATION_2_3)
-                .fallbackToDestructiveMigration(true)
-                .build()
+                    .addMigrations(MIGRATION_1_2, MIGRATION_2_3, MIGRATION_3_4)
+                    .fallbackToDestructiveMigration(true)
+                    .build()
                 INSTANCE = instance
                 instance
             }
