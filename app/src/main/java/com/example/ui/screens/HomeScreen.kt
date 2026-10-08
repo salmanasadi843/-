@@ -1,6 +1,7 @@
 package com.example.ui.screens
 
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
@@ -29,6 +30,7 @@ fun HomeScreen(
     val lectures by viewModel.lectures.collectAsState()
     val query by viewModel.searchQuery.collectAsState()
     val recentLectures = lectures.take(5)
+    val isTeacher = userRole == UserRole.TEACHER
 
     Scaffold(
         topBar = {
@@ -36,9 +38,7 @@ fun HomeScreen(
                 title = {
                     Column {
                         Text("درس‌یار", fontWeight = FontWeight.Bold)
-                        Text(
-                            if (userRole == UserRole.TEACHER) "مدیریت کلاس و محتوای آموزشی"
-                            else "مطالعه کلاس‌ها و جلسات",
+                        Text(if (isTeacher) "فضای استاد" else "فضای شاگرد",
                             style = MaterialTheme.typography.bodySmall,
                             color = MaterialTheme.colorScheme.onSurfaceVariant
                         )
@@ -55,6 +55,9 @@ fun HomeScreen(
                             style = MaterialTheme.typography.labelMedium
                         )
                     }
+                    Surface(shape = RoundedCornerShape(18.dp), color = MaterialTheme.colorScheme.secondaryContainer) {
+                        Text(if (isTeacher) "استاد" else "شاگرد", modifier = Modifier.padding(horizontal = 10.dp, vertical = 6.dp), style = MaterialTheme.typography.labelMedium)
+                    }
                     IconButton(onClick = viewModel::openClasses) {
                         Icon(Icons.Default.School, "کلاس‌ها")
                     }
@@ -65,8 +68,8 @@ fun HomeScreen(
             )
         },
         floatingActionButton = {
-            FloatingActionButton(onClick = viewModel::openClasses) {
-                Icon(Icons.Default.School, "کلاس‌ها")
+            FloatingActionButton(onClick = if (isTeacher) onNavigateToAdd else viewModel::openClasses) {
+                Icon(if (isTeacher) Icons.Default.Add else Icons.Default.School, if (isTeacher) "درس جدید" else "کلاس‌ها")
             }
         }
     ) { paddingValues ->
@@ -75,6 +78,45 @@ fun HomeScreen(
             contentPadding = PaddingValues(horizontal = 16.dp, vertical = 12.dp),
             verticalArrangement = Arrangement.spacedBy(12.dp)
         ) {
+            item {
+                if (isTeacher) {
+                    Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+                        Card(Modifier.weight(1f).clickable {
+                            recentLectures.firstOrNull()?.let(onNavigateToAiSummary)
+                        }, shape = RoundedCornerShape(20.dp)) {
+                            Column(Modifier.padding(18.dp)) {
+                                Icon(Icons.Default.AutoAwesome, null, tint = MaterialTheme.colorScheme.primary)
+                                Spacer(Modifier.height(10.dp))
+                                Text("خلاصه هوشمند", fontWeight = FontWeight.Bold)
+                                Text("خلاصه و کلیدواژه جلسه", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                            }
+                        }
+                        Card(Modifier.weight(1f).clickable(onClick = onNavigateToAdd), shape = RoundedCornerShape(20.dp)) {
+                            Column(Modifier.padding(18.dp)) {
+                                Icon(Icons.Default.AddCircle, null, tint = MaterialTheme.colorScheme.primary)
+                                Spacer(Modifier.height(10.dp))
+                                Text("درس جدید", fontWeight = FontWeight.Bold)
+                                Text("ثبت جلسه و بارگذاری صوت", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                            }
+                        }
+                    }
+                } else {
+                    Card(Modifier.fillMaxWidth(), shape = RoundedCornerShape(20.dp), colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.primaryContainer)) {
+                        Column(Modifier.padding(20.dp)) {
+                            Text("مطالعه را ادامه دهید", style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Bold)
+                            Spacer(Modifier.height(6.dp))
+                            Text("جلسه‌ها، متن درس و خلاصه‌ها در یکجا", color = MaterialTheme.colorScheme.onSurfaceVariant)
+                            Spacer(Modifier.height(14.dp))
+                            OutlinedButton(onClick = viewModel::openClasses, modifier = Modifier.fillMaxWidth()) {
+                                Icon(Icons.Default.School, null)
+                                Spacer(Modifier.width(6.dp))
+                                Text("مشاهده کلاس‌ها")
+                            }
+                        }
+                    }
+                }
+            }
+
             item {
                 OutlinedTextField(
                     value = query,
