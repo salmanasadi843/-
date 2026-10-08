@@ -34,7 +34,6 @@ fun HomeScreen(
     // The whole app now shares the cream + navy + gold visual identity.
     // Teacher/student differences are expressed through actions and labels, not unrelated colors.
     Scaffold(
-        Scaffold(
             containerColor = MaterialTheme.colorScheme.background,
             topBar = {
                 TopAppBar(
