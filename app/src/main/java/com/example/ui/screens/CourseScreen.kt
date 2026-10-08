@@ -101,7 +101,7 @@ fun CourseScreen(
                         Surface(
                             modifier = Modifier.size(46.dp),
                             shape = RoundedCornerShape(13.dp),
-                            color = MaterialTheme.colorScheme.primaryContainer
+                            color = MaterialTheme.colorScheme.secondary
                         ) {
                             Box(contentAlignment = Alignment.Center) {
                                 Icon(
@@ -195,7 +195,16 @@ private fun CourseEditorDialog(
 
     AlertDialog(
         onDismissRequest = onDismiss,
-        title = { Text(if (course == null) "درس جدید" else "ویرایش درس") },
+        containerColor = Color(0xFFFFFCF7),
+        titleContentColor = Color(0xFF24344D),
+        textContentColor = Color(0xFF657080),
+        title = {
+            Text(
+                if (course == null) "درس جدید" else "ویرایش درس",
+                color = Color(0xFF24344D),
+                fontWeight = FontWeight.Bold
+            )
+        },
         text = {
             Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
                 OutlinedTextField(
@@ -204,7 +213,17 @@ private fun CourseEditorDialog(
                     label = { Text("عنوان درس") },
                     placeholder = { Text("مثلاً: حجیت خبر واحد") },
                     singleLine = true,
-                    modifier = Modifier.fillMaxWidth()
+                    modifier = Modifier.fillMaxWidth(),
+                    colors = OutlinedTextFieldDefaults.colors(
+                        focusedBorderColor = Color(0xFFB58A3A),
+                        unfocusedBorderColor = Color(0xFFD8D4CB),
+                        focusedLabelColor = Color(0xFF24344D),
+                        unfocusedLabelColor = Color(0xFF657080),
+                        focusedTextColor = Color(0xFF24344D),
+                        unfocusedTextColor = Color(0xFF24344D),
+                        focusedContainerColor = Color.White,
+                        unfocusedContainerColor = Color.White
+                    )
                 )
                 OutlinedTextField(
                     value = dateText,
@@ -212,17 +231,27 @@ private fun CourseEditorDialog(
                     label = { Text("تاریخ") },
                     placeholder = { Text("مثلاً: ۱۴۰۵/۰۷/۱۵") },
                     singleLine = true,
-                    modifier = Modifier.fillMaxWidth()
+                    modifier = Modifier.fillMaxWidth(),
+                    colors = OutlinedTextFieldDefaults.colors(
+                        focusedBorderColor = Color(0xFFB58A3A),
+                        unfocusedBorderColor = Color(0xFFD8D4CB),
+                        focusedLabelColor = Color(0xFF24344D),
+                        unfocusedLabelColor = Color(0xFF657080),
+                        focusedTextColor = Color(0xFF24344D),
+                        unfocusedTextColor = Color(0xFF24344D),
+                        focusedContainerColor = Color.White,
+                        unfocusedContainerColor = Color.White
+                    )
                 )
             }
         },
         confirmButton = {
             TextButton(enabled = title.isNotBlank(), onClick = { onSave(title, dateText) }) {
-                Text("ذخیره")
+                Text("ذخیره", color = Color(0xFFB58A3A))
             }
         },
         dismissButton = {
-            TextButton(onClick = onDismiss) { Text("انصراف") }
+            TextButton(onClick = onDismiss) { Text("انصراف", color = Color(0xFF24344D)) }
         }
     )
 }
