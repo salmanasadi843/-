@@ -23,8 +23,7 @@ import androidx.lifecycle.viewmodel.compose.viewModel
 import com.example.ui.screens.AddEditLectureScreen
 import com.example.ui.screens.HomeScreen
 import com.example.ui.screens.ClassScreen
-import com.example.ui.screens.CourseScreen
-import com.example.ui.screens.CourseDetailScreen
+import com.example.ui.screens.ClassSessionsScreen
 import com.example.ui.screens.LectureDetailScreen
 import com.example.ui.screens.MainViewModel
 import com.example.ui.screens.SettingsScreen
@@ -95,10 +94,7 @@ fun OstadYarApp(
             ClassScreen(viewModel,userRole,{id->viewModel.openClass(id)},{viewModel.navigateBack()})
         }
         is Screen.ClassDetail -> {
-            CourseScreen(screen.classId,viewModel,userRole,{id->viewModel.openCourse(id)},{viewModel.navigateBack()})
-        }
-        is Screen.CourseDetail -> {
-            CourseDetailScreen(screen.courseId,viewModel,{id->viewModel.navigateTo(Screen.Detail(id))},{viewModel.navigateTo(Screen.AddEdit(null,screen.courseId))},{viewModel.navigateBack()})
+            ClassSessionsScreen(screen.classId,viewModel,userRole,{id->viewModel.navigateTo(Screen.Detail(id))},{viewModel.navigateTo(Screen.AddEdit(null,screen.classId))},{viewModel.navigateBack()})
         }
         is Screen.Detail -> {
             LectureDetailScreen(
