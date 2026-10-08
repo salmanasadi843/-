@@ -184,7 +184,7 @@ fun LectureDetailScreen(
                             Text(
                                 text = "${currentLecture.courseName} • ${currentLecture.professorName}",
                                 style = MaterialTheme.typography.bodySmall,
-                                color = MaterialTheme.colorScheme.onSurfaceVariant
+                                color = MaterialTheme.colorScheme.onPrimary.copy(alpha = 0.78f)
                             )
                         }
                     }
@@ -350,8 +350,9 @@ fun AudioPlayerCard(
             .fillMaxWidth()
             .padding(horizontal = 16.dp, vertical = 8.dp),
         shape = RoundedCornerShape(20.dp),
-        color = MaterialTheme.colorScheme.surface,
-        shadowElevation = 3.dp
+        color = MaterialTheme.colorScheme.primary,
+        contentColor = MaterialTheme.colorScheme.onPrimary,
+        shadowElevation = 5.dp
     ) {
         Column(modifier = Modifier.padding(14.dp)) {
             // Scrubbing Slider
@@ -363,9 +364,9 @@ fun AudioPlayerCard(
                 onValueChange = { onSeekTo(it.toInt()) },
                 valueRange = 0f..maxRange,
                 colors = SliderDefaults.colors(
-                    thumbColor = MaterialTheme.colorScheme.primary,
-                    activeTrackColor = MaterialTheme.colorScheme.primary,
-                    inactiveTrackColor = MaterialTheme.colorScheme.primaryContainer
+                    thumbColor = MaterialTheme.colorScheme.secondary,
+                    activeTrackColor = MaterialTheme.colorScheme.secondary,
+                    inactiveTrackColor = MaterialTheme.colorScheme.onPrimary.copy(alpha = 0.28f)
                 ),
                 modifier = Modifier
                     .fillMaxWidth()
@@ -410,7 +411,7 @@ fun AudioPlayerCard(
                         onSpeedChange(nextSpeed)
                     },
                     shape = RoundedCornerShape(12.dp),
-                    color = TagPillBg
+                    color = MaterialTheme.colorScheme.secondaryContainer
                 ) {
                     Row(
                         modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp),
@@ -420,14 +421,14 @@ fun AudioPlayerCard(
                             imageVector = Icons.Default.Speed,
                             contentDescription = null,
                             modifier = Modifier.size(14.dp),
-                            tint = TagPillText
+                            tint = MaterialTheme.colorScheme.onSecondaryContainer
                         )
                         Spacer(modifier = Modifier.width(4.dp))
                         Text(
                             text = "${playbackSpeed}x",
                             style = MaterialTheme.typography.labelMedium,
                             fontWeight = FontWeight.Bold,
-                            color = TagPillText
+                            color = MaterialTheme.colorScheme.onSecondaryContainer
                         )
                     }
                 }
