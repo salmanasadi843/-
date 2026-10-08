@@ -36,7 +36,7 @@ sealed class Screen {
     data class ClassDetail(val classId: Long) : Screen()
     data class CourseDetail(val courseId: Long) : Screen()
     data class Detail(val lectureId: Long) : Screen()
-    data class AddEdit(val lectureId: Long? = null, val courseId: Long? = null) : Screen()
+    data class AddEdit(val lectureId: Long? = null, val classId: Long? = null) : Screen()
     data class AiStudy(val lectureId: Long) : Screen()
     object Settings : Screen()
 }
@@ -337,7 +337,7 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
             loadLecture(screen.lectureId)
 
         } else if (screen is Screen.AddEdit) {
-            initForm(screen.lectureId, screen.courseId)
+            initForm(screen.lectureId, classId = screen.classId)
         }
 
         _currentScreen.value = screen
@@ -354,36 +354,23 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
             is Screen.ClassDetail -> {
                 _currentScreen.value = Screen.Classes
             }
-            is Screen.CourseDetail -> {
-                viewModelScope.launch {
-                    val course = repository.getCourse(screen.courseId)
-                    _currentScreen.value = course?.let { Screen.ClassDetail(it.classId) } ?: Screen.Classes
-                }
-            }
             is Screen.Detail -> {
                 audioPlayer.stop()
                 speechRecognizer.stopListening()
                 viewModelScope.launch {
                     val lecture = repository.getLecture(screen.lectureId)
-                    _currentScreen.value = when {
-                        lecture?.courseId != null -> Screen.CourseDetail(lecture.courseId)
-                        else -> Screen.Home
-                    }
+                    _currentScreen.value = lecture?.classId?.let { Screen.ClassDetail(it) } ?: Screen.Home
                 }
             }
             is Screen.AddEdit -> {
                 audioPlayer.stop()
                 speechRecognizer.stopListening()
-                if (screen.courseId != null) {
-                    _currentScreen.value = Screen.CourseDetail(screen.courseId)
+                if (screen.classId != null) {
+                    _currentScreen.value = Screen.ClassDetail(screen.classId)
                 } else if (screen.lectureId != null) {
                     viewModelScope.launch {
                         val lecture = repository.getLecture(screen.lectureId)
-                        _currentScreen.value = if (lecture?.courseId != null) {
-                            Screen.CourseDetail(lecture.courseId)
-                        } else {
-                            Screen.Home
-                        }
+                        _currentScreen.value = lecture?.classId?.let { Screen.ClassDetail(it) } ?: Screen.Home
                     }
                 } else {
                     _currentScreen.value = Screen.Home
@@ -402,7 +389,7 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
 
     fun openClass(classId: Long) { _currentScreen.value = Screen.ClassDetail(classId) }
 
-    fun openCourse(courseId: Long) { _currentScreen.value = Screen.CourseDetail(courseId) }
+    fun openCourse(courseId: Long) { /* Legacy compatibility: course screens are no longer part of the user flow. */ }
 
     fun saveClass(item: com.example.data.local.ClassEntity, onSaved: (Long) -> Unit = {}) {
         viewModelScope.launch { onSaved(repository.saveClass(item)) }
@@ -511,7 +498,7 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
         }
     }
 
-    private fun initForm(lectureId: Long?, courseId: Long? = null) {
+    private fun initForm(lectureId: Long?, classId: Long? = null) {
 
         if (lectureId != null) {
 
@@ -541,16 +528,14 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
             formTitle.value = ""
             formDateText.value = PersianDateUtils.format(System.currentTimeMillis())
             formCourse.value = ""
-            formCourseId.value = courseId
-            formClassId.value = null
+            formCourseId.value = null
+            formClassId.value = classId
             formProfessor.value = ""
-            if (courseId != null) {
+            if (classId != null) {
                 viewModelScope.launch {
-                    repository.getCourse(courseId)?.let { course ->
-                        formCourse.value = course.name
-                        formCourseId.value = course.id
-                        formClassId.value = course.classId
-                        formProfessor.value = course.teacherName
+                    repository.getClass(classId)?.let { clazz ->
+                        formClassId.value = clazz.id
+                        formProfessor.value = clazz.teacherName
                     }
                 }
             }
