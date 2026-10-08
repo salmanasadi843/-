@@ -70,13 +70,13 @@ fun HomeScreen(
             },
             floatingActionButton = {
                 FloatingActionButton(
-                    onClick = if (isTeacher) onNavigateToAdd else viewModel::openClasses,
+                    onClick = viewModel::openClasses,
                     containerColor = MaterialTheme.colorScheme.primary,
                     contentColor = MaterialTheme.colorScheme.onPrimary
                 ) {
                     Icon(
-                        if (isTeacher) Icons.Default.Add else Icons.Default.School,
-                        if (isTeacher) "درس جدید" else "کلاس‌ها"
+                        Icons.Default.School,
+                        if (isTeacher) "کلاس‌ها" else "کلاس‌ها"
                     )
                 }
             }
@@ -102,14 +102,14 @@ fun HomeScreen(
                                     },
                                 shape = RoundedCornerShape(20.dp),
                                 colors = CardDefaults.cardColors(
-                                    containerColor = MaterialTheme.colorScheme.primaryContainer
+                                    containerColor = MaterialTheme.colorScheme.surfaceVariant
                                 )
                             ) {
                                 Column(Modifier.padding(18.dp)) {
                                     Icon(
                                         Icons.Default.AutoAwesome,
                                         null,
-                                        tint = MaterialTheme.colorScheme.primary
+                                        tint = MaterialTheme.colorScheme.secondary
                                     )
                                     Spacer(Modifier.height(10.dp))
                                     Text("خلاصه هوشمند", fontWeight = FontWeight.Bold)
@@ -124,19 +124,22 @@ fun HomeScreen(
                             Card(
                                 Modifier
                                     .weight(1f)
-                                    .clickable(onClick = onNavigateToAdd),
-                                shape = RoundedCornerShape(20.dp)
+                                     .clickable(onClick = viewModel::openClasses),
+                                shape = RoundedCornerShape(20.dp),
+                                colors = CardDefaults.cardColors(
+                                    containerColor = MaterialTheme.colorScheme.surface
+                                )
                             ) {
                                 Column(Modifier.padding(18.dp)) {
                                     Icon(
-                                        Icons.Default.AddCircle,
+                                        Icons.Default.School,
                                         null,
-                                        tint = MaterialTheme.colorScheme.primary
+                                        tint = MaterialTheme.colorScheme.secondary
                                     )
                                     Spacer(Modifier.height(10.dp))
-                                    Text("درس جدید", fontWeight = FontWeight.Bold)
+                                    Text("کلاس جدید", fontWeight = FontWeight.Bold)
                                     Text(
-                                        "ثبت جلسه و بارگذاری صوت",
+                                        "ابتدا کلاس را ایجاد کنید، سپس درس اضافه کنید.",
                                         style = MaterialTheme.typography.bodySmall,
                                         color = MaterialTheme.colorScheme.onSurfaceVariant
                                     )
