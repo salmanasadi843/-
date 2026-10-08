@@ -3,7 +3,7 @@ package com.example.ui.theme
 import android.content.Context
 
 enum class AppThemeMode(val title: String) {
-    PURPLE("بنفش خلاقانه"),
+    PURPLE("کرم و سرمه‌ای"),
     BLUE("آبی دانشگاهی"),
     GREEN("سبز آرامش‌بخش"),
     ORANGE("نارنجی انرژی")
