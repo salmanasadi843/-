@@ -211,6 +211,7 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
     val formAudioPath = MutableStateFlow<String?>(null)
     val formAudioUrl = MutableStateFlow("")
     val formAudioDurationMs = MutableStateFlow(0L)
+    private var editingLectureId: Long? = null
 
     init {
         GeminiApiService.configure(application)
@@ -501,6 +502,7 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
     }
 
     private fun initForm(lectureId: Long?, classId: Long? = null) {
+        editingLectureId = lectureId
 
         if (lectureId != null) {
 
@@ -820,8 +822,7 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
         viewModelScope.launch {
             _isAiLoading.value = true
             _transcriptionProgress.value = TranscriptionProgress(
-                "شروع تبدیل صوت به متن",
-                0,
+                "شروع تبدیل صوت به متن", 0,
                 totalBytes = audioFile.length(),
                 detail = "ترتیب استفاده: Groq → Speechmatics → Gemini"
             )
@@ -829,7 +830,7 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
             _aiError.value = null
 
             try {
-                var result: Result<String>
+                var result: Result<String>? = null
 
                 if (GroqApiService.hasApiKey(getApplication<Application>())) {
                     _aiOperationTitle.value = "مرحله ۱ از ۳: Groq"
@@ -838,7 +839,7 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
                         _aiOperationTitle.value = progress.stage
                     }
                     if (result.isSuccess) {
-                        result.onSuccess { formTranscript.value = it }
+                        saveTranscriptionResult(result.getOrThrow())
                         return@launch
                     }
                     Log.w(TAG, "Groq transcription failed; trying Speechmatics", result.exceptionOrNull())
@@ -846,38 +847,25 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
 
                 if (SpeechmaticsApiService.hasApiKey(getApplication<Application>())) {
                     _aiOperationTitle.value = "مرحله ۲ از ۳: Speechmatics"
-                    _transcriptionProgress.value = TranscriptionProgress(
-                        "انتقال به Speechmatics",
-                        25,
-                        totalBytes = audioFile.length(),
-                        detail = "Groq موفق نشد؛ Speechmatics به‌عنوان مسیر دوم فعال شد."
-                    )
                     result = SpeechmaticsApiService.transcribeAudioFile(audioPath) { progress ->
                         _transcriptionProgress.value = progress
                         _aiOperationTitle.value = progress.stage
                     }
                     if (result.isSuccess) {
-                        result.onSuccess { formTranscript.value = it }
+                        saveTranscriptionResult(result.getOrThrow())
                         return@launch
                     }
                     Log.w(TAG, "Speechmatics transcription failed; trying Gemini", result.exceptionOrNull())
                 }
 
                 _aiOperationTitle.value = "مرحله ۳ از ۳: Gemini"
-                _transcriptionProgress.value = TranscriptionProgress(
-                    "انتقال به Gemini",
-                    30,
-                    totalBytes = audioFile.length(),
-                    detail = "Groq و Speechmatics در دسترس نبودند یا ناموفق بودند؛ Gemini مسیر پشتیبان نهایی است."
-                )
                 result = GeminiApiService.transcribeAudioFile(audioPath) { progress ->
                     _transcriptionProgress.value = progress
                     _aiOperationTitle.value = progress.stage
                 }
 
                 result.onSuccess { transcript ->
-                    formTranscript.value = transcript
-                    _aiError.value = null
+                    saveTranscriptionResult(transcript)
                 }.onFailure { error ->
                     Log.e(TAG, "All transcription providers failed", error)
                     _aiError.value = error.localizedMessage ?: "تبدیل فایل صوتی به متن ناموفق بود."
@@ -889,6 +877,48 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
                 _isAiLoading.value = false
             }
         }
+    }
+
+    private suspend fun saveTranscriptionResult(transcript: String) {
+        formTranscript.value = transcript
+        _aiError.value = null
+
+        val id = editingLectureId ?: return
+        val current = repository.getLecture(id) ?: return
+
+        var updated = current.copy(
+            transcript = transcript,
+            audioFilePath = formAudioPath.value,
+            audioUrl = formAudioUrl.value.trim().ifBlank { null },
+            audioDurationMs = formAudioDurationMs.value,
+            lastEditedMillis = System.currentTimeMillis()
+        )
+
+        repository.saveLecture(updated)
+        _selectedLecture.value = updated
+
+        // بعد از پیاده‌سازی، متن، خلاصه و نکات کلیدی بلافاصله در همان جلسه ذخیره می‌شوند.
+        _aiOperationTitle.value = "در حال تهیه خلاصه و کلیدواژه‌ها..."
+
+        val summary = aiTextWithGroqFirst(
+            groqCall = { GroqApiService.summarizeLecture(transcript, current.title) },
+            geminiCall = { GeminiApiService.summarizeLecture(transcript, current.title) }
+        )
+        summary.onSuccess { value ->
+            updated = updated.copy(aiSummary = value, lastEditedMillis = System.currentTimeMillis())
+        }
+
+        val keyPoints = aiTextWithGroqFirst(
+            groqCall = { GroqApiService.extractKeyPoints(transcript) },
+            geminiCall = { GeminiApiService.extractKeyPoints(transcript) }
+        )
+        keyPoints.onSuccess { value ->
+            updated = updated.copy(aiKeyPoints = value, lastEditedMillis = System.currentTimeMillis())
+        }
+
+        repository.saveLecture(updated)
+        _selectedLecture.value = updated
+        _aiError.value = null
     }
 
     fun clearTranscriptionProgress() {
