@@ -255,8 +255,8 @@ ${currentLecture.transcript}
                 AudioPlayerCard(
                     filePath = playableAudio,
                     audioDurationMs = if (duration > 0 && activePath == playableAudio) duration.toLong() else currentLecture.audioDurationMs,
-                    currentPositionMs = if (activePath == currentLecture.audioFilePath) currentPos else 0,
-                    isPlaying = isPlaying && activePath == currentLecture.audioFilePath,
+                    currentPositionMs = if (activePath == playableAudio) currentPos else 0,
+                    isPlaying = isPlaying && activePath == playableAudio,
                     playbackSpeed = playbackSpeed,
                     onPlayToggle = {
                         viewModel.audioPlayer.togglePlayPause(playableAudio)
@@ -381,7 +381,7 @@ fun AudioPlayerCard(
                 Text(
                     text = formatDuration(currentPositionMs.toLong()),
                     style = MaterialTheme.typography.labelSmall,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                    color = MaterialTheme.colorScheme.onPrimary.copy(alpha = 0.82f)
                 )
                 Text(
                     text = formatDuration(audioDurationMs),
@@ -442,21 +442,21 @@ fun AudioPlayerCard(
                         Icon(
                             imageVector = Icons.Default.FastRewind,
                             contentDescription = "۱۵ ثانیه به عقب",
-                            tint = MaterialTheme.colorScheme.primary
+                            tint = MaterialTheme.colorScheme.onPrimary
                         )
                     }
 
                     Surface(
                         onClick = onPlayToggle,
                         shape = CircleShape,
-                        color = MaterialTheme.colorScheme.primary,
+                        color = MaterialTheme.colorScheme.secondary,
                         modifier = Modifier.size(48.dp)
                     ) {
                         Box(contentAlignment = Alignment.Center) {
                             Icon(
                                 imageVector = if (isPlaying) Icons.Default.Pause else Icons.Default.PlayArrow,
                                 contentDescription = if (isPlaying) "توقف" else "پخش",
-                                tint = MaterialTheme.colorScheme.onPrimary,
+                                tint = MaterialTheme.colorScheme.onSecondary,
                                 modifier = Modifier.size(28.dp)
                             )
                         }

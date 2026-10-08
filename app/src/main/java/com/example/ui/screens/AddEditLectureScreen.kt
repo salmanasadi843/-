@@ -1,6 +1,5 @@
 package com.example.ui.screens
 
-import android.app.DatePickerDialog
 import android.Manifest
 import android.content.pm.PackageManager
 import android.widget.Toast
@@ -35,6 +34,10 @@ import androidx.compose.material.icons.filled.Pause
 import androidx.compose.material.icons.filled.PlayArrow
 import androidx.compose.material.icons.filled.Stop
 import androidx.compose.material.icons.filled.UploadFile
+import androidx.compose.foundation.lazy.grid.GridCells
+import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
+import androidx.compose.foundation.lazy.grid.items
+import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.CardDefaults
@@ -56,9 +59,11 @@ import java.util.Calendar
 import androidx.compose.material3.TopAppBar
 import androidx.compose.material3.TopAppBarDefaults
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -380,39 +385,37 @@ fun AddEditLectureScreen(
                         )
                     }
 
-                    Row(
+                    var showJalaliDatePicker by remember { mutableStateOf(false) }
+
+                    OutlinedTextField(
+                        value = dateText,
+                        onValueChange = { },
+                        label = { Text("تاریخ جلسه (شمسی)") },
+                        readOnly = true,
                         modifier = Modifier.fillMaxWidth(),
-                        horizontalArrangement = Arrangement.spacedBy(8.dp),
-                        verticalAlignment = Alignment.CenterVertically
+                        shape = RoundedCornerShape(12.dp),
+                        singleLine = true
+                    )
+
+                    OutlinedButton(
+                        onClick = { showJalaliDatePicker = true },
+                        modifier = Modifier.fillMaxWidth(),
+                        shape = RoundedCornerShape(12.dp)
                     ) {
-                        OutlinedTextField(
-                            value = dateText,
-                            onValueChange = { viewModel.formDateText.value = it },
-                            label = { Text("تاریخ جلسه") },
-                            readOnly = true,
-                            modifier = Modifier.weight(1f),
-                            shape = RoundedCornerShape(12.dp),
-                            singleLine = true
+                        Text("انتخاب تاریخ شمسی")
+                    }
+
+                    if (showJalaliDatePicker) {
+                        JalaliDatePickerDialog(
+                            initialDateMillis = runCatching {
+                                PersianDateUtils.parse(dateText, System.currentTimeMillis())
+                            }.getOrDefault(System.currentTimeMillis()),
+                            onDismiss = { showJalaliDatePicker = false },
+                            onDateSelected = { millis ->
+                                viewModel.formDateText.value = PersianDateUtils.format(millis)
+                                showJalaliDatePicker = false
+                            }
                         )
-                        TextButton(
-                            onClick = {
-                                val millis = runCatching { PersianDateUtils.parse(dateText, System.currentTimeMillis()) }
-                                    .getOrDefault(System.currentTimeMillis())
-                                val cal = Calendar.getInstance().apply { timeInMillis = millis }
-                                DatePickerDialog(
-                                    context,
-                                    { _, year, month, day ->
-                                        val selected = Calendar.getInstance().apply {
-                                            set(year, month, day, 12, 0, 0)
-                                            set(Calendar.MILLISECOND, 0)
-                                        }
-                                        viewModel.formDateText.value = PersianDateUtils.format(selected.timeInMillis)
-                                    },
-                                    cal.get(Calendar.YEAR), cal.get(Calendar.MONTH), cal.get(Calendar.DAY_OF_MONTH)
-                                ).show()
-                            },
-                            modifier = Modifier.height(52.dp)
-                        ) { Text("تغییر") }
                     }
 
                     OutlinedTextField(
@@ -1391,6 +1394,80 @@ fun AddEditLectureScreen(
             )
         }
     }
+}
+
+@Composable
+private fun JalaliDatePickerDialog(
+    initialDateMillis: Long,
+    onDismiss: () -> Unit,
+    onDateSelected: (Long) -> Unit
+) {
+    val initial = remember(initialDateMillis) { PersianDateUtils.jalaliParts(initialDateMillis) }
+    var year by remember { mutableStateOf(initial[0]) }
+    var month by remember { mutableStateOf(initial[1]) }
+    var day by remember { mutableStateOf(initial[2]) }
+    val monthNames = listOf("فروردین","اردیبهشت","خرداد","تیر","مرداد","شهریور","مهر","آبان","آذر","دی","بهمن","اسفند")
+    val weekNames = listOf("ش","ی","د","س","چ","پ","ج")
+    val days = PersianDateUtils.daysInMonth(year, month)
+    val firstDayOfWeek = Calendar.getInstance().apply { timeInMillis = PersianDateUtils.toMillis(year, month, 1) }.get(Calendar.DAY_OF_WEEK) % 7
+    val cells = firstDayOfWeek + days
+
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = { Text("انتخاب تاریخ جلسه — تقویم شمسی") },
+        text = {
+            Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    TextButton(onClick = {
+                        if (month == 1) { month = 12; year-- } else month--
+                        day = day.coerceAtMost(PersianDateUtils.daysInMonth(year, month))
+                    }) { Text("‹") }
+                    Text("${monthNames[month - 1]} ${PersianDateUtils.toPersianDigits(year.toString())}", fontWeight = FontWeight.Bold)
+                    TextButton(onClick = {
+                        if (month == 12) { month = 1; year++ } else month++
+                        day = day.coerceAtMost(PersianDateUtils.daysInMonth(year, month))
+                    }) { Text("›") }
+                }
+                Row(modifier = Modifier.fillMaxWidth()) {
+                    weekNames.forEach { name ->
+                        Box(modifier = Modifier.weight(1f), contentAlignment = Alignment.Center) {
+                            Text(name, style = MaterialTheme.typography.labelSmall, fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.primary)
+                        }
+                    }
+                }
+                LazyVerticalGrid(
+                    columns = GridCells.Fixed(7),
+                    modifier = Modifier.fillMaxWidth().height(280.dp),
+                    userScrollEnabled = false
+                ) {
+                    items(cells) { index ->
+                        if (index < firstDayOfWeek) {
+                            Box(modifier = Modifier.size(40.dp))
+                        } else {
+                            val d = index - firstDayOfWeek + 1
+                            Surface(
+                                onClick = { day = d },
+                                shape = CircleShape,
+                                color = if (d == day) MaterialTheme.colorScheme.secondary else MaterialTheme.colorScheme.surface,
+                                contentColor = if (d == day) MaterialTheme.colorScheme.onSecondary else MaterialTheme.colorScheme.onSurface,
+                                modifier = Modifier.padding(2.dp).size(40.dp)
+                            ) {
+                                Box(contentAlignment = Alignment.Center) {
+                                    Text(PersianDateUtils.toPersianDigits(d.toString()))
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        },
+        confirmButton = { Button(onClick = { onDateSelected(PersianDateUtils.toMillis(year, month, day)) }) { Text("تأیید") } },
+        dismissButton = { TextButton(onClick = onDismiss) { Text("انصراف") } }
+    )
 }
 
 // ---------------------------------------------------------

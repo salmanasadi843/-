@@ -24,6 +24,24 @@ object PersianDateUtils {
         return toPersianDigits("%04d/%02d/%02d".format(j[0], j[1], j[2]))
     }
 
+    fun jalaliParts(millis: Long): IntArray {
+        val c = Calendar.getInstance().apply { timeInMillis = millis }
+        return gregorianToJalali(c.get(Calendar.YEAR), c.get(Calendar.MONTH) + 1, c.get(Calendar.DAY_OF_MONTH))
+    }
+
+    fun toMillis(jy: Int, jm: Int, jd: Int): Long {
+        val g = jalaliToGregorian(jy, jm, jd)
+        return GregorianCalendar(g[0], g[1] - 1, g[2], 12, 0, 0).apply {
+            set(Calendar.MILLISECOND, 0)
+        }.timeInMillis
+    }
+
+    fun daysInMonth(jy: Int, jm: Int): Int {
+        if (jm in 1..6) return 31
+        if (jm in 7..11) return 30
+        return if (toMillis(jy + 1, 1, 1) - toMillis(jy, 1, 1) >= 366L * 24L * 60L * 60L * 1000L) 30 else 29
+    }
+
     fun parse(value: String, fallbackMillis: Long = System.currentTimeMillis()): Long {
         val p = fromPersianDigits(value.trim()).replace('-', '/').split('/')
         if (p.size != 3) return fallbackMillis
