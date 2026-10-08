@@ -2,6 +2,9 @@ package com.example.data.api
 
 import android.content.Context
 import android.util.Log
+import android.media.MediaExtractor
+import android.media.MediaMuxer
+import android.media.MediaCodec
 import com.example.data.local.ApiKeyStore
 import okhttp3.MediaType.Companion.toMediaType
 import okhttp3.MultipartBody
@@ -39,37 +42,150 @@ object GroqApiService {
             val file = File(filePath)
             if (!file.exists() || file.length() == 0L) return@withContext Result.failure(Exception("فایل صوتی معتبر نیست."))
             try {
-                onProgress(TranscriptionProgress("ارسال فایل به Groq", 10, totalBytes = file.length(), detail = "در حال آماده‌سازی فایل صوتی برای Groq"))
-                val mime = when (file.extension.lowercase()) {
-                    "m4a" -> "audio/mp4"; "mp3" -> "audio/mpeg"; "wav" -> "audio/wav";
-                    "ogg" -> "audio/ogg"; "webm" -> "audio/webm"; "flac" -> "audio/flac";
-                    else -> "application/octet-stream"
-                }.toMediaType()
-                val body = MultipartBody.Builder().setType(MultipartBody.FORM)
-                    .addFormDataPart("model", MODEL)
-                    .addFormDataPart("language", "fa")
-                    .addFormDataPart("response_format", "json")
-                    .addFormDataPart("temperature", "0")
-                    .addFormDataPart("prompt", "این فایل صدای کلاس دانشگاهی به زبان فارسی است. اصطلاحات علمی، آیات، احادیث و عبارات عربی را دقیق ثبت کن.")
-                    .addFormDataPart("file", file.name, file.asRequestBody(mime)).build()
-                onProgress(TranscriptionProgress("در حال تبدیل صوت به متن با Groq", 35, totalBytes = file.length(), detail = "مدل Whisper Large V3 Turbo در حال پردازش است"))
-                val request = Request.Builder().url(URL).header("Authorization", "Bearer " + key).post(body).build()
-                val response = client.newCall(request).execute()
-                val raw = response.body?.string().orEmpty()
-                if (!response.isSuccessful) {
-                    Log.e(TAG, "Groq error " + response.code + ": " + raw)
-                    return@withContext Result.failure(Exception("خطای Groq در تبدیل صوت به متن: " + response.code))
-                }
-                val text = JSONObject(raw).optString("text").trim()
-                if (text.isBlank()) return@withContext Result.failure(Exception("Groq متنی برای فایل صوتی برنگرداند."))
-                onProgress(TranscriptionProgress("تبدیل صوت به متن کامل شد", 100, file.length(), file.length(), detail = "متن با موفقیت توسط Groq دریافت شد"))
-                Result.success(text)
+                val durationMs = readAudioDurationMs(file)
+                if (durationMs > CHUNK_DURATION_MS || file.length() > MAX_SINGLE_FILE_BYTES)
+                    return@withContext transcribeInChunks(context, key, file, onProgress)
+                transcribeSingleFile(key, file, onProgress)
             } catch (e: Exception) {
                 Log.e(TAG, "Groq transcription failed", e)
                 Result.failure(e)
             }
         }
-    
+
+    private const val CHUNK_DURATION_MS = 10 * 60 * 1000L
+    private const val MAX_SINGLE_FILE_BYTES = 20L * 1024L * 1024L
+
+    private fun readAudioDurationMs(file: File): Long {
+        val extractor = MediaExtractor()
+        return try {
+            extractor.setDataSource(file.absolutePath)
+            var duration = 0L
+            for (i in 0 until extractor.trackCount) {
+                val f = extractor.getTrackFormat(i)
+                if (f.getString(android.media.MediaFormat.KEY_MIME)?.startsWith("audio/") == true)
+                    duration = maxOf(duration, f.getLong(android.media.MediaFormat.KEY_DURATION) / 1000L)
+            }
+            duration
+        } finally { extractor.release() }
+    }
+
+    private fun splitAudioIntoChunks(file: File, dir: File): List<File> {
+        dir.mkdirs()
+        val extractor = MediaExtractor()
+        val result = mutableListOf<File>()
+        var muxer: MediaMuxer? = null
+        var trackIndex = -1
+        var startUs = -1L
+        var index = 0
+        try {
+            extractor.setDataSource(file.absolutePath)
+            var sourceTrack = -1
+            var format: android.media.MediaFormat? = null
+            for (i in 0 until extractor.trackCount) {
+                val f = extractor.getTrackFormat(i)
+                if (f.getString(android.media.MediaFormat.KEY_MIME)?.startsWith("audio/") == true) {
+                    sourceTrack = i
+                    format = f
+                    break
+                }
+            }
+            if (sourceTrack < 0 || format == null) throw Exception("مسیر صوتی قابل تقسیم نیست.")
+            extractor.selectTrack(sourceTrack)
+            val buffer = java.nio.ByteBuffer.allocateDirect(1024 * 1024)
+            val info = MediaCodec.BufferInfo()
+
+            fun openChunk() {
+                val out = File(dir, "part_\${index + 1}.m4a")
+                muxer = MediaMuxer(out.absolutePath, MediaMuxer.OutputFormat.MUXER_OUTPUT_MPEG_4)
+                trackIndex = muxer!!.addTrack(format)
+                muxer!!.start()
+                startUs = extractor.sampleTime
+                result += out
+                index++
+            }
+
+            while (extractor.sampleTime >= 0L) {
+                if (muxer == null) openChunk()
+                val t = extractor.sampleTime
+                buffer.clear()
+                val size = extractor.readSampleData(buffer, 0)
+                if (size < 0) break
+                info.offset = 0
+                info.size = size
+                info.presentationTimeUs = t - startUs
+                info.flags = extractor.sampleFlags
+                muxer!!.writeSampleData(trackIndex, buffer, info)
+                extractor.advance()
+                if (t - startUs >= CHUNK_DURATION_MS * 1000L) {
+                    muxer!!.stop(); muxer!!.release(); muxer = null; trackIndex = -1; startUs = -1L
+                }
+            }
+            try { muxer?.stop() } catch (_: Exception) {}
+            muxer?.release()
+            result.filter { it.exists() && it.length() > 0L }.toList()
+        } catch (e: Exception) {
+            try { muxer?.stop() } catch (_: Exception) {}
+            try { muxer?.release() } catch (_: Exception) {}
+            result.forEach { it.delete() }
+            throw e
+        } finally { extractor.release() }
+    }
+
+    private suspend fun transcribeInChunks(
+        context: Context,
+        key: String,
+        file: File,
+        onProgress: (TranscriptionProgress) -> Unit
+    ): Result<String> {
+        val dir = File(context.cacheDir, "groq_chunks_\${System.currentTimeMillis()}")
+        return try {
+            onProgress(TranscriptionProgress("تقسیم فایل صوتی", 5, totalBytes = file.length(), detail = "فایل طولانی است؛ صوت به بخش‌های ۱۰ دقیقه‌ای تقسیم می‌شود."))
+            val chunks = splitAudioIntoChunks(file, dir)
+            if (chunks.isEmpty()) return Result.failure(Exception("تقسیم فایل صوتی ناموفق بود."))
+            val texts = mutableListOf<String>()
+            chunks.forEachIndexed { i, chunk ->
+                onProgress(TranscriptionProgress("تبدیل بخش \${i + 1} از \${chunks.size}", 10 + i * 80 / chunks.size, totalBytes = file.length(), detail = "در حال ارسال بخش \${i + 1} از \${chunks.size}"))
+                val r = transcribeSingleFile(key, chunk) { p ->
+                    val mapped = 10 + i * 80 / chunks.size + p.percent.coerceIn(0, 100) * 80 / chunks.size / 100
+                    onProgress(p.copy(stage = "تبدیل بخش \${i + 1} از \${chunks.size}", percent = mapped.coerceIn(10, 95)))
+                }
+                if (r.isFailure) return Result.failure(r.exceptionOrNull()!!)
+                texts += r.getOrThrow()
+            }
+            onProgress(TranscriptionProgress("تبدیل صوت به متن کامل شد", 100, file.length(), file.length(), detail = "\${chunks.size} بخش با موفقیت به هم متصل شد."))
+            Result.success(texts.joinToString("\n\n"))
+        } finally { dir.deleteRecursively() }
+    }
+
+    private fun transcribeSingleFile(
+        key: String,
+        file: File,
+        onProgress: (TranscriptionProgress) -> Unit
+    ): Result<String> {
+        val mime = when (file.extension.lowercase()) {
+            "m4a" -> "audio/mp4"; "mp3" -> "audio/mpeg"; "wav" -> "audio/wav";
+            "ogg" -> "audio/ogg"; "webm" -> "audio/webm"; "flac" -> "audio/flac";
+            else -> "application/octet-stream"
+        }.toMediaType()
+        onProgress(TranscriptionProgress("ارسال فایل به Groq", 15, totalBytes = file.length(), detail = "در حال ارسال فایل صوتی"))
+        val body = MultipartBody.Builder().setType(MultipartBody.FORM)
+            .addFormDataPart("model", MODEL).addFormDataPart("language", "fa")
+            .addFormDataPart("response_format", "json").addFormDataPart("temperature", "0")
+            .addFormDataPart("prompt", "این فایل صدای کلاس دانشگاهی به زبان فارسی است. اصطلاحات علمی، آیات، احادیث و عبارات عربی را دقیق ثبت کن.")
+            .addFormDataPart("file", file.name, file.asRequestBody(mime)).build()
+        val request = Request.Builder().url(URL).header("Authorization", "Bearer " + key).post(body).build()
+        val response = client.newCall(request).execute()
+        val raw = response.body?.string().orEmpty()
+        if (!response.isSuccessful) {
+            Log.e(TAG, "Groq error " + response.code + ": " + raw)
+            return Result.failure(Exception("خطای Groq در تبدیل صوت به متن: " + response.code))
+        }
+        val text = JSONObject(raw).optString("text").trim()
+        if (text.isBlank()) return Result.failure(Exception("Groq متنی برای بخش صوتی برنگرداند."))
+        onProgress(TranscriptionProgress("دریافت متن بخش", 100, file.length(), file.length(), detail = "بخش با موفقیت تبدیل شد."))
+        Result.success(text)
+    }
+
     // ---------------------------------------------------------
     // تولید متن با Groq (اولویت اصلی تمام قابلیت‌های متنی)
     // ---------------------------------------------------------
