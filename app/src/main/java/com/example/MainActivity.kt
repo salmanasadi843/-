@@ -69,8 +69,9 @@ fun OstadYarApp(
     viewModel: MainViewModel = viewModel(),
     onThemeChanged: (AppThemeMode) -> Unit = {}
 ) {
-    var authenticated by remember { mutableStateOf(AuthPreferences.isLoggedIn(LocalContext.current)) }
-    var userRole by remember { mutableStateOf(AuthPreferences.currentRole(LocalContext.current)) }
+    val context = LocalContext.current
+    var authenticated by remember { mutableStateOf(AuthPreferences.isLoggedIn(context)) }
+    var userRole by remember { mutableStateOf(AuthPreferences.currentRole(context)) }
     val currentScreen by viewModel.currentScreen.collectAsState()
 
     if (!authenticated) {
