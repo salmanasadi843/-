@@ -9,6 +9,7 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
@@ -73,6 +74,17 @@ fun OstadYarApp(
     var authenticated by remember { mutableStateOf(AuthPreferences.isLoggedIn(context)) }
     var userRole by remember { mutableStateOf(AuthPreferences.currentRole(context)) }
     val currentScreen by viewModel.currentScreen.collectAsState()
+
+    LaunchedEffect(authenticated) {
+        if (authenticated) {
+            AuthPreferences.refreshProfile(context) { result ->
+                result.onSuccess { role ->
+                    userRole = role
+                    viewModel.setUserRole(role)
+                }
+            }
+        }
+    }
 
     if (!authenticated) {
         BackHandler(enabled = false) { }
@@ -162,7 +174,14 @@ fun OstadYarApp(
                 viewModel = viewModel,
                 onNavigateBack = { viewModel.navigateBack() },
                 currentTheme = ThemePreferences.load(LocalContext.current),
-                onThemeChanged = onThemeChanged
+                onThemeChanged = onThemeChanged,
+                onLogout = {
+                    AuthPreferences.logout(context)
+                    authenticated = false
+                    userRole = UserRole.STUDENT
+                    viewModel.setUserRole(UserRole.STUDENT)
+                    viewModel.navigateTo(Screen.Home)
+                }
             )
         }
     }
