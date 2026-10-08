@@ -251,7 +251,7 @@ fun CourseDetailScreen(
     Scaffold(
         topBar = {
             TopAppBar(
-                title = { Text(course?.name ?: "بحث", fontWeight = FontWeight.Bold) },
+                title = { Text(course?.name ?: "درس", fontWeight = FontWeight.Bold) },
                 navigationIcon = {
                     IconButton(onClick = onBack) {
                         Icon(Icons.Default.ArrowBack, contentDescription = "بازگشت")
@@ -272,11 +272,15 @@ fun CourseDetailScreen(
         ) {
             if (lectures.isEmpty()) {
                 item {
-                    Text("هنوز جلسه‌ای برای این بحث ثبت نشده است.", color = MaterialTheme.colorScheme.onSurfaceVariant)
+                    Text("هنوز جلسه‌ای برای این درس ثبت نشده است.", color = MaterialTheme.colorScheme.onSurfaceVariant)
                 }
             }
             items(lectures, key = { it.id }) { lecture ->
-                Card(Modifier.fillMaxWidth().clickable { onOpenSession(lecture.id) }) {
+                Card(
+                    modifier = Modifier.fillMaxWidth().clickable { onOpenSession(lecture.id) },
+                    shape = RoundedCornerShape(18.dp),
+                    colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface)
+                ) {
                     Column(Modifier.padding(16.dp)) {
                         Text(lecture.title, fontWeight = FontWeight.Bold)
                         Text("تاریخ: " + PersianDateUtils.format(lecture.dateMillis), style = MaterialTheme.typography.bodySmall)
