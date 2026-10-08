@@ -123,7 +123,7 @@ object GroqApiService {
             }
             try { muxer?.stop() } catch (_: Exception) {}
             muxer?.release()
-            result.filter { it.exists() && it.length() > 0L }.toList()
+            return result.filter { it.exists() && it.length() > 0L }.toList()
         } catch (e: Exception) {
             try { muxer?.stop() } catch (_: Exception) {}
             try { muxer?.release() } catch (_: Exception) {}
@@ -184,7 +184,7 @@ object GroqApiService {
         val text = JSONObject(raw).optString("text").trim()
         if (text.isBlank()) return Result.failure(Exception("Groq متنی برای بخش صوتی برنگرداند."))
         onProgress(TranscriptionProgress("دریافت متن بخش", 100, file.length(), file.length(), detail = "بخش با موفقیت تبدیل شد."))
-        Result.success(text)
+        return Result.success(text)
     }
 
     // ---------------------------------------------------------
