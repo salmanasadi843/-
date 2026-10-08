@@ -9,7 +9,6 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.ArrowBack
 import androidx.compose.material.icons.filled.AudioFile
-import androidx.compose.material.icons.filled.CalendarToday
 import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
@@ -33,14 +32,12 @@ fun ClassSessionsScreen(
     val allCourses by viewModel.repository.allCoursesDetailed.collectAsState(initial = emptyList())
     var className by remember { mutableStateOf("کلاس") }
     var teacherName by remember { mutableStateOf("") }
-    var classDateMillis by remember { mutableLongStateOf(System.currentTimeMillis()) }
     var showDeleteDialog by remember { mutableStateOf<LectureEntity?>(null) }
 
     LaunchedEffect(classId) {
         viewModel.repository.getClass(classId)?.let {
             className = it.name
             teacherName = it.teacherName
-            classDateMillis = it.classDateMillis
         }
     }
 
@@ -58,14 +55,8 @@ fun ClassSessionsScreen(
                 title = {
                     Column {
                         Text(className, fontWeight = FontWeight.Bold)
-                        Row(verticalAlignment = Alignment.CenterVertically) {
-                            Icon(Icons.Default.CalendarToday, null, Modifier.size(14.dp), tint = MaterialTheme.colorScheme.secondary)
-                            Spacer(Modifier.width(4.dp))
-                            Text(PersianDateUtils.format(classDateMillis), style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
-                            if (teacherName.isNotBlank()) {
-                                Spacer(Modifier.width(8.dp))
-                                Text("استاد: " + teacherName, style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
-                            }
+                        if (teacherName.isNotBlank()) {
+                            Text("استاد: " + teacherName, style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
                         }
                     }
                 },
