@@ -33,122 +33,114 @@ fun ClassSessionsScreen(
     val allCourses by viewModel.repository.allCoursesDetailed.collectAsState(initial = emptyList())
     var className by remember { mutableStateOf("کلاس") }
     var teacherName by remember { mutableStateOf("") }
+    var classDateMillis by remember { mutableLongStateOf(System.currentTimeMillis()) }
     var showDeleteDialog by remember { mutableStateOf<LectureEntity?>(null) }
 
     LaunchedEffect(classId) {
         viewModel.repository.getClass(classId)?.let {
             className = it.name
             teacherName = it.teacherName
+            classDateMillis = it.classDateMillis
         }
     }
 
     val courseIdsForClass = remember(allCourses, classId) {
         allCourses.filter { it.classId == classId }.map { it.id }.toSet()
     }
-
     val sessions = allLectures
         .filter { it.classId == classId || (it.classId == null && it.courseId in courseIdsForClass) }
         .sortedByDescending { it.dateMillis }
 
     Scaffold(
+        containerColor = MaterialTheme.colorScheme.background,
         topBar = {
             TopAppBar(
                 title = {
                     Column {
                         Text(className, fontWeight = FontWeight.Bold)
-                        if (teacherName.isNotBlank()) {
-                            Text("استاد: $teacherName", style = MaterialTheme.typography.bodySmall,
-                                color = MaterialTheme.colorScheme.onSurfaceVariant)
+                        Row(verticalAlignment = Alignment.CenterVertically) {
+                            Icon(Icons.Default.CalendarToday, null, Modifier.size(14.dp), tint = MaterialTheme.colorScheme.secondary)
+                            Spacer(Modifier.width(4.dp))
+                            Text(PersianDateUtils.format(classDateMillis), style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                            if (teacherName.isNotBlank()) {
+                                Spacer(Modifier.width(8.dp))
+                                Text("استاد: " + teacherName, style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                            }
                         }
                     }
                 },
                 navigationIcon = {
-                    IconButton(onClick = onBack) {
-                        Icon(Icons.Default.ArrowBack, contentDescription = "بازگشت")
-                    }
+                    IconButton(onClick = onBack) { Icon(Icons.Default.ArrowBack, contentDescription = "بازگشت") }
                 }
             )
         },
         floatingActionButton = {
             if (userRole == UserRole.TEACHER) {
-                FloatingActionButton(
+                ExtendedFloatingActionButton(
                     onClick = onNewSession,
-                    containerColor = MaterialTheme.colorScheme.primary,
-                    contentColor = MaterialTheme.colorScheme.onPrimary
-                ) {
-                    Icon(Icons.Default.Add, contentDescription = "جلسه جدید")
-                }
+                    icon = { Icon(Icons.Default.Add, null) },
+                    text = { Text("جلسه جدید") },
+                    containerColor = MaterialTheme.colorScheme.secondary,
+                    contentColor = MaterialTheme.colorScheme.onSecondary
+                )
             }
         }
     ) { padding ->
         LazyColumn(
-            modifier = Modifier.fillMaxSize().padding(padding),
-            contentPadding = PaddingValues(16.dp),
-            verticalArrangement = Arrangement.spacedBy(10.dp)
+            Modifier.fillMaxSize().padding(padding),
+            contentPadding = PaddingValues(16.dp, 12.dp, 16.dp, 96.dp),
+            verticalArrangement = Arrangement.spacedBy(12.dp)
         ) {
             item {
-                Card(
-                    modifier = Modifier.fillMaxWidth(),
-                    shape = RoundedCornerShape(20.dp),
-                    colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant)
-                ) {
-                    Column(Modifier.padding(18.dp)) {
-                        Text("جلسات کلاس", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
-                        Spacer(Modifier.height(4.dp))
-                        Text("همه جلسات به ترتیب تاریخ در همین صفحه قرار می‌گیرند.",
-                            color = MaterialTheme.colorScheme.onSurfaceVariant)
-                    }
+                Column {
+                    Text("جلسات کلاس", style = MaterialTheme.typography.headlineSmall, fontWeight = FontWeight.Bold)
+                    Spacer(Modifier.height(3.dp))
+                    Text(
+                        if (sessions.isEmpty()) "هنوز جلسه‌ای ثبت نشده است." else sessions.size.toString() + " جلسه — جدیدترین جلسه در ابتدا",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
                 }
             }
-
             if (sessions.isEmpty()) {
                 item {
-                    Card(Modifier.fillMaxWidth(), shape = RoundedCornerShape(18.dp)) {
-                        Column(Modifier.fillMaxWidth().padding(22.dp), horizontalAlignment = Alignment.CenterHorizontally) {
-                            Icon(Icons.Default.CalendarToday, contentDescription = null,
-                                tint = MaterialTheme.colorScheme.secondary, modifier = Modifier.size(40.dp))
-                            Spacer(Modifier.height(10.dp))
-                            Text("هنوز جلسه‌ای برای این کلاس ثبت نشده است.", fontWeight = FontWeight.Bold)
+                    Card(Modifier.fillMaxWidth(), RoundedCornerShape(22.dp), colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface)) {
+                        Column(Modifier.fillMaxWidth().padding(28.dp), horizontalAlignment = Alignment.CenterHorizontally) {
+                            Icon(Icons.Default.CalendarToday, null, tint = MaterialTheme.colorScheme.secondary, modifier = Modifier.size(42.dp))
+                            Spacer(Modifier.height(12.dp))
+                            Text(if (userRole == UserRole.TEACHER) "جلسه اول را ایجاد کنید" else "هنوز جلسه‌ای برای مطالعه وجود ندارد", fontWeight = FontWeight.Bold)
                             if (userRole == UserRole.TEACHER) {
-                                Spacer(Modifier.height(6.dp))
-                                Text("از دکمه + جلسه اول را ایجاد کنید.",
-                                    color = MaterialTheme.colorScheme.onSurfaceVariant)
+                                Spacer(Modifier.height(5.dp))
+                                Text("عنوان و تاریخ جلسه را ثبت کنید و سپس صوت و متن را اضافه کنید.", color = MaterialTheme.colorScheme.onSurfaceVariant)
                             }
                         }
                     }
                 }
             }
-
             items(sessions, key = { it.id }) { lecture ->
                 Card(
-                    modifier = Modifier.fillMaxWidth().clickable { onOpenSession(lecture.id) },
-                    shape = RoundedCornerShape(18.dp),
-                    colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface)
+                    Modifier.fillMaxWidth().clickable { onOpenSession(lecture.id) },
+                    RoundedCornerShape(20.dp),
+                    colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
+                    elevation = CardDefaults.cardElevation(1.dp)
                 ) {
-                    Row(Modifier.fillMaxWidth().padding(16.dp), verticalAlignment = Alignment.CenterVertically) {
-                        Surface(Modifier.size(48.dp), shape = RoundedCornerShape(14.dp),
-                            color = MaterialTheme.colorScheme.secondaryContainer) {
+                    Row(Modifier.fillMaxWidth().padding(17.dp), verticalAlignment = Alignment.CenterVertically) {
+                        Surface(Modifier.size(50.dp), RoundedCornerShape(15.dp), color = MaterialTheme.colorScheme.primaryContainer) {
                             Box(contentAlignment = Alignment.Center) {
-                                Icon(Icons.Default.CalendarToday, contentDescription = null,
-                                    tint = MaterialTheme.colorScheme.secondary, modifier = Modifier.size(24.dp))
+                                Text("جلسه", style = MaterialTheme.typography.labelSmall, fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.primary)
                             }
                         }
-                        Spacer(Modifier.width(12.dp))
+                        Spacer(Modifier.width(13.dp))
                         Column(Modifier.weight(1f)) {
-                            Text(lecture.title, fontWeight = FontWeight.Bold,
-                                style = MaterialTheme.typography.titleMedium)
-                            Spacer(Modifier.height(4.dp))
-                            Text(PersianDateUtils.format(lecture.dateMillis),
-                                style = MaterialTheme.typography.bodyMedium,
-                                color = MaterialTheme.colorScheme.onSurfaceVariant)
+                            Text(lecture.title, style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
+                            Spacer(Modifier.height(5.dp))
+                            Text(PersianDateUtils.format(lecture.dateMillis), style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
                             if (lecture.audioFilePath != null || !lecture.audioUrl.isNullOrBlank()) {
-                                Spacer(Modifier.height(3.dp))
+                                Spacer(Modifier.height(5.dp))
                                 Row(verticalAlignment = Alignment.CenterVertically) {
-                                    Icon(Icons.Default.AudioFile, contentDescription = null,
-                                        tint = MaterialTheme.colorScheme.secondary, modifier = Modifier.size(16.dp))
+                                    Icon(Icons.Default.AudioFile, null, tint = MaterialTheme.colorScheme.secondary, modifier = Modifier.size(16.dp))
                                     Spacer(Modifier.width(4.dp))
-                                    Text("صوت موجود", style = MaterialTheme.typography.labelSmall,
-                                        color = MaterialTheme.colorScheme.onSurfaceVariant)
+                                    Text("صوت موجود", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
                                 }
                             }
                         }
@@ -169,15 +161,11 @@ fun ClassSessionsScreen(
             title = { Text("حذف جلسه") },
             text = { Text("آیا جلسه «" + lecture.title + "» حذف شود؟") },
             confirmButton = {
-                TextButton(onClick = {
-                    viewModel.deleteLecture(lecture.id) { showDeleteDialog = null }
-                }) { Text("حذف", color = MaterialTheme.colorScheme.error) }
-            },
-            dismissButton = {
-                TextButton(onClick = { showDeleteDialog = null }) {
-                    Text("انصراف", color = MaterialTheme.colorScheme.primary)
+                TextButton(onClick = { viewModel.deleteLecture(lecture.id) { showDeleteDialog = null } }) {
+                    Text("حذف", color = MaterialTheme.colorScheme.error)
                 }
-            }
+            },
+            dismissButton = { TextButton(onClick = { showDeleteDialog = null }) { Text("انصراف") } }
         )
     }
 }
