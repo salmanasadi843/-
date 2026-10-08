@@ -90,6 +90,7 @@ object GroqApiService {
                 }
             }
             if (sourceTrack < 0 || format == null) throw Exception("مسیر صوتی قابل تقسیم نیست.")
+            val audioFormat = format
             extractor.selectTrack(sourceTrack)
             val buffer = java.nio.ByteBuffer.allocateDirect(1024 * 1024)
             val info = MediaCodec.BufferInfo()
@@ -97,7 +98,7 @@ object GroqApiService {
             fun openChunk() {
                 val out = File(dir, "part_\${index + 1}.m4a")
                 muxer = MediaMuxer(out.absolutePath, MediaMuxer.OutputFormat.MUXER_OUTPUT_MPEG_4)
-                trackIndex = muxer!!.addTrack(format)
+                trackIndex = muxer!!.addTrack(audioFormat)
                 muxer!!.start()
                 startUs = extractor.sampleTime
                 result += out
