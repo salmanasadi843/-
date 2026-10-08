@@ -57,12 +57,9 @@ import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.CircularProgressIndicator
-import androidx.compose.material3.ElevatedCard
 import androidx.compose.material3.ExperimentalMaterial3Api
-import androidx.compose.material3.FilledTonalButton
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
-import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.OutlinedTextField
@@ -271,7 +268,7 @@ ${currentLecture.transcript}
             // AI Loading Banner
             AnimatedVisibility(visible = isAiLoading) {
                 Surface(
-                    color = MaterialTheme.colorScheme.primaryContainer,
+                    color = MaterialTheme.colorScheme.surfaceVariant,
                     modifier = Modifier.fillMaxWidth()
                 ) {
                     Row(
@@ -410,7 +407,7 @@ fun AudioPlayerCard(
                         onSpeedChange(nextSpeed)
                     },
                     shape = RoundedCornerShape(12.dp),
-                    color = MaterialTheme.colorScheme.secondaryContainer.copy(alpha = 0.6f)
+                    color = TagPillBg
                 ) {
                     Row(
                         modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp),
@@ -420,14 +417,14 @@ fun AudioPlayerCard(
                             imageVector = Icons.Default.Speed,
                             contentDescription = null,
                             modifier = Modifier.size(14.dp),
-                            tint = MaterialTheme.colorScheme.onSecondaryContainer
+                            tint = TagPillText
                         )
                         Spacer(modifier = Modifier.width(4.dp))
                         Text(
                             text = "${playbackSpeed}x",
                             style = MaterialTheme.typography.labelMedium,
                             fontWeight = FontWeight.Bold,
-                            color = MaterialTheme.colorScheme.onSecondaryContainer
+                            color = TagPillText
                         )
                     }
                 }
@@ -526,23 +523,23 @@ fun TranscriptTab(
             horizontalArrangement = Arrangement.SpaceBetween,
             verticalAlignment = Alignment.CenterVertically
         ) {
+            Row(
+            modifier = Modifier.fillMaxWidth(),
+            verticalAlignment = Alignment.CenterVertically
+        ) {
             Text(
-                text = "متن اصلی درس",
+                text = "متن جلسه",
                 style = MaterialTheme.typography.titleLarge,
                 fontWeight = FontWeight.Bold
             )
-
-            Row {
-                TextButton(onClick = onCopyClick) {
-                    Icon(Icons.Default.ContentCopy, null, modifier = Modifier.size(17.dp))
-                    Spacer(Modifier.width(5.dp))
-                    Text("کپی")
-                }
-                if (!hasText) {
-                    TextButton(onClick = onEditClick) {
-                        Text("افزودن متن")
-                    }
-                }
+            Spacer(Modifier.weight(1f))
+            TextButton(onClick = onCopyClick) {
+                Icon(Icons.Default.ContentCopy, null, modifier = Modifier.size(17.dp))
+                Spacer(Modifier.width(5.dp))
+                Text("کپی")
+            }
+            if (!hasText) {
+                TextButton(onClick = onEditClick) { Text("افزودن متن") }
             }
         }
 
@@ -604,7 +601,7 @@ fun TranscriptTab(
         Surface(
             modifier = Modifier.fillMaxWidth(),
             shape = RoundedCornerShape(16.dp),
-            color = MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.45f)
+            color = MaterialTheme.colorScheme.surface
         ) {
             Text(
                 text = lecture.aiSummary?.takeIf { it.isNotBlank() }
@@ -635,7 +632,7 @@ fun TranscriptTab(
                 tags.forEach { tag ->
                     Surface(
                         shape = RoundedCornerShape(10.dp),
-                        color = MaterialTheme.colorScheme.secondaryContainer
+                        color = TagPillBg
                     ) {
                         Text(
                             tag,
