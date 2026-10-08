@@ -646,6 +646,7 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
     }
 
 
+    // متن: Groq اول، Gemini در صورت خطا یا نبودن کلید Groq.
     private suspend fun aiTextWithGroqFirst(
         groqCall: suspend () -> Result<String>,
         geminiCall: suspend () -> Result<String>
