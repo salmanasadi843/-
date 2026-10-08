@@ -2,7 +2,7 @@ package com.example.ui.theme
 
 import androidx.compose.ui.graphics.Color
 
-// تم اصلی: بنفش خلاقانه — آرام، مدرن و مناسب مطالعه
+// تم اصلی: کرم، سرمه‌ای و طلایی — آرام، مدرن و مناسب مطالعه
 val PurplePrimaryLight = Color(0xFF24344D)
 val PurpleOnPrimaryLight = Color(0xFFFFFFFF)
 val PurplePrimaryContainerLight = Color(0xFFE8DFCF)
@@ -71,14 +71,14 @@ val SurfaceVariantDark = Color(0xFF282C3A)
 val OnSurfaceVariantDark = Color(0xFFB9BDCC)
 
 // Dark palette is intentionally shared in structure; the primary accent follows the selected theme.
-val PurplePrimaryDark = Color(0xFFB9A7FF)
-val PurpleOnPrimaryDark = Color(0xFF24105E)
-val PurplePrimaryContainerDark = Color(0xFF4C35A8)
-val PurpleOnPrimaryContainerDark = Color(0xFFEAE3FF)
-val PurpleSecondaryDark = Color(0xFF66D8CE)
-val PurpleOnSecondaryDark = Color(0xFF003A36)
-val PurpleTertiaryDark = Color(0xFFFFB968)
-val PurpleOnTertiaryDark = Color(0xFF4A2800)
+val PurplePrimaryDark = Color(0xFFB9C6D9)
+val PurpleOnPrimaryDark = Color(0xFF182638)
+val PurplePrimaryContainerDark = Color(0xFF34465F)
+val PurpleOnPrimaryContainerDark = Color(0xFFF7F4EC)
+val PurpleSecondaryDark = Color(0xFFD8B45A)
+val PurpleOnSecondaryDark = Color(0xFF30220A)
+val PurpleTertiaryDark = Color(0xFFE0C27A)
+val PurpleOnTertiaryDark = Color(0xFF30220A)
 
 val BluePrimaryDark = Color(0xFFAEC6FF)
 val BlueOnPrimaryDark = Color(0xFF06275F)
