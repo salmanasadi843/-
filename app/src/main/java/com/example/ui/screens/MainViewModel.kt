@@ -77,6 +77,8 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
         GeminiApiService.configure(application)
         GroqApiService.configure(application)
         SpeechmaticsApiService.configure(application)
+        GroqApiService.configure(application)
+        SpeechmaticsApiService.configure(application)
     }
 
     private val rolePrefs = application.getSharedPreferences("ostadyar_role", Context.MODE_PRIVATE)
