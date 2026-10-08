@@ -24,6 +24,7 @@ import androidx.compose.material.icons.filled.AutoAwesome
 import androidx.compose.material.icons.filled.CheckCircle
 import androidx.compose.material.icons.filled.DeleteOutline
 import androidx.compose.material.icons.filled.Key
+import androidx.compose.material.icons.filled.NetworkCheck
 import androidx.compose.material.icons.filled.Visibility
 import androidx.compose.material.icons.filled.VisibilityOff
 import androidx.compose.material3.Button
@@ -367,7 +368,36 @@ fun SettingsScreen(
                         OutlinedButton(onClick = { GroqApiService.deleteSavedApiKey(context); groqKey = ""; status = "کلید Groq حذف شد."; statusIsError = false }) { Text("حذف") }
                     }
                     Spacer(Modifier.height(8.dp))
-                    Text("اولویت هوش مصنوعی: Groq ← در صورت خطا → Gemini", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.primary)
+                    OutlinedButton(
+                        onClick = {
+                            if (groqKey.isBlank()) {
+                                status = "ابتدا کلید Groq را وارد کنید."
+                                statusIsError = true
+                                return@OutlinedButton
+                            }
+                            GroqApiService.saveApiKey(context, groqKey)
+                            isTesting = true
+                            status = null
+                            viewModel.testGroqConnection {
+                                isTesting = false
+                                if (it == null) {
+                                    status = "✓ اتصال Groq برقرار است؛ اصلاح متن با Groq انجام می‌شود."
+                                    statusIsError = false
+                                } else {
+                                    status = it
+                                    statusIsError = true
+                                }
+                            }
+                        },
+                        enabled = !isTesting
+                    ) {
+                        if (isTesting) CircularProgressIndicator(modifier = Modifier.size(16.dp), strokeWidth = 2.dp)
+                        else Icon(Icons.Default.NetworkCheck, contentDescription = null)
+                        Spacer(Modifier.width(6.dp))
+                        Text("تست اتصال Groq")
+                    }
+                    Spacer(Modifier.height(8.dp))
+                    Text("اصلاح متن: Groq ← در صورت خطا → Gemini", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.primary)
                 }
             }
             Card(

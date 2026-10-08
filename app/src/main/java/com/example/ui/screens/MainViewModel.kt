@@ -658,6 +658,25 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
         return geminiCall()
     }
 
+    fun testGroqConnection(
+        onComplete: (String?) -> Unit
+    ) {
+        viewModelScope.launch {
+            if (!GroqApiService.hasApiKey(getApplication<Application>())) {
+                onComplete("کلید Groq تنظیم نشده است.")
+                return@launch
+            }
+            val result = GroqApiService.generateContent(
+                prompt = "پاسخ را فقط با کلمه «آماده» بده."
+            )
+            result.onSuccess {
+                onComplete(null)
+            }.onFailure { error ->
+                onComplete(error.localizedMessage ?: "اتصال به Groq ناموفق بود.")
+            }
+        }
+    }
+
     fun testGeminiConnection(
         onComplete: (String?) -> Unit
     ) {
