@@ -17,6 +17,9 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import com.example.ui.theme.BluePrimaryContainerLight
 import com.example.ui.theme.BluePrimaryLight
+import com.example.ui.theme.BackgroundLight
+import com.example.ui.theme.OnBackgroundLight
+import com.example.ui.theme.SurfaceLight
 import com.example.ui.theme.PurplePrimaryContainerLight
 import com.example.ui.theme.PurplePrimaryLight
 
@@ -39,9 +42,17 @@ fun HomeScreen(
     val rolePrimaryContainer =
         if (isTeacher) PurplePrimaryContainerLight else BluePrimaryContainerLight
 
+    val roleOnPrimaryContainer =
+        if (isTeacher) com.example.ui.theme.PurpleOnPrimaryContainerLight
+        else com.example.ui.theme.BlueOnPrimaryContainerLight
+
     val roleScheme = MaterialTheme.colorScheme.copy(
         primary = rolePrimary,
-        primaryContainer = rolePrimaryContainer
+        primaryContainer = rolePrimaryContainer,
+        onPrimaryContainer = roleOnPrimaryContainer,
+        background = BackgroundLight,
+        onBackground = OnBackgroundLight,
+        surface = SurfaceLight
     )
 
     MaterialTheme(colorScheme = roleScheme) {
@@ -261,7 +272,10 @@ fun HomeScreen(
                             Modifier
                                 .fillMaxWidth()
                                 .clickable { viewModel.openClass(classItem.id) },
-                            shape = RoundedCornerShape(18.dp)
+                            shape = RoundedCornerShape(20.dp),
+                            colors = CardDefaults.cardColors(
+                                containerColor = MaterialTheme.colorScheme.surface
+                            )
                         ) {
                             Row(
                                 Modifier.padding(16.dp),
@@ -302,45 +316,21 @@ fun HomeScreen(
                 }
 
                 item {
-                    Spacer(Modifier.height(8.dp))
-                    Text(
-                        "آخرین جلسات",
-                        style = MaterialTheme.typography.titleLarge,
-                        fontWeight = FontWeight.Bold
-                    )
-                }
-
-                if (recentLectures.isEmpty()) {
-                    item {
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.SpaceBetween,
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
                         Text(
-                            "هنوز جلسه‌ای برای نمایش وجود ندارد.",
+                            if (isTeacher) "کلاس‌ها و درس‌ها" else "کلاس‌های من",
+                            style = MaterialTheme.typography.titleLarge,
+                            fontWeight = FontWeight.Bold
+                        )
+                        Text(
+                            "برای ورود به درس، کلاس را انتخاب کنید",
+                            style = MaterialTheme.typography.labelSmall,
                             color = MaterialTheme.colorScheme.onSurfaceVariant
                         )
-                    }
-                } else {
-                    items(recentLectures, key = { it.id }) { lecture ->
-                        Card(
-                            Modifier
-                                .fillMaxWidth()
-                                .clickable { onNavigateToDetail(lecture.id) },
-                            shape = RoundedCornerShape(18.dp)
-                        ) {
-                            Column(Modifier.padding(14.dp)) {
-                                Text(lecture.title, fontWeight = FontWeight.Bold)
-                                Text(
-                                    PersianDateUtils.format(lecture.dateMillis),
-                                    style = MaterialTheme.typography.bodySmall,
-                                    color = MaterialTheme.colorScheme.onSurfaceVariant
-                                )
-                                if (lecture.tags.isNotBlank()) {
-                                    Text(
-                                        lecture.tags,
-                                        style = MaterialTheme.typography.labelSmall,
-                                        color = MaterialTheme.colorScheme.primary
-                                    )
-                                }
-                            }
-                        }
                     }
                 }
 
