@@ -34,7 +34,6 @@ sealed class Screen {
     object Home : Screen()
     object Classes : Screen()
     data class ClassDetail(val classId: Long) : Screen()
-    data class CourseDetail(val courseId: Long) : Screen()
     data class Detail(val lectureId: Long) : Screen()
     data class AddEdit(val lectureId: Long? = null, val classId: Long? = null) : Screen()
     data class AiStudy(val lectureId: Long) : Screen()
@@ -359,7 +358,10 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
                 speechRecognizer.stopListening()
                 viewModelScope.launch {
                     val lecture = repository.getLecture(screen.lectureId)
-                    _currentScreen.value = lecture?.classId?.let { Screen.ClassDetail(it) } ?: Screen.Home
+                    val classId = lecture?.classId ?: lecture?.courseId?.let { courseId ->
+                        repository.getCourse(courseId)?.classId
+                    }
+                    _currentScreen.value = classId?.let { Screen.ClassDetail(it) } ?: Screen.Home
                 }
             }
             is Screen.AddEdit -> {
