@@ -688,7 +688,6 @@ fun TranscriptTab(
         Spacer(Modifier.height(36.dp))
     }
 }
-}
 
 @Composable
 fun AiSummaryTab(
