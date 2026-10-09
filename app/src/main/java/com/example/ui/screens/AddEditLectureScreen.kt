@@ -89,6 +89,8 @@ fun AddEditLectureScreen(
     val dateText by viewModel.formDateText.collectAsState()
     val tags by viewModel.formTags.collectAsState()
     val transcript by viewModel.formTranscript.collectAsState()
+    val formAiSummary by viewModel.formAiSummary.collectAsState()
+    val formAiKeyPoints by viewModel.formAiKeyPoints.collectAsState()
     val audioPath by viewModel.formAudioPath.collectAsState()
     val audioUrl by viewModel.formAudioUrl.collectAsState()
     val audioDurationMs by viewModel.formAudioDurationMs.collectAsState()
@@ -1385,6 +1387,30 @@ fun AddEditLectureScreen(
                                 .colorScheme
                                 .onSurfaceVariant
                     )
+
+                    if (formAiSummary.isNotBlank()) {
+                        ElevatedCard(
+                            modifier = Modifier.fillMaxWidth(),
+                            shape = RoundedCornerShape(14.dp)
+                        ) {
+                            Column(Modifier.padding(14.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                                Text("خلاصه هوشمند", fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.primary)
+                                Text(formAiSummary, style = MaterialTheme.typography.bodyMedium, lineHeight = 23.sp)
+                            }
+                        }
+                    }
+
+                    if (formAiKeyPoints.isNotBlank()) {
+                        ElevatedCard(
+                            modifier = Modifier.fillMaxWidth(),
+                            shape = RoundedCornerShape(14.dp)
+                        ) {
+                            Column(Modifier.padding(14.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                                Text("کلیدواژه‌ها و مباحث اصلی", fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.primary)
+                                Text(formAiKeyPoints, style = MaterialTheme.typography.bodyMedium, lineHeight = 23.sp)
+                            }
+                        }
+                    }
                 }
             }
 
