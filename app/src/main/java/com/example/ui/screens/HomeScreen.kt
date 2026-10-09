@@ -17,14 +17,23 @@ import androidx.compose.foundation.verticalScroll
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.Dp
 import android.widget.Toast
+import android.content.Context
+import android.net.ConnectivityManager
+import android.net.Network
+import android.net.NetworkCapabilities
 import com.example.data.local.ClassEntity
 import com.example.data.local.LectureEntity
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.DisposableEffect
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 
@@ -40,6 +49,7 @@ fun HomeScreen(
     val classes by viewModel.repository.allClasses.collectAsState(initial = emptyList())
     val lectures by viewModel.repository.allLectures.collectAsState(initial = emptyList())
     val isTeacher = userRole == UserRole.TEACHER
+    val isOnline = rememberNetworkConnection()
     var showBulkExportDialog by androidx.compose.runtime.remember { androidx.compose.runtime.mutableStateOf(false) }
 
     Scaffold(
@@ -54,6 +64,20 @@ fun HomeScreen(
                             style = MaterialTheme.typography.labelMedium,
                             color = MaterialTheme.colorScheme.onSurfaceVariant
                         )
+                        Spacer(Modifier.height(3.dp))
+                        Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(4.dp)) {
+                            Box(
+                                Modifier.size(7.dp).background(
+                                    if (isOnline) Color(0xFF2E7D32) else Color(0xFFD97706),
+                                    androidx.compose.foundation.shape.CircleShape
+                                )
+                            )
+                            Text(
+                                if (isOnline) "اینترنت متصل" else "آفلاین",
+                                style = MaterialTheme.typography.labelSmall,
+                                color = if (isOnline) Color(0xFF2E7D32) else MaterialTheme.colorScheme.error
+                            )
+                        }
                     }
                 },
                 actions = {
@@ -283,6 +307,39 @@ private fun BulkExportDialog(
         },
         dismissButton = { TextButton(onClick = onDismiss) { Text("انصراف") } }
     )
+}
+
+@Composable
+private fun rememberNetworkConnection(): Boolean {
+    val context = LocalContext.current
+    val connectivityManager = remember(context) {
+        context.getSystemService(Context.CONNECTIVITY_SERVICE) as ConnectivityManager
+    }
+    fun connected(): Boolean {
+        val network = connectivityManager.activeNetwork ?: return false
+        val capabilities = connectivityManager.getNetworkCapabilities(network) ?: return false
+        return capabilities.hasCapability(NetworkCapabilities.NET_CAPABILITY_INTERNET) &&
+            capabilities.hasCapability(NetworkCapabilities.NET_CAPABILITY_VALIDATED)
+    }
+    val online = remember { mutableStateOf(connected()) }
+    DisposableEffect(connectivityManager) {
+        val callback = object : ConnectivityManager.NetworkCallback() {
+            override fun onAvailable(network: Network) {
+                online.value = connected()
+            }
+            override fun onCapabilitiesChanged(network: Network, networkCapabilities: NetworkCapabilities) {
+                online.value = networkCapabilities.hasCapability(NetworkCapabilities.NET_CAPABILITY_INTERNET) &&
+                    networkCapabilities.hasCapability(NetworkCapabilities.NET_CAPABILITY_VALIDATED)
+            }
+            override fun onLost(network: Network) {
+                online.value = connected()
+            }
+        }
+        runCatching { connectivityManager.registerDefaultNetworkCallback(callback) }
+        online.value = connected()
+        onDispose { runCatching { connectivityManager.unregisterNetworkCallback(callback) } }
+    }
+    return online.value
 }
 
 @Composable
