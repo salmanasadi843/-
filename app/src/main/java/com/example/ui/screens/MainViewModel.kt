@@ -210,6 +210,8 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
     val formProfessor = MutableStateFlow("")
     val formTags = MutableStateFlow("")
     val formTranscript = MutableStateFlow("")
+    val formAiSummary = MutableStateFlow("")
+    val formAiKeyPoints = MutableStateFlow("")
     val formAudioPath = MutableStateFlow<String?>(null)
     val formAudioUrl = MutableStateFlow("")
     val formAudioDurationMs = MutableStateFlow(0L)
@@ -523,6 +525,8 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
                     formProfessor.value = lecture.professorName
                     formTags.value = lecture.tags
                     formTranscript.value = lecture.transcript
+                    formAiSummary.value = lecture.aiSummary.orEmpty()
+                    formAiKeyPoints.value = lecture.aiKeyPoints.orEmpty()
                     formAudioPath.value = lecture.audioFilePath
                     formAudioDurationMs.value =
                         lecture.audioDurationMs
@@ -547,6 +551,8 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
             }
             formTags.value = ""
             formTranscript.value = ""
+            formAiSummary.value = ""
+            formAiKeyPoints.value = ""
             formAudioPath.value = null
             formAudioUrl.value = ""
             formAudioDurationMs.value = 0L
@@ -594,9 +600,9 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
                     transcript =
                         formTranscript.value.trim(),
                     aiSummary =
-                        existing?.aiSummary,
+                        formAiSummary.value.takeIf { it.isNotBlank() } ?: existing?.aiSummary,
                     aiKeyPoints =
-                        existing?.aiKeyPoints,
+                        formAiKeyPoints.value.takeIf { it.isNotBlank() } ?: existing?.aiKeyPoints,
                     aiQuizJson =
                         existing?.aiQuizJson,
                     tags =
@@ -1249,9 +1255,49 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
                     editedParts += edited
                 }
 
-                // فقط پس از موفقیت همه بخش‌ها متن فرم جایگزین می‌شود.
-                formTranscript.value = editedParts.joinToString("\n\n")
-                _aiOperationTitle.value = "ویرایش متن کامل شد؛ محتوای درس حفظ شده است"
+                // متن ویرایش‌شده را در فرم قرار می‌دهیم، سپس خلاصه و کلیدواژه‌ها را از همین متن می‌سازیم.
+                val editedTranscript = editedParts.joinToString("\n\n")
+                formTranscript.value = editedTranscript
+
+                _aiOperationTitle.value = "در حال تهیه خلاصه از متن ویرایش‌شده..."
+                val summaryResult = aiTextWithGroqFirst(
+                    groqCall = { GroqApiService.summarizeLecture(editedTranscript, formTitle.value) },
+                    geminiCall = { GeminiApiService.summarizeLecture(editedTranscript, formTitle.value) }
+                )
+                summaryResult.onSuccess { formAiSummary.value = it.trim() }
+
+                _aiOperationTitle.value = "در حال استخراج کلیدواژه‌ها..."
+                val keywordSource = formAiSummary.value.takeIf { it.isNotBlank() } ?: editedTranscript
+                val keywordResult = aiTextWithGroqFirst(
+                    groqCall = { GroqApiService.extractKeyPoints(keywordSource) },
+                    geminiCall = { GeminiApiService.extractKeyPoints(keywordSource) }
+                )
+                keywordResult.onSuccess { formAiKeyPoints.value = it.trim() }
+
+                val failures = buildList {
+                    summaryResult.exceptionOrNull()?.let { add("خلاصه: ${it.localizedMessage ?: "خطای نامشخص"}") }
+                    keywordResult.exceptionOrNull()?.let { add("کلیدواژه‌ها: ${it.localizedMessage ?: "خطای نامشخص"}") }
+                }
+                if (failures.isNotEmpty()) {
+                    _aiError.value = "متن ویرایش شد، اما تولید خودکار کامل نشد. می‌توانید متن را ذخیره کنید و بعداً دوباره تلاش کنید.\n" + failures.joinToString("\n")
+                    _aiOperationTitle.value = "ویرایش متن انجام شد؛ تولید خلاصه/کلیدواژه نیاز به تلاش دوباره دارد"
+                } else {
+                    _aiOperationTitle.value = "متن ویرایش، خلاصه و کلیدواژه‌ها آماده شد"
+                }
+
+                // اگر جلسه از قبل ذخیره شده باشد، خروجی‌ها را همان لحظه نیز در پایگاه داده ثبت می‌کنیم.
+                val savedId = editingLectureId
+                if (savedId != null && (formAiSummary.value.isNotBlank() || formAiKeyPoints.value.isNotBlank())) {
+                    val existing = repository.getLecture(savedId)
+                    if (existing != null) {
+                        repository.saveLecture(existing.copy(
+                            transcript = editedTranscript,
+                            aiSummary = formAiSummary.value.takeIf { it.isNotBlank() } ?: existing.aiSummary,
+                            aiKeyPoints = formAiKeyPoints.value.takeIf { it.isNotBlank() } ?: existing.aiKeyPoints,
+                            lastEditedMillis = System.currentTimeMillis()
+                        ))
+                    }
+                }
             } catch (error: Exception) {
                 Log.e(TAG, "Transcript editing failed", error)
                 _aiError.value = error.localizedMessage ?: "ویرایش متن ناموفق بود؛ متن اصلی تغییر نکرد."
