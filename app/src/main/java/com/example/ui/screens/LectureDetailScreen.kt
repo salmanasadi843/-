@@ -527,23 +527,20 @@ fun TranscriptTab(
             horizontalArrangement = Arrangement.SpaceBetween,
             verticalAlignment = Alignment.CenterVertically
         ) {
-            Row(
-            modifier = Modifier.fillMaxWidth(),
-            verticalAlignment = Alignment.CenterVertically
-        ) {
             Text(
                 text = "متن جلسه",
                 style = MaterialTheme.typography.titleLarge,
                 fontWeight = FontWeight.Bold
             )
-            Spacer(Modifier.weight(1f))
-            TextButton(onClick = onCopyClick) {
-                Icon(Icons.Default.ContentCopy, null, modifier = Modifier.size(17.dp))
-                Spacer(Modifier.width(5.dp))
-                Text("کپی")
-            }
-            if (!hasText) {
-                TextButton(onClick = onEditClick) { Text("افزودن متن") }
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                TextButton(onClick = onCopyClick) {
+                    Icon(Icons.Default.ContentCopy, null, modifier = Modifier.size(17.dp))
+                    Spacer(Modifier.width(5.dp))
+                    Text("کپی")
+                }
+                if (!hasText) {
+                    TextButton(onClick = onEditClick) { Text("افزودن متن") }
+                }
             }
         }
 
