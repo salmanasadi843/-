@@ -63,4 +63,7 @@ interface LectureDao {
     @Query("DELETE FROM lectures")
     suspend fun clearForRestore()
 
+    @Query("DELETE FROM lectures WHERE id < 0")
+    suspend fun clearCloudSharedData()
+
 }
