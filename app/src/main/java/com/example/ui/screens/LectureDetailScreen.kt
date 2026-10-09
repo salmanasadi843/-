@@ -38,6 +38,7 @@ import androidx.compose.material.icons.automirrored.filled.Send
 import androidx.compose.material.icons.filled.AutoAwesome
 import androidx.compose.material.icons.filled.ContentCopy
 import androidx.compose.material.icons.filled.Delete
+import androidx.compose.material.icons.filled.Description
 import androidx.compose.material.icons.filled.Edit
 import androidx.compose.material.icons.filled.FastForward
 import androidx.compose.material.icons.filled.FastRewind
@@ -132,6 +133,7 @@ fun LectureDetailScreen(
     val chatMessages by viewModel.chatMessages.collectAsState()
 
     var showDeleteConfirmDialog by remember { mutableStateOf(false) }
+    var showExportDialog by remember { mutableStateOf(false) }
     var chatInputText by remember { mutableStateOf("") }
 
     if (lecture == null) {
@@ -165,6 +167,36 @@ fun LectureDetailScreen(
                 TextButton(onClick = { showDeleteConfirmDialog = false }) {
                     Text("انصراف")
                 }
+            }
+        )
+    }
+
+    if (showExportDialog) {
+        AlertDialog(
+            onDismissRequest = { showExportDialog = false },
+            title = { Text("خروجی و ارسال جزوه") },
+            text = { Text("قالب فایل را انتخاب کنید. عنوان جلسه، تاریخ، خلاصه، کلیدواژه‌ها و متن جزوه در خروجی قرار می‌گیرد.") },
+            confirmButton = {
+                Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                    TextButton(onClick = {
+                        showExportDialog = false
+                        runCatching { LectureExport.share(context, listOf(currentLecture), LectureExportFormat.WORD, currentLecture.title) }
+                            .onFailure { android.widget.Toast.makeText(context, "ساخت فایل Word ناموفق بود: ${it.localizedMessage}", android.widget.Toast.LENGTH_LONG).show() }
+                    }) { Text("Word") }
+                    TextButton(onClick = {
+                        showExportDialog = false
+                        runCatching { LectureExport.share(context, listOf(currentLecture), LectureExportFormat.PDF, currentLecture.title) }
+                            .onFailure { android.widget.Toast.makeText(context, "ساخت PDF ناموفق بود: ${it.localizedMessage}", android.widget.Toast.LENGTH_LONG).show() }
+                    }) { Text("PDF") }
+                    TextButton(onClick = {
+                        showExportDialog = false
+                        runCatching { LectureExport.share(context, listOf(currentLecture), LectureExportFormat.TEXT, currentLecture.title) }
+                            .onFailure { android.widget.Toast.makeText(context, "اشتراک‌گذاری ناموفق بود: ${it.localizedMessage}", android.widget.Toast.LENGTH_LONG).show() }
+                    }) { Text("متن") }
+                }
+            },
+            dismissButton = {
+                TextButton(onClick = { showExportDialog = false }) { Text("انصراف") }
             }
         )
     }
@@ -226,6 +258,9 @@ ${currentLecture.transcript}
                         context.startActivity(Intent.createChooser(shareIntent, "اشتراک‌گذاری جزوه کلاس"))
                     }) {
                         Icon(imageVector = Icons.Default.Share, contentDescription = "اشتراک‌گذاری")
+                    }
+                    IconButton(onClick = { showExportDialog = true }) {
+                        Icon(imageVector = Icons.Default.Description, contentDescription = "خروجی Word و PDF")
                     }
                     if (isTeacher) {
                     IconButton(onClick = { showDeleteConfirmDialog = true }) {
