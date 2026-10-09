@@ -83,6 +83,10 @@ object PersianDateUtils {
         var days = 365 * jy2 + (jy2 / 33) * 8 + ((jy2 % 33) + 3) / 4
         days += if (jm < 7) (jm - 1) * 31 else (jm - 1) * 30 + 6
         days += jd - 1
+        // Jalali day count starts at 1 Farvardin (around March 21),
+        // while the Gregorian conversion below counts from January 1.
+        // The 79-day epoch offset is required; without it dates shift ~2.5 months earlier.
+        days += 79
         var gy = 1600 + 400 * (days / 146097)
         days %= 146097
         var leap = true
