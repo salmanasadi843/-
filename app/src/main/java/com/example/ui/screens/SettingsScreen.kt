@@ -129,6 +129,23 @@ fun SettingsScreen(
     var status by remember { mutableStateOf<String?>(null) }
     var statusIsError by remember { mutableStateOf(false) }
 
+    if (showPublishConfirm) {
+        androidx.compose.material3.AlertDialog(
+            onDismissRequest = { showPublishConfirm = false },
+            title = { Text("انتشار آنلاین مطالب") },
+            text = { Text("متن، خلاصه، کلیدواژه‌ها، اطلاعات کلاس و لینک صوت همه جلسات این حساب برای کاربران واردشده به درس‌یار قابل مشاهده خواهد شد. فایل صوتی اصلی ارسال نمی‌شود. آیا ادامه می‌دهید؟") },
+            confirmButton = {
+                Button(onClick = {
+                    showPublishConfirm = false
+                    runCloudSync()
+                }) { Text("انتشار و ادامه") }
+            },
+            dismissButton = {
+                OutlinedButton(onClick = { showPublishConfirm = false }) { Text("انصراف") }
+            }
+        )
+    }
+
     Scaffold(
         topBar = {
             TopAppBar(
