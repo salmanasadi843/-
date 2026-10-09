@@ -1,5 +1,7 @@
 package com.example.ui.screens
 
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
@@ -42,6 +44,7 @@ import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Text
 import androidx.compose.material3.TopAppBar
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -53,11 +56,15 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.text.input.VisualTransformation
 import androidx.compose.ui.unit.dp
+import com.example.data.local.DatabaseBackup
 import com.example.data.api.GeminiApiService
 import com.example.data.api.GroqApiService
 import com.example.data.api.SpeechmaticsApiService
 import com.example.ui.theme.AppThemeMode
 import com.example.ui.theme.themeAccent
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -69,6 +76,28 @@ fun SettingsScreen(
     onLogout: () -> Unit = {}
 ) {
     val context = LocalContext.current
+    val backupScope = rememberCoroutineScope()
+    var backupBusy by remember { mutableStateOf(false) }
+    var backupStatus by remember { mutableStateOf<String?>(null) }
+    var backupError by remember { mutableStateOf(false) }
+    val createBackup = rememberLauncherForActivityResult(ActivityResultContracts.CreateDocument("application/json")) { uri ->
+        if (uri != null) backupScope.launch {
+            backupBusy = true; backupStatus = null
+            val result = withContext(Dispatchers.IO) { runCatching { DatabaseBackup.export(context, uri) } }
+            backupBusy = false
+            backupError = result.isFailure
+            backupStatus = if (result.isSuccess) "پشتیبان با موفقیت ذخیره شد. فایل را در فضای امن یا فضای ابری نگه دارید." else "ساخت پشتیبان ناموفق بود: ${result.exceptionOrNull()?.localizedMessage}"
+        }
+    }
+    val restoreBackup = rememberLauncherForActivityResult(ActivityResultContracts.OpenDocument()) { uri ->
+        if (uri != null) backupScope.launch {
+            backupBusy = true; backupStatus = null
+            val result = withContext(Dispatchers.IO) { runCatching { DatabaseBackup.import(context, uri) } }
+            backupBusy = false
+            backupError = result.isFailure
+            backupStatus = result.getOrElse { "بازیابی ناموفق بود: ${it.localizedMessage}" }
+        }
+    }
 
     var groqKey by remember { mutableStateOf(GroqApiService.getSavedApiKey(context)) }
     var speechmaticsKey by remember { mutableStateOf(SpeechmaticsApiService.getSavedApiKey(context)) }
@@ -451,6 +480,58 @@ fun SettingsScreen(
                         style = MaterialTheme.typography.bodySmall,
                         color = MaterialTheme.colorScheme.primary
                     )
+                }
+            }
+
+            Card(
+                colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
+                elevation = CardDefaults.cardElevation(2.dp),
+                modifier = Modifier.fillMaxWidth()
+            ) {
+                Column(modifier = Modifier.padding(18.dp)) {
+                    Text("پشتیبان‌گیری و بازیابی", style = MaterialTheme.typography.titleLarge)
+                    Spacer(Modifier.height(6.dp))
+                    Text(
+                        "برای جلوگیری از پاک شدن جزوه‌ها با حذف برنامه، یک فایل پشتیبان بسازید و آن را در فضای ابری یا حافظه‌ای امن نگه دارید. بازیابی، اطلاعات فعلی را با اطلاعات فایل پشتیبان جایگزین می‌کند.",
+                        style = MaterialTheme.typography.bodyMedium,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                    Spacer(Modifier.height(12.dp))
+                    Button(
+                        onClick = { createBackup.launch("darsyar-backup.json") },
+                        enabled = !backupBusy,
+                        modifier = Modifier.fillMaxWidth()
+                    ) {
+                        Icon(Icons.Default.CheckCircle, contentDescription = null)
+                        Spacer(Modifier.width(8.dp))
+                        Text("ساخت فایل پشتیبان")
+                    }
+                    Spacer(Modifier.height(8.dp))
+                    OutlinedButton(
+                        onClick = { restoreBackup.launch(arrayOf("application/json", "text/*", "application/octet-stream")) },
+                        enabled = !backupBusy,
+                        modifier = Modifier.fillMaxWidth()
+                    ) {
+                        Icon(Icons.Default.NetworkCheck, contentDescription = null)
+                        Spacer(Modifier.width(8.dp))
+                        Text("بازیابی از فایل پشتیبان")
+                    }
+                    if (backupBusy) {
+                        Spacer(Modifier.height(10.dp))
+                        Row(verticalAlignment = Alignment.CenterVertically) {
+                            CircularProgressIndicator(modifier = Modifier.size(18.dp), strokeWidth = 2.dp)
+                            Spacer(Modifier.width(8.dp))
+                            Text("در حال پردازش فایل...")
+                        }
+                    }
+                    if (backupStatus != null) {
+                        Spacer(Modifier.height(10.dp))
+                        Text(
+                            backupStatus!!,
+                            color = if (backupError) MaterialTheme.colorScheme.error else MaterialTheme.colorScheme.primary,
+                            style = MaterialTheme.typography.bodyMedium
+                        )
+                    }
                 }
             }
 
