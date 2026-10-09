@@ -965,9 +965,10 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
             updated = updated.copy(aiSummary = value, lastEditedMillis = System.currentTimeMillis())
         }
 
+        val handoutForKeywords = updated.aiSummary?.takeIf { it.isNotBlank() } ?: transcript
         val keyPoints = aiTextWithGroqFirst(
-            groqCall = { GroqApiService.extractKeyPoints(transcript) },
-            geminiCall = { GeminiApiService.extractKeyPoints(transcript) }
+            groqCall = { GroqApiService.extractKeyPoints(handoutForKeywords) },
+            geminiCall = { GeminiApiService.extractKeyPoints(handoutForKeywords) }
         )
         keyPoints.onSuccess { value ->
             updated = updated.copy(aiKeyPoints = value, lastEditedMillis = System.currentTimeMillis())
@@ -1059,14 +1060,15 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
             _isAiLoading.value = true
 
             _aiOperationTitle.value =
-                "در حال استخراج فرمول‌ها و نکات کلیدی با هوش مصنوعی..."
+                "در حال استخراج کلیدواژه‌های جزوه..."
 
             _aiError.value = null
 
+            val handoutForKeywords = current.aiSummary?.takeIf { it.isNotBlank() } ?: current.transcript
             val result =
                 aiTextWithGroqFirst(
-                    groqCall = { GroqApiService.extractKeyPoints(current.transcript) },
-                    geminiCall = { GeminiApiService.extractKeyPoints(current.transcript) }
+                    groqCall = { GroqApiService.extractKeyPoints(handoutForKeywords) },
+                    geminiCall = { GeminiApiService.extractKeyPoints(handoutForKeywords) }
                 )
 
             result.onSuccess { keyPoints ->
