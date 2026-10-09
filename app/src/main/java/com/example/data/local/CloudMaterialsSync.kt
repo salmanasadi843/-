@@ -66,11 +66,24 @@ object CloudMaterialsSync {
                     }
                 }
                 payload.optJSONArray("lectures")?.let { array ->
-                    for (i in 0 until array.length()) {
-                        val item = array.getJSONObject(i).toLecture()
+                    val teacherLectures = (0 until array.length()).map { array.getJSONObject(it).toLecture() }
+                    val legacyClassId = stableId(owner, "class:legacy")
+                    if (teacherLectures.any { it.classId == null }) {
+                        val teacherName = payload.optString("teacherName", "استاد")
+                        allClasses += ClassEntity(
+                            id = legacyClassId,
+                            name = "مطالب استاد $teacherName",
+                            teacherName = teacherName,
+                            description = "جلسات قدیمی که به کلاس مشخصی متصل نبودند",
+                            term = "",
+                            classDateMillis = System.currentTimeMillis(),
+                            createdAtMillis = System.currentTimeMillis()
+                        )
+                    }
+                    teacherLectures.forEach { item ->
                         allLectures += item.copy(
                             id = stableId(owner, "lecture:${item.id}"),
-                            classId = item.classId?.let { stableId(owner, "class:$it") },
+                            classId = item.classId?.let { stableId(owner, "class:$it") } ?: legacyClassId,
                             courseId = item.courseId?.let { stableId(owner, "course:$it") },
                             audioFilePath = null,
                             isFavorite = false
