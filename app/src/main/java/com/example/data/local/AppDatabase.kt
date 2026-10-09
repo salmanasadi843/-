@@ -19,16 +19,16 @@ abstract class AppDatabase : RoomDatabase() {
 
     companion object {
         private val MIGRATION_1_2 = object : Migration(1, 2) {
-            override fun migrate(database: SupportSQLiteDatabase) {
-                database.execSQL("ALTER TABLE lectures ADD COLUMN audioUrl TEXT")
+            override fun migrate(db: SupportSQLiteDatabase) {
+                db.execSQL("ALTER TABLE lectures ADD COLUMN audioUrl TEXT")
             }
         }
 
         private val MIGRATION_2_3 = object : Migration(2, 3) {
-            override fun migrate(database: SupportSQLiteDatabase) {
-                database.execSQL("ALTER TABLE lectures ADD COLUMN classId INTEGER")
-                database.execSQL("ALTER TABLE lectures ADD COLUMN courseId INTEGER")
-                database.execSQL("""
+            override fun migrate(db: SupportSQLiteDatabase) {
+                db.execSQL("ALTER TABLE lectures ADD COLUMN classId INTEGER")
+                db.execSQL("ALTER TABLE lectures ADD COLUMN courseId INTEGER")
+                db.execSQL("""
                     CREATE TABLE IF NOT EXISTS classes (
                         id INTEGER PRIMARY KEY AUTOINCREMENT NOT NULL,
                         name TEXT NOT NULL,
@@ -38,7 +38,7 @@ abstract class AppDatabase : RoomDatabase() {
                         createdAtMillis INTEGER NOT NULL
                     )
                 """.trimIndent())
-                database.execSQL("""
+                db.execSQL("""
                     CREATE TABLE IF NOT EXISTS courses (
                         id INTEGER PRIMARY KEY AUTOINCREMENT NOT NULL,
                         classId INTEGER NOT NULL,
@@ -48,18 +48,18 @@ abstract class AppDatabase : RoomDatabase() {
                         createdAtMillis INTEGER NOT NULL
                     )
                 """.trimIndent())
-                database.execSQL("CREATE INDEX IF NOT EXISTS index_courses_classId ON courses(classId)")
+                db.execSQL("CREATE INDEX IF NOT EXISTS index_courses_classId ON courses(classId)")
             }
         }
 
         private val MIGRATION_3_4 = object : Migration(3, 4) {
-            override fun migrate(database: SupportSQLiteDatabase) {
-                database.execSQL(
+            override fun migrate(db: SupportSQLiteDatabase) {
+                db.execSQL(
                     "ALTER TABLE classes ADD COLUMN classDateMillis INTEGER NOT NULL DEFAULT 0"
                 )
                 // برای کلاس‌های قدیمی، تاریخ کلاس را فعلاً برابر تاریخ ایجاد رکورد قرار می‌دهیم
                 // تا داده قبلی از بین نرود و تاریخ خالی نمایش داده نشود.
-                database.execSQL(
+                db.execSQL(
                     "UPDATE classes SET classDateMillis = createdAtMillis WHERE classDateMillis = 0"
                 )
             }
