@@ -42,7 +42,6 @@ object GroqApiService {
             val file = File(filePath)
             if (!file.exists() || file.length() == 0L) return@withContext Result.failure(Exception("فایل صوتی معتبر نیست."))
             try {
-                val durationMs = readAudioDurationMs(file)
                 // Groq accepts long recordings when the file is within the upload-size limit.
                 // Do not remux merely because duration exceeds 10 minutes: MediaMuxer can reject
                 // valid audio codecs/containers with "Failed to add the track to the muxer".
