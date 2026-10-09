@@ -26,7 +26,7 @@ object PersianDateUtils {
     }
 
     fun jalaliParts(millis: Long): IntArray {
-        val c = Calendar.getInstance().apply { timeInMillis = millis }
+        val c = GregorianCalendar(Locale.US).apply { timeInMillis = millis }
         return gregorianToJalali(c.get(Calendar.YEAR), c.get(Calendar.MONTH) + 1, c.get(Calendar.DAY_OF_MONTH))
     }
 
