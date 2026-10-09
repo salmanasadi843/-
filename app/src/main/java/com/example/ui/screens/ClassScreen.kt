@@ -7,6 +7,7 @@ import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Add
+import androidx.compose.material.icons.filled.Edit
 import androidx.compose.material.icons.filled.ArrowBack
 import androidx.compose.material.icons.filled.School
 import androidx.compose.material3.*
@@ -30,11 +31,13 @@ fun ClassScreen(
     var name by remember { mutableStateOf("") }
     var teacher by remember { mutableStateOf("") }
     var term by remember { mutableStateOf("") }
+    var editingClass by remember { mutableStateOf<ClassEntity?>(null) }
 
     fun resetForm() {
         name = ""
         teacher = ""
         term = ""
+        editingClass = null
     }
 
     Scaffold(
@@ -132,6 +135,17 @@ fun ClassScreen(
                                 Spacer(Modifier.height(8.dp))
                                 Text("مشاهده جلسات  ›", style = MaterialTheme.typography.labelLarge, fontWeight = FontWeight.SemiBold, color = MaterialTheme.colorScheme.primary)
                             }
+                            if (userRole == UserRole.TEACHER) {
+                                IconButton(onClick = {
+                                    editingClass = item
+                                    name = item.name
+                                    teacher = item.teacherName
+                                    term = item.term
+                                    showAdd = true
+                                }) {
+                                    Icon(Icons.Default.Edit, contentDescription = "ویرایش کلاس", tint = MaterialTheme.colorScheme.primary)
+                                }
+                            }
                         }
                     }
                 }
@@ -143,7 +157,7 @@ fun ClassScreen(
         AlertDialog(
             onDismissRequest = { showAdd = false },
             containerColor = MaterialTheme.colorScheme.surface,
-            title = { Text("کلاس جدید", fontWeight = FontWeight.Bold) },
+            title = { Text(if (editingClass == null) "کلاس جدید" else "ویرایش مشخصات کلاس", fontWeight = FontWeight.Bold) },
             text = {
                 Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
                     OutlinedTextField(name, { name = it }, label = { Text("نام کلاس") }, placeholder = { Text("مثلاً اصول فقه") }, singleLine = true, modifier = Modifier.fillMaxWidth())
@@ -157,15 +171,19 @@ fun ClassScreen(
                     onClick = {
                         viewModel.saveClass(
                             ClassEntity(
+                                id = editingClass?.id ?: 0L,
                                 name = name.trim(),
                                 teacherName = teacher.trim(),
                                 term = term.trim(),
+                                description = editingClass?.description.orEmpty(),
+                                classDateMillis = editingClass?.classDateMillis ?: System.currentTimeMillis(),
+                                createdAtMillis = editingClass?.createdAtMillis ?: System.currentTimeMillis()
                             )
                         )
                         showAdd = false
                         resetForm()
                     }
-                ) { Text("ایجاد", color = MaterialTheme.colorScheme.secondary) }
+                ) { Text(if (editingClass == null) "ایجاد" else "ذخیره تغییرات", color = MaterialTheme.colorScheme.secondary) }
             },
             dismissButton = { TextButton(onClick = { showAdd = false }) { Text("انصراف") } }
         )
