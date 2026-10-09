@@ -9,8 +9,16 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.AutoAwesome
 import androidx.compose.material.icons.filled.PlayArrow
 import androidx.compose.material.icons.filled.Settings
+import androidx.compose.material.icons.filled.Share
 import androidx.compose.material.icons.filled.School
 import androidx.compose.material3.*
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.verticalScroll
+import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.unit.Dp
+import android.widget.Toast
+import com.example.data.local.ClassEntity
+import com.example.data.local.LectureEntity
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
@@ -31,6 +39,7 @@ fun HomeScreen(
     val classes by viewModel.repository.allClasses.collectAsState(initial = emptyList())
     val lectures by viewModel.repository.allLectures.collectAsState(initial = emptyList())
     val isTeacher = userRole == UserRole.TEACHER
+    var showBulkExportDialog by androidx.compose.runtime.remember { androidx.compose.runtime.mutableStateOf(false) }
 
     Scaffold(
         containerColor = MaterialTheme.colorScheme.background,
@@ -47,6 +56,7 @@ fun HomeScreen(
                     }
                 },
                 actions = {
+                    if (isTeacher) IconButton(onClick = { showBulkExportDialog = true }) { Icon(Icons.Default.Share, contentDescription = "ارسال گروهی مطالب") }
                     IconButton(onClick = viewModel::openClasses) { Icon(Icons.Default.School, "کلاس‌ها") }
                     IconButton(onClick = { viewModel.navigateTo(Screen.Settings) }) { Icon(Icons.Default.Settings, "تنظیمات") }
                 }
@@ -171,6 +181,107 @@ fun HomeScreen(
             }
         }
     }
+    if (showBulkExportDialog && isTeacher) {
+        BulkExportDialog(
+            lectures = lectures,
+            classes = classes,
+            onDismiss = { showBulkExportDialog = false }
+        )
+    }
+}
+
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+private fun BulkExportDialog(
+    lectures: List<LectureEntity>,
+    classes: List<ClassEntity>,
+    onDismiss: () -> Unit
+) {
+    val context = LocalContext.current
+    var scope by androidx.compose.runtime.remember { androidx.compose.runtime.mutableStateOf("all") }
+    var selectedTarget by androidx.compose.runtime.remember(scope) { androidx.compose.runtime.mutableStateOf("") }
+    val targets: List<Pair<String, String>> = when (scope) {
+        "professor" -> lectures.map { it.professorName.trim() }.filter { it.isNotBlank() }.distinct().sorted().map { it to it }
+        "course" -> lectures.map { it.courseName.trim() }.filter { it.isNotBlank() }.distinct().sorted().map { it to it }
+        "class" -> classes.map { it.id.toString() to it.name }
+        else -> emptyList()
+    }
+    val target = selectedTarget.takeIf { value -> targets.any { it.first == value } } ?: targets.firstOrNull()?.first.orEmpty()
+    val selectedLectures = when (scope) {
+        "professor" -> lectures.filter { it.professorName.trim() == target }
+        "course" -> lectures.filter { it.courseName.trim() == target }
+        "class" -> lectures.filter { it.classId?.toString() == target }
+        else -> lectures
+    }.sortedBy { it.dateMillis }
+
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = { Text("ارسال گروهی مطالب") },
+        text = {
+            Column(
+                Modifier.fillMaxWidth().heightIn(max = 440.dp).verticalScroll(rememberScrollState()),
+                verticalArrangement = Arrangement.spacedBy(4.dp)
+            ) {
+                Text("محدوده مطالب را انتخاب کنید:", style = MaterialTheme.typography.titleSmall, fontWeight = FontWeight.Bold)
+                listOf(
+                    "all" to "همه مطالب ذخیره‌شده",
+                    "professor" to "همه جلسات یک استاد",
+                    "course" to "همه جلسات یک درس",
+                    "class" to "همه جلسات یک کلاس"
+                ).forEach { (value, label) ->
+                    Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.fillMaxWidth()) {
+                        RadioButton(selected = scope == value, onClick = { scope = value; selectedTarget = "" })
+                        Text(label, modifier = Modifier.clickable { scope = value; selectedTarget = "" })
+                    }
+                }
+                if (scope != "all") {
+                    Spacer(Modifier.height(6.dp))
+                    Text(
+                        when (scope) {
+                            "professor" -> "استاد موردنظر:"
+                            "course" -> "درس موردنظر:"
+                            else -> "کلاس موردنظر:"
+                        },
+                        style = MaterialTheme.typography.titleSmall,
+                        fontWeight = FontWeight.Bold
+                    )
+                    if (targets.isEmpty()) {
+                        Text("موردی برای انتخاب وجود ندارد.", color = MaterialTheme.colorScheme.error)
+                    } else {
+                        targets.forEach { (value, label) ->
+                            Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.fillMaxWidth()) {
+                                RadioButton(selected = target == value, onClick = { selectedTarget = value })
+                                Text(label, modifier = Modifier.clickable { selectedTarget = value })
+                            }
+                        }
+                    }
+                }
+                Spacer(Modifier.height(4.dp))
+                Text("تعداد جلسات انتخاب‌شده: ${selectedLectures.size}", style = MaterialTheme.typography.labelLarge, color = MaterialTheme.colorScheme.primary)
+                Text("Word و PDF شامل عنوان، تاریخ، خلاصه، کلیدواژه‌ها و متن جزوه می‌شوند.", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+            }
+        },
+        confirmButton = {
+            Row(horizontalArrangement = Arrangement.spacedBy(2.dp)) {
+                TextButton(enabled = selectedLectures.isNotEmpty(), onClick = {
+                    runCatching { LectureExport.share(context, selectedLectures, LectureExportFormat.WORD, "مطالب درس‌یار") }
+                        .onFailure { Toast.makeText(context, "خروجی Word ناموفق بود: ${it.localizedMessage}", Toast.LENGTH_LONG).show() }
+                    if (selectedLectures.isNotEmpty()) onDismiss()
+                }) { Text("Word") }
+                TextButton(enabled = selectedLectures.isNotEmpty(), onClick = {
+                    runCatching { LectureExport.share(context, selectedLectures, LectureExportFormat.PDF, "مطالب درس‌یار") }
+                        .onFailure { Toast.makeText(context, "خروجی PDF ناموفق بود: ${it.localizedMessage}", Toast.LENGTH_LONG).show() }
+                    if (selectedLectures.isNotEmpty()) onDismiss()
+                }) { Text("PDF") }
+                TextButton(enabled = selectedLectures.isNotEmpty(), onClick = {
+                    runCatching { LectureExport.share(context, selectedLectures, LectureExportFormat.TEXT, "مطالب درس‌یار") }
+                        .onFailure { Toast.makeText(context, "اشتراک‌گذاری ناموفق بود: ${it.localizedMessage}", Toast.LENGTH_LONG).show() }
+                    if (selectedLectures.isNotEmpty()) onDismiss()
+                }) { Text("متن") }
+            }
+        },
+        dismissButton = { TextButton(onClick = onDismiss) { Text("انصراف") } }
+    )
 }
 
 @Composable
