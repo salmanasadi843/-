@@ -1178,40 +1178,76 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
     }
 
     fun polishTranscriptInForm() {
-
-        val raw =
-            formTranscript.value
-
+        val raw = formTranscript.value
         if (raw.isBlank()) return
 
         viewModelScope.launch {
-
             _isAiLoading.value = true
-
-            _aiOperationTitle.value =
-                "در حال اصلاح گرامر، علائم نگارشی و پاراگراف‌بندی متن..."
-
             _aiError.value = null
+            try {
+                // ویرایش متن‌های بلند در بخش‌های جداگانه برای جلوگیری از کوتاه‌شدن خروجی مدل.
+                val parts = splitTranscriptForEditing(raw, 6000)
+                val editedParts = mutableListOf<String>()
 
-            val result =
-                aiTextWithGroqFirst(
-                groqCall = { GroqApiService.polishTranscript(raw) },
-                geminiCall = { GeminiApiService.polishTranscript(raw) }
-            )
+                for ((index, part) in parts.withIndex()) {
+                    _aiOperationTitle.value =
+                        "ویرایش امانت‌دارانه متن؛ بخش ${index + 1} از ${parts.size}"
 
-            result.onSuccess { polished ->
+                    val result = aiTextWithGroqFirst(
+                        groqCall = { GroqApiService.polishTranscript(part) },
+                        geminiCall = { GeminiApiService.polishTranscript(part) }
+                    )
 
-                formTranscript.value =
-                    polished
+                    if (result.isFailure) {
+                        throw result.exceptionOrNull()
+                            ?: Exception("ویرایش بخش ${index + 1} ناموفق بود.")
+                    }
 
-            }.onFailure { error ->
+                    val edited = result.getOrThrow().trim()
+                    if (edited.isBlank()) {
+                        throw Exception("بخش ${index + 1} خروجی خالی داشت؛ متن اصلی حفظ شد.")
+                    }
+                    editedParts += edited
+                }
 
-                _aiError.value =
-                    error.localizedMessage
+                // فقط پس از موفقیت همه بخش‌ها متن فرم جایگزین می‌شود.
+                formTranscript.value = editedParts.joinToString("\n\n")
+                _aiOperationTitle.value = "ویرایش متن کامل شد؛ محتوای درس حفظ شده است"
+            } catch (error: Exception) {
+                Log.e(TAG, "Transcript editing failed", error)
+                _aiError.value = error.localizedMessage ?: "ویرایش متن ناموفق بود؛ متن اصلی تغییر نکرد."
+            } finally {
+                _isAiLoading.value = false
             }
-
-            _isAiLoading.value = false
         }
+    }
+
+    private fun splitTranscriptForEditing(text: String, maxChars: Int): List<String> {
+        if (text.length <= maxChars) return listOf(text)
+        val parts = mutableListOf<String>()
+        var start = 0
+        while (start < text.length) {
+            var end = minOf(start + maxChars, text.length)
+            if (end < text.length) {
+                val lowerBound = start + maxChars / 2
+                val candidates = listOf(
+                    text.lastIndexOf("\n\n", end),
+                    text.lastIndexOf('\n', end),
+                    text.lastIndexOf('۔', end),
+                    text.lastIndexOf('.', end),
+                    text.lastIndexOf('؟', end)
+                )
+                val boundary = candidates.filter { it >= lowerBound }.maxOrNull()
+                if (boundary != null) {
+                    end = if (text.startsWith("\n\n", boundary)) boundary + 2 else boundary + 1
+                }
+            }
+            if (end <= start) end = minOf(start + maxChars, text.length)
+            val piece = text.substring(start, end).trim()
+            if (piece.isNotBlank()) parts += piece
+            start = end
+        }
+        return parts
     }
 
     fun answerQuiz(
