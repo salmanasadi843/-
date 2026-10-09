@@ -31,4 +31,7 @@ interface CourseDao {
     @Query("DELETE FROM courses")
     suspend fun clearForRestore()
 
+    @Query("DELETE FROM courses WHERE id < 0")
+    suspend fun clearCloudSharedData()
+
 }
