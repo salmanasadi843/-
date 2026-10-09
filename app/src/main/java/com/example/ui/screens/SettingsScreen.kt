@@ -57,9 +57,11 @@ import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.text.input.VisualTransformation
 import androidx.compose.ui.unit.dp
 import com.example.data.local.DatabaseBackup
+import com.example.data.local.CloudMaterialsSync
 import com.example.data.api.GeminiApiService
 import com.example.data.api.GroqApiService
 import com.example.data.api.SpeechmaticsApiService
+import com.example.ui.screens.AuthPreferences
 import com.example.ui.theme.AppThemeMode
 import com.example.ui.theme.themeAccent
 import kotlinx.coroutines.Dispatchers
@@ -80,6 +82,10 @@ fun SettingsScreen(
     var backupBusy by remember { mutableStateOf(false) }
     var backupStatus by remember { mutableStateOf<String?>(null) }
     var backupError by remember { mutableStateOf(false) }
+    var cloudBusy by remember { mutableStateOf(false) }
+    var cloudStatus by remember { mutableStateOf<String?>(null) }
+    var cloudError by remember { mutableStateOf(false) }
+    var showPublishConfirm by remember { mutableStateOf(false) }
     val createBackup = rememberLauncherForActivityResult(ActivityResultContracts.CreateDocument("application/json")) { uri ->
         if (uri != null) backupScope.launch {
             backupBusy = true; backupStatus = null
@@ -87,6 +93,16 @@ fun SettingsScreen(
             backupBusy = false
             backupError = result.isFailure
             backupStatus = if (result.isSuccess) "پشتیبان با موفقیت ذخیره شد. فایل را در فضای امن یا فضای ابری نگه دارید." else "ساخت پشتیبان ناموفق بود: ${result.exceptionOrNull()?.localizedMessage}"
+        }
+    }
+    val runCloudSync = {
+        backupScope.launch {
+            cloudBusy = true
+            cloudStatus = null
+            val result = withContext(Dispatchers.IO) { runCatching { CloudMaterialsSync.sync(context) } }
+            cloudBusy = false
+            cloudError = result.isFailure
+            cloudStatus = result.getOrElse { "همگام‌سازی آنلاین ناموفق بود: ${it.localizedMessage}" }
         }
     }
     val restoreBackup = rememberLauncherForActivityResult(ActivityResultContracts.OpenDocument()) { uri ->
@@ -479,6 +495,52 @@ fun SettingsScreen(
                         "اولویت تبدیل صوت: ۱) Groq  ۲) Speechmatics  ۳) Gemini",
                         style = MaterialTheme.typography.bodySmall,
                         color = MaterialTheme.colorScheme.primary
+                    )
+                }
+            }
+
+            Card(
+                colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
+                elevation = CardDefaults.cardElevation(2.dp),
+                modifier = Modifier.fillMaxWidth()
+            ) {
+                Column(modifier = Modifier.padding(18.dp)) {
+                    Text("دسترسی آنلاین مطالب", style = MaterialTheme.typography.titleLarge)
+                    Spacer(Modifier.height(6.dp))
+                    Text(
+                        if (AuthPreferences.currentRole(context) == UserRole.TEACHER)
+                            "با همگام‌سازی، متن جزوه، خلاصه، کلیدواژه، مشخصات کلاس و لینک صوت جلسات این حساب برای کاربران واردشده به درس‌یار قابل دریافت می‌شود. فایل صوتی اصلی بارگذاری نمی‌شود."
+                        else
+                            "با به‌روزرسانی مطالب آنلاین، جزوه‌ها، خلاصه‌ها، کلیدواژه‌ها و لینک‌های صوت منتشرشده توسط استادها روی این دستگاه دریافت می‌شود. برای این کار باید اینترنت متصل باشد.",
+                        style = MaterialTheme.typography.bodyMedium,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                    Spacer(Modifier.height(12.dp))
+                    Button(
+                        onClick = {
+                            if (AuthPreferences.currentRole(context) == UserRole.TEACHER) showPublishConfirm = true
+                            else runCloudSync()
+                        },
+                        enabled = !cloudBusy,
+                        modifier = Modifier.fillMaxWidth()
+                    ) {
+                        if (cloudBusy) CircularProgressIndicator(modifier = Modifier.size(18.dp), strokeWidth = 2.dp)
+                        else Icon(Icons.Default.NetworkCheck, contentDescription = null)
+                        Spacer(Modifier.width(8.dp))
+                        Text(if (cloudBusy) "در حال همگام‌سازی..." else if (AuthPreferences.currentRole(context) == UserRole.TEACHER) "انتشار و همگام‌سازی مطالب استاد" else "دریافت مطالب آنلاین")
+                    }
+                    if (cloudStatus != null) {
+                        Spacer(Modifier.height(10.dp))
+                        Text(
+                            cloudStatus!!,
+                            color = if (cloudError) MaterialTheme.colorScheme.error else MaterialTheme.colorScheme.primary,
+                            style = MaterialTheme.typography.bodyMedium
+                        )
+                    }
+                    Text(
+                        "نکته: این گزینه با فایل پشتیبان فرق دارد؛ همگام‌سازی آنلاین به اتصال و تنظیم صحیح دسترسی‌های Firebase نیاز دارد.",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
                     )
                 }
             }
