@@ -2,6 +2,7 @@ package com.example.ui.screens
 
 import java.util.Calendar
 import java.util.GregorianCalendar
+import java.util.Locale
 
 object PersianDateUtils {
     private val pDigits = charArrayOf('۰','۱','۲','۳','۴','۵','۶','۷','۸','۹')
@@ -19,7 +20,7 @@ object PersianDateUtils {
         }.joinToString("")
 
     fun format(millis: Long): String {
-        val c = Calendar.getInstance().apply { timeInMillis = millis }
+        val c = GregorianCalendar(Locale.US).apply { timeInMillis = millis }
         val j = gregorianToJalali(c.get(Calendar.YEAR), c.get(Calendar.MONTH) + 1, c.get(Calendar.DAY_OF_MONTH))
         return toPersianDigits("%04d/%02d/%02d".format(j[0], j[1], j[2]))
     }
@@ -48,7 +49,7 @@ object PersianDateUtils {
         val jy = p[0].toIntOrNull() ?: return fallbackMillis
         val jm = p[1].toIntOrNull() ?: return fallbackMillis
         val jd = p[2].toIntOrNull() ?: return fallbackMillis
-        if (jm !in 1..12 || jd !in 1..31) return fallbackMillis
+        if (jm !in 1..12 || jd !in 1..daysInMonth(jy, jm)) return fallbackMillis
         val g = jalaliToGregorian(jy, jm, jd)
         return GregorianCalendar(g[0], g[1] - 1, g[2], 12, 0, 0).apply {
             set(Calendar.MILLISECOND, 0)
