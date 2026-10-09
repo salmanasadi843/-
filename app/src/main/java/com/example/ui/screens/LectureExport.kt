@@ -12,8 +12,6 @@ import androidx.core.content.FileProvider
 import com.example.data.local.LectureEntity
 import java.io.File
 import java.io.FileOutputStream
-import java.text.SimpleDateFormat
-import java.util.Date
 import java.util.Locale
 import java.util.zip.ZipEntry
 import java.util.zip.ZipOutputStream
@@ -76,7 +74,7 @@ object LectureExport {
         }
 
     private fun formatDate(millis: Long): String =
-        SimpleDateFormat("yyyy/MM/dd", Locale("fa", "IR")).format(Date(millis))
+        PersianDateUtils.format(millis)
 
     private fun createWord(file: File, lectures: List<LectureEntity>) {
         val paragraphs = plainText(lectures).split("\n").joinToString("") { line ->
