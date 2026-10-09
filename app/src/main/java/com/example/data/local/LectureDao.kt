@@ -54,4 +54,13 @@ interface LectureDao {
 
     @Query("SELECT COUNT(*) FROM lectures")
     suspend fun getLectureCount(): Int
+    @Query("SELECT * FROM lectures ORDER BY dateMillis ASC")
+    suspend fun getAllForBackup(): List<LectureEntity>
+
+    @Insert(onConflict = OnConflictStrategy.REPLACE)
+    suspend fun insertAllForRestore(items: List<LectureEntity>)
+
+    @Query("DELETE FROM lectures")
+    suspend fun clearForRestore()
+
 }
