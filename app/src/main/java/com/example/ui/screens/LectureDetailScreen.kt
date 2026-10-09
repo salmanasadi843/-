@@ -354,9 +354,11 @@ fun AudioPlayerCard(
         contentColor = MaterialTheme.colorScheme.onPrimary,
         shadowElevation = 5.dp
     ) {
-        Column(modifier = Modifier.padding(14.dp)) {
-            // Scrubbing Slider
-            val maxRange = if (audioDurationMs > 0) audioDurationMs.toFloat() else 100f
+        Column(
+            modifier = Modifier.padding(horizontal = 16.dp, vertical = 14.dp),
+            horizontalAlignment = Alignment.CenterHorizontally
+        ) {
+            val maxRange = audioDurationMs.coerceAtLeast(1L).toFloat()
             val sliderValue = currentPositionMs.toFloat().coerceIn(0f, maxRange)
 
             Slider(
@@ -368,111 +370,102 @@ fun AudioPlayerCard(
                     activeTrackColor = MaterialTheme.colorScheme.secondary,
                     inactiveTrackColor = MaterialTheme.colorScheme.onPrimary.copy(alpha = 0.28f)
                 ),
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .height(24.dp)
+                modifier = Modifier.fillMaxWidth().height(32.dp)
             )
 
-            // Current Time & Duration
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.SpaceBetween
-            ) {
-                Text(
-                    text = formatDuration(currentPositionMs.toLong()),
-                    style = MaterialTheme.typography.labelSmall,
-                    color = MaterialTheme.colorScheme.onPrimary.copy(alpha = 0.82f)
-                )
-                Text(
-                    text = formatDuration(audioDurationMs),
-                    style = MaterialTheme.typography.labelSmall,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant
-                )
-            }
-
-            Spacer(modifier = Modifier.height(4.dp))
-
-            // Player Controls
             Row(
                 modifier = Modifier.fillMaxWidth(),
                 horizontalArrangement = Arrangement.SpaceBetween,
                 verticalAlignment = Alignment.CenterVertically
             ) {
-                // Speed Selector Chip
+                Text(
+                    text = formatDuration(currentPositionMs.toLong()),
+                    style = MaterialTheme.typography.labelMedium,
+                    color = MaterialTheme.colorScheme.onPrimary
+                )
+                Text(
+                    text = formatDuration(audioDurationMs),
+                    style = MaterialTheme.typography.labelMedium,
+                    color = MaterialTheme.colorScheme.onPrimary.copy(alpha = 0.8f)
+                )
+            }
+
+            Spacer(Modifier.height(8.dp))
+
+            // Keep all transport controls in one balanced row so none are pushed off-screen.
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.SpaceEvenly,
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                IconButton(
+                    onClick = onSkipBackward,
+                    modifier = Modifier.size(48.dp)
+                ) {
+                    Icon(
+                        imageVector = Icons.Default.FastRewind,
+                        contentDescription = "۱۵ ثانیه به عقب",
+                        tint = MaterialTheme.colorScheme.onPrimary,
+                        modifier = Modifier.size(27.dp)
+                    )
+                }
+
+                Surface(
+                    onClick = onPlayToggle,
+                    shape = CircleShape,
+                    color = MaterialTheme.colorScheme.secondary,
+                    modifier = Modifier.size(60.dp)
+                ) {
+                    Box(contentAlignment = Alignment.Center) {
+                        Icon(
+                            imageVector = if (isPlaying) Icons.Default.Pause else Icons.Default.PlayArrow,
+                            contentDescription = if (isPlaying) "مکث" else "پخش",
+                            tint = MaterialTheme.colorScheme.onSecondary,
+                            modifier = Modifier.size(34.dp)
+                        )
+                    }
+                }
+
+                IconButton(
+                    onClick = onSkipForward,
+                    modifier = Modifier.size(48.dp)
+                ) {
+                    Icon(
+                        imageVector = Icons.Default.FastForward,
+                        contentDescription = "۱۵ ثانیه به جلو",
+                        tint = MaterialTheme.colorScheme.onPrimary,
+                        modifier = Modifier.size(27.dp)
+                    )
+                }
+
                 Surface(
                     onClick = {
-                        val nextSpeed = when (playbackSpeed) {
-                            0.75f -> 1.0f
-                            1.0f -> 1.25f
-                            1.25f -> 1.5f
-                            1.5f -> 2.0f
-                            else -> 0.75f
-                        }
-                        onSpeedChange(nextSpeed)
+                        val speeds = listOf(0.75f, 1.0f, 1.25f, 1.5f, 2.0f)
+                        val nextIndex = (speeds.indexOf(playbackSpeed).takeIf { it >= 0 } ?: 1) + 1
+                        onSpeedChange(speeds[nextIndex % speeds.size])
                     },
-                    shape = RoundedCornerShape(12.dp),
+                    shape = RoundedCornerShape(14.dp),
                     color = MaterialTheme.colorScheme.secondaryContainer
                 ) {
                     Row(
-                        modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp),
+                        modifier = Modifier.padding(horizontal = 10.dp, vertical = 8.dp),
                         verticalAlignment = Alignment.CenterVertically
                     ) {
                         Icon(
                             imageVector = Icons.Default.Speed,
-                            contentDescription = null,
-                            modifier = Modifier.size(14.dp),
+                            contentDescription = "سرعت پخش",
+                            modifier = Modifier.size(16.dp),
                             tint = MaterialTheme.colorScheme.onSecondaryContainer
                         )
-                        Spacer(modifier = Modifier.width(4.dp))
+                        Spacer(Modifier.width(4.dp))
                         Text(
                             text = "${playbackSpeed}x",
-                            style = MaterialTheme.typography.labelMedium,
+                            style = MaterialTheme.typography.labelLarge,
                             fontWeight = FontWeight.Bold,
                             color = MaterialTheme.colorScheme.onSecondaryContainer
                         )
                     }
                 }
-
-                // Middle Buttons: Rewind, Play/Pause, FastForward
-                Row(
-                    horizontalArrangement = Arrangement.spacedBy(12.dp),
-                    verticalAlignment = Alignment.CenterVertically
-                ) {
-                    IconButton(onClick = onSkipBackward, modifier = Modifier.size(36.dp)) {
-                        Icon(
-                            imageVector = Icons.Default.FastRewind,
-                            contentDescription = "۱۵ ثانیه به عقب",
-                            tint = MaterialTheme.colorScheme.onPrimary
-                        )
-                    }
-
-                    Surface(
-                        onClick = onPlayToggle,
-                        shape = CircleShape,
-                        color = MaterialTheme.colorScheme.secondary,
-                        modifier = Modifier.size(48.dp)
-                    ) {
-                        Box(contentAlignment = Alignment.Center) {
-                            Icon(
-                                imageVector = if (isPlaying) Icons.Default.Pause else Icons.Default.PlayArrow,
-                                contentDescription = if (isPlaying) "توقف" else "پخش",
-                                tint = MaterialTheme.colorScheme.onSecondary,
-                                modifier = Modifier.size(28.dp)
-                            )
-                        }
-                    }
-
-                    IconButton(onClick = onSkipForward, modifier = Modifier.size(36.dp)) {
-                        Icon(
-                            imageVector = Icons.Default.FastForward,
-                            contentDescription = "۱۵ ثانیه به جلو",
-                            tint = MaterialTheme.colorScheme.primary
-                        )
-                    }
-                }
-
-                // Placeholder space for balanced layout
-                Spacer(modifier = Modifier.width(48.dp))
             }
         }
     }
