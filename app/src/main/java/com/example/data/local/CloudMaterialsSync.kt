@@ -5,6 +5,7 @@ import androidx.room.withTransaction
 import com.example.ui.screens.AuthPreferences
 import com.example.ui.screens.UserRole
 import com.google.firebase.firestore.FirebaseFirestore
+import com.google.android.gms.tasks.Tasks
 import kotlinx.coroutines.runBlocking
 import org.json.JSONArray
 import org.json.JSONObject
@@ -32,12 +33,13 @@ object CloudMaterialsSync {
                 .put("classes", JSONArray().apply { classes.forEach { put(it.toJson()) } })
                 .put("courses", JSONArray().apply { courses.forEach { put(it.toJson()) } })
                 .put("lectures", JSONArray().apply { lectures.map { it.toJson() }.forEach { put(it) } })
-            firestore.collection("shared_materials").document(uid)
-                .set(mapOf("ownerUid" to uid, "payload" to payload.toString(), "updatedAt" to System.currentTimeMillis()))
-                .get()
+            Tasks.await(
+                firestore.collection("shared_materials").document(uid)
+                    .set(mapOf("ownerUid" to uid, "payload" to payload.toString(), "updatedAt" to System.currentTimeMillis()))
+            )
             "مطالب متنی و لینک‌های صوت با موفقیت در فضای آنلاین به‌روزرسانی شد."
         } else {
-            val documents = firestore.collection("shared_materials").get().get().documents
+            val documents = Tasks.await(firestore.collection("shared_materials").get()).documents
                 .filter { it.id != uid }
             val allClasses = mutableListOf<ClassEntity>()
             val allCourses = mutableListOf<CourseEntity>()
