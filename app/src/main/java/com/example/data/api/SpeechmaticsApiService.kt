@@ -71,18 +71,18 @@ object SpeechmaticsApiService {
                 .build()
 
             val request = Request.Builder()
-                .url("$BASE_URL/jobs?wait=60&format=txt")
+                .url("$BASE_URL/jobs")
                 .header("Authorization", "Bearer $key")
                 .post(body)
                 .build()
 
-            onProgress(TranscriptionProgress("در حال پردازش با Speechmatics", 35, totalBytes = file.length(), detail = "Speechmatics فایل را به‌صورت Batch پردازش می‌کند."))
+            onProgress(TranscriptionProgress("در حال ثبت درخواست در Speechmatics", 20, totalBytes = file.length(), detail = "پس از بارگذاری، وضعیت پردازش جداگانه بررسی می‌شود تا درخواست در انتظار طولانی گیر نکند."))
 
             val response = client.newCall(request).execute()
             val raw = response.body?.string().orEmpty()
             if (!response.isSuccessful) {
                 Log.e(TAG, "Speechmatics error ${response.code}: $raw")
-                return@withContext Result.failure(Exception("خطای Speechmatics در تبدیل صوت به متن: ${response.code}"))
+                return@withContext Result.failure(Exception("خطای Speechmatics در تبدیل صوت به متن: HTTP ${response.code}. ${raw.take(250)}"))
             }
 
             val json = JSONObject(raw)
@@ -97,8 +97,9 @@ object SpeechmaticsApiService {
             val jobId = json.optString("id")
             if (jobId.isBlank()) return@withContext Result.failure(Exception("Speechmatics شناسه پردازش را برنگرداند."))
 
-            for (attempt in 1..24) {
+            for (attempt in 1..60) {
                 delay(5000)
+                onProgress(TranscriptionProgress("انتظار برای نتیجه Speechmatics", (25 + attempt).coerceAtMost(85), totalBytes = file.length(), detail = "درخواست ثبت شده؛ بررسی وضعیت شماره $attempt از 60"))
                 val statusRequest = Request.Builder()
                     .url("$BASE_URL/jobs/$jobId")
                     .header("Authorization", "Bearer $key")
@@ -107,7 +108,7 @@ object SpeechmaticsApiService {
                 val statusResponse = client.newCall(statusRequest).execute()
                 val statusRaw = statusResponse.body?.string().orEmpty()
                 if (!statusResponse.isSuccessful) {
-                    return@withContext Result.failure(Exception("خطای Speechmatics هنگام بررسی وضعیت: ${statusResponse.code}"))
+                    return@withContext Result.failure(Exception("خطای Speechmatics هنگام بررسی وضعیت: HTTP ${statusResponse.code}. ${statusRaw.take(200)}"))
                 }
 
                 val statusJson = JSONObject(statusRaw)
@@ -133,7 +134,7 @@ object SpeechmaticsApiService {
                         return@withContext Result.failure(Exception("Speechmatics پردازش فایل را با وضعیت «$jobStatus» متوقف کرد."))
                 }
             }
-            Result.failure(Exception("زمان پردازش Speechmatics بیش از حد مجاز طول کشید."))
+            Result.failure(Exception("Speechmatics تا ۵ دقیقه نتیجه نداد؛ ممکن است سرویس یا کلید API مشکل داشته باشد."))
         } catch (e: Exception) {
             Log.e(TAG, "Speechmatics transcription failed", e)
             Result.failure(e)
