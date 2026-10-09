@@ -99,7 +99,7 @@ object SpeechmaticsApiService {
 
             for (attempt in 1..60) {
                 delay(5000)
-                onProgress(TranscriptionProgress("انتظار برای نتیجه Speechmatics", (25 + attempt).coerceAtMost(85), totalBytes = file.length(), detail = "درخواست ثبت شده؛ بررسی وضعیت شماره $attempt از 60"))
+                onProgress(TranscriptionProgress("انتظار برای نتیجه Speechmatics", (25 + attempt).coerceAtMost(85), totalBytes = file.length(), detail = "این شمارنده تعداد دفعات بررسی وضعیت است، نه تعداد بخش‌های صوتی؛ بررسی $attempt از 60"))
                 val statusRequest = Request.Builder()
                     .url("$BASE_URL/jobs/$jobId")
                     .header("Authorization", "Bearer $key")
