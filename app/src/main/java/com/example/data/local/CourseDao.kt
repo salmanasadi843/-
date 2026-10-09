@@ -22,4 +22,13 @@ interface CourseDao {
 
     @Delete
     suspend fun delete(item: CourseEntity)
+    @Query("SELECT * FROM courses ORDER BY createdAtMillis ASC")
+    suspend fun getAllForBackup(): List<CourseEntity>
+
+    @Insert(onConflict = OnConflictStrategy.REPLACE)
+    suspend fun insertAllForRestore(items: List<CourseEntity>)
+
+    @Query("DELETE FROM courses")
+    suspend fun clearForRestore()
+
 }
