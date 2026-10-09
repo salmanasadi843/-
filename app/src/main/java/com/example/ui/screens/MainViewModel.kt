@@ -836,6 +836,11 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
 
                 if (GroqApiService.hasApiKey(getApplication<Application>())) {
                     _aiOperationTitle.value = "مرحله ۱ از ۳: Groq"
+                    _transcriptionProgress.value = TranscriptionProgress(
+                        "آماده‌سازی ارسال به Groq", 2,
+                        totalBytes = audioFile.length(),
+                        detail = "کلید Groq شناسایی شد؛ در حال شروع درخواست"
+                    )
                     result = GroqApiService.transcribeAudioFile(audioPath) { progress ->
                         _transcriptionProgress.value = progress
                         _aiOperationTitle.value = progress.stage
@@ -844,7 +849,20 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
                         saveTranscriptionResult(result.getOrThrow())
                         return@launch
                     }
-                    Log.w(TAG, "Groq transcription failed; trying Speechmatics", result.exceptionOrNull())
+                    val groqError = result.exceptionOrNull()
+                    Log.w(TAG, "Groq transcription failed; trying Speechmatics. Cause: ${groqError?.javaClass?.simpleName}: ${groqError?.message}", groqError)
+                    _transcriptionProgress.value = TranscriptionProgress(
+                        "ارسال به Groq ناموفق بود", 3,
+                        totalBytes = audioFile.length(),
+                        detail = "علت: ${groqError?.message ?: "خطای نامشخص"}؛ انتقال به سرویس بعدی"
+                    )
+                } else {
+                    Log.w(TAG, "Groq skipped because API key is missing")
+                    _transcriptionProgress.value = TranscriptionProgress(
+                        "Groq اجرا نشد", 1,
+                        totalBytes = audioFile.length(),
+                        detail = "کلید API گروک در تنظیمات ذخیره نشده است؛ انتقال به سرویس بعدی"
+                    )
                 }
 
                 if (SpeechmaticsApiService.hasApiKey(getApplication<Application>())) {
