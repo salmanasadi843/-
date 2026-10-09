@@ -1229,6 +1229,8 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
         viewModelScope.launch {
             _isAiLoading.value = true
             _aiError.value = null
+            formAiSummary.value = ""
+            formAiKeyPoints.value = ""
             try {
                 // ویرایش متن‌های بلند در بخش‌های جداگانه برای جلوگیری از کوتاه‌شدن خروجی مدل.
                 val parts = splitTranscriptForEditing(raw, 6000)
