@@ -1,10 +1,10 @@
 package com.example.data.local
 
 import android.content.Context
+import androidx.room.withTransaction
 import com.example.ui.screens.AuthPreferences
 import com.example.ui.screens.UserRole
 import com.google.firebase.firestore.FirebaseFirestore
-import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.runBlocking
 import org.json.JSONArray
 import org.json.JSONObject
