@@ -105,9 +105,9 @@ class FirestoreSyncRepository(
             )
         }
 
-        val classes = rawClasses.orEmpty().mapNotNull { it.asStringMap()?.toClassEntity() }
-        val courses = rawCourses.orEmpty().mapNotNull { it.asStringMap()?.toCourseEntity() }
-        val lectures = rawLectures.orEmpty().mapNotNull { it.asStringMap()?.toLectureEntity() }
+        val classes = rawClasses.orEmpty().mapNotNull { (it as? Map<*, *>)?.asStringMap()?.toClassEntity() }
+        val courses = rawCourses.orEmpty().mapNotNull { (it as? Map<*, *>)?.asStringMap()?.toCourseEntity() }
+        val lectures = rawLectures.orEmpty().mapNotNull { (it as? Map<*, *>)?.asStringMap()?.toLectureEntity() }
 
         // Delete children before parents, then recreate parents before children.
         lectureDao.clearForRestore()
