@@ -151,7 +151,7 @@ object LectureExport {
         }
         plainText(lectures).split("\\n").forEach { raw ->
             val level = headingLevel(raw)
-            val line = raw.replace(Regex("^#{1,3}\\\\s*"), "").trim()
+            val line = raw.replace(Regex("^#{1,3}\\s*"), "").trim()
             val paint = TextPaint(Paint.ANTI_ALIAS_FLAG).apply {
                 color = android.graphics.Color.BLACK
                 textSize = when (level) { 1 -> 19f; 2 -> 16f; 3 -> 14f; else -> 12f }
