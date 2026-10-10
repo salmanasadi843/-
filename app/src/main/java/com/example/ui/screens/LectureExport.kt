@@ -149,7 +149,7 @@ object LectureExport {
             page = document.startPage(PdfDocument.PageInfo.Builder(pageWidth, pageHeight, pageNumber).create())
             y = margin.toFloat()
         }
-        plainText(lectures).split("\\n").forEach { raw ->
+        plainText(lectures).split("\n").forEach { raw ->
             val level = headingLevel(raw)
             val line = raw.replace(Regex("^#{1,3}\\s*"), "").trim()
             val paint = TextPaint(Paint.ANTI_ALIAS_FLAG).apply {
