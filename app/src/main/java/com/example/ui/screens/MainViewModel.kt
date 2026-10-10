@@ -210,6 +210,7 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
     val formProfessor = MutableStateFlow("")
     val formTags = MutableStateFlow("")
     val formTranscript = MutableStateFlow("")
+    val formRawTranscript = MutableStateFlow("")
     val formAiSummary = MutableStateFlow("")
     val formAiKeyPoints = MutableStateFlow("")
     val formAudioPath = MutableStateFlow<String?>(null)
@@ -524,7 +525,8 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
                     formClassId.value = lecture.classId
                     formProfessor.value = lecture.professorName
                     formTags.value = lecture.tags
-                    formTranscript.value = lecture.transcript
+                    formRawTranscript.value = lecture.rawTranscript ?: lecture.transcript
+                    formTranscript.value = lecture.correctedTranscript ?: lecture.transcript
                     formAiSummary.value = lecture.aiSummary.orEmpty()
                     formAiKeyPoints.value = lecture.aiKeyPoints.orEmpty()
                     formAudioPath.value = lecture.audioFilePath
@@ -551,6 +553,7 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
             }
             formTags.value = ""
             formTranscript.value = ""
+            formRawTranscript.value = ""
             formAiSummary.value = ""
             formAiKeyPoints.value = ""
             formAudioPath.value = null
@@ -599,6 +602,11 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
                         formAudioDurationMs.value,
                     transcript =
                         formTranscript.value.trim(),
+                    rawTranscript =
+                        formRawTranscript.value.takeIf { it.isNotBlank() } ?: existing?.rawTranscript ?: formTranscript.value.trim(),
+                    correctedTranscript =
+                        formTranscript.value.trim().takeIf { formRawTranscript.value.isNotBlank() && it != formRawTranscript.value }
+                            ?: existing?.correctedTranscript,
                     aiSummary =
                         formAiSummary.value.takeIf { it.isNotBlank() } ?: existing?.aiSummary,
                     aiKeyPoints =
@@ -944,6 +952,7 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
 
     private suspend fun saveTranscriptionResult(transcript: String) {
         formTranscript.value = transcript
+        formRawTranscript.value = transcript
         _aiError.value = null
 
         val id = editingLectureId ?: return
@@ -951,6 +960,8 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
 
         var updated = current.copy(
             transcript = transcript,
+            rawTranscript = transcript,
+            correctedTranscript = null,
             audioFilePath = formAudioPath.value,
             audioUrl = formAudioUrl.value.trim().ifBlank { null },
             audioDurationMs = formAudioDurationMs.value,
@@ -1223,7 +1234,7 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
     }
 
     fun polishTranscriptInForm() {
-        val raw = formTranscript.value
+        val raw = formRawTranscript.value.takeIf { it.isNotBlank() } ?: formTranscript.value
         if (raw.isBlank()) return
 
         viewModelScope.launch {
@@ -1259,6 +1270,7 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
 
                 // متن ویرایش‌شده را در فرم قرار می‌دهیم، سپس خلاصه و کلیدواژه‌ها را از همین متن می‌سازیم.
                 val editedTranscript = editedParts.joinToString("\n\n")
+                formRawTranscript.value = raw
                 formTranscript.value = editedTranscript
 
                 _aiOperationTitle.value = "در حال تهیه خلاصه از متن ویرایش‌شده..."
@@ -1289,15 +1301,19 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
 
                 // اگر جلسه از قبل ذخیره شده باشد، خروجی‌ها را همان لحظه نیز در پایگاه داده ثبت می‌کنیم.
                 val savedId = editingLectureId
-                if (savedId != null && (formAiSummary.value.isNotBlank() || formAiKeyPoints.value.isNotBlank())) {
+                if (savedId != null) {
                     val existing = repository.getLecture(savedId)
                     if (existing != null) {
-                        repository.saveLecture(existing.copy(
+                        val updated = existing.copy(
                             transcript = editedTranscript,
+                            rawTranscript = raw,
+                            correctedTranscript = editedTranscript,
                             aiSummary = formAiSummary.value.takeIf { it.isNotBlank() } ?: existing.aiSummary,
                             aiKeyPoints = formAiKeyPoints.value.takeIf { it.isNotBlank() } ?: existing.aiKeyPoints,
                             lastEditedMillis = System.currentTimeMillis()
-                        ))
+                        )
+                        repository.saveLecture(updated)
+                        _selectedLecture.value = updated
                     }
                 }
             } catch (error: Exception) {
