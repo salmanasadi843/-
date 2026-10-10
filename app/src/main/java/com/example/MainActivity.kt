@@ -81,6 +81,9 @@ fun OstadYarApp(
                 result.onSuccess { role ->
                     userRole = role
                     viewModel.setUserRole(role)
+                    if (role == UserRole.TEACHER) {
+                        viewModel.startCloudSync()
+                    }
                 }
             }
         }
