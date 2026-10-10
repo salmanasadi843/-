@@ -143,13 +143,15 @@ object LectureExport {
         var pageNumber = 1
         var page = document.startPage(PdfDocument.PageInfo.Builder(pageWidth, pageHeight, pageNumber).create())
         var y = margin.toFloat()
+
         fun nextPage() {
             document.finishPage(page)
             pageNumber++
             page = document.startPage(PdfDocument.PageInfo.Builder(pageWidth, pageHeight, pageNumber).create())
             y = margin.toFloat()
         }
-        plainText(lectures).split("\n").forEach { raw ->
+
+        fun makeLayout(raw: String): StaticLayout {
             val level = headingLevel(raw)
             val line = raw.replace(Regex("^#{1,3}\\s*"), "").trim()
             val paint = TextPaint(Paint.ANTI_ALIAS_FLAG).apply {
@@ -157,20 +159,65 @@ object LectureExport {
                 textSize = when (level) { 1 -> 19f; 2 -> 16f; 3 -> 14f; else -> 12f }
                 isFakeBoldText = level > 0
             }
-            if (level > 0 && y > margin) y += if (level == 1) 10f else 6f
-            val layout = StaticLayout.Builder.obtain(line, 0, line.length, paint, width)
+            return StaticLayout.Builder.obtain(line, 0, line.length, paint, width)
                 .setAlignment(Layout.Alignment.ALIGN_NORMAL)
                 .setTextDirection(TextDirectionHeuristics.RTL)
                 .setIncludePad(true)
                 .setLineSpacing(3f, 1.12f)
                 .build()
-            if (y + layout.height > bottom && y > margin) nextPage()
+        }
+
+        val lines = plainText(lectures).split("\n")
+        var index = 0
+        while (index < lines.size) {
+            val raw = lines[index]
+            val level = headingLevel(raw)
+            val line = raw.replace(Regex("^#{1,3}\\s*"), "").trim()
+            val layout = makeLayout(raw)
+            val headingGap = if (level > 0 && y > margin) {
+                if (level == 1) 10f else 6f
+            } else 0f
+
+            // Keep a heading with the next non-empty line. This prevents headings
+            // from being stranded at the bottom of a page with their content on
+            // the following page.
+            var nextContentHeight = 0
+            if (level > 0) {
+                var lookAhead = index + 1
+                while (lookAhead < lines.size && lines[lookAhead].isBlank()) lookAhead++
+                if (lookAhead < lines.size) {
+                    val nextLayout = makeLayout(lines[lookAhead])
+                    val usablePageHeight = (bottom - margin).toInt()
+                    // If the next block can fit on a page, reserve its full height.
+                    // Very long blocks are handled by the normal page-fit check below.
+                    if (nextLayout.height <= usablePageHeight) {
+                        nextContentHeight = nextLayout.height + 3
+                    } else {
+                        nextContentHeight = minOf(nextLayout.height, 2 * 20) + 3
+                    }
+                }
+            }
+
+            val requiredHeight = headingGap + layout.height +
+                (if (level > 0) 3 else 0) + nextContentHeight
+            if (y > margin && y + requiredHeight > bottom) {
+                nextPage()
+            }
+
+            // A single text block can be taller than the remaining page. Move it
+            // to a fresh page before drawing rather than clipping it at the bottom.
+            if (y > margin && y + layout.height > bottom) {
+                nextPage()
+            }
+
             page.canvas.save()
-            page.canvas.translate(margin.toFloat(), y)
+            page.canvas.translate(margin.toFloat(), y + headingGap)
             layout.draw(page.canvas)
             page.canvas.restore()
-            y += layout.height + if (line.isBlank()) 5f else 3f
+            y += headingGap + layout.height + if (line.isBlank()) 5f else 3f
+            index++
         }
+
         document.finishPage(page)
         FileOutputStream(file).use { document.writeTo(it) }
         document.close()
