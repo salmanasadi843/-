@@ -17,6 +17,8 @@ data class LectureEntity(
     val audioUrl: String? = null,
     val audioDurationMs: Long = 0L,
     val transcript: String = "",
+    val rawTranscript: String? = null,
+    val correctedTranscript: String? = null,
     val aiSummary: String? = null,
     val aiKeyPoints: String? = null,
     val aiQuizJson: String? = null,
