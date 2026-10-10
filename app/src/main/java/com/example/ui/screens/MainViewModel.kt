@@ -16,12 +16,15 @@ import com.example.data.api.TranscriptionProgress
 import com.example.data.local.AppDatabase
 import com.example.data.local.LectureEntity
 import com.example.data.repository.LectureRepository
+import com.example.data.repository.FirestoreSyncRepository
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.Job
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.combine
+import kotlinx.coroutines.flow.debounce
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
@@ -92,8 +95,48 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
         rolePrefs.edit().putString("role", role.name).apply()
     }
 
+    /** Restore cloud data first, then autosave subsequent Room changes. */
+    fun startCloudSync() {
+        if (_userRole.value != UserRole.TEACHER) return
+        val app = getApplication<Application>()
+        val uid = AuthPreferences.currentUid(app) ?: return
+        cloudSyncJob?.cancel()
+        cloudSyncJob = viewModelScope.launch {
+            try {
+                val restored = cloudSyncRepository.restoreFromCloud(uid)
+                if (!restored) {
+                    // Keep old published material untouched; import it only if it
+                    // follows the known snapshot shape, then create private backup.
+                    cloudSyncRepository.restoreLegacySharedMaterials(uid)
+                    cloudSyncRepository.uploadSnapshot(uid)
+                }
+
+                combine(
+                    repository.allLectures,
+                    repository.allClasses,
+                    repository.allCoursesDetailed
+                ) { _, _, _ -> Unit }
+                    .debounce(1200)
+                    .collect {
+                        try {
+                            cloudSyncRepository.uploadSnapshot(uid)
+                        } catch (e: Exception) {
+                            Log.e(TAG, "Teacher cloud backup failed", e)
+                        }
+                    }
+            } catch (e: Exception) {
+                // A failed cloud read must never trigger a destructive local upload.
+                Log.e(TAG, "Teacher cloud restore failed; local data was kept", e)
+            }
+        }
+    }
+
     private val database = AppDatabase.getDatabase(application)
     val repository = LectureRepository(database.lectureDao(), database.classDao(), database.courseDao())
+    private val cloudSyncRepository = FirestoreSyncRepository(
+        database.lectureDao(), database.classDao(), database.courseDao()
+    )
+    private var cloudSyncJob: Job? = null
 
     val audioPlayer = AudioPlayerManager(application)
     val audioRecorder = AudioRecorderManager(application)
@@ -221,7 +264,9 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
         GeminiApiService.configure(application)
 
         viewModelScope.launch {
-            repository.seedInitialDataIfEmpty()
+            if (AuthPreferences.currentUid(application) == null) {
+                repository.seedInitialDataIfEmpty()
+            }
         }
     }
 
