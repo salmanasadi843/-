@@ -1,15 +1,34 @@
 rules_version = '2';
 service cloud.firestore {
   match /databases/{database}/documents {
-    match /shared_materials/{ownerUid} {
-      // هر کاربر واردشده می‌تواند مطالب منتشرشده را بخواند.
-      allow read: if request.auth != null;
+    // Private cloud backup: only the authenticated teacher who owns the UID
+    // may read or change their own complete Room snapshot.
+    match /teacher_data/{ownerUid} {
+      allow read: if request.auth != null
+        && request.auth.uid == ownerUid;
 
-      // فقط خود صاحب حساب با نقش استاد اجازه انتشار یا حذف دارد.
-      allow create, update, delete: if request.auth != null
+      allow create, update: if request.auth != null
         && request.auth.uid == ownerUid
         && get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role == 'TEACHER'
         && request.resource.data.ownerUid == ownerUid;
+
+      allow delete: if request.auth != null
+        && request.auth.uid == ownerUid
+        && get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role == 'TEACHER';
+    }
+
+    // Published materials remain separate from private teacher backups.
+    match /shared_materials/{ownerUid} {
+      allow read: if request.auth != null;
+
+      allow create, update: if request.auth != null
+        && request.auth.uid == ownerUid
+        && get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role == 'TEACHER'
+        && request.resource.data.ownerUid == ownerUid;
+
+      allow delete: if request.auth != null
+        && request.auth.uid == ownerUid
+        && get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role == 'TEACHER';
     }
   }
 }
