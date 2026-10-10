@@ -64,8 +64,14 @@ class FirestoreSyncRepository(
             data["lectures"] !is List<*>
         ) return false
 
-        restoreSnapshot(snapshot, requireAllCollections = true)
-        return true
+        return try {
+            restoreSnapshot(snapshot, requireAllCollections = true)
+            true
+        } catch (_: IllegalStateException) {
+            // Unknown legacy shape: leave local records untouched and let the
+            // caller create a private backup rather than destructively importing it.
+            false
+        }
     }
 
     suspend fun uploadSnapshot(uid: String) {
@@ -105,11 +111,24 @@ class FirestoreSyncRepository(
             )
         }
 
-        val classes = rawClasses.orEmpty().mapNotNull { (it as? Map<*, *>)?.asStringMap()?.toClassEntity() }
-        val courses = rawCourses.orEmpty().mapNotNull { (it as? Map<*, *>)?.asStringMap()?.toCourseEntity() }
-        val lectures = rawLectures.orEmpty().mapNotNull { (it as? Map<*, *>)?.asStringMap()?.toLectureEntity() }
+        val classes = rawClasses.orEmpty().map {
+            (it as? Map<*, *>)?.asStringMap()?.toClassEntity()
+                ?: throw IllegalStateException("رکورد کلاس در پشتیبان ابری معتبر نیست.")
+        }
+        val courses = rawCourses.orEmpty().map {
+            (it as? Map<*, *>)?.asStringMap()?.toCourseEntity()
+                ?: throw IllegalStateException("رکورد درس در پشتیبان ابری معتبر نیست.")
+        }
+        val lectures = rawLectures.orEmpty().map {
+            (it as? Map<*, *>)?.asStringMap()?.toLectureEntity()
+                ?: throw IllegalStateException("رکورد جلسه در پشتیبان ابری معتبر نیست.")
+        }
+        if (classes.any { it.id == 0L } || courses.any { it.id == 0L } || lectures.any { it.id == 0L }) {
+            throw IllegalStateException("شناسه یکی از رکوردهای پشتیبان ابری خالی است.")
+        }
 
-        // Delete children before parents, then recreate parents before children.
+        // Validate every record before deleting anything locally. Delete children
+        // before parents, then recreate parents before children.
         lectureDao.clearForRestore()
         courseDao.clearForRestore()
         classDao.clearForRestore()
