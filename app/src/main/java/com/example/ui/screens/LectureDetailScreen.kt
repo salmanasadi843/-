@@ -3,7 +3,6 @@ package com.example.ui.screens
 import android.content.ClipData
 import android.content.ClipboardManager
 import android.content.Context
-import android.content.Intent
 import android.widget.Toast
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.foundation.background
@@ -237,28 +236,6 @@ fun LectureDetailScreen(
                     if (isTeacher) { IconButton(onClick = { onNavigateToEdit(lectureId) }, modifier = Modifier.testTag("detail_edit_button")) {
                         Icon(imageVector = Icons.Default.Edit, contentDescription = "ویرایش")
                         } }
-                    IconButton(onClick = {
-                        val shareIntent = Intent(Intent.ACTION_SEND).apply {
-                            type = "text/plain"
-                            putExtra(
-                                Intent.EXTRA_TEXT,
-                                """
-عنوان: ${currentLecture.title}
-درس: ${currentLecture.courseName}
-استاد: ${currentLecture.professorName}
-
-خلاصه هوشمند:
-${currentLecture.aiSummary ?: "ثبت نشده"}
-
-متن جزوه:
-${currentLecture.transcript}
-                                """.trimIndent()
-                            )
-                        }
-                        context.startActivity(Intent.createChooser(shareIntent, "اشتراک‌گذاری جزوه کلاس"))
-                    }) {
-                        Icon(imageVector = Icons.Default.Share, contentDescription = "اشتراک‌گذاری")
-                    }
                     IconButton(onClick = { showExportDialog = true }) {
                         Icon(imageVector = Icons.Default.Description, contentDescription = "خروجی Word و PDF")
                     }
