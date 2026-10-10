@@ -1,9 +1,16 @@
 <?xml version="1.0" encoding="utf-8"?>
-<layer-list xmlns:android="http://schemas.android.com/apk/res/android">
-    <item
-        android:width="66dp"
-        android:height="66dp"
-        android:drawable="@drawable/ic_app_logo_1791057630670"
-        android:gravity="center" />
-</layer-list>
-
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="108dp"
+    android:height="108dp"
+    android:viewportWidth="108"
+    android:viewportHeight="108">
+    <path android:fillColor="#00C8D0" android:pathData="M12,17 A39,39 0,0 1,73,12 L70,16 A35,35 0,0 0,16,22 Z"/>
+    <path android:fillColor="#0879C9" android:pathData="M76,15 A39,39 0,0 1,96,59 L91,59 A34,34 0,0 0,73,19 Z"/>
+    <path android:fillColor="#F7EBDD" android:strokeColor="#D8C7B0" android:strokeWidth="0.8" android:pathData="M12,57 Q28,49 52,63 L52,88 Q30,75 12,82 Z"/>
+    <path android:fillColor="#FFF8ED" android:strokeColor="#D8C7B0" android:strokeWidth="0.8" android:pathData="M52,63 Q76,49 96,57 L96,82 Q75,75 52,88 Z"/>
+    <path android:fillColor="#E8D9C6" android:pathData="M12,82 Q32,76 52,88 Q74,76 96,82 L96,86 Q74,81 52,93 Q30,81 12,86 Z"/>
+    <path android:fillColor="#16C9D0" android:pathData="M46,64 Q50,42 67,23 Q79,10 91,9 Q87,26 76,40 Q62,57 46,64 Z"/>
+    <path android:fillColor="#087FA8" android:pathData="M46,64 Q63,42 91,9 Q75,39 46,64 Z"/>
+    <path android:fillColor="#FFFFFF" android:pathData="M46,64 L67,23 L49,62 Z"/>
+    <path android:fillColor="#112846" android:pathData="M49,62 L52,63 L52,88 L49,87 Z"/>
+</vector>
