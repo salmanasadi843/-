@@ -356,9 +356,9 @@ ${currentLecture.transcript}
             TranscriptTab(
                 lecture = currentLecture,
                 onEditClick = { onNavigateToEdit(lectureId) },
-                onCopyClick = {
+                onCopyClick = { text ->
                     val clipboard = context.getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager
-                    val clip = ClipData.newPlainText("جزوه کلاس", currentLecture.transcript)
+                    val clip = ClipData.newPlainText("جزوه کلاس", text)
                     clipboard.setPrimaryClip(clip)
                     Toast.makeText(context, "متن در حافظه کپی شد", Toast.LENGTH_SHORT).show()
                 }
@@ -511,10 +511,14 @@ fun AudioPlayerCard(
 fun TranscriptTab(
     lecture: LectureEntity,
     onEditClick: () -> Unit,
-    onCopyClick: () -> Unit
+    onCopyClick: (String) -> Unit
 ) {
     val scrollState = rememberScrollState()
-    val hasText = lecture.transcript.isNotBlank()
+    var selectedTranscriptTab by remember(lecture.id) { mutableStateOf(0) }
+    val rawText = lecture.rawTranscript?.takeIf { it.isNotBlank() } ?: lecture.transcript
+    val correctedText = lecture.correctedTranscript.orEmpty()
+    val displayedText = if (selectedTranscriptTab == 0) rawText else correctedText
+    val hasText = rawText.isNotBlank() || correctedText.isNotBlank()
     val tags = lecture.tags.split(",").map { it.trim() }.filter { it.isNotBlank() }
 
     Column(
@@ -561,7 +565,7 @@ fun TranscriptTab(
                 fontWeight = FontWeight.Bold
             )
             Row(verticalAlignment = Alignment.CenterVertically) {
-                TextButton(onClick = onCopyClick) {
+                TextButton(onClick = { onCopyClick(displayedText) }) {
                     Icon(Icons.Default.ContentCopy, null, modifier = Modifier.size(17.dp))
                     Spacer(Modifier.width(5.dp))
                     Text("کپی")
@@ -573,6 +577,28 @@ fun TranscriptTab(
         }
 
         Spacer(Modifier.height(8.dp))
+
+        Row(
+            modifier = Modifier.fillMaxWidth().padding(bottom = 10.dp),
+            horizontalArrangement = Arrangement.spacedBy(8.dp)
+        ) {
+            Surface(
+                modifier = Modifier.weight(1f).clickable { selectedTranscriptTab = 0 },
+                shape = RoundedCornerShape(12.dp),
+                color = if (selectedTranscriptTab == 0) MaterialTheme.colorScheme.primaryContainer else MaterialTheme.colorScheme.surfaceVariant
+            ) {
+                Text("متن خام", modifier = Modifier.fillMaxWidth().padding(12.dp), textAlign = TextAlign.Center,
+                    fontWeight = if (selectedTranscriptTab == 0) FontWeight.Bold else FontWeight.Normal)
+            }
+            Surface(
+                modifier = Modifier.weight(1f).clickable { selectedTranscriptTab = 1 },
+                shape = RoundedCornerShape(12.dp),
+                color = if (selectedTranscriptTab == 1) MaterialTheme.colorScheme.primaryContainer else MaterialTheme.colorScheme.surfaceVariant
+            ) {
+                Text("متن اصلاح‌شده", modifier = Modifier.fillMaxWidth().padding(12.dp), textAlign = TextAlign.Center,
+                    fontWeight = if (selectedTranscriptTab == 1) FontWeight.Bold else FontWeight.Normal)
+            }
+        }
 
         if (!hasText) {
             Surface(
@@ -604,6 +630,23 @@ fun TranscriptTab(
                     )
                 }
             }
+        } else if (selectedTranscriptTab == 1 && correctedText.isBlank()) {
+            Surface(
+                modifier = Modifier.fillMaxWidth(),
+                shape = RoundedCornerShape(18.dp),
+                color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.55f)
+            ) {
+                Column(modifier = Modifier.padding(20.dp), horizontalAlignment = Alignment.CenterHorizontally) {
+                    Icon(Icons.Default.AutoAwesome, contentDescription = null, tint = MaterialTheme.colorScheme.primary)
+                    Spacer(Modifier.height(8.dp))
+                    Text("هنوز متن اصلاح‌شده‌ای ذخیره نشده است.", fontWeight = FontWeight.SemiBold)
+                    Spacer(Modifier.height(4.dp))
+                    Text("متن خام حفظ شده است. از بخش ویرایش جلسه، اصلاح متن را اجرا کنید.",
+                        style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        textAlign = TextAlign.Center)
+                    TextButton(onClick = onEditClick) { Text("رفتن به ویرایش جلسه") }
+                }
+            }
         } else {
             Surface(
                 modifier = Modifier.fillMaxWidth(),
@@ -611,7 +654,7 @@ fun TranscriptTab(
                 color = MaterialTheme.colorScheme.surface
             ) {
                 Text(
-                    text = lecture.transcript,
+                    text = displayedText,
                     modifier = Modifier.padding(horizontal = 18.dp, vertical = 20.dp),
                     style = MaterialTheme.typography.bodyLarge.copy(lineHeight = 32.sp),
                     textAlign = TextAlign.Start
