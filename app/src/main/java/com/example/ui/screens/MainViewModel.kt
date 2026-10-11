@@ -495,6 +495,25 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
 
     fun openCourse(courseId: Long) { /* Legacy compatibility: course screens are no longer part of the user flow. */ }
 
+    private val _publicationStatus = MutableStateFlow("")
+    val publicationStatus: StateFlow<String> = _publicationStatus.asStateFlow()
+
+    fun setClassPublication(item: com.example.data.local.ClassEntity, published: Boolean) {
+        viewModelScope.launch {
+            val updated = item.copy(isPublished = published)
+            repository.saveClass(updated)
+            _publicationStatus.value = if (published) "کلاس ذخیره شد؛ در حال انتشار مطالب…" else "کلاس ذخیره شد؛ در حال حذف آن از مطالب دانشجو…"
+            try {
+                val app = getApplication<Application>()
+                val result = withContext(Dispatchers.IO) { CloudMaterialsSync.sync(app) }
+                _publicationStatus.value = if (published) "کلاس منتشر شد. $result" else "انتشار کلاس لغو شد. $result"
+            } catch (e: Exception) {
+                Log.e(TAG, "Class publication sync failed", e)
+                _publicationStatus.value = "وضعیت کلاس در گوشی ذخیره شد، اما همگام‌سازی آنلاین ناموفق بود؛ از بخش اتصال دوباره همگام‌سازی کنید."
+            }
+        }
+    }
+
     fun saveClass(item: com.example.data.local.ClassEntity, onSaved: (Long) -> Unit = {}) {
         viewModelScope.launch { onSaved(repository.saveClass(item)) }
     }
