@@ -47,6 +47,7 @@ fun HomeScreen(
 ) {
     val classes by viewModel.repository.allClasses.collectAsState(initial = emptyList())
     val lectures by viewModel.repository.allLectures.collectAsState(initial = emptyList())
+    val studentSyncStatus by viewModel.studentMaterialsSyncStatus.collectAsState()
     val isTeacher = userRole == UserRole.TEACHER
     val isOnline = rememberNetworkConnection()
     var showBulkExportDialog by androidx.compose.runtime.remember { androidx.compose.runtime.mutableStateOf(false) }
@@ -119,6 +120,12 @@ fun HomeScreen(
                             Text("مطالعه را ادامه دهید", style = MaterialTheme.typography.headlineSmall, fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.onPrimary)
                             Spacer(Modifier.height(5.dp))
                             Text("کلاس را انتخاب کنید و وارد جلسه موردنظر شوید.", color = MaterialTheme.colorScheme.onPrimary.copy(alpha = 0.82f))
+                            Spacer(Modifier.height(8.dp))
+                            Text(
+                                studentSyncStatus,
+                                style = MaterialTheme.typography.bodySmall,
+                                color = MaterialTheme.colorScheme.onPrimary.copy(alpha = 0.9f)
+                            )
                             Spacer(Modifier.height(14.dp))
                             Button(onClick = viewModel::openClasses, Modifier.fillMaxWidth(), colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.secondary, contentColor = MaterialTheme.colorScheme.onSecondary)) {
                                 Icon(Icons.Default.School, null)
