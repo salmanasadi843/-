@@ -37,6 +37,17 @@ service cloud.firestore {
       allow delete: if request.auth != null
                     && request.auth.uid == ownerUid
                     && get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role == 'TEACHER';
+
+      // رکوردهای جداگانه برای همگام‌سازی کلاس‌ها، درس‌ها و جلسات
+      // فقط صاحب حساب استاد اجازه خواندن و نوشتن دارد
+      match /records/{recordId} {
+        allow read: if request.auth != null
+                    && request.auth.uid == ownerUid;
+
+        allow create, update, delete: if request.auth != null
+                                      && request.auth.uid == ownerUid
+                                      && get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role == 'TEACHER';
+      }
     }
   }
 }
