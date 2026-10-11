@@ -29,7 +29,7 @@ object CloudMaterialsSync {
             val courses = runBlocking { db.courseDao().getAllForBackup() }
                 .filter { it.classId in publishedClassIds }
             val lectures = runBlocking { db.lectureDao().getAllForBackup() }
-                .filter { it.classId == null || it.classId in publishedClassIds }
+                .filter { it.classId != null && it.classId in publishedClassIds }
             val payload = JSONObject()
                 .put("format", "darsyar-shared-materials")
                 .put("version", 1)
