@@ -135,6 +135,7 @@ fun LectureDetailScreen(
 
     var showDeleteConfirmDialog by remember { mutableStateOf(false) }
     var showExportDialog by remember { mutableStateOf(false) }
+    var exportOriginalTranscript by remember { mutableStateOf(false) }
     var chatInputText by remember { mutableStateOf("") }
 
     if (lecture == null) {
@@ -176,22 +177,23 @@ fun LectureDetailScreen(
         AlertDialog(
             onDismissRequest = { showExportDialog = false },
             title = { Text("خروجی و ارسال جزوه") },
-            text = { Text("قالب فایل را انتخاب کنید. عنوان جلسه، تاریخ، خلاصه، کلیدواژه‌ها و متن جزوه در خروجی قرار می‌گیرد.") },
+            text = { Column { Text("قالب فایل و نسخه متن را انتخاب کنید."); Row { TextButton(onClick = { exportOriginalTranscript = true }) { Text(if (exportOriginalTranscript) "متن اصلی *" else "متن اصلی") }; TextButton(onClick = { exportOriginalTranscript = false }) { Text(if (!exportOriginalTranscript) "متن اصلاح‌شده *" else "متن اصلاح‌شده") } } } },
             confirmButton = {
+                val lectureForExport = if (exportOriginalTranscript) currentLecture.copy(transcript = currentLecture.originalTranscript.ifBlank { currentLecture.transcript }) else currentLecture
                 Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
                     TextButton(onClick = {
                         showExportDialog = false
-                        runCatching { LectureExport.share(context, listOf(currentLecture), LectureExportFormat.WORD, currentLecture.title) }
+                        runCatching { LectureExport.share(context, listOf(lectureForExport), LectureExportFormat.WORD, currentLecture.title) }
                             .onFailure { android.widget.Toast.makeText(context, "ساخت فایل Word ناموفق بود: ${it.localizedMessage}", android.widget.Toast.LENGTH_LONG).show() }
                     }) { Text("Word") }
                     TextButton(onClick = {
                         showExportDialog = false
-                        runCatching { LectureExport.share(context, listOf(currentLecture), LectureExportFormat.PDF, currentLecture.title) }
+                        runCatching { LectureExport.share(context, listOf(lectureForExport), LectureExportFormat.PDF, currentLecture.title) }
                             .onFailure { android.widget.Toast.makeText(context, "ساخت PDF ناموفق بود: ${it.localizedMessage}", android.widget.Toast.LENGTH_LONG).show() }
                     }) { Text("PDF") }
                     TextButton(onClick = {
                         showExportDialog = false
-                        runCatching { LectureExport.share(context, listOf(currentLecture), LectureExportFormat.TEXT, currentLecture.title) }
+                        runCatching { LectureExport.share(context, listOf(lectureForExport), LectureExportFormat.TEXT, currentLecture.title) }
                             .onFailure { android.widget.Toast.makeText(context, "اشتراک‌گذاری ناموفق بود: ${it.localizedMessage}", android.widget.Toast.LENGTH_LONG).show() }
                     }) { Text("متن") }
                 }
