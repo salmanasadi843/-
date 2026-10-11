@@ -1011,6 +1011,7 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
 
     private suspend fun saveTranscriptionResult(transcript: String) {
         formTranscript.value = transcript
+        formOriginalTranscript.value = transcript
         _aiError.value = null
 
         val id = editingLectureId ?: return
