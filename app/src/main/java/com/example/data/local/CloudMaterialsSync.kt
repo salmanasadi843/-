@@ -103,9 +103,9 @@ object CloudMaterialsSync {
             // Manual imports create positive local IDs while online sync uses stable negative IDs.
             // Match classes by semantic identity so the same class is not shown twice.
             val localClassesAll = runBlocking { db.classDao().getAllForBackup() }
-            // A class can have been imported by an older version with a positive local ID.
-            // Apply publication changes to matching cached classes too, so hiding a class
-            // at the teacher side also hides an already-cached copy on the student device.
+            // Apply publication changes to matching cached classes too, including classes
+            // imported by older versions with positive local IDs.
+            val publishedKeys = classes.map { classKey(it.name, it.teacherName, it.term) }.toSet()
             val withdrawnKeys = mutableSetOf<String>()
             documents.forEach { document ->
                 val payloadText = document.getString("payload") ?: return@forEach
@@ -118,8 +118,15 @@ object CloudMaterialsSync {
                     }
                 }
             }
-            localClassesAll.filter { it.id > 0L && classKey(it.name, it.teacherName, it.term) in withdrawnKeys }
-                .forEach { runBlocking { db.classDao().update(it.copy(isPublished = false)) } }
+            localClassesAll.filter { it.id > 0L }.forEach { local ->
+                val key = classKey(local.name, local.teacherName, local.term)
+                when {
+                    key in withdrawnKeys && local.isPublished ->
+                        runBlocking { db.classDao().update(local.copy(isPublished = false)) }
+                    key in publishedKeys && !local.isPublished ->
+                        runBlocking { db.classDao().update(local.copy(isPublished = true)) }
+                }
+            }
 
             val localClasses = runBlocking { db.classDao().getAllForBackup() }.filter { it.id > 0L }
             val localClassByKey = localClasses.associateBy { classKey(it.name, it.teacherName, it.term) }
