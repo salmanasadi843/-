@@ -23,9 +23,13 @@ object CloudMaterialsSync {
         val firestore = FirebaseFirestore.getInstance()
 
         return if (AuthPreferences.currentRole(context) == UserRole.TEACHER) {
-            val classes = runBlocking { db.classDao().getAllForBackup() }
+            val allClasses = runBlocking { db.classDao().getAllForBackup() }
+            val classes = allClasses.filter { it.isPublished }
+            val publishedClassIds = classes.map { it.id }.toSet()
             val courses = runBlocking { db.courseDao().getAllForBackup() }
+                .filter { it.classId in publishedClassIds }
             val lectures = runBlocking { db.lectureDao().getAllForBackup() }
+                .filter { it.classId == null || it.classId in publishedClassIds }
             val payload = JSONObject()
                 .put("format", "darsyar-shared-materials")
                 .put("version", 1)
@@ -92,17 +96,22 @@ object CloudMaterialsSync {
                 }
             }
 
+            val publishedClassIds = allClasses.filter { it.isPublished }.map { it.id }.toSet()
+            val publishedClasses = allClasses.filter { it.isPublished }
+            val publishedCourses = allCourses.filter { it.classId in publishedClassIds }
+            val publishedLectures = allLectures.filter { it.classId in publishedClassIds }
+
             runBlocking {
                 db.withTransaction {
                     db.lectureDao().clearCloudSharedData()
                     db.courseDao().clearCloudSharedData()
                     db.classDao().clearCloudSharedData()
-                    db.classDao().insertAllForRestore(allClasses.distinctBy { it.id })
-                    db.courseDao().insertAllForRestore(allCourses.distinctBy { it.id })
-                    db.lectureDao().insertAllForRestore(allLectures.distinctBy { it.id })
+                    db.classDao().insertAllForRestore(publishedClasses.distinctBy { it.id })
+                    db.courseDao().insertAllForRestore(publishedCourses.distinctBy { it.id })
+                    db.lectureDao().insertAllForRestore(publishedLectures.distinctBy { it.id })
                 }
             }
-            "مطالب آنلاین به‌روزرسانی شد: ${allLectures.size} جلسه از ${documents.size} حساب استاد."
+            "مطالب منتشرشده آنلاین به‌روزرسانی شد: ${publishedLectures.size} جلسه از ${documents.size} حساب استاد."
         }
     }
 
@@ -117,11 +126,13 @@ object CloudMaterialsSync {
         .put("id", id).put("name", name).put("teacherName", teacherName)
         .put("description", description).put("term", term)
         .put("classDateMillis", classDateMillis).put("createdAtMillis", createdAtMillis)
+        .put("isPublished", isPublished)
 
     private fun JSONObject.toClassEntity() = ClassEntity(
         id = optLong("id"), name = optString("name"), teacherName = optString("teacherName"),
         description = optString("description"), term = optString("term"),
-        classDateMillis = optLong("classDateMillis"), createdAtMillis = optLong("createdAtMillis")
+        classDateMillis = optLong("classDateMillis"), createdAtMillis = optLong("createdAtMillis"),
+        isPublished = if (has("isPublished")) optBoolean("isPublished") else true
     )
 
     private fun CourseEntity.toJson() = JSONObject()
