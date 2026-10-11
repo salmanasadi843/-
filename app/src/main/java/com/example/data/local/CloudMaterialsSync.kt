@@ -127,11 +127,11 @@ object CloudMaterialsSync {
             val publishedCourses = allCourses
                 .filter { classIdRemap[it.classId] in publishedClassIds }
                 .map { it.copy(classId = classIdRemap[it.classId] ?: it.classId) }
-                .distinctBy { "\${it.classId}:\${normalized(it.name)}:\${normalized(it.teacherName)}" }
+                .distinctBy { "${it.classId}:${normalized(it.name)}:${normalized(it.teacherName)}" }
             val publishedLectures = allLectures
                 .filter { classIdRemap[it.classId ?: 0L] in publishedClassIds }
                 .map { it.copy(classId = classIdRemap[it.classId ?: 0L] ?: it.classId) }
-                .distinctBy { "\${it.classId}:\${normalized(it.title)}:\${it.dateMillis}:\${normalized(it.courseName)}" }
+                .distinctBy { "${it.classId}:${normalized(it.title)}:${it.dateMillis}:${normalized(it.courseName)}" }
 
             runBlocking {
                 db.withTransaction {
@@ -143,7 +143,7 @@ object CloudMaterialsSync {
                     db.lectureDao().insertAllForRestore(publishedLectures.distinctBy { it.id })
                 }
             }
-            "مطالب منتشرشده آنلاین به‌روزرسانی شد: \${publishedLectures.size} جلسه از \${documents.size} حساب استاد."
+            "مطالب منتشرشده آنلاین به‌روزرسانی شد: ${publishedLectures.size} جلسه از ${documents.size} حساب استاد."
         }
     }
 
@@ -151,7 +151,7 @@ object CloudMaterialsSync {
         value.trim().lowercase().replace(Regex("\\s+"), " ")
 
     private fun classKey(name: String, teacher: String, term: String): String =
-        "\${normalized(name)}|\${normalized(teacher)}|\${normalized(term)}"
+        "${normalized(name)}|${normalized(teacher)}|${normalized(term)}"
 
     private fun stableId(owner: String, key: String): Long {
         val bytes = MessageDigest.getInstance("SHA-256").digest("$owner:$key".toByteArray(Charsets.UTF_8))
