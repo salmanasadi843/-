@@ -204,17 +204,37 @@ object LectureExport {
                 nextPage()
             }
 
-            // A single text block can be taller than the remaining page. Move it
-            // to a fresh page before drawing rather than clipping it at the bottom.
-            if (y > margin && y + layout.height > bottom) {
-                nextPage()
-            }
+            // Keep normal paragraphs together when possible. Very long paragraphs
+            // must be split at line boundaries across pages instead of being clipped.
+            if (layout.height > (bottom - margin).toInt()) {
+                if (y > margin && y + headingGap + 24f > bottom) nextPage()
+                y += headingGap
+                var lineIndex = 0
+                while (lineIndex < layout.lineCount) {
+                    val lineTop = layout.getLineTop(lineIndex)
+                    val lineBottom = layout.getLineBottom(lineIndex)
+                    val lineHeight = (lineBottom - lineTop).coerceAtLeast(1)
+                    if (y > margin && y + lineHeight > bottom) nextPage()
 
-            page.canvas.save()
-            page.canvas.translate(margin.toFloat(), y + headingGap)
-            layout.draw(page.canvas)
-            page.canvas.restore()
-            y += headingGap + layout.height + if (line.isBlank()) 5f else 3f
+                    page.canvas.save()
+                    page.canvas.translate(margin.toFloat(), y - lineTop.toFloat())
+                    page.canvas.clipRect(0f, lineTop.toFloat(), width.toFloat(), lineBottom.toFloat())
+                    layout.draw(page.canvas)
+                    page.canvas.restore()
+
+                    y += lineHeight + 1f
+                    lineIndex++
+                }
+                y += if (line.isBlank()) 5f else 3f
+            } else {
+                // Move a normal block to a fresh page rather than clipping it.
+                if (y > margin && y + headingGap + layout.height > bottom) nextPage()
+                page.canvas.save()
+                page.canvas.translate(margin.toFloat(), y + headingGap)
+                layout.draw(page.canvas)
+                page.canvas.restore()
+                y += headingGap + layout.height + if (line.isBlank()) 5f else 3f
+            }
             index++
         }
 
