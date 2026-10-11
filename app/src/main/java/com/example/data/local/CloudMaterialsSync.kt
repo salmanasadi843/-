@@ -127,7 +127,7 @@ object CloudMaterialsSync {
             val localCourses = runBlocking { db.courseDao().getAllForBackup() }.filter { it.id > 0L }
             val courseIdRemap = mutableMapOf<Long, Long>()
             val coursesToInsert = mutableListOf<CourseEntity>()
-            allCourses.filter { classIdRemap[it.classId] in publishedClassIds }.forEach { incoming ->
+            allCourses.filter { (classIdRemap[it.classId] ?: Long.MIN_VALUE) in publishedClassIds }.forEach { incoming ->
                 val mappedClassId = classIdRemap[incoming.classId] ?: incoming.classId
                 val existing = localCourses.firstOrNull {
                     it.classId == mappedClassId &&
@@ -144,7 +144,7 @@ object CloudMaterialsSync {
 
             val localLectures = runBlocking { db.lectureDao().getAllForBackup() }.filter { it.id > 0L }
             val lecturesToInsert = allLectures
-                .filter { classIdRemap[it.classId ?: 0L] in publishedClassIds }
+                .filter { (classIdRemap[it.classId ?: 0L] ?: Long.MIN_VALUE) in publishedClassIds }
                 .map { item ->
                     item.copy(
                         classId = item.classId?.let { classIdRemap[it] ?: it },
