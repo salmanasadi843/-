@@ -68,6 +68,8 @@ import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Slider
 import androidx.compose.material3.SliderDefaults
 import androidx.compose.material3.Surface
+import androidx.compose.material3.Tab
+import androidx.compose.material3.TabRow
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.material3.TopAppBar
@@ -333,11 +335,11 @@ fun LectureDetailScreen(
             TranscriptTab(
                 lecture = currentLecture,
                 onEditClick = { onNavigateToEdit(lectureId) },
-                onCopyClick = {
+                onCopyClick = { textToCopy ->
                     val clipboard = context.getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager
-                    val clip = ClipData.newPlainText("جزوه کلاس", currentLecture.transcript)
+                    val clip = ClipData.newPlainText("جزوه کلاس", textToCopy)
                     clipboard.setPrimaryClip(clip)
-                    Toast.makeText(context, "متن در حافظه کپی شد", Toast.LENGTH_SHORT).show()
+                    Toast.makeText(context, "متن انتخاب‌شده کپی شد", Toast.LENGTH_SHORT).show()
                 }
             )
         }
@@ -488,10 +490,14 @@ fun AudioPlayerCard(
 fun TranscriptTab(
     lecture: LectureEntity,
     onEditClick: () -> Unit,
-    onCopyClick: () -> Unit
+    onCopyClick: (String) -> Unit
 ) {
     val scrollState = rememberScrollState()
-    val hasText = lecture.transcript.isNotBlank()
+    var selectedTextTab by remember(lecture.id) { mutableStateOf(0) }
+    val originalText = lecture.originalTranscript.ifBlank { lecture.transcript }
+    val correctedText = lecture.transcript
+    val displayedTranscript = if (selectedTextTab == 0) originalText else correctedText
+    val hasText = originalText.isNotBlank() || correctedText.isNotBlank()
     val tags = lecture.tags.split(",").map { it.trim() }.filter { it.isNotBlank() }
 
     Column(
@@ -538,7 +544,7 @@ fun TranscriptTab(
                 fontWeight = FontWeight.Bold
             )
             Row(verticalAlignment = Alignment.CenterVertically) {
-                TextButton(onClick = onCopyClick) {
+                TextButton(onClick = { onCopyClick(displayedTranscript) }) {
                     Icon(Icons.Default.ContentCopy, null, modifier = Modifier.size(17.dp))
                     Spacer(Modifier.width(5.dp))
                     Text("کپی")
@@ -550,6 +556,21 @@ fun TranscriptTab(
         }
 
         Spacer(Modifier.height(8.dp))
+
+        TabRow(selectedTabIndex = selectedTextTab) {
+            Tab(
+                selected = selectedTextTab == 0,
+                onClick = { selectedTextTab = 0 },
+                text = { Text("متن اصلی") }
+            )
+            Tab(
+                selected = selectedTextTab == 1,
+                onClick = { selectedTextTab = 1 },
+                text = { Text("متن اصلاح‌شده") }
+            )
+        }
+
+        Spacer(Modifier.height(12.dp))
 
         if (!hasText) {
             Surface(
@@ -588,7 +609,7 @@ fun TranscriptTab(
                 color = MaterialTheme.colorScheme.surface
             ) {
                 Text(
-                    text = lecture.transcript,
+                    text = displayedTranscript,
                     modifier = Modifier.padding(horizontal = 18.dp, vertical = 20.dp),
                     style = MaterialTheme.typography.bodyLarge.copy(lineHeight = 32.sp),
                     textAlign = TextAlign.Start
