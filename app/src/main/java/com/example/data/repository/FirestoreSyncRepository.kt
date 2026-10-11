@@ -15,10 +15,12 @@ import kotlin.coroutines.resume
 import kotlin.coroutines.resumeWithException
 
 /**
- * Cloud backup for one authenticated teacher.
+ * Private cloud backup for one authenticated teacher.
  *
- * Private backups live in teacher_data/{uid}; published material remains in
- * shared_materials/{uid}. We never write private data to the public collection.
+ * Version 1 used one large document with three arrays. Version 2 stores one
+ * class/course/lecture per document to avoid Firestore's 1 MiB document limit.
+ * The root document is updated last, so an interrupted migration still leaves
+ * the previous version-1 snapshot available for recovery.
  */
 class FirestoreSyncRepository(
     private val lectureDao: LectureDao,
@@ -27,33 +29,39 @@ class FirestoreSyncRepository(
     private val firestore: FirebaseFirestore = FirebaseFirestore.getInstance()
 ) {
     private companion object {
-        const val SCHEMA_VERSION = 1L
+        const val SCHEMA_VERSION = 2L
+        const val LEGACY_SCHEMA_VERSION = 1L
         const val TEACHER_DATA = "teacher_data"
         const val SHARED_MATERIALS = "shared_materials"
+        const val RECORDS = "records"
+        const val BATCH_LIMIT = 400
     }
 
-    /**
-     * Returns true if a compatible snapshot was restored.
-     * A missing or incompatible document never clears local data.
-     */
     suspend fun restoreFromCloud(uid: String): Boolean {
-        val snapshot = firestore.collection(TEACHER_DATA).document(uid).get().awaitResult()
+        val root = firestore.collection(TEACHER_DATA).document(uid)
+        val snapshot = root.get().awaitResult()
         if (!snapshot.exists()) return false
 
-        val version = snapshot.getLong("schemaVersion")
-        if (version != SCHEMA_VERSION) {
-            throw IllegalStateException(
+        return when (snapshot.getLong("schemaVersion")) {
+            LEGACY_SCHEMA_VERSION -> {
+                // Validate and restore the old snapshot before migrating it.
+                restoreSnapshot(snapshot, requireAllCollections = true)
+                uploadSnapshot(uid)
+                true
+            }
+            SCHEMA_VERSION -> {
+                restoreRecordDocuments(uid)
+                true
+            }
+            else -> throw IllegalStateException(
                 "نسخه پشتیبان ابری قابل‌شناسایی نیست؛ برای جلوگیری از حذف اطلاعات، بازیابی متوقف شد."
             )
         }
-        restoreSnapshot(snapshot, requireAllCollections = true)
-        return true
     }
 
     /**
-     * Older shared documents are read-only fallback sources. They are never
-     * overwritten by this method, and are imported only if they contain the
-     * three expected lists.
+     * Older shared documents are read-only fallback sources. They are imported
+     * only if they contain all three expected arrays, then migrated privately.
      */
     suspend fun restoreLegacySharedMaterials(uid: String): Boolean {
         val snapshot = firestore.collection(SHARED_MATERIALS).document(uid).get().awaitResult()
@@ -68,8 +76,6 @@ class FirestoreSyncRepository(
             restoreSnapshot(snapshot, requireAllCollections = true)
             true
         } catch (_: IllegalStateException) {
-            // Unknown legacy shape: leave local records untouched and let the
-            // caller create a private backup rather than destructively importing it.
             false
         }
     }
@@ -78,21 +84,72 @@ class FirestoreSyncRepository(
         val classes = classDao.getAllForBackup()
         val courses = courseDao.getAllForBackup()
         val lectures = lectureDao.getAllForBackup()
-            // These two records are built-in demo data, not teacher-authored content.
             .filterNot {
                 it.title == "جلسه ۴: شبکه‌های عصبی و یادگیری عمیق" ||
                     it.title == "جلسه ۷: سری و تبدیل فوریه و کاربرد در سیگنال"
             }
 
-        val payload = hashMapOf<String, Any>(
-            "schemaVersion" to SCHEMA_VERSION,
-            "ownerUid" to uid,
-            "updatedAt" to FieldValue.serverTimestamp(),
-            "classes" to classes.map { it.toCloudMap() },
-            "courses" to courses.map { it.toCloudMap() },
-            "lectures" to lectures.map { it.toCloudMap() }
-        )
-        firestore.collection(TEACHER_DATA).document(uid).set(payload).awaitResult()
+        val root = firestore.collection(TEACHER_DATA).document(uid)
+        val records = root.collection(RECORDS)
+        val desired = linkedMapOf<String, Map<String, Any?>>()
+        classes.forEach { desired["class_${it.id}"] = mapOf("recordType" to "class") + it.toCloudMap() }
+        courses.forEach { desired["course_${it.id}"] = mapOf("recordType" to "course") + it.toCloudMap() }
+        lectures.forEach { desired["lecture_${it.id}"] = mapOf("recordType" to "lecture") + it.toCloudMap() }
+
+        // Read existing keys so deleted local records are also removed from cloud.
+        val existing = records.get().awaitResult().documents
+        val staleRefs = existing.filter { it.id !in desired.keys }.map { it.reference }
+
+        val operations = mutableListOf<Pair<com.google.firebase.firestore.DocumentReference, Map<String, Any?>?>>()
+        desired.forEach { (id, data) -> operations += records.document(id) to data }
+        staleRefs.forEach { operations += it to null }
+
+        // Firestore batches have a 500-write maximum; leave room below the limit.
+        operations.chunked(BATCH_LIMIT).forEach { chunk ->
+            val batch = firestore.batch()
+            chunk.forEach { (ref, data) ->
+                if (data == null) batch.delete(ref) else batch.set(ref, data)
+            }
+            batch.commit().awaitResult()
+        }
+
+        // Commit the version marker only after all individual records were written.
+        root.set(
+            mapOf(
+                "schemaVersion" to SCHEMA_VERSION,
+                "ownerUid" to uid,
+                "recordCount" to desired.size,
+                "updatedAt" to FieldValue.serverTimestamp()
+            )
+        ).awaitResult()
+    }
+
+    private suspend fun restoreRecordDocuments(uid: String) {
+        val documents = firestore.collection(TEACHER_DATA)
+            .document(uid)
+            .collection(RECORDS)
+            .get()
+            .awaitResult()
+            .documents
+
+        val classes = mutableListOf<ClassEntity>()
+        val courses = mutableListOf<CourseEntity>()
+        val lectures = mutableListOf<LectureEntity>()
+
+        documents.forEach { document ->
+            val data = document.data ?: throw IllegalStateException(
+                "یکی از رکوردهای پشتیبان ابری خالی است؛ اطلاعات محلی دست‌نخورده باقی ماند."
+            )
+            when (data["recordType"] as? String) {
+                "class" -> classes += data.toClassEntity()
+                "course" -> courses += data.toCourseEntity()
+                "lecture" -> lectures += data.toLectureEntity()
+                else -> throw IllegalStateException(
+                    "نوع یکی از رکوردهای پشتیبان ابری معتبر نیست؛ اطلاعات محلی دست‌نخورده باقی ماند."
+                )
+            }
+        }
+        validateAndReplaceLocalData(classes, courses, lectures)
     }
 
     private suspend fun restoreSnapshot(
@@ -123,12 +180,19 @@ class FirestoreSyncRepository(
             (it as? Map<*, *>)?.asStringMap()?.toLectureEntity()
                 ?: throw IllegalStateException("رکورد جلسه در پشتیبان ابری معتبر نیست.")
         }
+        validateAndReplaceLocalData(classes, courses, lectures)
+    }
+
+    private suspend fun validateAndReplaceLocalData(
+        classes: List<ClassEntity>,
+        courses: List<CourseEntity>,
+        lectures: List<LectureEntity>
+    ) {
         if (classes.any { it.id == 0L } || courses.any { it.id == 0L } || lectures.any { it.id == 0L }) {
             throw IllegalStateException("شناسه یکی از رکوردهای پشتیبان ابری خالی است.")
         }
 
-        // Validate every record before deleting anything locally. Delete children
-        // before parents, then recreate parents before children.
+        // Validate everything before deleting local data; delete children first.
         lectureDao.clearForRestore()
         courseDao.clearForRestore()
         classDao.clearForRestore()
@@ -164,7 +228,6 @@ class FirestoreSyncRepository(
         "classId" to classId,
         "courseId" to courseId,
         "dateMillis" to dateMillis,
-        // Local filesystem paths cannot be used on another phone.
         "audioUrl" to audioUrl,
         "audioDurationMs" to audioDurationMs,
         "transcript" to transcript,
