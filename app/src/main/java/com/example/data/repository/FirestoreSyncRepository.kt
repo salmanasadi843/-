@@ -208,7 +208,8 @@ class FirestoreSyncRepository(
         "description" to description,
         "term" to term,
         "classDateMillis" to classDateMillis,
-        "createdAtMillis" to createdAtMillis
+        "createdAtMillis" to createdAtMillis,
+        "isPublished" to isPublished
     )
 
     private fun CourseEntity.toCloudMap(): Map<String, Any?> = mapOf(
@@ -247,7 +248,8 @@ class FirestoreSyncRepository(
         description = text("description"),
         term = text("term"),
         classDateMillis = number("classDateMillis", System.currentTimeMillis()),
-        createdAtMillis = number("createdAtMillis", System.currentTimeMillis())
+        createdAtMillis = number("createdAtMillis", System.currentTimeMillis()),
+        isPublished = this["isPublished"] as? Boolean ?: true
     )
 
     private fun Map<String, Any?>.toCourseEntity() = CourseEntity(
