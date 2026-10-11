@@ -14,6 +14,7 @@ import com.example.data.api.GroqApiService
 import com.example.data.api.SpeechmaticsApiService
 import com.example.data.api.TranscriptionProgress
 import com.example.data.local.AppDatabase
+import com.example.data.local.CloudMaterialsSync
 import com.example.data.local.LectureEntity
 import com.example.data.repository.LectureRepository
 import com.example.data.repository.FirestoreSyncRepository
@@ -97,6 +98,39 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
 
     private val _cloudSyncStatus = MutableStateFlow("وضعیت همگام‌سازی هنوز بررسی نشده است.")
     val cloudSyncStatus: StateFlow<String> = _cloudSyncStatus.asStateFlow()
+
+    private val _studentMaterialsSyncStatus = MutableStateFlow("مطالب آنلاین هنوز بررسی نشده‌اند.")
+    val studentMaterialsSyncStatus: StateFlow<String> = _studentMaterialsSyncStatus.asStateFlow()
+    private var studentMaterialsSyncJob: Job? = null
+
+    /**
+     * Automatically fetch published teacher materials for a student after login.
+     * The connection/settings screen remains available as a manual retry path.
+     */
+    fun startStudentMaterialsSync() {
+        if (_userRole.value != UserRole.STUDENT) return
+        if (studentMaterialsSyncJob?.isActive == true) return
+
+        val app = getApplication<Application>()
+        if (AuthPreferences.currentUid(app).isNullOrBlank()) {
+            _studentMaterialsSyncStatus.value = "حساب کاربری مشخص نیست؛ از بخش اتصال دوباره تلاش کنید."
+            return
+        }
+
+        _studentMaterialsSyncStatus.value = "در حال دریافت خودکار مطالب منتشرشده استادها…"
+        studentMaterialsSyncJob = viewModelScope.launch {
+            try {
+                val result = withContext(Dispatchers.IO) {
+                    CloudMaterialsSync.sync(app)
+                }
+                _studentMaterialsSyncStatus.value = result
+            } catch (e: Exception) {
+                Log.e(TAG, "Automatic student materials sync failed", e)
+                _studentMaterialsSyncStatus.value =
+                    "دریافت خودکار مطالب انجام نشد؛ به بخش اتصال بروید و «دریافت مطالب آنلاین» را بزنید. ${e.localizedMessage ?: ""}".trim()
+            }
+        }
+    }
 
     /** Restore cloud data first, then autosave subsequent Room changes. */
     fun startCloudSync() {
