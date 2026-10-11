@@ -136,6 +136,19 @@ fun ClassScreen(
                                 Text("مشاهده جلسات  ›", style = MaterialTheme.typography.labelLarge, fontWeight = FontWeight.SemiBold, color = MaterialTheme.colorScheme.primary)
                             }
                             if (userRole == UserRole.TEACHER) {
+                                Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                                    Switch(
+                                        checked = item.isPublished,
+                                        onCheckedChange = { published ->
+                                            viewModel.saveClass(item.copy(isPublished = published))
+                                        }
+                                    )
+                                    Text(
+                                        if (item.isPublished) "منتشر" else "پنهان",
+                                        style = MaterialTheme.typography.labelSmall,
+                                        color = if (item.isPublished) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant
+                                    )
+                                }
                                 IconButton(onClick = {
                                     editingClass = item
                                     name = item.name
@@ -177,7 +190,8 @@ fun ClassScreen(
                                 term = term.trim(),
                                 description = editingClass?.description.orEmpty(),
                                 classDateMillis = editingClass?.classDateMillis ?: System.currentTimeMillis(),
-                                createdAtMillis = editingClass?.createdAtMillis ?: System.currentTimeMillis()
+                                createdAtMillis = editingClass?.createdAtMillis ?: System.currentTimeMillis(),
+                                isPublished = editingClass?.isPublished ?: true
                             )
                         )
                         showAdd = false
