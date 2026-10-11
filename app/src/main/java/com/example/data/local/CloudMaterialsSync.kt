@@ -72,7 +72,9 @@ object CloudMaterialsSync {
                 payload.optJSONArray("lectures")?.let { array ->
                     val teacherLectures = (0 until array.length()).map { array.getJSONObject(it).toLecture() }
                     val legacyClassId = stableId(owner, "class:legacy")
-                    if (teacherLectures.any { it.classId == null }) {
+                    // Only create a legacy bucket when the teacher has no real classes.
+                    if (teacherLectures.any { it.classId == null } &&
+                        (payload.optJSONArray("classes")?.length() ?: 0) == 0) {
                         val teacherName = payload.optString("teacherName", "استاد")
                         allClasses += ClassEntity(
                             id = legacyClassId,
@@ -96,24 +98,60 @@ object CloudMaterialsSync {
                 }
             }
 
-            val publishedClassIds = allClasses.filter { it.isPublished }.map { it.id }.toSet()
-            val publishedClasses = allClasses.filter { it.isPublished }
-            val publishedCourses = allCourses.filter { it.classId in publishedClassIds }
-            val publishedLectures = allLectures.filter { it.classId in publishedClassIds }
+            // Manual imports create positive local IDs while online sync uses stable negative IDs.
+            // Match classes by semantic identity so the same class is not shown twice.
+            val localClasses = runBlocking { db.classDao().getAllForBackup() }.filter { it.id > 0L }
+            val localClassByKey = localClasses.associateBy { classKey(it.name, it.teacherName, it.term) }
+            val cloudClassByKey = allClasses.distinctBy { classKey(it.name, it.teacherName, it.term) }
+                .associateBy { classKey(it.name, it.teacherName, it.term) }
+            val classIdRemap = mutableMapOf<Long, Long>()
+            val classesToInsert = mutableListOf<ClassEntity>()
+
+            allClasses.forEach { incoming ->
+                val key = classKey(incoming.name, incoming.teacherName, incoming.term)
+                val existingLocal = localClassByKey[key]
+                val canonicalCloud = cloudClassByKey[key]
+                val canonicalId = existingLocal?.id ?: canonicalCloud?.id ?: incoming.id
+                classIdRemap[incoming.id] = canonicalId
+                if (existingLocal == null && canonicalCloud?.id == incoming.id && incoming.isPublished) {
+                    classesToInsert += incoming
+                }
+            }
+
+            val publishedClassIds = (classesToInsert.map { it.id } + localClasses
+                .filter { local -> allClasses.any {
+                    classKey(it.name, it.teacherName, it.term) == classKey(local.name, local.teacherName, local.term) && it.isPublished
+                } }
+                .map { it.id }).toSet()
+
+            val publishedCourses = allCourses
+                .filter { classIdRemap[it.classId] in publishedClassIds }
+                .map { it.copy(classId = classIdRemap[it.classId] ?: it.classId) }
+                .distinctBy { "\${it.classId}:\${normalized(it.name)}:\${normalized(it.teacherName)}" }
+            val publishedLectures = allLectures
+                .filter { classIdRemap[it.classId ?: 0L] in publishedClassIds }
+                .map { it.copy(classId = classIdRemap[it.classId ?: 0L] ?: it.classId) }
+                .distinctBy { "\${it.classId}:\${normalized(it.title)}:\${it.dateMillis}:\${normalized(it.courseName)}" }
 
             runBlocking {
                 db.withTransaction {
                     db.lectureDao().clearCloudSharedData()
                     db.courseDao().clearCloudSharedData()
                     db.classDao().clearCloudSharedData()
-                    db.classDao().insertAllForRestore(publishedClasses.distinctBy { it.id })
+                    db.classDao().insertAllForRestore(classesToInsert.distinctBy { it.id })
                     db.courseDao().insertAllForRestore(publishedCourses.distinctBy { it.id })
                     db.lectureDao().insertAllForRestore(publishedLectures.distinctBy { it.id })
                 }
             }
-            "مطالب منتشرشده آنلاین به‌روزرسانی شد: ${publishedLectures.size} جلسه از ${documents.size} حساب استاد."
+            "مطالب منتشرشده آنلاین به‌روزرسانی شد: \${publishedLectures.size} جلسه از \${documents.size} حساب استاد."
         }
     }
+
+    private fun normalized(value: String): String =
+        value.trim().lowercase().replace(Regex("\\s+"), " ")
+
+    private fun classKey(name: String, teacher: String, term: String): String =
+        "\${normalized(name)}|\${normalized(teacher)}|\${normalized(term)}"
 
     private fun stableId(owner: String, key: String): Long {
         val bytes = MessageDigest.getInstance("SHA-256").digest("$owner:$key".toByteArray(Charsets.UTF_8))
