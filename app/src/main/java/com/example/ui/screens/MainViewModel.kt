@@ -95,12 +95,23 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
         rolePrefs.edit().putString("role", role.name).apply()
     }
 
+    private val _cloudSyncStatus = MutableStateFlow("وضعیت همگام‌سازی هنوز بررسی نشده است.")
+    val cloudSyncStatus: StateFlow<String> = _cloudSyncStatus.asStateFlow()
+
     /** Restore cloud data first, then autosave subsequent Room changes. */
     fun startCloudSync() {
-        if (_userRole.value != UserRole.TEACHER) return
+        if (_userRole.value != UserRole.TEACHER) {
+            _cloudSyncStatus.value = "همگام‌سازی خصوصی فقط برای حساب استاد فعال است."
+            return
+        }
         val app = getApplication<Application>()
-        val uid = AuthPreferences.currentUid(app) ?: return
+        val uid = AuthPreferences.currentUid(app)
+        if (uid.isNullOrBlank()) {
+            _cloudSyncStatus.value = "حساب کاربری وارد نشده است؛ برای همگام‌سازی دوباره وارد شوید."
+            return
+        }
         cloudSyncJob?.cancel()
+        _cloudSyncStatus.value = "در حال بررسی و همگام‌سازی با فضای ابری…"
         cloudSyncJob = viewModelScope.launch {
             try {
                 val restored = cloudSyncRepository.restoreFromCloud(uid)
@@ -109,6 +120,9 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
                     // follows the known snapshot shape, then create private backup.
                     cloudSyncRepository.restoreLegacySharedMaterials(uid)
                     cloudSyncRepository.uploadSnapshot(uid)
+                    _cloudSyncStatus.value = "پشتیبان‌گیری ابری موفق بود؛ تغییرات بعدی نیز خودکار ارسال می‌شوند."
+                } else {
+                    _cloudSyncStatus.value = "بازیابی اطلاعات از فضای ابری موفق بود؛ تغییرات بعدی خودکار ارسال می‌شوند."
                 }
 
                 combine(
@@ -120,13 +134,16 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
                     .collect {
                         try {
                             cloudSyncRepository.uploadSnapshot(uid)
+                            _cloudSyncStatus.value = "همگام‌سازی ابری موفق — آخرین ارسال انجام شد."
                         } catch (e: Exception) {
                             Log.e(TAG, "Teacher cloud backup failed", e)
+                            _cloudSyncStatus.value = "همگام‌سازی ناموفق بود: ${e.localizedMessage ?: "خطای نامشخص"}"
                         }
                     }
             } catch (e: Exception) {
                 // A failed cloud read must never trigger a destructive local upload.
                 Log.e(TAG, "Teacher cloud restore failed; local data was kept", e)
+                _cloudSyncStatus.value = "اتصال یا بازیابی ابری ناموفق بود: ${e.localizedMessage ?: "خطای نامشخص"}. اطلاعات محلی حفظ شد."
             }
         }
     }
