@@ -102,8 +102,8 @@ object CloudMaterialsSync {
             // Match classes by semantic identity so the same class is not shown twice.
             val localClasses = runBlocking { db.classDao().getAllForBackup() }.filter { it.id > 0L }
             val localClassByKey = localClasses.associateBy { classKey(it.name, it.teacherName, it.term) }
-            val cloudClassByKey = allClasses.distinctBy { classKey(it.name, it.teacherName, it.term) }
-                .associateBy { classKey(it.name, it.teacherName, it.term) }
+            val cloudClassByKey = allClasses.groupBy { classKey(it.name, it.teacherName, it.term) }
+                .mapValues { (_, group) -> group.firstOrNull { it.isPublished } ?: group.first() }
             val classIdRemap = mutableMapOf<Long, Long>()
             val classesToInsert = mutableListOf<ClassEntity>()
 
@@ -124,26 +124,53 @@ object CloudMaterialsSync {
                 } }
                 .map { it.id }).toSet()
 
-            val publishedCourses = allCourses
-                .filter { classIdRemap[it.classId] in publishedClassIds }
-                .map { it.copy(classId = classIdRemap[it.classId] ?: it.classId) }
-                .distinctBy { "${it.classId}:${normalized(it.name)}:${normalized(it.teacherName)}" }
-            val publishedLectures = allLectures
-                .filter { classIdRemap[it.classId ?: 0L] in publishedClassIds }
-                .map { it.copy(classId = classIdRemap[it.classId ?: 0L] ?: it.classId) }
-                .distinctBy { "${it.classId}:${normalized(it.title)}:${it.dateMillis}:${normalized(it.courseName)}" }
+            val localCourses = runBlocking { db.courseDao().getAllForBackup() }.filter { it.id > 0L }
+            val courseIdRemap = mutableMapOf<Long, Long>()
+            val coursesToInsert = mutableListOf<CourseEntity>()
+            allCourses.filter { classIdRemap[it.classId] in publishedClassIds }.forEach { incoming ->
+                val mappedClassId = classIdRemap[incoming.classId] ?: incoming.classId
+                val existing = localCourses.firstOrNull {
+                    it.classId == mappedClassId &&
+                        normalized(it.name) == normalized(incoming.name) &&
+                        normalized(it.teacherName) == normalized(incoming.teacherName)
+                }
+                if (existing != null) {
+                    courseIdRemap[incoming.id] = existing.id
+                } else {
+                    coursesToInsert += incoming.copy(classId = mappedClassId)
+                    courseIdRemap[incoming.id] = incoming.id
+                }
+            }
 
+            val localLectures = runBlocking { db.lectureDao().getAllForBackup() }.filter { it.id > 0L }
+            val lecturesToInsert = allLectures
+                .filter { classIdRemap[it.classId ?: 0L] in publishedClassIds }
+                .map { item ->
+                    item.copy(
+                        classId = item.classId?.let { classIdRemap[it] ?: it },
+                        courseId = item.courseId?.let { courseIdRemap[it] ?: it }
+                    )
+                }
+                .distinctBy { "${it.classId}:${normalized(it.title)}:${it.dateMillis}:${normalized(it.courseName)}" }
+                .filterNot { incoming ->
+                    localLectures.any { local ->
+                        local.classId == incoming.classId &&
+                            normalized(local.title) == normalized(incoming.title) &&
+                            local.dateMillis == incoming.dateMillis &&
+                            normalized(local.courseName) == normalized(incoming.courseName)
+                    }
+                }
             runBlocking {
                 db.withTransaction {
                     db.lectureDao().clearCloudSharedData()
                     db.courseDao().clearCloudSharedData()
                     db.classDao().clearCloudSharedData()
                     db.classDao().insertAllForRestore(classesToInsert.distinctBy { it.id })
-                    db.courseDao().insertAllForRestore(publishedCourses.distinctBy { it.id })
-                    db.lectureDao().insertAllForRestore(publishedLectures.distinctBy { it.id })
+                    db.courseDao().insertAllForRestore(coursesToInsert.distinctBy { it.id })
+                    db.lectureDao().insertAllForRestore(lecturesToInsert.distinctBy { it.id })
                 }
             }
-            "مطالب منتشرشده آنلاین به‌روزرسانی شد: ${publishedLectures.size} جلسه از ${documents.size} حساب استاد."
+            "مطالب منتشرشده آنلاین به‌روزرسانی شد: ${lecturesToInsert.size} جلسه جدید از ${documents.size} حساب استاد."
         }
     }
 
