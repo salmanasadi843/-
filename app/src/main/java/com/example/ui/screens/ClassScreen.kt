@@ -27,6 +27,7 @@ fun ClassScreen(
     onBack: () -> Unit
 ) {
     val classes by viewModel.repository.allClasses.collectAsState(initial = emptyList())
+    val publicationStatus by viewModel.publicationStatus.collectAsState()
     var showAdd by remember { mutableStateOf(false) }
     var name by remember { mutableStateOf("") }
     var teacher by remember { mutableStateOf("") }
@@ -107,6 +108,9 @@ fun ClassScreen(
             ) {
                 item {
                     Text(classes.size.toString() + " کلاس", style = MaterialTheme.typography.labelLarge, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                    if (userRole == UserRole.TEACHER && publicationStatus.isNotBlank()) {
+                        Text(publicationStatus, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                    }
                 }
                 items(classes, key = { it.id }) { item ->
                     Card(
@@ -140,7 +144,7 @@ fun ClassScreen(
                                     Switch(
                                         checked = item.isPublished,
                                         onCheckedChange = { published ->
-                                            viewModel.saveClass(item.copy(isPublished = published))
+                                            viewModel.setClassPublication(item, published)
                                         }
                                     )
                                     Text(
