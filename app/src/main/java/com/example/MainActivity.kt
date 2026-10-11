@@ -83,6 +83,9 @@ fun OstadYarApp(
                     viewModel.setUserRole(role)
                     if (role == UserRole.TEACHER) {
                         viewModel.startCloudSync()
+                    } else {
+                        // دانشجو هنگام ورود، مطالب منتشرشده را خودکار دریافت می‌کند.
+                        viewModel.startStudentMaterialsSync()
                     }
                 }
             }
