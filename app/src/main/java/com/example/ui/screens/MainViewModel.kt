@@ -270,6 +270,7 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
     val formProfessor = MutableStateFlow("")
     val formTags = MutableStateFlow("")
     val formTranscript = MutableStateFlow("")
+    val formOriginalTranscript = MutableStateFlow("")
     val formAiSummary = MutableStateFlow("")
     val formAiKeyPoints = MutableStateFlow("")
     val formAudioPath = MutableStateFlow<String?>(null)
@@ -587,6 +588,7 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
                     formProfessor.value = lecture.professorName
                     formTags.value = lecture.tags
                     formTranscript.value = lecture.transcript
+                    formOriginalTranscript.value = lecture.originalTranscript.ifBlank { lecture.transcript }
                     formAiSummary.value = lecture.aiSummary.orEmpty()
                     formAiKeyPoints.value = lecture.aiKeyPoints.orEmpty()
                     formAudioPath.value = lecture.audioFilePath
@@ -613,6 +615,7 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
             }
             formTags.value = ""
             formTranscript.value = ""
+            formOriginalTranscript.value = ""
             formAiSummary.value = ""
             formAiKeyPoints.value = ""
             formAudioPath.value = null
@@ -661,6 +664,8 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
                         formAudioDurationMs.value,
                     transcript =
                         formTranscript.value.trim(),
+                    originalTranscript =
+                        formOriginalTranscript.value.trim().ifBlank { formTranscript.value.trim() },
                     aiSummary =
                         formAiSummary.value.takeIf { it.isNotBlank() } ?: existing?.aiSummary,
                     aiKeyPoints =
@@ -1013,6 +1018,7 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
 
         var updated = current.copy(
             transcript = transcript,
+            originalTranscript = transcript,
             audioFilePath = formAudioPath.value,
             audioUrl = formAudioUrl.value.trim().ifBlank { null },
             audioDurationMs = formAudioDurationMs.value,
@@ -1287,6 +1293,7 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
     fun polishTranscriptInForm() {
         val raw = formTranscript.value
         if (raw.isBlank()) return
+        val original = formOriginalTranscript.value.ifBlank { raw }
 
         viewModelScope.launch {
             _isAiLoading.value = true
@@ -1321,6 +1328,7 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
 
                 // متن ویرایش‌شده را در فرم قرار می‌دهیم، سپس خلاصه و کلیدواژه‌ها را از همین متن می‌سازیم.
                 val editedTranscript = editedParts.joinToString("\n\n")
+                formOriginalTranscript.value = original
                 formTranscript.value = editedTranscript
 
                 _aiOperationTitle.value = "در حال تهیه خلاصه از متن ویرایش‌شده..."
@@ -1351,11 +1359,12 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
 
                 // اگر جلسه از قبل ذخیره شده باشد، خروجی‌ها را همان لحظه نیز در پایگاه داده ثبت می‌کنیم.
                 val savedId = editingLectureId
-                if (savedId != null && (formAiSummary.value.isNotBlank() || formAiKeyPoints.value.isNotBlank())) {
+                if (savedId != null) {
                     val existing = repository.getLecture(savedId)
                     if (existing != null) {
                         repository.saveLecture(existing.copy(
                             transcript = editedTranscript,
+                            originalTranscript = original,
                             aiSummary = formAiSummary.value.takeIf { it.isNotBlank() } ?: existing.aiSummary,
                             aiKeyPoints = formAiKeyPoints.value.takeIf { it.isNotBlank() } ?: existing.aiKeyPoints,
                             lastEditedMillis = System.currentTimeMillis()
