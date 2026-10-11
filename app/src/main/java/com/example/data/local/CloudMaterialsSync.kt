@@ -25,6 +25,7 @@ object CloudMaterialsSync {
         return if (AuthPreferences.currentRole(context) == UserRole.TEACHER) {
             val allClasses = runBlocking { db.classDao().getAllForBackup() }
             val classes = allClasses.filter { it.isPublished }
+            val hiddenClasses = allClasses.filterNot { it.isPublished }
             val publishedClassIds = classes.map { it.id }.toSet()
             val courses = runBlocking { db.courseDao().getAllForBackup() }
                 .filter { it.classId in publishedClassIds }
@@ -35,6 +36,7 @@ object CloudMaterialsSync {
                 .put("version", 1)
                 .put("teacherName", AuthPreferences.currentName(context))
                 .put("classes", JSONArray().apply { classes.forEach { put(it.toJson()) } })
+                .put("withdrawnClasses", JSONArray().apply { hiddenClasses.forEach { put(it.toJson()) } })
                 .put("courses", JSONArray().apply { courses.forEach { put(it.toJson()) } })
                 .put("lectures", JSONArray().apply { lectures.map { it.toJson() }.forEach { put(it) } })
             Tasks.await(
@@ -100,6 +102,25 @@ object CloudMaterialsSync {
 
             // Manual imports create positive local IDs while online sync uses stable negative IDs.
             // Match classes by semantic identity so the same class is not shown twice.
+            val localClassesAll = runBlocking { db.classDao().getAllForBackup() }
+            // A class can have been imported by an older version with a positive local ID.
+            // Apply publication changes to matching cached classes too, so hiding a class
+            // at the teacher side also hides an already-cached copy on the student device.
+            val withdrawnKeys = mutableSetOf<String>()
+            documents.forEach { document ->
+                val payloadText = document.getString("payload") ?: return@forEach
+                val payload = JSONObject(payloadText)
+                if (payload.optString("format") != "darsyar-shared-materials") return@forEach
+                payload.optJSONArray("withdrawnClasses")?.let { array ->
+                    for (i in 0 until array.length()) {
+                        val item = array.getJSONObject(i).toClassEntity()
+                        withdrawnKeys += classKey(item.name, item.teacherName, item.term)
+                    }
+                }
+            }
+            localClassesAll.filter { it.id > 0L && classKey(it.name, it.teacherName, it.term) in withdrawnKeys }
+                .forEach { runBlocking { db.classDao().update(it.copy(isPublished = false)) } }
+
             val localClasses = runBlocking { db.classDao().getAllForBackup() }.filter { it.id > 0L }
             val localClassByKey = localClasses.associateBy { classKey(it.name, it.teacherName, it.term) }
             val cloudClassByKey = allClasses.groupBy { classKey(it.name, it.teacherName, it.term) }
