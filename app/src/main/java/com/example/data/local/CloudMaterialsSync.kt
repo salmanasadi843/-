@@ -166,7 +166,7 @@ object CloudMaterialsSync {
                     db.courseDao().clearCloudSharedData()
                     db.classDao().clearCloudSharedData()
                     db.classDao().insertAllForRestore(classesToInsert.distinctBy { it.id })
-                    db.courseDao().insertAllForRestore(coursesToInsert.distinctBy { it.id })
+                    db.courseDao().insertAllForRestore(coursesToInsert.distinctBy { "${it.classId}:${normalized(it.name)}:${normalized(it.teacherName)}" })
                     db.lectureDao().insertAllForRestore(lecturesToInsert.distinctBy { it.id })
                 }
             }
