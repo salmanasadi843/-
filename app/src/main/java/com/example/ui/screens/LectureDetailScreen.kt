@@ -267,48 +267,6 @@ fun LectureDetailScreen(
                 .padding(innerPadding)
                 .background(MaterialTheme.colorScheme.background)
         ) {
-            // فایل محلی اولویت دارد؛ در صورت نبودن آن، لینک صوت استفاده می‌شود.
-            val playableAudio = currentLecture.audioFilePath?.takeIf { File(it).exists() } ?: currentLecture.audioUrl
-            if (!playableAudio.isNullOrBlank()) {
-                AudioPlayerCard(
-                    filePath = playableAudio,
-                    audioDurationMs = if (duration > 0 && activePath == playableAudio) duration.toLong() else currentLecture.audioDurationMs,
-                    currentPositionMs = if (activePath == playableAudio) currentPos else 0,
-                    isPlaying = isPlaying && activePath == playableAudio,
-                    playbackSpeed = playbackSpeed,
-                    onPlayToggle = {
-                        viewModel.audioPlayer.togglePlayPause(playableAudio)
-                    },
-                    onSeekTo = { viewModel.audioPlayer.seekTo(it) },
-                    onSkipBackward = { viewModel.audioPlayer.skipBackward(15000) },
-                    onSkipForward = { viewModel.audioPlayer.skipForward(15000) },
-                    onSpeedChange = { viewModel.audioPlayer.setSpeed(it) }
-                )
-            }
-
-            if (!currentLecture.audioUrl.isNullOrBlank()) {
-                Surface(
-                    modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 2.dp),
-                    shape = RoundedCornerShape(12.dp),
-                    color = MaterialTheme.colorScheme.surfaceVariant
-                ) {
-                    Row(
-                        modifier = Modifier.fillMaxWidth().clickable {
-                            context.startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(currentLecture.audioUrl)))
-                        }.padding(horizontal = 12.dp, vertical = 10.dp),
-                        verticalAlignment = Alignment.CenterVertically
-                    ) {
-                        Icon(Icons.Default.Share, contentDescription = "پیوند صوتی", tint = MaterialTheme.colorScheme.primary)
-                        Spacer(Modifier.width(8.dp))
-                        Column(Modifier.weight(1f)) {
-                            Text("پیوند صوتی", style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.primary, fontWeight = FontWeight.Bold)
-                            Text(currentLecture.audioUrl.orEmpty(), style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
-                        }
-                        Text("باز کردن", style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.primary)
-                    }
-                }
-            }
-
             // AI Loading Banner
             AnimatedVisibility(visible = isAiLoading) {
                 Surface(
@@ -359,6 +317,9 @@ fun LectureDetailScreen(
             }
 
             // محتوای مطالعه به صورت یک صفحه پیوسته نمایش داده می‌شود؛ بدون تب.
+            // پلیر و پیوند صوت داخل محتوای قابل پیمایش قرار می‌گیرند؛
+            // دیگر یک نوار ثابت و بلند بالای متن نیستند.
+            val playableAudio = currentLecture.audioFilePath?.takeIf { File(it).exists() } ?: currentLecture.audioUrl
             TranscriptTab(
                 lecture = currentLecture,
                 onEditClick = { onNavigateToEdit(lectureId) },
@@ -367,7 +328,47 @@ fun LectureDetailScreen(
                     val clip = ClipData.newPlainText("جزوه کلاس", textToCopy)
                     clipboard.setPrimaryClip(clip)
                     Toast.makeText(context, "متن انتخاب‌شده کپی شد", Toast.LENGTH_SHORT).show()
-                }
+                },
+                audioContent = if (!playableAudio.isNullOrBlank()) {
+                    {
+                        AudioPlayerCard(
+                            filePath = playableAudio,
+                            audioDurationMs = if (duration > 0 && activePath == playableAudio) duration.toLong() else currentLecture.audioDurationMs,
+                            currentPositionMs = if (activePath == playableAudio) currentPos else 0,
+                            isPlaying = isPlaying && activePath == playableAudio,
+                            playbackSpeed = playbackSpeed,
+                            onPlayToggle = { viewModel.audioPlayer.togglePlayPause(playableAudio) },
+                            onSeekTo = { viewModel.audioPlayer.seekTo(it) },
+                            onSkipBackward = { viewModel.audioPlayer.skipBackward(15000) },
+                            onSkipForward = { viewModel.audioPlayer.skipForward(15000) },
+                            onSpeedChange = { viewModel.audioPlayer.setSpeed(it) }
+                        )
+                    }
+                } else null,
+                audioLinkContent = if (!currentLecture.audioUrl.isNullOrBlank()) {
+                    {
+                        Surface(
+                            modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 2.dp),
+                            shape = RoundedCornerShape(12.dp),
+                            color = MaterialTheme.colorScheme.surfaceVariant
+                        ) {
+                            Row(
+                                modifier = Modifier.fillMaxWidth().clickable {
+                                    context.startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(currentLecture.audioUrl)))
+                                }.padding(horizontal = 12.dp, vertical = 10.dp),
+                                verticalAlignment = Alignment.CenterVertically
+                            ) {
+                                Icon(Icons.Default.Share, contentDescription = "پیوند صوتی", tint = MaterialTheme.colorScheme.primary)
+                                Spacer(Modifier.width(8.dp))
+                                Column(Modifier.weight(1f)) {
+                                    Text("پیوند صوتی", style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.primary, fontWeight = FontWeight.Bold)
+                                    Text(currentLecture.audioUrl.orEmpty(), style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                                }
+                                Text("باز کردن", style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.primary)
+                            }
+                        }
+                    }
+                } else null
             )
         }
     }
@@ -517,7 +518,9 @@ fun AudioPlayerCard(
 fun TranscriptTab(
     lecture: LectureEntity,
     onEditClick: () -> Unit,
-    onCopyClick: (String) -> Unit
+    onCopyClick: (String) -> Unit,
+    audioContent: (@Composable () -> Unit)? = null,
+    audioLinkContent: (@Composable () -> Unit)? = null
 ) {
     val scrollState = rememberScrollState()
     var selectedTextTab by remember(lecture.id) { mutableStateOf(0) }
@@ -533,6 +536,9 @@ fun TranscriptTab(
             .verticalScroll(scrollState)
             .padding(horizontal = 18.dp, vertical = 16.dp)
     ) {
+        audioContent?.invoke()
+        audioLinkContent?.invoke()
+        if (audioContent != null || audioLinkContent != null) Spacer(Modifier.height(8.dp))
         Text(
             text = PersianDateUtils.format(lecture.dateMillis),
             style = MaterialTheme.typography.labelMedium,
