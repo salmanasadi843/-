@@ -45,8 +45,14 @@ fun HomeScreen(
     onNavigateToDetail: (Long) -> Unit,
     onNavigateToAiSummary: (Long) -> Unit
 ) {
-    val classes by viewModel.repository.allClasses.collectAsState(initial = emptyList())
-    val lectures by viewModel.repository.allLectures.collectAsState(initial = emptyList())
+    val allClasses by viewModel.repository.allClasses.collectAsState(initial = emptyList())
+    val allLectures by viewModel.repository.allLectures.collectAsState(initial = emptyList())
+    // Student mode only shows cloud-shared records. Positive IDs belong to local/teacher data.
+    val classes = if (userRole == UserRole.STUDENT) allClasses.filter { it.id < 0L && it.isPublished } else allClasses
+    val visibleClassIds = classes.map { it.id }.toSet()
+    val lectures = if (userRole == UserRole.STUDENT) {
+        allLectures.filter { it.id < 0L && it.isPublished && it.classId in visibleClassIds }
+    } else allLectures
     val studentSyncStatus by viewModel.studentMaterialsSyncStatus.collectAsState()
     val isTeacher = userRole == UserRole.TEACHER
     val isOnline = rememberNetworkConnection()
