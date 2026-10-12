@@ -237,6 +237,7 @@ class FirestoreSyncRepository(
         "aiQuizJson" to aiQuizJson,
         "tags" to tags,
         "isFavorite" to isFavorite,
+        "isPublished" to isPublished,
         "lastEditedMillis" to lastEditedMillis
     )
 
@@ -277,6 +278,7 @@ class FirestoreSyncRepository(
         aiQuizJson = nullableText("aiQuizJson"),
         tags = text("tags"),
         isFavorite = this["isFavorite"] as? Boolean ?: false,
+        isPublished = this["isPublished"] as? Boolean ?: true,
         lastEditedMillis = number("lastEditedMillis", System.currentTimeMillis())
     )
 
