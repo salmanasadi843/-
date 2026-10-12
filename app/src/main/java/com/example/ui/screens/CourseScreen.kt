@@ -127,21 +127,6 @@ fun ClassSessionsScreen(
                             Text(lecture.title, style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
                             Spacer(Modifier.height(5.dp))
                             Text(PersianDateUtils.format(lecture.dateMillis), style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
-                            if (userRole == UserRole.TEACHER) {
-                                Spacer(Modifier.height(4.dp))
-                                Row(verticalAlignment = Alignment.CenterVertically) {
-                                    Text(
-                                        if (lecture.isPublished) "منتشر برای دانشجو" else "پنهان از دانشجو",
-                                        style = MaterialTheme.typography.labelSmall,
-                                        color = if (lecture.isPublished) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.error
-                                    )
-                                    Spacer(Modifier.width(6.dp))
-                                    Switch(
-                                        checked = lecture.isPublished,
-                                        onCheckedChange = { published -> viewModel.setLecturePublished(lecture, published) }
-                                    )
-                                }
-                            }
                             if (lecture.audioFilePath != null || !lecture.audioUrl.isNullOrBlank()) {
                                 Spacer(Modifier.height(5.dp))
                                 Row(verticalAlignment = Alignment.CenterVertically) {
