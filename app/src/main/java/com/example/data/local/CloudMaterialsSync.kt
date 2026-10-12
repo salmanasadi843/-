@@ -29,7 +29,10 @@ object CloudMaterialsSync {
             val classes = allClasses.filter { it.isPublished }
             val visibleClassIds = classes.map { it.id }.toSet()
             val courses = allCourses.filter { it.classId in visibleClassIds }
-            val lectures = allLectures.filter { lecture -> lecture.classId?.let { it in visibleClassIds } == true }
+            // Do not publish an individually hidden lesson, even when its class is visible.
+            val lectures = allLectures.filter { lecture ->
+                lecture.isPublished && lecture.classId?.let { it in visibleClassIds } == true
+            }
             val payload = JSONObject()
                 .put("format", "darsyar-shared-materials")
                 .put("version", 1)
@@ -54,23 +57,39 @@ object CloudMaterialsSync {
                 val payloadText = document.getString("payload") ?: return@forEach
                 val payload = JSONObject(payloadText)
                 if (payload.optString("format") != "darsyar-shared-materials") return@forEach
+
+                // Apply publication permissions while reading, not just while writing.
+                // This also protects students from stale documents created by older app versions.
+                val publishedOriginalClassIds = mutableSetOf<Long>()
                 payload.optJSONArray("classes")?.let { array ->
                     for (i in 0 until array.length()) {
                         val item = array.getJSONObject(i).toClassEntity()
-                        allClasses += item.copy(id = stableId(owner, "class:${item.id}"))
+                        if (item.isPublished) {
+                            publishedOriginalClassIds += item.id
+                            allClasses += item.copy(id = stableId(owner, "class:${item.id}"))
+                        }
                     }
                 }
+
                 payload.optJSONArray("courses")?.let { array ->
                     for (i in 0 until array.length()) {
                         val item = array.getJSONObject(i).toCourse()
-                        allCourses += item.copy(
-                            id = stableId(owner, "course:${item.id}"),
-                            classId = stableId(owner, "class:${item.classId}")
-                        )
+                        if (item.classId in publishedOriginalClassIds) {
+                            allCourses += item.copy(
+                                id = stableId(owner, "course:${item.id}"),
+                                classId = stableId(owner, "class:${item.classId}")
+                            )
+                        }
                     }
                 }
+
                 payload.optJSONArray("lectures")?.let { array ->
-                    val teacherLectures = (0 until array.length()).map { array.getJSONObject(it).toLecture() }
+                    val teacherLectures = (0 until array.length())
+                        .map { array.getJSONObject(it).toLecture() }
+                        .filter { lecture ->
+                            lecture.isPublished &&
+                                (lecture.classId == null || lecture.classId in publishedOriginalClassIds)
+                        }
                     val legacyClassId = stableId(owner, "class:legacy")
                     if (teacherLectures.any { it.classId == null }) {
                         val teacherName = payload.optString("teacherName", "استاد")
@@ -96,6 +115,19 @@ object CloudMaterialsSync {
                 }
             }
 
+            // Stable IDs prevent repeats on ordinary refreshes. This extra content
+            // key also removes exact logical duplicates left by older/manual imports.
+            val classNamesById = allClasses.associate { it.id to it.name }
+            val uniqueLectures = allLectures.distinctBy { lecture ->
+                listOf(
+                    lecture.professorName.trim().lowercase(),
+                    classNamesById[lecture.classId].orEmpty().trim().lowercase(),
+                    lecture.courseName.trim().lowercase(),
+                    lecture.title.trim().lowercase(),
+                    lecture.dateMillis.toString()
+                ).joinToString("|")
+            }
+
             runBlocking {
                 db.withTransaction {
                     db.lectureDao().clearCloudSharedData()
@@ -103,10 +135,10 @@ object CloudMaterialsSync {
                     db.classDao().clearCloudSharedData()
                     db.classDao().insertAllForRestore(allClasses.distinctBy { it.id })
                     db.courseDao().insertAllForRestore(allCourses.distinctBy { it.id })
-                    db.lectureDao().insertAllForRestore(allLectures.distinctBy { it.id })
+                    db.lectureDao().insertAllForRestore(uniqueLectures)
                 }
             }
-            "مطالب آنلاین به‌روزرسانی شد: ${allLectures.size} جلسه از ${documents.size} حساب استاد."
+            "مطالب آنلاین به‌روزرسانی شد: ${uniqueLectures.size} جلسه منتشرشده از ${documents.size} حساب استاد."
         }
     }
 
