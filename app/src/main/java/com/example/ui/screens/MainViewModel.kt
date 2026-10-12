@@ -20,6 +20,7 @@ import com.example.data.local.LectureEntity
 import com.example.data.repository.LectureRepository
 import com.example.data.repository.FirestoreSyncRepository
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.FlowPreview
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
@@ -134,6 +135,7 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
     }
 
     /** Restore cloud data first, then autosave subsequent Room changes. */
+    @OptIn(FlowPreview::class)
     fun startCloudSync() {
         if (_userRole.value != UserRole.TEACHER) {
             _cloudSyncStatus.value = "همگام‌سازی خصوصی فقط برای حساب استاد فعال است."
