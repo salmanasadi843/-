@@ -266,6 +266,7 @@ fun LectureDetailScreen(
                 .fillMaxSize()
                 .padding(innerPadding)
                 .background(MaterialTheme.colorScheme.background)
+                .verticalScroll(rememberScrollState())
         ) {
             // فایل محلی اولویت دارد؛ در صورت نبودن آن، لینک صوت استفاده می‌شود.
             val playableAudio = currentLecture.audioFilePath?.takeIf { File(it).exists() } ?: currentLecture.audioUrl
@@ -519,7 +520,6 @@ fun TranscriptTab(
     onEditClick: () -> Unit,
     onCopyClick: (String) -> Unit
 ) {
-    val scrollState = rememberScrollState()
     var selectedTextTab by remember(lecture.id) { mutableStateOf(0) }
     val originalText = lecture.originalTranscript.ifBlank { lecture.transcript }
     val correctedText = lecture.transcript
@@ -529,8 +529,7 @@ fun TranscriptTab(
 
     Column(
         modifier = Modifier
-            .fillMaxSize()
-            .verticalScroll(scrollState)
+            .fillMaxWidth()
             .padding(horizontal = 18.dp, vertical = 16.dp)
     ) {
         Text(
