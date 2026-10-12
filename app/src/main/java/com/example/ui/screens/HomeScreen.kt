@@ -49,6 +49,7 @@ fun HomeScreen(
     val lectures by viewModel.repository.allLectures.collectAsState(initial = emptyList())
     val studentSyncStatus by viewModel.studentMaterialsSyncStatus.collectAsState()
     val isTeacher = userRole == UserRole.TEACHER
+    val visibleClasses = if (isTeacher) classes else classes.filter { it.isPublished }
     val isOnline = rememberNetworkConnection()
     var showBulkExportDialog by androidx.compose.runtime.remember { androidx.compose.runtime.mutableStateOf(false) }
 
@@ -147,11 +148,11 @@ fun HomeScreen(
                             color = MaterialTheme.colorScheme.onSurfaceVariant
                         )
                     }
-                    Text(classes.size.toString() + " کلاس", style = MaterialTheme.typography.labelLarge, color = MaterialTheme.colorScheme.secondary)
+                    Text(visibleClasses.size.toString() + " کلاس", style = MaterialTheme.typography.labelLarge, color = MaterialTheme.colorScheme.secondary)
                 }
             }
 
-            if (classes.isEmpty()) {
+            if (visibleClasses.isEmpty()) {
                 item {
                     Card(Modifier.fillMaxWidth(), RoundedCornerShape(22.dp), colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface)) {
                         Column(Modifier.fillMaxWidth().padding(24.dp), horizontalAlignment = Alignment.CenterHorizontally) {
@@ -167,7 +168,7 @@ fun HomeScreen(
                     }
                 }
             } else {
-                items(classes, key = { it.id }) { classItem ->
+                items(visibleClasses, key = { it.id }) { classItem ->
                     val classLectures = lectures.filter { it.classId == classItem.id }.sortedByDescending { it.dateMillis }
                     Card(
                         Modifier.fillMaxWidth().clickable { viewModel.openClass(classItem.id) },

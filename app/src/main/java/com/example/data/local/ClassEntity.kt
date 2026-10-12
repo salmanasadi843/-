@@ -13,5 +13,7 @@ data class ClassEntity(
     val term: String = "",
     /** تاریخ برگزاری/شروع کلاس؛ مستقل از تاریخ ایجاد رکورد */
     val classDateMillis: Long = System.currentTimeMillis(),
-    val createdAtMillis: Long = System.currentTimeMillis()
+    val createdAtMillis: Long = System.currentTimeMillis(),
+    /** Whether this class and its lessons are shared with students. */
+    val isPublished: Boolean = true
 )

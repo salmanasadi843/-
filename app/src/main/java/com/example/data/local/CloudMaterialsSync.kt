@@ -23,14 +23,20 @@ object CloudMaterialsSync {
         val firestore = FirebaseFirestore.getInstance()
 
         return if (AuthPreferences.currentRole(context) == UserRole.TEACHER) {
-            val classes = runBlocking { db.classDao().getAllForBackup() }
+            val allClasses = runBlocking { db.classDao().getAllForBackup() }
+            val classes = allClasses.filter { it.isPublished }
+            val hiddenClasses = allClasses.filterNot { it.isPublished }
+            val publishedClassIds = classes.map { it.id }.toSet()
             val courses = runBlocking { db.courseDao().getAllForBackup() }
+                .filter { it.classId in publishedClassIds }
             val lectures = runBlocking { db.lectureDao().getAllForBackup() }
+                .filter { it.classId != null && it.classId in publishedClassIds }
             val payload = JSONObject()
                 .put("format", "darsyar-shared-materials")
                 .put("version", 1)
                 .put("teacherName", AuthPreferences.currentName(context))
                 .put("classes", JSONArray().apply { classes.forEach { put(it.toJson()) } })
+                .put("withdrawnClasses", JSONArray().apply { hiddenClasses.forEach { put(it.toJson()) } })
                 .put("courses", JSONArray().apply { courses.forEach { put(it.toJson()) } })
                 .put("lectures", JSONArray().apply { lectures.map { it.toJson() }.forEach { put(it) } })
             Tasks.await(
@@ -68,7 +74,9 @@ object CloudMaterialsSync {
                 payload.optJSONArray("lectures")?.let { array ->
                     val teacherLectures = (0 until array.length()).map { array.getJSONObject(it).toLecture() }
                     val legacyClassId = stableId(owner, "class:legacy")
-                    if (teacherLectures.any { it.classId == null }) {
+                    // Only create a legacy bucket when the teacher has no real classes.
+                    if (teacherLectures.any { it.classId == null } &&
+                        (payload.optJSONArray("classes")?.length() ?: 0) == 0) {
                         val teacherName = payload.optString("teacherName", "استاد")
                         allClasses += ClassEntity(
                             id = legacyClassId,
@@ -92,19 +100,113 @@ object CloudMaterialsSync {
                 }
             }
 
+            // Manual imports create positive local IDs while online sync uses stable negative IDs.
+            // Match classes by semantic identity so the same class is not shown twice.
+            val localClassesAll = runBlocking { db.classDao().getAllForBackup() }
+            // Apply publication changes to matching cached classes too, including classes
+            // imported by older versions with positive local IDs.
+            val publishedKeys = allClasses.filter { it.isPublished }.map { classKey(it.name, it.teacherName, it.term) }.toSet()
+            val withdrawnKeys = mutableSetOf<String>()
+            documents.forEach { document ->
+                val payloadText = document.getString("payload") ?: return@forEach
+                val payload = JSONObject(payloadText)
+                if (payload.optString("format") != "darsyar-shared-materials") return@forEach
+                payload.optJSONArray("withdrawnClasses")?.let { array ->
+                    for (i in 0 until array.length()) {
+                        val item = array.getJSONObject(i).toClassEntity()
+                        withdrawnKeys += classKey(item.name, item.teacherName, item.term)
+                    }
+                }
+            }
+            localClassesAll.filter { it.id > 0L }.forEach { local ->
+                val key = classKey(local.name, local.teacherName, local.term)
+                when {
+                    key in withdrawnKeys && local.isPublished ->
+                        runBlocking { db.classDao().update(local.copy(isPublished = false)) }
+                    key in publishedKeys && !local.isPublished ->
+                        runBlocking { db.classDao().update(local.copy(isPublished = true)) }
+                }
+            }
+
+            val localClasses = runBlocking { db.classDao().getAllForBackup() }.filter { it.id > 0L }
+            val localClassByKey = localClasses.associateBy { classKey(it.name, it.teacherName, it.term) }
+            val cloudClassByKey = allClasses.groupBy { classKey(it.name, it.teacherName, it.term) }
+                .mapValues { (_, group) -> group.firstOrNull { it.isPublished } ?: group.first() }
+            val classIdRemap = mutableMapOf<Long, Long>()
+            val classesToInsert = mutableListOf<ClassEntity>()
+
+            allClasses.forEach { incoming ->
+                val key = classKey(incoming.name, incoming.teacherName, incoming.term)
+                val existingLocal = localClassByKey[key]
+                val canonicalCloud = cloudClassByKey[key]
+                val canonicalId = existingLocal?.id ?: canonicalCloud?.id ?: incoming.id
+                classIdRemap[incoming.id] = canonicalId
+                if (existingLocal == null && canonicalCloud?.id == incoming.id && incoming.isPublished) {
+                    classesToInsert += incoming
+                }
+            }
+
+            val publishedClassIds = (classesToInsert.map { it.id } + localClasses
+                .filter { local -> allClasses.any {
+                    classKey(it.name, it.teacherName, it.term) == classKey(local.name, local.teacherName, local.term) && it.isPublished
+                } }
+                .map { it.id }).toSet()
+
+            val localCourses = runBlocking { db.courseDao().getAllForBackup() }.filter { it.id > 0L }
+            val courseIdRemap = mutableMapOf<Long, Long>()
+            val coursesToInsert = mutableListOf<CourseEntity>()
+            allCourses.filter { (classIdRemap[it.classId] ?: Long.MIN_VALUE) in publishedClassIds }.forEach { incoming ->
+                val mappedClassId = classIdRemap[incoming.classId] ?: incoming.classId
+                val existing = localCourses.firstOrNull {
+                    it.classId == mappedClassId &&
+                        normalized(it.name) == normalized(incoming.name) &&
+                        normalized(it.teacherName) == normalized(incoming.teacherName)
+                }
+                if (existing != null) {
+                    courseIdRemap[incoming.id] = existing.id
+                } else {
+                    coursesToInsert += incoming.copy(classId = mappedClassId)
+                    courseIdRemap[incoming.id] = incoming.id
+                }
+            }
+
+            val localLectures = runBlocking { db.lectureDao().getAllForBackup() }.filter { it.id > 0L }
+            val lecturesToInsert = allLectures
+                .filter { (classIdRemap[it.classId ?: 0L] ?: Long.MIN_VALUE) in publishedClassIds }
+                .map { item ->
+                    item.copy(
+                        classId = item.classId?.let { classIdRemap[it] ?: it },
+                        courseId = item.courseId?.let { courseIdRemap[it] ?: it }
+                    )
+                }
+                .distinctBy { "${it.classId}:${normalized(it.title)}:${it.dateMillis}:${normalized(it.courseName)}" }
+                .filterNot { incoming ->
+                    localLectures.any { local ->
+                        local.classId == incoming.classId &&
+                            normalized(local.title) == normalized(incoming.title) &&
+                            local.dateMillis == incoming.dateMillis &&
+                            normalized(local.courseName) == normalized(incoming.courseName)
+                    }
+                }
             runBlocking {
                 db.withTransaction {
                     db.lectureDao().clearCloudSharedData()
                     db.courseDao().clearCloudSharedData()
                     db.classDao().clearCloudSharedData()
-                    db.classDao().insertAllForRestore(allClasses.distinctBy { it.id })
-                    db.courseDao().insertAllForRestore(allCourses.distinctBy { it.id })
-                    db.lectureDao().insertAllForRestore(allLectures.distinctBy { it.id })
+                    db.classDao().insertAllForRestore(classesToInsert.distinctBy { it.id })
+                    db.courseDao().insertAllForRestore(coursesToInsert.distinctBy { "${it.classId}:${normalized(it.name)}:${normalized(it.teacherName)}" })
+                    db.lectureDao().insertAllForRestore(lecturesToInsert.distinctBy { it.id })
                 }
             }
-            "مطالب آنلاین به‌روزرسانی شد: ${allLectures.size} جلسه از ${documents.size} حساب استاد."
+            "مطالب منتشرشده آنلاین به‌روزرسانی شد: ${lecturesToInsert.size} جلسه جدید از ${documents.size} حساب استاد."
         }
     }
+
+    private fun normalized(value: String): String =
+        value.trim().lowercase().replace(Regex("\\s+"), " ")
+
+    private fun classKey(name: String, teacher: String, term: String): String =
+        "${normalized(name)}|${normalized(teacher)}|${normalized(term)}"
 
     private fun stableId(owner: String, key: String): Long {
         val bytes = MessageDigest.getInstance("SHA-256").digest("$owner:$key".toByteArray(Charsets.UTF_8))
@@ -117,11 +219,13 @@ object CloudMaterialsSync {
         .put("id", id).put("name", name).put("teacherName", teacherName)
         .put("description", description).put("term", term)
         .put("classDateMillis", classDateMillis).put("createdAtMillis", createdAtMillis)
+        .put("isPublished", isPublished)
 
     private fun JSONObject.toClassEntity() = ClassEntity(
         id = optLong("id"), name = optString("name"), teacherName = optString("teacherName"),
         description = optString("description"), term = optString("term"),
-        classDateMillis = optLong("classDateMillis"), createdAtMillis = optLong("createdAtMillis")
+        classDateMillis = optLong("classDateMillis"), createdAtMillis = optLong("createdAtMillis"),
+        isPublished = if (has("isPublished")) optBoolean("isPublished") else true
     )
 
     private fun CourseEntity.toJson() = JSONObject()
