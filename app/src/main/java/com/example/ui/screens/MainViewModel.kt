@@ -710,6 +710,8 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
                         formTags.value.trim(),
                     isFavorite =
                         existing?.isFavorite ?: false,
+                    isPublished =
+                        existing?.isPublished ?: true,
                     lastEditedMillis =
                         System.currentTimeMillis()
                 )
@@ -720,6 +722,12 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
             loadLecture(newId)
 
             onSaved(newId)
+        }
+    }
+
+    fun setLecturePublished(lecture: LectureEntity, published: Boolean) {
+        viewModelScope.launch {
+            repository.saveLecture(lecture.copy(isPublished = published, lastEditedMillis = System.currentTimeMillis()))
         }
     }
 
