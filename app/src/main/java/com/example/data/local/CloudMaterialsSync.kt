@@ -29,7 +29,7 @@ object CloudMaterialsSync {
             val classes = allClasses.filter { it.isPublished }
             val visibleClassIds = classes.map { it.id }.toSet()
             val courses = allCourses.filter { it.classId in visibleClassIds }
-            val lectures = allLectures.filter { lecture -> lecture.classId?.let { it in visibleClassIds } == true }
+            val lectures = allLectures.filter { lecture -> lecture.isPublished && lecture.classId?.let { it in visibleClassIds } == true }
             val payload = JSONObject()
                 .put("format", "darsyar-shared-materials")
                 .put("version", 1)
