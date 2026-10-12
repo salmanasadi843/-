@@ -15,6 +15,7 @@ import com.example.data.api.SpeechmaticsApiService
 import com.example.data.api.TranscriptionProgress
 import com.example.data.local.AppDatabase
 import com.example.data.local.CloudMaterialsSync
+import com.example.data.local.ClassEntity
 import com.example.data.local.LectureEntity
 import com.example.data.repository.LectureRepository
 import com.example.data.repository.FirestoreSyncRepository
@@ -725,19 +726,18 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
         }
     }
 
-    fun setLecturePublished(lecture: LectureEntity, published: Boolean) {
+    fun setClassPublished(classItem: ClassEntity, published: Boolean) {
         viewModelScope.launch {
-            repository.saveLecture(lecture.copy(isPublished = published, lastEditedMillis = System.currentTimeMillis()))
-            // Apply publication changes to the online student feed immediately,
-            // rather than requiring the teacher to press the old manual share button.
+            repository.saveClass(classItem.copy(isPublished = published))
+            // Refresh the shared student feed immediately after class visibility changes.
             try {
                 withContext(Dispatchers.IO) {
                     CloudMaterialsSync.sync(getApplication<Application>())
                 }
             } catch (e: Exception) {
-                Log.e(TAG, "Could not refresh published lesson feed", e)
+                Log.e(TAG, "Could not refresh published class feed", e)
                 _cloudSyncStatus.value =
-                    "وضعیت انتشار در دستگاه ذخیره شد؛ همگام‌سازی آنلاین ناموفق بود و باید دوباره تلاش شود."
+                    "وضعیت انتشار کلاس در دستگاه ذخیره شد؛ همگام‌سازی آنلاین ناموفق بود و باید دوباره تلاش شود."
             }
         }
     }
