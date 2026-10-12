@@ -191,6 +191,31 @@ fun HomeScreen(
                             Spacer(Modifier.height(12.dp))
                             HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant)
                             Spacer(Modifier.height(10.dp))
+                            if (isTeacher) {
+                                Row(
+                                    Modifier.fillMaxWidth(),
+                                    verticalAlignment = Alignment.CenterVertically,
+                                    horizontalArrangement = Arrangement.SpaceBetween
+                                ) {
+                                    Column(Modifier.weight(1f)) {
+                                        Text(
+                                            if (classItem.isPublished) "منتشر برای دانشجو" else "پنهان از دانشجو",
+                                            style = MaterialTheme.typography.labelMedium,
+                                            color = if (classItem.isPublished) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.error
+                                        )
+                                        Text(
+                                            "وضعیت انتشار کل کلاس و همه جلسات",
+                                            style = MaterialTheme.typography.labelSmall,
+                                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                                        )
+                                    }
+                                    Switch(
+                                        checked = classItem.isPublished,
+                                        onCheckedChange = { published -> viewModel.setClassPublished(classItem, published) }
+                                    )
+                                }
+                                Spacer(Modifier.height(6.dp))
+                            }
                             Row(verticalAlignment = Alignment.CenterVertically) {
                                 Spacer(Modifier.weight(1f))
                                 Text(classLectures.size.toString() + " جلسه", style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
