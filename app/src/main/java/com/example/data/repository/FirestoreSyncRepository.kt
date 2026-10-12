@@ -208,6 +208,7 @@ class FirestoreSyncRepository(
         "description" to description,
         "term" to term,
         "classDateMillis" to classDateMillis,
+        "isPublished" to isPublished,
         "createdAtMillis" to createdAtMillis
     )
 
@@ -248,6 +249,7 @@ class FirestoreSyncRepository(
         description = text("description"),
         term = text("term"),
         classDateMillis = number("classDateMillis", System.currentTimeMillis()),
+        isPublished = this["isPublished"] as? Boolean ?: true,
         createdAtMillis = number("createdAtMillis", System.currentTimeMillis())
     )
 
