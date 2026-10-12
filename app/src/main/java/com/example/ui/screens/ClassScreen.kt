@@ -26,7 +26,9 @@ fun ClassScreen(
     onOpenClass: (Long) -> Unit,
     onBack: () -> Unit
 ) {
-    val classes by viewModel.repository.allClasses.collectAsState(initial = emptyList())
+    val allClasses by viewModel.repository.allClasses.collectAsState(initial = emptyList())
+    // Never expose teacher-local or unpublished classes in student mode.
+    val classes = if (userRole == UserRole.STUDENT) allClasses.filter { it.id < 0L && it.isPublished } else allClasses
     var showAdd by remember { mutableStateOf(false) }
     var name by remember { mutableStateOf("") }
     var teacher by remember { mutableStateOf("") }
