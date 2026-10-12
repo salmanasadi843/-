@@ -5,6 +5,7 @@ import android.util.Log
 import com.example.BuildConfig
 import com.example.data.local.ApiKeyStore
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.withContext
 import okhttp3.MediaType.Companion.toMediaType
 import okhttp3.OkHttpClient
@@ -15,6 +16,7 @@ import org.json.JSONArray
 import org.json.JSONObject
 import java.io.File
 import java.util.concurrent.TimeUnit
+import kotlin.random.Random
 
 data class TranscriptionProgress(val stage:String,val percent:Int,val uploadedBytes:Long=0L,val totalBytes:Long=0L,val elapsedMs:Long=0L,val etaMs:Long?=null,val detail:String="")
 
@@ -22,7 +24,7 @@ private class ProgressRequestBody(private val file:File,private val type:okhttp3
 
 object GeminiApiService {
     private const val TAG = "GeminiApiService"
-    private const val MODEL = "gemini-3.5-flash"
+    private const val MODEL = "gemini-3.6-flash"
     private const val BASE_URL = "https://generativelanguage.googleapis.com/v1beta/models"
 
     @Volatile
@@ -55,6 +57,50 @@ object GeminiApiService {
         .readTimeout(300, TimeUnit.SECONDS)
         .writeTimeout(300, TimeUnit.SECONDS)
         .build()
+
+    /**
+     * Retry transient Gemini HTTP failures with exponential backoff.
+     * The finalized audio-data upload is intentionally not retried automatically,
+     * because the server may already have accepted the uploaded bytes.
+     */
+    private suspend fun executeWithRetry(
+        request: Request,
+        operation: String,
+        maxRetries: Int = 4
+    ): okhttp3.Response {
+        var retryIndex = 0
+        while (true) {
+            val response = client.newCall(request).execute()
+            val retryable = response.code == 408 ||
+                response.code == 429 ||
+                response.code == 500 ||
+                response.code == 502 ||
+                response.code == 503 ||
+                response.code == 504
+
+            if (!retryable || retryIndex >= maxRetries) {
+                if (retryable && retryIndex >= maxRetries) {
+                    Log.w(TAG, "$operation: retry limit reached (HTTP ${response.code})")
+                }
+                return response
+            }
+
+            val retryAfterSeconds = response.header("Retry-After")
+                ?.toLongOrNull()
+                ?.coerceIn(1L, 30L)
+            val exponentialDelay = (1000L shl retryIndex).coerceAtMost(16000L)
+            val waitMs = retryAfterSeconds?.times(1000L)
+                ?: (exponentialDelay + Random.nextLong(0L, 501L))
+
+            Log.w(
+                TAG,
+                "$operation: transient HTTP ${response.code}; retry ${retryIndex + 1}/$maxRetries in ${waitMs}ms"
+            )
+            response.close()
+            delay(waitMs)
+            retryIndex++
+        }
+    }
 
     private fun getApiKey(): String {
         val savedKey = appContext?.let {
@@ -139,7 +185,7 @@ object GeminiApiService {
                 .build()
 
             val response =
-                client.newCall(request).execute()
+                executeWithRetry(request, "درخواست متنی Gemini")
 
             val responseBody =
                 response.body?.string()
@@ -152,7 +198,13 @@ object GeminiApiService {
 
                 return@withContext Result.failure(
                     Exception(
-                        "خطا از سرور هوش مصنوعی (کد ${response.code})"
+                        if (response.code == 503 || response.code == 502 || response.code == 500 || response.code == 504) {
+                            "سرویس Gemini پس از چند تلاش هنوز در دسترس نیست (کد ${response.code}). متن و فایل شما حفظ شده‌اند؛ کمی بعد دوباره تلاش کنید یا از Groq استفاده کنید."
+                        } else if (response.code == 429) {
+                            "محدودیت درخواست Gemini فعال شده است (429). کمی بعد دوباره تلاش کنید یا از Groq استفاده کنید."
+                        } else {
+                            "خطا در درخواست Gemini (کد ${response.code}). جزئیات برای بررسی در گزارش برنامه ثبت شد."
+                        }
                     )
                 )
             }
@@ -450,7 +502,7 @@ $rawTranscript
                 .build()
 
             val startResponse =
-                client.newCall(startRequest).execute()
+                executeWithRetry(startRequest, "شروع آپلود صوت Gemini")
 
             if (!startResponse.isSuccessful) {
 
@@ -464,7 +516,11 @@ $rawTranscript
 
                 return@withContext Result.failure(
                     Exception(
-                        "خطا در شروع آپلود فایل صوتی: ${startResponse.code}"
+                        if (startResponse.code == 503 || startResponse.code == 502 || startResponse.code == 500 || startResponse.code == 504) {
+                            "سرویس Gemini هنگام شروع آپلود صوت در دسترس نیست (کد ${startResponse.code}). فایل اصلی حذف نشده است؛ کمی بعد دوباره تلاش کنید یا از Groq استفاده کنید."
+                        } else {
+                            "خطا در شروع آپلود فایل صوتی: ${startResponse.code}"
+                        }
                     )
                 )
             }
@@ -648,7 +704,7 @@ $rawTranscript
             report("در حال تبدیل گفتار به متن",65,audioFile.length(),audioFile.length(),detail="تشخیص گفتار و استخراج متن فارسی در حال انجام است")
 
             val response =
-                client.newCall(request).execute()
+                executeWithRetry(request, "تبدیل صوت به متن Gemini")
 
             val responseBody =
                 response.body?.string()
@@ -664,7 +720,13 @@ $rawTranscript
 
                 return@withContext Result.failure(
                     Exception(
-                        "خطا در تبدیل صوت به متن (کد ${response.code})"
+                        if (response.code == 503 || response.code == 502 || response.code == 500 || response.code == 504) {
+                            "سرویس Gemini پس از چند تلاش نتوانست صوت را به متن تبدیل کند (کد ${response.code}). فایل صوتی حفظ شده است؛ کمی بعد دوباره تلاش کنید یا از Groq استفاده کنید."
+                        } else if (response.code == 429) {
+                            "محدودیت درخواست Gemini فعال شده است (429). کمی بعد دوباره تلاش کنید یا از Groq استفاده کنید."
+                        } else {
+                            "خطا در تبدیل صوت به متن (کد ${response.code})"
+                        }
                     )
                 )
             }
