@@ -15,6 +15,8 @@ import okhttp3.RequestBody.Companion.toRequestBody
 import org.json.JSONObject
 import java.io.File
 import java.util.concurrent.TimeUnit
+import kotlinx.coroutines.delay
+import kotlin.random.Random
 
 object GroqApiService {
     private const val TAG = "GroqApiService"
@@ -231,32 +233,82 @@ object GroqApiService {
                 .post(json.toString().toRequestBody("application/json; charset=utf-8".toMediaType()))
                 .build()
 
-            val response = client.newCall(request).execute()
-            val raw = response.body?.string().orEmpty()
-
-            if (!response.isSuccessful) {
-                Log.e(TAG, "Groq text error ${response.code}: $raw")
-                return@withContext Result.failure(
-                    Exception("خطای Groq در پردازش متن: ${response.code}")
-                )
-            }
-
-            val text = org.json.JSONObject(raw)
-                .optJSONArray("choices")
-                ?.optJSONObject(0)
-                ?.optJSONObject("message")
-                ?.optString("content")
-                ?.trim()
-                .orEmpty()
-
-            if (text.isBlank()) {
-                Result.failure(Exception("Groq پاسخ متنی معتبری برنگرداند."))
-            } else {
-                Result.success(text)
-            }
+            executeTextRequestWithRetry(request)
         } catch (e: Exception) {
             Log.e(TAG, "Groq text generation failed", e)
             Result.failure(e)
+        }
+    }
+
+    /**
+     * Retry only transient Groq API/network failures. The request body is replayable JSON,
+     * so retrying this text-generation request cannot duplicate a file upload.
+     */
+    private suspend fun executeTextRequestWithRetry(request: Request): Result<String> {
+        val maxRetries = 3
+        var retryIndex = 0
+
+        while (true) {
+            val response = try {
+                client.newCall(request).execute()
+            } catch (e: java.io.IOException) {
+                if (retryIndex >= maxRetries) {
+                    Log.e(TAG, "Groq text request failed after retries", e)
+                    return Result.failure(Exception("ارتباط با Groq پس از چند تلاش ناموفق بود: ${e.localizedMessage ?: "خطای شبکه"}", e))
+                }
+                val waitMs = (1_000L shl retryIndex) + Random.nextLong(0, 501)
+                Log.w(TAG, "Groq network error; retry ${retryIndex + 1}/$maxRetries after ${waitMs}ms")
+                delay(waitMs)
+                retryIndex++
+                continue
+            }
+
+            val raw = response.body?.string().orEmpty()
+            val status = response.code
+            val retryAfterSeconds = response.header("Retry-After")?.toLongOrNull()
+            response.close()
+
+            if (status in 200..299) {
+                val text = try {
+                    org.json.JSONObject(raw)
+                        .optJSONArray("choices")
+                        ?.optJSONObject(0)
+                        ?.optJSONObject("message")
+                        ?.optString("content")
+                        ?.trim()
+                        .orEmpty()
+                } catch (e: Exception) {
+                    Log.e(TAG, "Invalid Groq text response", e)
+                    return Result.failure(Exception("پاسخ Groq قابل خواندن نبود."))
+                }
+
+                return if (text.isBlank()) {
+                    Result.failure(Exception("Groq پاسخ متنی معتبری برنگرداند."))
+                } else {
+                    Result.success(text)
+                }
+            }
+
+            Log.e(TAG, "Groq text error $status: $raw")
+            val transient = status == 408 || status == 429 || status == 500 ||
+                status == 502 || status == 503 || status == 504
+            if (transient && retryIndex < maxRetries) {
+                val backoffMs = retryAfterSeconds?.coerceIn(1, 30)?.times(1_000L)
+                    ?: ((1_000L shl retryIndex) + Random.nextLong(0, 501))
+                Log.w(TAG, "Groq returned $status; retry ${retryIndex + 1}/$maxRetries after ${backoffMs}ms")
+                delay(backoffMs)
+                retryIndex++
+                continue
+            }
+
+            val message = when (status) {
+                401, 403 -> "کلید Groq معتبر نیست یا اجازه دسترسی ندارد (کد $status)."
+                413 -> "متن ارسالی برای Groq بیش از حد بزرگ است (413)."
+                429 -> "محدودیت درخواست Groq فعال است (429)؛ کمی بعد دوباره تلاش کنید."
+                500, 502, 503, 504 -> "سرویس Groq موقتاً در دسترس نیست (کد $status). کمی بعد دوباره تلاش کنید."
+                else -> "خطای Groq در پردازش متن: $status"
+            }
+            return Result.failure(Exception(message))
         }
     }
 
@@ -265,17 +317,21 @@ object GroqApiService {
             تو ویراستار امانت‌دار متن سخنرانی دانشگاهی و حوزوی هستی.
             فقط ویرایش زبانی انجام بده؛ خلاصه‌سازی، تلخیص، بازنویسی آزاد و حذف محتوا مطلقاً ممنوع است.
             تمام جمله‌ها، مراحل استدلال، مثال‌ها، پرسش‌وپاسخ‌ها، توضیحات، قیود، شروط، استثناها، نقل‌قول‌ها، آیات، احادیث و اصطلاحات تخصصی را حفظ کن.
+            عبارات عربی، نام اشخاص، نام کتاب‌ها، اصطلاحات اصولی/فقهی/فلسفی و نقل‌قول‌ها را بی‌دلیل جایگزین یا ساده‌سازی نکن.
+            تکرار آموزشی، تأکید استاد یا بازگشت به یک استدلال را حذف نکن؛ فقط غلط‌های نگارشی روشن را اصلاح کن.
             تنها غلط‌های املایی یا شنیداریِ روشن، نشانه‌گذاری، فاصله‌گذاری و نیم‌فاصله را اصلاح کن.
-            تیتر و پاراگراف اضافه کن، اما هرگز متن را به جای متن اصلی خلاصه نکن.
+            تیتر و پاراگراف اضافه کن، اما هرگز متن را به جای متن اصلی خلاصه نکن و ترتیب استدلال را تغییر نده.
             عبارت نامطمئن را حدس نزن؛ تا حد ممکن همان را حفظ کن.
-            متن نهایی باید تقریباً هم‌اندازه متن ورودی باشد و نباید محسوس کوتاه‌تر شود.
+            متن نهایی باید از نظر حجم و جزئیات نزدیک به متن ورودی باشد و نباید محسوس کوتاه‌تر شود.
             خروجی فقط متن کامل ویرایش‌شده باشد.
         """.trimIndent()
 
         val prompt = """
             این متن پیاده‌شده از سخنرانی استاد را کامل و امانت‌دارانه ویرایش کن.
-            هیچ بخش درسی را حذف، ادغام یا کوتاه نکن. ترتیب همه مباحث و استدلال‌ها را نگه دار.
-            فقط خطاهای روشن نگارشی را اصلاح کن و برای خوانایی تیتر و پاراگراف اضافه کن.
+            هیچ بخش درسی را حذف، ادغام یا کوتاه نکن؛ حتی اگر جمله تکراری به نظر می‌رسد، مگر آنکه صرفاً تکرار تایپیِ واضح باشد.
+            همه مثال‌ها، پرسش‌ها و پاسخ‌ها، مراحل استدلال، قیود، استثناها و عبارات عربی را نگه دار.
+            ترتیب جمله‌ها و مباحث را حفظ کن. فقط خطاهای روشن نگارشی را اصلاح کن و برای خوانایی تیتر و پاراگراف اضافه کن.
+            اگر در انتخاب میان اصلاح حدسی و حفظ عبارت تردید داری، عبارت را حفظ کن.
 
             متن خام:
             $rawTranscript
