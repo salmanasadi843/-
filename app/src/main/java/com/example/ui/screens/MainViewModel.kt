@@ -728,6 +728,17 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
     fun setLecturePublished(lecture: LectureEntity, published: Boolean) {
         viewModelScope.launch {
             repository.saveLecture(lecture.copy(isPublished = published, lastEditedMillis = System.currentTimeMillis()))
+            // Apply publication changes to the online student feed immediately,
+            // rather than requiring the teacher to press the old manual share button.
+            try {
+                withContext(Dispatchers.IO) {
+                    CloudMaterialsSync.sync(getApplication<Application>())
+                }
+            } catch (e: Exception) {
+                Log.e(TAG, "Could not refresh published lesson feed", e)
+                _cloudSyncStatus.value =
+                    "وضعیت انتشار در دستگاه ذخیره شد؛ همگام‌سازی آنلاین ناموفق بود و باید دوباره تلاش شود."
+            }
         }
     }
 
