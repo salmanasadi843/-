@@ -24,5 +24,7 @@ data class LectureEntity(
     val aiQuizJson: String? = null,
     val tags: String = "", // Comma-separated tags e.g. "فصل اول,امتحان,هوش"
     val isFavorite: Boolean = false,
+    /** Whether this lesson is currently published to students. */
+    val isPublished: Boolean = true,
     val lastEditedMillis: Long = System.currentTimeMillis()
 )

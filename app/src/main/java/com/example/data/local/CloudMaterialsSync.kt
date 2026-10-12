@@ -23,9 +23,14 @@ object CloudMaterialsSync {
         val firestore = FirebaseFirestore.getInstance()
 
         return if (AuthPreferences.currentRole(context) == UserRole.TEACHER) {
-            val classes = runBlocking { db.classDao().getAllForBackup() }
-            val courses = runBlocking { db.courseDao().getAllForBackup() }
-            val lectures = runBlocking { db.lectureDao().getAllForBackup() }
+            val allClasses = runBlocking { db.classDao().getAllForBackup() }
+            val allCourses = runBlocking { db.courseDao().getAllForBackup() }
+            val allLectures = runBlocking { db.lectureDao().getAllForBackup() }
+            val lectures = allLectures.filter { it.isPublished }
+            val visibleClassIds = lectures.mapNotNull { it.classId }.toSet()
+            val visibleCourseIds = lectures.mapNotNull { it.courseId }.toSet()
+            val courses = allCourses.filter { it.id in visibleCourseIds }
+            val classes = allClasses.filter { it.id in visibleClassIds || courses.any { course -> course.classId == it.id } }
             val payload = JSONObject()
                 .put("format", "darsyar-shared-materials")
                 .put("version", 1)
@@ -142,7 +147,7 @@ object CloudMaterialsSync {
         .put("audioUrl", audioUrl ?: JSONObject.NULL).put("audioDurationMs", audioDurationMs)
         .put("transcript", transcript).put("aiSummary", aiSummary ?: JSONObject.NULL)
         .put("aiKeyPoints", aiKeyPoints ?: JSONObject.NULL).put("tags", tags)
-        .put("lastEditedMillis", lastEditedMillis)
+        .put("isPublished", isPublished).put("lastEditedMillis", lastEditedMillis)
 
     private fun JSONObject.toLecture() = LectureEntity(
         id = optLong("id"), title = optString("title"), courseName = optString("courseName"),
@@ -151,7 +156,7 @@ object CloudMaterialsSync {
         audioFilePath = null, audioUrl = nullableString("audioUrl"),
         audioDurationMs = optLong("audioDurationMs"), transcript = optString("transcript"),
         aiSummary = nullableString("aiSummary"), aiKeyPoints = nullableString("aiKeyPoints"),
-        tags = optString("tags"), lastEditedMillis = optLong("lastEditedMillis")
+        tags = optString("tags"), isPublished = optBoolean("isPublished", true), lastEditedMillis = optLong("lastEditedMillis")
     )
 
     private fun JSONObject.nullableString(key: String): String? =
