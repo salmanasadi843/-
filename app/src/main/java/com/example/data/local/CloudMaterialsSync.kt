@@ -26,11 +26,10 @@ object CloudMaterialsSync {
             val allClasses = runBlocking { db.classDao().getAllForBackup() }
             val allCourses = runBlocking { db.courseDao().getAllForBackup() }
             val allLectures = runBlocking { db.lectureDao().getAllForBackup() }
-            val lectures = allLectures.filter { it.isPublished }
-            val visibleClassIds = lectures.mapNotNull { it.classId }.toSet()
-            val visibleCourseIds = lectures.mapNotNull { it.courseId }.toSet()
-            val courses = allCourses.filter { it.id in visibleCourseIds }
-            val classes = allClasses.filter { it.id in visibleClassIds || courses.any { course -> course.classId == it.id } }
+            val classes = allClasses.filter { it.isPublished }
+            val visibleClassIds = classes.map { it.id }.toSet()
+            val courses = allCourses.filter { it.classId in visibleClassIds }
+            val lectures = allLectures.filter { lecture -> lecture.classId?.let { it in visibleClassIds } == true }
             val payload = JSONObject()
                 .put("format", "darsyar-shared-materials")
                 .put("version", 1)
@@ -121,12 +120,12 @@ object CloudMaterialsSync {
     private fun ClassEntity.toJson() = JSONObject()
         .put("id", id).put("name", name).put("teacherName", teacherName)
         .put("description", description).put("term", term)
-        .put("classDateMillis", classDateMillis).put("createdAtMillis", createdAtMillis)
+        .put("classDateMillis", classDateMillis).put("isPublished", isPublished).put("createdAtMillis", createdAtMillis)
 
     private fun JSONObject.toClassEntity() = ClassEntity(
         id = optLong("id"), name = optString("name"), teacherName = optString("teacherName"),
         description = optString("description"), term = optString("term"),
-        classDateMillis = optLong("classDateMillis"), createdAtMillis = optLong("createdAtMillis")
+        classDateMillis = optLong("classDateMillis"), isPublished = optBoolean("isPublished", true), createdAtMillis = optLong("createdAtMillis")
     )
 
     private fun CourseEntity.toJson() = JSONObject()
