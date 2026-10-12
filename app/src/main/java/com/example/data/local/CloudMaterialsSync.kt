@@ -23,14 +23,14 @@ object CloudMaterialsSync {
         val firestore = FirebaseFirestore.getInstance()
 
         return if (AuthPreferences.currentRole(context) == UserRole.TEACHER) {
-            var classes = runBlocking { db.classDao().getAllForBackup() }
-            var courses = runBlocking { db.courseDao().getAllForBackup() }
+            val allClasses = runBlocking { db.classDao().getAllForBackup() }
+            val allCourses = runBlocking { db.courseDao().getAllForBackup() }
             val allLectures = runBlocking { db.lectureDao().getAllForBackup() }
             val lectures = allLectures.filter { it.isPublished }
             val visibleClassIds = lectures.mapNotNull { it.classId }.toSet()
             val visibleCourseIds = lectures.mapNotNull { it.courseId }.toSet()
-            val classes = classes.filter { it.id in visibleClassIds || courses.any { course -> course.classId == it.id && course.id in visibleCourseIds } }
-            val courses = courses.filter { it.id in visibleCourseIds }
+            val courses = allCourses.filter { it.id in visibleCourseIds }
+            val classes = allClasses.filter { it.id in visibleClassIds || courses.any { course -> course.classId == it.id } }
             val payload = JSONObject()
                 .put("format", "darsyar-shared-materials")
                 .put("version", 1)
