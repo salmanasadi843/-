@@ -105,7 +105,7 @@ object CloudMaterialsSync {
             val localClassesAll = runBlocking { db.classDao().getAllForBackup() }
             // Apply publication changes to matching cached classes too, including classes
             // imported by older versions with positive local IDs.
-            val publishedKeys = classes.map { classKey(it.name, it.teacherName, it.term) }.toSet()
+            val publishedKeys = allClasses.filter { it.isPublished }.map { classKey(it.name, it.teacherName, it.term) }.toSet()
             val withdrawnKeys = mutableSetOf<String>()
             documents.forEach { document ->
                 val payloadText = document.getString("payload") ?: return@forEach
