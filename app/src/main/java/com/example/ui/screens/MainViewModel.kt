@@ -1397,7 +1397,8 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
                 summaryResult.onSuccess { formAiSummary.value = it.trim() }
 
                 _aiOperationTitle.value = "در حال استخراج کلیدواژه‌ها..."
-                val keywordSource = formAiSummary.value.takeIf { it.isNotBlank() } ?: editedTranscript
+                // Extract keywords from the complete edited transcript, not the shorter summary.
+                val keywordSource = editedTranscript
                 val keywordResult = aiTextWithGroqFirst(
                     groqCall = { GroqApiService.extractKeyPoints(keywordSource) },
                     geminiCall = { GeminiApiService.extractKeyPoints(keywordSource) }
