@@ -1347,9 +1347,11 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
     }
 
     fun polishTranscriptInForm() {
-        val raw = formTranscript.value
+        // Always polish the preserved source transcript, not the previously polished text
+        // currently displayed in formTranscript. This makes repeated edits deterministic.
+        val original = formOriginalTranscript.value.ifBlank { formTranscript.value }
+        val raw = original
         if (raw.isBlank()) return
-        val original = formOriginalTranscript.value.ifBlank { raw }
 
         viewModelScope.launch {
             _isAiLoading.value = true
