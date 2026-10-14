@@ -84,6 +84,24 @@ test("student cannot publish a forged shared-material payload", async () => {
   );
 });
 
+test("a profile claiming TEACHER without trusted approval cannot publish", async () => {
+  await env.withSecurityRulesDisabled(async (context) => {
+    await setDoc(doc(context.firestore(), "users/unapproved-teacher"), {
+      uid: "unapproved-teacher",
+      role: "TEACHER"
+    });
+  });
+
+  const db = env.authenticatedContext("unapproved-teacher").firestore();
+  await assertFails(
+    setDoc(doc(db, "shared_materials/unapproved-teacher"), {
+      ownerUid: "unapproved-teacher",
+      payload: "{}",
+      updatedAt: Date.now()
+    })
+  );
+});
+
 test("an approved teacher can publish their own materials", async () => {
   await env.withSecurityRulesDisabled(async (context) => {
     const adminDb = context.firestore();
@@ -102,6 +120,27 @@ test("an approved teacher can publish their own materials", async () => {
       ownerUid: "teacher-1",
       payload: JSON.stringify({ classes: [], courses: [], lectures: [] }),
       updatedAt: Date.now()
+    })
+  );
+});
+
+test("an approved teacher can write their private backup", async () => {
+  await env.withSecurityRulesDisabled(async (context) => {
+    const adminDb = context.firestore();
+    await setDoc(doc(adminDb, "users/teacher-backup"), {
+      uid: "teacher-backup",
+      role: "TEACHER"
+    });
+    await setDoc(doc(adminDb, "approved_teachers/teacher-backup"), {
+      approved: true
+    });
+  });
+
+  const db = env.authenticatedContext("teacher-backup").firestore();
+  await assertSucceeds(
+    setDoc(doc(db, "teacher_data/teacher-backup"), {
+      ownerUid: "teacher-backup",
+      payload: "backup"
     })
   );
 });
