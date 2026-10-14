@@ -78,6 +78,16 @@ object AuthPreferences {
             onResult(Result.failure(IllegalArgumentException("نام و نام خانوادگی را وارد کنید.")))
             return
         }
+        if (role == UserRole.TEACHER) {
+            onResult(
+                Result.failure(
+                    IllegalStateException(
+                        "ثبت‌نام مستقیم استاد فعال نیست؛ نقش استاد باید از مسیر تأیید مدیر فعال شود."
+                    )
+                )
+            )
+            return
+        }
 
         auth(context).createUserWithEmailAndPassword(normalizedEmail, password)
             .addOnCompleteListener { task ->
