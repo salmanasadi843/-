@@ -23,6 +23,7 @@ import android.net.Network
 import android.net.NetworkCapabilities
 import com.example.data.local.ClassEntity
 import com.example.data.local.LectureEntity
+import com.google.firebase.auth.FirebaseAuth
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.mutableStateOf
@@ -57,6 +58,8 @@ fun HomeScreen(
     val isTeacher = userRole == UserRole.TEACHER
     val isOnline = rememberNetworkConnection()
     var showBulkExportDialog by androidx.compose.runtime.remember { androidx.compose.runtime.mutableStateOf(false) }
+    var showTeacherApprovalDialog by remember { mutableStateOf(false) }
+    val isAdminAccount = FirebaseAuth.getInstance().currentUser?.uid == "xgUdnaQ6X0hPobOUwx3SDI0BJVc2"
 
     Scaffold(
         containerColor = MaterialTheme.colorScheme.background,
@@ -87,6 +90,9 @@ fun HomeScreen(
                     }
                 },
                 actions = {
+                    if (isAdminAccount) {
+                        TextButton(onClick = { showTeacherApprovalDialog = true }) { Text("مدیریت استادان") }
+                    }
                     if (isTeacher) IconButton(onClick = { showBulkExportDialog = true }) { Icon(Icons.Default.Share, contentDescription = "ارسال گروهی مطالب") }
                     IconButton(onClick = viewModel::openClasses) { Icon(Icons.Default.School, "کلاس‌ها") }
                     IconButton(onClick = { viewModel.navigateTo(Screen.Settings) }) { Icon(Icons.Default.Settings, "تنظیمات") }
@@ -120,6 +126,9 @@ fun HomeScreen(
                     }
                 }
             } else {
+                if (!isAdminAccount) {
+                    item { TeacherRequestCard() }
+                }
                 item {
                     Card(Modifier.fillMaxWidth(), RoundedCornerShape(24.dp), colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.primary)) {
                         Column(Modifier.padding(22.dp)) {
@@ -249,6 +258,9 @@ fun HomeScreen(
             classes = classes,
             onDismiss = { showBulkExportDialog = false }
         )
+    }
+    if (showTeacherApprovalDialog && isAdminAccount) {
+        TeacherApprovalDialog(onDismiss = { showTeacherApprovalDialog = false })
     }
 }
 
