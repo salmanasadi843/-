@@ -783,7 +783,7 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
         groqCall: suspend () -> Result<String>,
         geminiCall: suspend () -> Result<String>
     ): Result<String> {
-        if (GeminiApiService.hasApiKey(getApplication<Application>())) {
+        if (GeminiApiService.getSavedApiKey(getApplication<Application>()).isNotBlank()) {
             val geminiResult = geminiCall()
             if (geminiResult.isSuccess) return geminiResult
             Log.w(TAG, "Gemini failed; falling back to Groq", geminiResult.exceptionOrNull())
