@@ -1,6 +1,22 @@
 name: Firestore Rules Emulator Tests
 
 on:
+  pull_request:
+    paths:
+      - "firestore.rules"
+      - "firebase.json"
+      - "package.json"
+      - "tests/**"
+      - ".github/workflows/firestore-rules-tests.yml"
+  push:
+    branches:
+      - "feature/firestore-security-emulator-tests"
+    paths:
+      - "firestore.rules"
+      - "firebase.json"
+      - "package.json"
+      - "tests/**"
+      - ".github/workflows/firestore-rules-tests.yml"
   workflow_dispatch:
 
 permissions:
