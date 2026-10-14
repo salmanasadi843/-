@@ -14,6 +14,7 @@ on:
       - "feature/firestore-role-publication-security"
       - "feature/canonical-publication-registry-v2"
       - "feature/canonical-publication-registry-main"
+      - "fix/revoked-teacher-publication-access"
     paths:
       - "firestore.rules"
       - "firebase.json"
