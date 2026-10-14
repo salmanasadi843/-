@@ -1,6 +1,7 @@
 package com.example.data.local
 
 import android.content.Context
+import android.util.Log
 import androidx.room.withTransaction
 import com.example.ui.screens.AuthPreferences
 import com.example.ui.screens.UserRole
@@ -106,6 +107,7 @@ object CloudMaterialsSync {
 
             // Query lessons within each published class. Rules also verify the
             // parent class and active teacher approval, protecting against revocation.
+            var deniedLessonQueries = 0
             val lessonDocuments = classDocuments.flatMap { classDocument ->
                 val owner = classDocument.getString("ownerUid") ?: return@flatMap emptyList()
                 val classId = classDocument.getString("classId") ?: return@flatMap emptyList()
@@ -119,8 +121,12 @@ object CloudMaterialsSync {
                     ).documents
                 } catch (e: Exception) {
                     Log.w("CloudMaterialsSync", "Could not read published lessons for $owner/$classId", e)
+                    deniedLessonQueries++
                     emptyList()
                 }
+            }
+            if (classDocuments.isNotEmpty() && lessonDocuments.isEmpty() && deniedLessonQueries > 0) {
+                error("Firebase دسترسی به جلسات منتشرشده را رد کرد. قوانین Firestore و مجوز انتشار را بررسی کنید (PERMISSION_DENIED).")
             }
             val payloads = mutableMapOf<String, JSONObject>()
 
@@ -282,6 +288,7 @@ object CloudMaterialsSync {
                 append("مطالب منتشرشده آنلاین به‌روزرسانی شد: ${lecturesToInsert.size} جلسه جدید از ${documents.size} حساب استاد.")
                 if (skippedInactiveTeachers > 0) append(" ${skippedInactiveTeachers} حساب استاد غیرفعال نادیده گرفته شد.")
                 if (deniedTeacherQueries > 0) append(" برای ${deniedTeacherQueries} حساب دسترسی وجود نداشت؛ همگام‌سازی بقیه مطالب انجام شد.")
+                if (deniedLessonQueries > 0) append(" ${deniedLessonQueries} درخواست دریافت جلسه با محدودیت دسترسی روبه‌رو شد.")
             }
         }
     }
