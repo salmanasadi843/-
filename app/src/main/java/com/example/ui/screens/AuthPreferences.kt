@@ -95,7 +95,9 @@ object AuthPreferences {
                 val data = hashMapOf<String, Any>(
                     "email" to normalizedEmail,
                     "name" to name.trim(),
-                    "role" to role.name,
+                    // Client registration must never grant TEACHER privileges.
+                    // A trusted admin can approve a teacher and set the role server-side.
+                    "role" to UserRole.STUDENT.name,
                     "createdAt" to FieldValue.serverTimestamp(),
                     "updatedAt" to FieldValue.serverTimestamp()
                 )
@@ -111,8 +113,8 @@ object AuthPreferences {
                             )
                             return@addOnCompleteListener
                         }
-                        cacheProfile(context, role, name.trim())
-                        onResult(Result.success(role))
+                        cacheProfile(context, UserRole.STUDENT, name.trim())
+                        onResult(Result.success(UserRole.STUDENT))
                     }
             }
     }
@@ -166,56 +168,11 @@ object AuthPreferences {
                             return@addOnCompleteListener
                         }
 
-                        val isPrimaryTeacher =
-                            normalizedEmail == PRIMARY_TEACHER_EMAIL
                         val roleValue = snapshot.getString("role")
-                        val role = when {
-                            isPrimaryTeacher -> UserRole.TEACHER
-                            roleValue == UserRole.TEACHER.name -> UserRole.TEACHER
-                            roleValue == UserRole.STUDENT.name -> UserRole.STUDENT
-                            else -> {
-                                onResult(
-                                    Result.failure(
-                                        IllegalStateException(
-                                            "نقش این حساب در Firebase مشخص نشده است. مقدار role باید TEACHER یا STUDENT باشد."
-                                        )
-                                    )
-                                )
-                                return@addOnCompleteListener
-                            }
-                        }
                         val name = snapshot.getString("name").orEmpty().ifBlank {
-                            if (isPrimaryTeacher) "سلمان اسدی" else ""
+                            if (normalizedEmail == PRIMARY_TEACHER_EMAIL) "سلمان اسدی" else ""
                         }
-
-                        if (isPrimaryTeacher &&
-                            (roleValue != UserRole.TEACHER.name || snapshot.getString("name").isNullOrBlank())
-                        ) {
-                            val teacherProfile = hashMapOf<String, Any>(
-                                "email" to normalizedEmail,
-                                "name" to name,
-                                "role" to UserRole.TEACHER.name,
-                                "updatedAt" to FieldValue.serverTimestamp()
-                            )
-                            firestore(context).collection("users").document(user.uid)
-                                .set(teacherProfile, com.google.firebase.firestore.SetOptions.merge())
-                                .addOnCompleteListener { updateTask ->
-                                    if (!updateTask.isSuccessful) {
-                                        onResult(
-                                            Result.failure(
-                                                updateTask.exception
-                                                    ?: IllegalStateException("تنظیم نقش استاد انجام نشد.")
-                                            )
-                                        )
-                                        return@addOnCompleteListener
-                                    }
-                                    cacheProfile(context, UserRole.TEACHER, name)
-                                    onResult(Result.success(UserRole.TEACHER))
-                                }
-                        } else {
-                            cacheProfile(context, role, name)
-                            onResult(Result.success(role))
-                        }
+                        resolveTrustedRole(context, user.uid, roleValue, name, onResult)
                     }
             }
     }
@@ -268,27 +225,67 @@ object AuthPreferences {
 
                 val snapshot = task.result
                 val userEmail = user.email?.trim()?.lowercase().orEmpty()
-                val role = if (
-                    userEmail == PRIMARY_TEACHER_EMAIL ||
-                    snapshot.getString("role") == UserRole.TEACHER.name
-                ) {
-                    UserRole.TEACHER
-                } else if (snapshot.getString("role") == UserRole.STUDENT.name) {
-                    UserRole.STUDENT
-                } else {
-                    onResult(
-                        Result.failure(
-                            IllegalStateException("نقش این حساب در Firebase مشخص نشده است.")
-                        )
-                    )
-                    return@addOnCompleteListener
-                }
                 val name = snapshot.getString("name").orEmpty().ifBlank {
                     if (userEmail == PRIMARY_TEACHER_EMAIL) "سلمان اسدی" else ""
                 }
-                cacheProfile(context, role, name)
-                onResult(Result.success(role))
+                resolveTrustedRole(
+                    context,
+                    user.uid,
+                    snapshot.getString("role"),
+                    name,
+                    onResult
+                )
             }
+    }
+
+    private fun resolveTrustedRole(
+        context: Context,
+        uid: String,
+        roleValue: String?,
+        name: String,
+        onResult: (Result<UserRole>) -> Unit
+    ) {
+        when (roleValue) {
+            UserRole.STUDENT.name -> {
+                cacheProfile(context, UserRole.STUDENT, name)
+                onResult(Result.success(UserRole.STUDENT))
+            }
+
+            UserRole.TEACHER.name -> {
+                // A TEACHER profile alone is not enough: approval is controlled
+                // outside the client in approved_teachers/{uid}.
+                firestore(context).collection("approved_teachers").document(uid).get()
+                    .addOnCompleteListener { approvalTask ->
+                        if (!approvalTask.isSuccessful) {
+                            onResult(
+                                Result.failure(
+                                    approvalTask.exception
+                                        ?: IllegalStateException("بررسی تأیید استاد انجام نشد.")
+                                )
+                            )
+                            return@addOnCompleteListener
+                        }
+                        if (!approvalTask.result.exists()) {
+                            onResult(
+                                Result.failure(
+                                    IllegalStateException(
+                                        "این حساب هنوز توسط مدیر به‌عنوان استاد تأیید نشده است."
+                                    )
+                                )
+                            )
+                            return@addOnCompleteListener
+                        }
+                        cacheProfile(context, UserRole.TEACHER, name)
+                        onResult(Result.success(UserRole.TEACHER))
+                    }
+            }
+
+            else -> onResult(
+                Result.failure(
+                    IllegalStateException("نقش این حساب در Firebase مشخص نشده است.")
+                )
+            )
+        }
     }
 
     fun logout(context: Context) {
