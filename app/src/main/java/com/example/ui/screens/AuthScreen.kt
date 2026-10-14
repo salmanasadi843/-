@@ -125,24 +125,11 @@ fun AuthScreen(
                         Spacer(Modifier.height(10.dp))
 
                         Text(
-                            "نقش کاربری",
+                            "ثبت‌نام کاربران جدید به‌صورت دانشجو انجام می‌شود. برای فعال‌شدن حساب استاد، تأیید مدیر لازم است.",
                             modifier = Modifier.fillMaxWidth(),
-                            style = MaterialTheme.typography.labelLarge,
-                            fontWeight = FontWeight.Bold
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant
                         )
-                        Spacer(Modifier.height(7.dp))
-
-                        Row(
-                            modifier = Modifier.fillMaxWidth(),
-                            horizontalArrangement = Arrangement.spacedBy(8.dp)
-                        ) {
-                            RoleButton("دانشجو", role == UserRole.STUDENT, Modifier.weight(1f)) {
-                                role = UserRole.STUDENT
-                            }
-                            RoleButton("استاد", role == UserRole.TEACHER, Modifier.weight(1f)) {
-                                role = UserRole.TEACHER
-                            }
-                        }
                         Spacer(Modifier.height(10.dp))
                     }
 

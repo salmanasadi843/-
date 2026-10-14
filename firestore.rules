@@ -2,13 +2,39 @@ rules_version = '2';
 service cloud.firestore {
   match /databases/{database}/documents {
 
-    // دسترسی کاربران؛ قواعد فعلی حفظ شده است
-    match /users/{userId}/{document=**} {
+    function approvedTeacher(uid) {
+      return request.auth != null
+             && request.auth.uid == uid
+             && exists(/databases/$(database)/documents/approved_teachers/$(uid))
+             && get(/databases/$(database)/documents/users/$(uid)).data.role == 'TEACHER';
+    }
+
+    // Root profile: users may create a STUDENT profile and may never change
+    // their own role. TEACHER approval must be provisioned by a trusted admin.
+    match /users/{userId} {
+      allow read: if request.auth != null
+                  && request.auth.uid == userId;
+
+      allow create: if request.auth != null
+                    && request.auth.uid == userId
+                    && request.resource.data.role == 'STUDENT';
+
+      allow update: if request.auth != null
+                    && request.auth.uid == userId
+                    && request.resource.data.role == resource.data.role;
+
+      allow delete: if false;
+    }
+
+    // Preserve owner-only access to nested user documents without granting
+    // the recursive wildcard access to the root profile document.
+    match /users/{userId}/{subcollection}/{document=**} {
       allow read, write: if request.auth != null
                          && request.auth.uid == userId;
     }
 
-    // اشتراک‌گذاری قبلی؛ قواعد فعلی حفظ شده است
+    // Legacy share links remain public for backward compatibility.
+    // Their data classification must be reviewed before changing this policy.
     match /shared/{shareId} {
       allow read: if true;
       allow create: if request.auth != null;
@@ -16,37 +42,94 @@ service cloud.firestore {
                             && resource.data.ownerUid == request.auth.uid;
     }
 
-    // همگام‌سازی مطالب منتشرشده؛ قواعد فعلی حفظ شده است
-    match /shared_materials/{teacherUid} {
+    // Approved teacher identities are managed only by trusted server/admin
+    // tooling. Clients may read the registry but cannot create/update/delete it.
+    match /approved_teachers/{teacherUid} {
       allow read: if request.auth != null;
-      allow create, update, delete:
-        if request.auth != null
-        && request.auth.uid == teacherUid;
     }
 
-    // نسخه پشتیبان خصوصی درس‌یار؛ فقط صاحب حساب استاد اجازه دسترسی دارد
+    // Legacy aggregate payload is private. Students must use canonical records.
+    match /shared_materials/{teacherUid} {
+      allow read: if request.auth != null && request.auth.uid == teacherUid;
+      allow create, update: if approvedTeacher(teacherUid)
+                            && request.resource.data.ownerUid == teacherUid;
+      allow delete: if approvedTeacher(teacherUid)
+                    && resource.data.ownerUid == teacherUid;
+    }
+
+    // Canonical class publication record: hidden class metadata is owner-only.
+    match /published_classes/{publicationId} {
+      allow read: if request.auth != null
+                  && (resource.data.ownerUid == request.auth.uid
+                      || resource.data.isPublished == true);
+
+      allow create, update: if approvedTeacher(request.auth.uid)
+                            && request.resource.data.ownerUid == request.auth.uid
+                            && publicationId == request.auth.uid + '__' + request.resource.data.classId
+                            && request.resource.data.isPublished is bool;
+
+      allow delete: if approvedTeacher(request.auth.uid)
+                    && resource.data.ownerUid == request.auth.uid;
+    }
+
+    // A lesson can only be publicly readable if its own flag and parent class
+    // flag are true. This is enforced by Firestore, not just by app filtering.
+    match /published_lessons/{publicationId} {
+      allow read: if request.auth != null
+                  && (resource.data.ownerUid == request.auth.uid
+                      || (resource.data.isPublished == true
+                          && resource.data.classId is string
+                          && exists(/databases/$(database)/documents/published_classes/$(resource.data.ownerUid + '__' + resource.data.classId))
+                          && get(/databases/$(database)/documents/published_classes/$(resource.data.ownerUid + '__' + resource.data.classId)).data.isPublished == true));
+
+      allow create, update: if approvedTeacher(request.auth.uid)
+                            && request.resource.data.ownerUid == request.auth.uid
+                            && publicationId == request.auth.uid + '__' + request.resource.data.lessonId
+                            && request.resource.data.isPublished is bool
+                            && (request.resource.data.isPublished == false
+                                || (request.resource.data.classId is string
+                                    && existsAfter(/databases/$(database)/documents/published_classes/$(request.auth.uid + '__' + request.resource.data.classId))
+                                    && getAfter(/databases/$(database)/documents/published_classes/$(request.auth.uid + '__' + request.resource.data.classId)).data.isPublished == true));
+
+      allow delete: if approvedTeacher(request.auth.uid)
+                    && resource.data.ownerUid == request.auth.uid;
+    }
+
+    // Minimal hash-only index allows student clients to hide stale local imports
+    // after revocation without disclosing names or transcript content.
+    match /publication_index/{teacherUid} {
+      allow read: if request.auth != null;
+      allow create, update: if approvedTeacher(teacherUid)
+                            && request.resource.data.ownerUid == teacherUid;
+      allow delete: if approvedTeacher(teacherUid)
+                    && resource.data.ownerUid == teacherUid;
+    }
+
+    // Private teacher backup: both profile role and trusted approval are needed.
     match /teacher_data/{ownerUid} {
       allow read: if request.auth != null
                   && request.auth.uid == ownerUid;
 
       allow create, update: if request.auth != null
                             && request.auth.uid == ownerUid
-                            && get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role == 'TEACHER'
+                            && exists(/databases/$(database)/documents/approved_teachers/$(ownerUid))
+                            && get(/databases/$(database)/documents/users/$(ownerUid)).data.role == 'TEACHER'
                             && request.resource.data.ownerUid == ownerUid;
 
       allow delete: if request.auth != null
                     && request.auth.uid == ownerUid
-                    && get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role == 'TEACHER';
+                    && exists(/databases/$(database)/documents/approved_teachers/$(ownerUid))
+                    && get(/databases/$(database)/documents/users/$(ownerUid)).data.role == 'TEACHER';
 
-      // رکوردهای جداگانه برای همگام‌سازی کلاس‌ها، درس‌ها و جلسات
-      // فقط صاحب حساب استاد اجازه خواندن و نوشتن دارد
+      // Individual sync records are private and restricted to approved teachers.
       match /records/{recordId} {
         allow read: if request.auth != null
                     && request.auth.uid == ownerUid;
 
         allow create, update, delete: if request.auth != null
                                       && request.auth.uid == ownerUid
-                                      && get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role == 'TEACHER';
+                                      && exists(/databases/$(database)/documents/approved_teachers/$(ownerUid))
+                                      && get(/databases/$(database)/documents/users/$(ownerUid)).data.role == 'TEACHER';
       }
     }
   }
