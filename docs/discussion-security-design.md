@@ -30,3 +30,31 @@ Canonical scope fields:
 - Resolved threads remain readable to authorized class participants and are not deleted.
 - Questions can optionally link to a course, session, and a selected text excerpt.
 - Class-code membership is intentionally out of scope for the first implementation, per product decision; access follows the teacher's publication state.
+
+
+## Repository security audit (2026-10-14)
+
+Audit scope: current `firestore.rules`, `AuthPreferences.kt`, and `CloudMaterialsSync.kt`.
+This is a source review, not an Emulator test or a live Firebase penetration test.
+
+### Findings — do not enable discussion writes yet
+
+- **High: profile role can be self-assigned.** The recursive `/users/{userId}/{document=**}` rule grants the signed-in owner read/write access to their profile path. In Rules v2 the recursive wildcard can match zero or more path segments, so the root profile document is covered too. Registration writes the client-selected `role` to `users/{uid}`. A student may therefore attempt to change their profile role to `TEACHER`; rules that trust this field do not prove teacher status.
+- **High: shared-material documents are not role-gated.** Any authenticated user can create/update their own `shared_materials/{uid}` document. The student sync code reads other users' documents and interprets their payload as teacher materials without verifying the owner's trusted role. A student account can therefore publish a forged payload under its own UID and have it appear as shared content to other clients.
+- **High: published state is only inside a client-produced JSON string.** `CloudMaterialsSync` serializes classes and lessons into the `payload` string. Firestore Rules cannot inspect JSON fields inside that string to independently enforce `isPublished`; rules currently authorize the whole document based on UID alone.
+- **Medium: legacy `shared/{shareId}` is publicly readable.** `allow read: if true` exposes every document matched by that path to unauthenticated readers. Confirm this is intentional and that no private data is stored there before changing it.
+- **Positive: discussion paths currently have no matching allow rule.** Firestore's default is deny, so the new discussion collections are not enabled by these rules yet. Keep them denied until trusted role and publication checks are available.
+- **No canonical publication registry exists in the inspected code.** Class visibility currently comes from Room fields serialized by the client; there is no separate trusted per-class publication document that rules can check.
+- **Teacher onboarding constraint:** registration currently lets the user choose `TEACHER` or `STUDENT`, and the existing primary-teacher account is specially recognized by email in app code. Do not add rules that simply require `users/{uid}.role == 'TEACHER'` and call that secure. A safe migration needs a trusted teacher-approval mechanism (for example, Admin SDK-managed custom claims or an explicitly admin-managed approval field) and must preserve the current account's access.
+
+### Required next implementation sequence
+
+1. Add tests using the Firestore Rules Emulator before changing deployed rules. Include: anonymous read of legacy shares; student profile role escalation; student writing a fake shared-material payload; hidden/unpublished class access; cross-teacher access; author-only question/post edits; teacher-only status changes; immutable history.
+2. Design a trusted teacher identity migration that does not lock out the current teacher. Client code must not be allowed to set the trusted role/approval field.
+3. Replace the JSON-only publication signal with per-class canonical publication documents, written only through a trusted path and checked by rules. Define how unpublish blocks existing discussion reads/writes, not just how the UI hides a class.
+4. Add discussion collection rules and repository operations only after the preceding checks are covered by automated tests.
+5. Deploy rules only after Emulator tests pass and the current backup, login, and published-material flows are regression-tested.
+
+### Deployment status
+
+No Firestore rules were changed by this audit. No live rules were deployed. No Emulator tests or APK build have been run for this audit. The findings above are based on the repository source only.
