@@ -230,7 +230,7 @@ fun TeacherRequestCard() {
                                     requestRef.set(
                                         mapOf(
                                             "uid" to uid,
-                                            "email" to user.email.orEmpty(),
+                                            "email" to user?.email.orEmpty(),
                                             "status" to "PENDING",
                                             "createdAt" to FieldValue.serverTimestamp()
                                         )
