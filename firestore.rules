@@ -15,6 +15,19 @@ service cloud.firestore {
              && get(/databases/$(database)/documents/users/$(uid)).data.role == 'TEACHER';
     }
 
+    // Published content is readable by students only while its owner still
+    // has an active trusted approval and a TEACHER profile. Removing approval
+    // or changing the role to STUDENT revokes access without deleting content.
+    function activeTeacher(uid) {
+      return exists(/databases/$(database)/documents/approved_teachers/$(uid))
+             && (
+               get(/databases/$(database)/documents/approved_teachers/$(uid)).data.enabled == true
+               || get(/databases/$(database)/documents/approved_teachers/$(uid)).data.approved == true
+             )
+             && exists(/databases/$(database)/documents/users/$(uid))
+             && get(/databases/$(database)/documents/users/$(uid)).data.role == 'TEACHER';
+    }
+
     // Root profile: users may create a STUDENT profile and may never change
     // their own role. TEACHER approval must be provisioned by a trusted admin.
     match /users/{userId} {
@@ -90,7 +103,8 @@ service cloud.firestore {
     match /published_classes/{publicationId} {
       allow read: if request.auth != null
                   && (resource.data.ownerUid == request.auth.uid
-                      || resource.data.isPublished == true);
+                      || (resource.data.isPublished == true
+                          && activeTeacher(resource.data.ownerUid)));
 
       allow create, update: if approvedTeacher(request.auth.uid)
                             && request.resource.data.ownerUid == request.auth.uid
@@ -107,6 +121,7 @@ service cloud.firestore {
       allow read: if request.auth != null
                   && (resource.data.ownerUid == request.auth.uid
                       || (resource.data.isPublished == true
+                          && activeTeacher(resource.data.ownerUid)
                           && resource.data.classId is string
                           && exists(/databases/$(database)/documents/published_classes/$(resource.data.ownerUid + '__' + resource.data.classId))
                           && get(/databases/$(database)/documents/published_classes/$(resource.data.ownerUid + '__' + resource.data.classId)).data.isPublished == true));
