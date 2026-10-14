@@ -59,27 +59,68 @@ object CloudMaterialsSync {
             // each teacher still has an active approval; a global classes query would
             // be denied once revocation is enforced by the rules.
             val publicationIndexes = Tasks.await(firestore.collection("publication_index").get()).documents
-            val classDocuments = publicationIndexes.flatMap { index ->
+            val classDocuments = mutableListOf<com.google.firebase.firestore.DocumentSnapshot>()
+            var skippedInactiveTeachers = 0
+            var deniedTeacherQueries = 0
+
+            publicationIndexes.forEach { index ->
                 val owner = index.getString("ownerUid") ?: index.id
-                Tasks.await(
-                    firestore.collection("published_classes")
-                        .whereEqualTo("ownerUid", owner)
-                        .whereEqualTo("isPublished", true)
-                        .get()
-                ).documents
+
+                // Do not query a teacher whose trusted approval has been revoked.
+                // This avoids one revoked teacher's denied query aborting every
+                // student's sync for otherwise-active teachers.
+                val approval = try {
+                    Tasks.await(firestore.collection("approved_teachers").document(owner).get())
+                } catch (e: Exception) {
+                    Log.w("CloudMaterialsSync", "Could not check publication approval for $owner", e)
+                    deniedTeacherQueries++
+                    return@forEach
+                }
+                val approved = approval.exists() &&
+                    (approval.getBoolean("enabled") == true || approval.getBoolean("approved") == true)
+                if (!approved) {
+                    skippedInactiveTeachers++
+                    return@forEach
+                }
+
+                try {
+                    classDocuments += Tasks.await(
+                        firestore.collection("published_classes")
+                            .whereEqualTo("ownerUid", owner)
+                            .whereEqualTo("isPublished", true)
+                            .get()
+                    ).documents
+                } catch (e: Exception) {
+                    // A teacher whose profile is no longer TEACHER may still have
+                    // a legacy approval document. Skip that teacher rather than
+                    // failing the whole sync; report a useful error if no records
+                    // can be read at all.
+                    Log.w("CloudMaterialsSync", "Could not read published classes for $owner", e)
+                    deniedTeacherQueries++
+                }
             }
+
+            if (publicationIndexes.isNotEmpty() && classDocuments.isEmpty() && deniedTeacherQueries > 0) {
+                error("Firebase دسترسی به کلاس‌های منتشرشده را رد کرد. قوانین Firestore و وضعیت تأیید استادها را بررسی کنید (PERMISSION_DENIED).")
+            }
+
             // Query lessons within each published class. Rules also verify the
             // parent class and active teacher approval, protecting against revocation.
             val lessonDocuments = classDocuments.flatMap { classDocument ->
                 val owner = classDocument.getString("ownerUid") ?: return@flatMap emptyList()
                 val classId = classDocument.getString("classId") ?: return@flatMap emptyList()
-                Tasks.await(
-                    firestore.collection("published_lessons")
-                        .whereEqualTo("ownerUid", owner)
-                        .whereEqualTo("classId", classId)
-                        .whereEqualTo("isPublished", true)
-                        .get()
-                ).documents
+                try {
+                    Tasks.await(
+                        firestore.collection("published_lessons")
+                            .whereEqualTo("ownerUid", owner)
+                            .whereEqualTo("classId", classId)
+                            .whereEqualTo("isPublished", true)
+                            .get()
+                    ).documents
+                } catch (e: Exception) {
+                    Log.w("CloudMaterialsSync", "Could not read published lessons for $owner/$classId", e)
+                    emptyList()
+                }
             }
             val payloads = mutableMapOf<String, JSONObject>()
 
@@ -237,7 +278,11 @@ object CloudMaterialsSync {
                     db.lectureDao().insertAllForRestore(lecturesToInsert.distinctBy { it.id })
                 }
             }
-            "مطالب منتشرشده آنلاین به‌روزرسانی شد: ${lecturesToInsert.size} جلسه جدید از ${documents.size} حساب استاد."
+            buildString {
+                append("مطالب منتشرشده آنلاین به‌روزرسانی شد: ${lecturesToInsert.size} جلسه جدید از ${documents.size} حساب استاد.")
+                if (skippedInactiveTeachers > 0) append(" ${skippedInactiveTeachers} حساب استاد غیرفعال نادیده گرفته شد.")
+                if (deniedTeacherQueries > 0) append(" برای ${deniedTeacherQueries} حساب دسترسی وجود نداشت؛ همگام‌سازی بقیه مطالب انجام شد.")
+            }
         }
     }
 
