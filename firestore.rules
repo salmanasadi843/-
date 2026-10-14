@@ -2,6 +2,13 @@ rules_version = '2';
 service cloud.firestore {
   match /databases/{database}/documents {
 
+    function approvedTeacher(uid) {
+      return request.auth != null
+             && request.auth.uid == uid
+             && exists(/databases/$(database)/documents/approved_teachers/$(uid))
+             && get(/databases/$(database)/documents/users/$(uid)).data.role == 'TEACHER';
+    }
+
     // Root profile: users may create a STUDENT profile and may never change
     // their own role. TEACHER approval must be provisioned by a trusted admin.
     match /users/{userId} {
@@ -46,17 +53,57 @@ service cloud.firestore {
     // their own publication document. Existing unapproved legacy documents
     // must be audited/removed before deploying these rules.
     match /shared_materials/{teacherUid} {
+      // Legacy aggregate payload is private. Student clients must use the
+      // individually authorized canonical publication documents below.
+      allow read: if request.auth != null && request.auth.uid == teacherUid;
+      allow create, update, delete: if approvedTeacher(teacherUid)
+                                    && request.resource.data.ownerUid == teacherUid;
+    }
+
+    // Canonical class publication records. Students can only read records
+    // whose publication flag is true; owners can also read their hidden records.
+    match /published_classes/{publicationId} {
+      allow read: if request.auth != null
+                  && (resource.data.ownerUid == request.auth.uid
+                      || resource.data.isPublished == true);
+
+      allow create, update: if approvedTeacher(request.auth.uid)
+                            && request.resource.data.ownerUid == request.auth.uid
+                            && publicationId == request.auth.uid + '__' + request.resource.data.classId
+                            && request.resource.data.isPublished is bool;
+
+      allow delete: if approvedTeacher(request.auth.uid)
+                    && resource.data.ownerUid == request.auth.uid;
+    }
+
+    // Lesson content is stored separately so Firestore can enforce the
+    // lesson-level publication flag and the parent class publication flag.
+    match /published_lessons/{publicationId} {
+      allow read: if request.auth != null
+                  && (resource.data.ownerUid == request.auth.uid
+                      || resource.data.isPublished == true);
+
+      allow create, update: if approvedTeacher(request.auth.uid)
+                            && request.resource.data.ownerUid == request.auth.uid
+                            && publicationId == request.auth.uid + '__' + request.resource.data.lessonId
+                            && request.resource.data.isPublished is bool
+                            && (request.resource.data.isPublished == false
+                                || (request.resource.data.classId is string
+                                    && exists(/databases/$(database)/documents/published_classes/$(request.auth.uid + '__' + request.resource.data.classId))
+                                    && get(/databases/$(database)/documents/published_classes/$(request.auth.uid + '__' + request.resource.data.classId)).data.isPublished == true));
+
+      allow delete: if approvedTeacher(request.auth.uid)
+                    && resource.data.ownerUid == request.auth.uid;
+    }
+
+    // Minimal, non-content index used only to reconcile locally cached classes
+    // after a teacher revokes publication. Class names/transcripts are not stored here.
+    match /publication_index/{teacherUid} {
       allow read: if request.auth != null;
-
-      allow create, update: if request.auth != null
-                            && request.auth.uid == teacherUid
-                            && exists(/databases/$(database)/documents/approved_teachers/$(teacherUid))
-                            && get(/databases/$(database)/documents/users/$(teacherUid)).data.role == 'TEACHER';
-
-      allow delete: if request.auth != null
-                    && request.auth.uid == teacherUid
-                    && exists(/databases/$(database)/documents/approved_teachers/$(teacherUid))
-                    && get(/databases/$(database)/documents/users/$(teacherUid)).data.role == 'TEACHER';
+      allow create, update: if approvedTeacher(teacherUid)
+                            && request.resource.data.ownerUid == teacherUid;
+      allow delete: if approvedTeacher(teacherUid)
+                    && resource.data.ownerUid == teacherUid;
     }
 
     // Private teacher backup: both profile role and trusted approval are needed.
