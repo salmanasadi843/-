@@ -54,11 +54,22 @@ object CloudMaterialsSync {
             )
             "انتشار آنلاین کلاس‌ها و جلسات با رعایت مجوزهای نمایش به‌روزرسانی شد."
         } else {
-            val classDocuments = Tasks.await(
-                firestore.collection("published_classes").whereEqualTo("isPublished", true).get()
-            ).documents
+            // Read the lightweight index first, then query each teacher's published
+            // classes separately. The owner filter lets Firestore rules verify that
+            // each teacher still has an active approval; a global classes query would
+            // be denied once revocation is enforced by the rules.
+            val publicationIndexes = Tasks.await(firestore.collection("publication_index").get()).documents
+            val classDocuments = publicationIndexes.flatMap { index ->
+                val owner = index.getString("ownerUid") ?: index.id
+                Tasks.await(
+                    firestore.collection("published_classes")
+                        .whereEqualTo("ownerUid", owner)
+                        .whereEqualTo("isPublished", true)
+                        .get()
+                ).documents
+            }
             // Query lessons within each published class. Rules also verify the
-            // parent class is still published, protecting against partial sync failures.
+            // parent class and active teacher approval, protecting against revocation.
             val lessonDocuments = classDocuments.flatMap { classDocument ->
                 val owner = classDocument.getString("ownerUid") ?: return@flatMap emptyList()
                 val classId = classDocument.getString("classId") ?: return@flatMap emptyList()
@@ -70,7 +81,6 @@ object CloudMaterialsSync {
                         .get()
                 ).documents
             }
-            val publicationIndexes = Tasks.await(firestore.collection("publication_index").get()).documents
             val payloads = mutableMapOf<String, JSONObject>()
 
             fun payloadFor(owner: String): JSONObject = payloads.getOrPut(owner) {
