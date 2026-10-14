@@ -391,3 +391,48 @@ test("students lose access to previously published classes and lessons when a te
   await assertFails(getDoc(doc(studentDb, "published_classes/teacher-revoked-access__class-still-stored")));
   await assertFails(getDoc(doc(studentDb, "published_lessons/teacher-revoked-access__lesson-still-stored")));
 });
+
+test("a teacher with disabled approval cannot publish or write privileged cloud data", async () => {
+  await env.withSecurityRulesDisabled(async (context) => {
+    const db = context.firestore();
+    await setDoc(doc(db, "users/teacher-disabled-approval"), {
+      uid: "teacher-disabled-approval",
+      role: "TEACHER"
+    });
+    await setDoc(doc(db, "approved_teachers/teacher-disabled-approval"), {
+      ownerUid: "teacher-disabled-approval",
+      enabled: false
+    });
+  });
+
+  const db = env.authenticatedContext("teacher-disabled-approval").firestore();
+
+  await assertFails(setDoc(doc(db, "shared_materials/teacher-disabled-approval"), {
+    ownerUid: "teacher-disabled-approval",
+    payload: "{}"
+  }));
+
+  await assertFails(setDoc(doc(db, "published_classes/teacher-disabled-approval__class-1"), {
+    ownerUid: "teacher-disabled-approval",
+    classId: "class-1",
+    isPublished: true,
+    classJson: "{}",
+    coursesJson: "[]"
+  }));
+
+  await assertFails(setDoc(doc(db, "teacher_data/teacher-disabled-approval"), {
+    ownerUid: "teacher-disabled-approval",
+    payload: "backup"
+  }));
+
+  await assertFails(setDoc(doc(db, "teacher_data/teacher-disabled-approval/records/record-1"), {
+    ownerUid: "teacher-disabled-approval",
+    classId: "class-1"
+  }));
+
+  await assertFails(setDoc(doc(db, "publication_index/teacher-disabled-approval"), {
+    ownerUid: "teacher-disabled-approval",
+    classHashes: []
+  }));
+});
+
