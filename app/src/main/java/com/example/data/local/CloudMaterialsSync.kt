@@ -57,9 +57,19 @@ object CloudMaterialsSync {
             val classDocuments = Tasks.await(
                 firestore.collection("published_classes").whereEqualTo("isPublished", true).get()
             ).documents
-            val lessonDocuments = Tasks.await(
-                firestore.collection("published_lessons").whereEqualTo("isPublished", true).get()
-            ).documents
+            // Query lessons within each published class. Rules also verify the
+            // parent class is still published, protecting against partial sync failures.
+            val lessonDocuments = classDocuments.flatMap { classDocument ->
+                val owner = classDocument.getString("ownerUid") ?: return@flatMap emptyList()
+                val classId = classDocument.getString("classId") ?: return@flatMap emptyList()
+                Tasks.await(
+                    firestore.collection("published_lessons")
+                        .whereEqualTo("ownerUid", owner)
+                        .whereEqualTo("classId", classId)
+                        .whereEqualTo("isPublished", true)
+                        .get()
+                ).documents
+            }
             val publicationIndexes = Tasks.await(firestore.collection("publication_index").get()).documents
             val payloads = mutableMapOf<String, JSONObject>()
 
