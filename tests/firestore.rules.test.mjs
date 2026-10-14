@@ -36,6 +36,16 @@ test("a user cannot create their own profile with the TEACHER role", async () =>
   );
 });
 
+test("a user can create a normal STUDENT profile", async () => {
+  const db = env.authenticatedContext("student-create").firestore();
+  await assertSucceeds(
+    setDoc(doc(db, "users/student-create"), {
+      uid: "student-create",
+      role: "STUDENT"
+    })
+  );
+});
+
 test("student cannot promote their existing profile to TEACHER", async () => {
   await env.withSecurityRulesDisabled(async (context) => {
     await setDoc(doc(context.firestore(), "users/student-1"), {
@@ -47,6 +57,15 @@ test("student cannot promote their existing profile to TEACHER", async () => {
   const db = env.authenticatedContext("student-1").firestore();
   await assertFails(
     updateDoc(doc(db, "users/student-1"), { role: "TEACHER" })
+  );
+});
+
+test("a user cannot approve themselves as a teacher", async () => {
+  const db = env.authenticatedContext("student-approve").firestore();
+  await assertFails(
+    setDoc(doc(db, "approved_teachers/student-approve"), {
+      approved: true
+    })
   );
 });
 
