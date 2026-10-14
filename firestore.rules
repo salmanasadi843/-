@@ -77,7 +77,10 @@ service cloud.firestore {
     match /published_lessons/{publicationId} {
       allow read: if request.auth != null
                   && (resource.data.ownerUid == request.auth.uid
-                      || resource.data.isPublished == true);
+                      || (resource.data.isPublished == true
+                          && resource.data.classId is string
+                          && exists(/databases/$(database)/documents/published_classes/$(resource.data.ownerUid + '__' + resource.data.classId))
+                          && get(/databases/$(database)/documents/published_classes/$(resource.data.ownerUid + '__' + resource.data.classId)).data.isPublished == true));
 
       allow create, update: if approvedTeacher(request.auth.uid)
                             && request.resource.data.ownerUid == request.auth.uid
