@@ -56,8 +56,10 @@ service cloud.firestore {
       // Legacy aggregate payload is private. Student clients must use the
       // individually authorized canonical publication documents below.
       allow read: if request.auth != null && request.auth.uid == teacherUid;
-      allow create, update, delete: if approvedTeacher(teacherUid)
-                                    && request.resource.data.ownerUid == teacherUid;
+      allow create, update: if approvedTeacher(teacherUid)
+                            && request.resource.data.ownerUid == teacherUid;
+      allow delete: if approvedTeacher(teacherUid)
+                    && resource.data.ownerUid == teacherUid;
     }
 
     // Canonical class publication records. Students can only read records
