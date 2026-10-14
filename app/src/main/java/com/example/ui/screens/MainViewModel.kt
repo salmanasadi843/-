@@ -959,9 +959,9 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
                 detail = "اولویت: Gemini، سپس Groq و در پایان Speechmatics"
             )
             try {
-                // مرحله ۱: Gemini
+                // مرحله اول: Gemini
                 _aiOperationTitle.value = "مرحله ۱ از ۳: Gemini"
-                if (GeminiApiService.hasApiKey(getApplication<Application>())) {
+                if (GeminiApiService.getSavedApiKey(getApplication<Application>()).isNotBlank()) {
                     val result = try {
                         GeminiApiService.transcribeAudioFile(audioPath) { progress ->
                             _transcriptionProgress.value = progress
@@ -979,7 +979,7 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
                     providerErrors += "Gemini: کلید API تنظیم نشده است."
                 }
 
-                // مرحله ۲: Groq
+                // مرحله دوم: Groq
                 _aiOperationTitle.value = "مرحله ۲ از ۳: Groq"
                 if (GroqApiService.hasApiKey(getApplication<Application>())) {
                     val result = try {
@@ -999,7 +999,7 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
                     providerErrors += "Groq: کلید API تنظیم نشده است."
                 }
 
-                // مرحله ۳: Speechmatics، فقط به‌عنوان جایگزین نهایی
+                // مرحله سوم: Speechmatics
                 _aiOperationTitle.value = "مرحله ۳ از ۳: Speechmatics"
                 if (SpeechmaticsApiService.hasApiKey(getApplication<Application>())) {
                     val result = try {
@@ -1010,97 +1010,20 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
                     } catch (e: Exception) { Result.failure<String>(e) }
                     if (result.isSuccess) {
                         saveTranscriptionResult(result.getOrThrow())
-                    } else {
-                        val reason = "Speechmatics: ${result.exceptionOrNull()?.localizedMessage ?: "خطای نامشخص"}"
-                        providerErrors += reason
-                        Log.e(TAG, "All transcription providers failed: ${providerErrors.joinToString(" | ")}", result.exceptionOrNull())
-                        _aiError.value = "تبدیل صوت انجام نشد. علت هر سرویس:\n• " + providerErrors.joinToString("\n• ")
-                        _transcriptionProgress.value = TranscriptionProgress(
-                            "تبدیل صوت ناموفق بود", 100,
-                            totalBytes = audioFile.length(), detail = providerErrors.joinToString("؛ ")
-                        )
+                        return@launch
                     }
+                    providerErrors += "Speechmatics: ${result.exceptionOrNull()?.localizedMessage ?: "خطای نامشخص"}"
                 } else {
                     providerErrors += "Speechmatics: کلید API تنظیم نشده است."
-                    _aiError.value = "تبدیل صوت انجام نشد. علت هر سرویس:\n• " + providerErrors.joinToString("\n• ")
-                    _transcriptionProgress.value = TranscriptionProgress(
-                        "تبدیل صوت ناموفق بود", 100,
-                        totalBytes = audioFile.length(), detail = providerErrors.joinToString("؛ ")
-                    )
-                }
-            } catch (e: Exception) {
-                        Result.failure<String>(e)
-                    }
-                    if (groqResult.isSuccess) {
-                        saveTranscriptionResult(groqResult.getOrThrow())
-                        return@launch
-                    }
-                    val reason = "Groq: ${groqResult.exceptionOrNull()?.localizedMessage ?: "خطای نامشخص"}"
-                    providerErrors += reason
-                    Log.w(TAG, reason, groqResult.exceptionOrNull())
-                    _transcriptionProgress.value = TranscriptionProgress(
-                        "Groq ناموفق بود؛ انتقال به سرویس بعدی", 5,
-                        totalBytes = audioFile.length(), detail = reason
-                    )
                 }
 
-                _aiOperationTitle.value = "مرحله ۲ از ۳: Speechmatics"
-                if (!SpeechmaticsApiService.hasApiKey(getApplication<Application>())) {
-                    val reason = "Speechmatics: کلید API ذخیره نشده یا قابل خواندن نیست."
-                    providerErrors += reason
-                    Log.w(TAG, reason)
-                    _transcriptionProgress.value = TranscriptionProgress(
-                        "Speechmatics اجرا نشد", 7, totalBytes = audioFile.length(), detail = reason
-                    )
-                } else {
-                    _transcriptionProgress.value = TranscriptionProgress(
-                        "شروع درخواست Speechmatics", 8, totalBytes = audioFile.length(),
-                        detail = "کلید شناسایی شد؛ در حال ثبت درخواست تبدیل."
-                    )
-                    val speechResult = try {
-                        SpeechmaticsApiService.transcribeAudioFile(audioPath) { progress ->
-                            _transcriptionProgress.value = progress
-                            _aiOperationTitle.value = progress.stage
-                        }
-                    } catch (e: Exception) {
-                        Result.failure<String>(e)
-                    }
-                    if (speechResult.isSuccess) {
-                        saveTranscriptionResult(speechResult.getOrThrow())
-                        return@launch
-                    }
-                    val reason = "Speechmatics: ${speechResult.exceptionOrNull()?.localizedMessage ?: "خطای نامشخص"}"
-                    providerErrors += reason
-                    Log.w(TAG, reason, speechResult.exceptionOrNull())
-                    _transcriptionProgress.value = TranscriptionProgress(
-                        "Speechmatics ناموفق بود؛ انتقال به Gemini", 10,
-                        totalBytes = audioFile.length(), detail = reason
-                    )
-                }
-
-                _aiOperationTitle.value = "مرحله ۳ از ۳: Gemini"
-                val geminiResult = try {
-                    GeminiApiService.transcribeAudioFile(audioPath) { progress ->
-                        _transcriptionProgress.value = progress
-                        _aiOperationTitle.value = progress.stage
-                    }
-                } catch (e: Exception) {
-                    Result.failure<String>(e)
-                }
-
-                if (geminiResult.isSuccess) {
-                    saveTranscriptionResult(geminiResult.getOrThrow())
-                } else {
-                    val reason = "Gemini: ${geminiResult.exceptionOrNull()?.localizedMessage ?: "خطای نامشخص"}"
-                    providerErrors += reason
-                    Log.e(TAG, "All transcription providers failed: ${providerErrors.joinToString(" | ")}", geminiResult.exceptionOrNull())
-                    _aiError.value = "تبدیل صوت انجام نشد. علت هر سرویس:\n• " + providerErrors.joinToString("\n• ")
-                    _transcriptionProgress.value = TranscriptionProgress(
-                        "تبدیل صوت ناموفق بود", 100,
-                        totalBytes = audioFile.length(),
-                        detail = providerErrors.joinToString("؛ ")
-                    )
-                }
+                Log.e(TAG, "All transcription providers failed: ${providerErrors.joinToString(" | ")}")
+                _aiError.value = "تبدیل صوت انجام نشد. علت هر سرویس:\\n• " + providerErrors.joinToString("\\n• ")
+                _transcriptionProgress.value = TranscriptionProgress(
+                    "تبدیل صوت ناموفق بود", 100,
+                    totalBytes = audioFile.length(),
+                    detail = providerErrors.joinToString("؛ ")
+                )
             } catch (e: Exception) {
                 Log.e(TAG, "Audio transcription exception", e)
                 _aiError.value = e.localizedMessage ?: "خطا در تبدیل فایل صوتی."
