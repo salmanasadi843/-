@@ -24,37 +24,77 @@ object CloudMaterialsSync {
 
         return if (AuthPreferences.currentRole(context) == UserRole.TEACHER) {
             val allClasses = runBlocking { db.classDao().getAllForBackup() }
+            val allCourses = runBlocking { db.courseDao().getAllForBackup() }
+            val allLectures = runBlocking { db.lectureDao().getAllForBackup() }
+            val teacherName = AuthPreferences.currentName(context)
+
+            // Canonical per-class/per-lesson documents are the student-facing source.
+            publishCanonicalRecords(firestore, uid, teacherName, allClasses, allCourses, allLectures)
+
             val classes = allClasses.filter { it.isPublished }
-            val hiddenClasses = allClasses.filterNot { it.isPublished }
-            val publishedClassIds = classes.map { it.id }.toSet()
-            val courses = runBlocking { db.courseDao().getAllForBackup() }
-                .filter { it.classId in publishedClassIds }
-            val lectures = runBlocking { db.lectureDao().getAllForBackup() }
-                .filter { it.classId != null && it.classId in publishedClassIds }
+            val visibleClassIds = classes.map { it.id }.toSet()
+            val courses = allCourses.filter { it.classId in visibleClassIds }
+            val lectures = allLectures.filter {
+                it.isPublished && it.classId?.let { classId -> classId in visibleClassIds } == true
+            }
             val payload = JSONObject()
                 .put("format", "darsyar-shared-materials")
                 .put("version", 1)
-                .put("teacherName", AuthPreferences.currentName(context))
+                .put("teacherName", teacherName)
                 .put("classes", JSONArray().apply { classes.forEach { put(it.toJson()) } })
-                .put("withdrawnClasses", JSONArray().apply { hiddenClasses.forEach { put(it.toJson()) } })
+                .put("withdrawnClasses", JSONArray().apply {
+                    allClasses.filterNot { it.isPublished }.forEach { put(it.toJson()) }
+                })
                 .put("courses", JSONArray().apply { courses.forEach { put(it.toJson()) } })
-                .put("lectures", JSONArray().apply { lectures.map { it.toJson() }.forEach { put(it) } })
+                .put("lectures", JSONArray().apply { lectures.forEach { put(it.toJson()) } })
+            // Retained for owner-side compatibility only; student clients cannot read this JSON.
             Tasks.await(
                 firestore.collection("shared_materials").document(uid)
                     .set(mapOf("ownerUid" to uid, "payload" to payload.toString(), "updatedAt" to System.currentTimeMillis()))
             )
-            "مطالب متنی و لینک‌های صوت با موفقیت در فضای آنلاین به‌روزرسانی شد."
+            "انتشار آنلاین کلاس‌ها و جلسات با رعایت مجوزهای نمایش به‌روزرسانی شد."
         } else {
-            val documents = Tasks.await(firestore.collection("shared_materials").get()).documents
-                .filter { it.id != uid }
+            val classDocuments = Tasks.await(
+                firestore.collection("published_classes").whereEqualTo("isPublished", true).get()
+            ).documents
+            val lessonDocuments = Tasks.await(
+                firestore.collection("published_lessons").whereEqualTo("isPublished", true).get()
+            ).documents
+            val publicationIndexes = Tasks.await(firestore.collection("publication_index").get()).documents
+            val payloads = mutableMapOf<String, JSONObject>()
+
+            fun payloadFor(owner: String): JSONObject = payloads.getOrPut(owner) {
+                JSONObject()
+                    .put("format", "darsyar-shared-materials")
+                    .put("version", 1)
+                    .put("teacherName", "استاد")
+                    .put("classes", JSONArray())
+                    .put("courses", JSONArray())
+                    .put("lectures", JSONArray())
+            }
+
+            classDocuments.forEach { document ->
+                val owner = document.getString("ownerUid") ?: return@forEach
+                val payload = payloadFor(owner)
+                document.getString("teacherName")?.let { payload.put("teacherName", it) }
+                document.getString("classJson")?.let { payload.getJSONArray("classes").put(JSONObject(it)) }
+                document.getString("coursesJson")?.let { json ->
+                    val array = JSONArray(json)
+                    for (i in 0 until array.length()) payload.getJSONArray("courses").put(array.getJSONObject(i))
+                }
+            }
+            lessonDocuments.forEach { document ->
+                val owner = document.getString("ownerUid") ?: return@forEach
+                val json = document.getString("lessonJson") ?: return@forEach
+                payloadFor(owner).getJSONArray("lectures").put(JSONObject(json))
+            }
+
+            val documents = payloads.entries.toList()
             val allClasses = mutableListOf<ClassEntity>()
             val allCourses = mutableListOf<CourseEntity>()
             val allLectures = mutableListOf<LectureEntity>()
 
-            documents.forEach { document ->
-                val owner = document.getString("ownerUid") ?: document.id
-                val payloadText = document.getString("payload") ?: return@forEach
-                val payload = JSONObject(payloadText)
+            documents.forEach { (owner, payload) ->
                 if (payload.optString("format") != "darsyar-shared-materials") return@forEach
                 payload.optJSONArray("classes")?.let { array ->
                     for (i in 0 until array.length()) {
@@ -72,26 +112,12 @@ object CloudMaterialsSync {
                     }
                 }
                 payload.optJSONArray("lectures")?.let { array ->
-                    val teacherLectures = (0 until array.length()).map { array.getJSONObject(it).toLecture() }
-                    val legacyClassId = stableId(owner, "class:legacy")
-                    // Only create a legacy bucket when the teacher has no real classes.
-                    if (teacherLectures.any { it.classId == null } &&
-                        (payload.optJSONArray("classes")?.length() ?: 0) == 0) {
-                        val teacherName = payload.optString("teacherName", "استاد")
-                        allClasses += ClassEntity(
-                            id = legacyClassId,
-                            name = "مطالب استاد $teacherName",
-                            teacherName = teacherName,
-                            description = "جلسات قدیمی که به کلاس مشخصی متصل نبودند",
-                            term = "",
-                            classDateMillis = System.currentTimeMillis(),
-                            createdAtMillis = System.currentTimeMillis()
-                        )
-                    }
-                    teacherLectures.forEach { item ->
+                    for (i in 0 until array.length()) {
+                        val item = array.getJSONObject(i).toLecture()
+                        if (item.classId == null) continue
                         allLectures += item.copy(
                             id = stableId(owner, "lecture:${item.id}"),
-                            classId = item.classId?.let { stableId(owner, "class:$it") } ?: legacyClassId,
+                            classId = stableId(owner, "class:${item.classId}"),
                             courseId = item.courseId?.let { stableId(owner, "course:$it") },
                             audioFilePath = null,
                             isFavorite = false
@@ -107,21 +133,14 @@ object CloudMaterialsSync {
             // imported by older versions with positive local IDs.
             val publishedKeys = allClasses.filter { it.isPublished }.map { classKey(it.name, it.teacherName, it.term) }.toSet()
             val withdrawnKeys = mutableSetOf<String>()
-            documents.forEach { document ->
-                val payloadText = document.getString("payload") ?: return@forEach
-                val payload = JSONObject(payloadText)
-                if (payload.optString("format") != "darsyar-shared-materials") return@forEach
-                payload.optJSONArray("withdrawnClasses")?.let { array ->
-                    for (i in 0 until array.length()) {
-                        val item = array.getJSONObject(i).toClassEntity()
-                        withdrawnKeys += classKey(item.name, item.teacherName, item.term)
-                    }
-                }
+            publicationIndexes.forEach { index ->
+                val values = index.get("withdrawnClassKeys")
+                if (values is List<*>) values.filterIsInstance<String>().forEach { withdrawnKeys += it }
             }
             localClassesAll.filter { it.id > 0L }.forEach { local ->
                 val key = classKey(local.name, local.teacherName, local.term)
                 when {
-                    key in withdrawnKeys && local.isPublished ->
+                    hashClassKey(key) in withdrawnKeys && local.isPublished ->
                         runBlocking { db.classDao().update(local.copy(isPublished = false)) }
                     key in publishedKeys && !local.isPublished ->
                         runBlocking { db.classDao().update(local.copy(isPublished = true)) }
@@ -200,6 +219,78 @@ object CloudMaterialsSync {
             }
             "مطالب منتشرشده آنلاین به‌روزرسانی شد: ${lecturesToInsert.size} جلسه جدید از ${documents.size} حساب استاد."
         }
+    }
+
+    private fun publishCanonicalRecords(
+        firestore: FirebaseFirestore,
+        uid: String,
+        teacherName: String,
+        classes: List<ClassEntity>,
+        courses: List<CourseEntity>,
+        lectures: List<LectureEntity>
+    ) {
+        val now = System.currentTimeMillis()
+        val publishedClassIds = classes.filter { it.isPublished }.map { it.id }.toSet()
+        val classRecords = classes.map { item ->
+            val classCourses = courses.filter { it.classId == item.id }
+            firestore.collection("published_classes").document(publicationDocId(uid, item.id.toString())) to mapOf(
+                "ownerUid" to uid,
+                "classId" to item.id.toString(),
+                "isPublished" to item.isPublished,
+                "teacherName" to teacherName,
+                "classJson" to item.toJson().toString(),
+                "coursesJson" to JSONArray().apply { classCourses.forEach { put(it.toJson()) } }.toString(),
+                "updatedAt" to now
+            )
+        }
+        val lessonRecords = lectures.map { item ->
+            val classId = item.classId
+            val effectivePublished = item.isPublished && classId != null && classId in publishedClassIds
+            firestore.collection("published_lessons").document(publicationDocId(uid, item.id.toString())) to mapOf(
+                "ownerUid" to uid,
+                "lessonId" to item.id.toString(),
+                "classId" to (classId?.toString() ?: ""),
+                "isPublished" to effectivePublished,
+                "lessonJson" to item.toJson().toString(),
+                "updatedAt" to now
+            )
+        }
+        val indexData = mapOf(
+            "ownerUid" to uid,
+            "withdrawnClassKeys" to classes.filterNot { it.isPublished }
+                .map { hashClassKey(classKey(it.name, it.teacherName, it.term)) }.distinct(),
+            "updatedAt" to now
+        )
+
+        (classRecords + lessonRecords).chunked(400).forEach { chunk ->
+            val batch = firestore.batch()
+            chunk.forEach { (reference, data) -> batch.set(reference, data) }
+            Tasks.await(batch.commit())
+        }
+        Tasks.await(firestore.collection("publication_index").document(uid).set(indexData))
+
+        // Deleted entities are removed from the public feed; hidden entities remain
+        // as false records and stay intact in the teacher's private local database.
+        val currentClassIds = classes.map { publicationDocId(uid, it.id.toString()) }.toSet()
+        val currentLessonIds = lectures.map { publicationDocId(uid, it.id.toString()) }.toSet()
+        val staleClasses = Tasks.await(
+            firestore.collection("published_classes").whereEqualTo("ownerUid", uid).get()
+        ).documents.filterNot { it.id in currentClassIds }
+        val staleLessons = Tasks.await(
+            firestore.collection("published_lessons").whereEqualTo("ownerUid", uid).get()
+        ).documents.filterNot { it.id in currentLessonIds }
+        (staleClasses.map { it.reference } + staleLessons.map { it.reference }).chunked(400).forEach { chunk ->
+            val batch = firestore.batch()
+            chunk.forEach { batch.delete(it) }
+            Tasks.await(batch.commit())
+        }
+    }
+
+    private fun publicationDocId(owner: String, localId: String): String = "${owner}__${localId}"
+
+    private fun hashClassKey(value: String): String {
+        val bytes = MessageDigest.getInstance("SHA-256").digest(value.toByteArray(Charsets.UTF_8))
+        return bytes.joinToString("") { "%02x".format(it) }
     }
 
     private fun normalized(value: String): String =
