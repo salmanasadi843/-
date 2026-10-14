@@ -304,3 +304,23 @@ test("students cannot forge canonical publication records", async () => {
     coursesJson: "[]"
   }));
 });
+
+
+test("approved teacher can create a canonical published class record", async () => {
+  await env.withSecurityRulesDisabled(async (context) => {
+    await setDoc(doc(context.firestore(), "users/teacher-class-write"), {
+      uid: "teacher-class-write", role: "TEACHER"
+    });
+    await setDoc(doc(context.firestore(), "approved_teachers/teacher-class-write"), {
+      approved: true
+    });
+  });
+  const db = env.authenticatedContext("teacher-class-write").firestore();
+  await assertSucceeds(setDoc(doc(db, "published_classes/teacher-class-write__class-9"), {
+    ownerUid: "teacher-class-write",
+    classId: "class-9",
+    isPublished: true,
+    classJson: JSON.stringify({ id: 9, name: "کلاس مجاز" }),
+    coursesJson: "[]"
+  }));
+});
