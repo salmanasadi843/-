@@ -367,3 +367,26 @@ test("student can query published lessons within a published class", async () =>
   )));
   assert.equal(result.size, 1);
 });
+
+
+test("students lose access to previously published classes and lessons when a teacher is revoked", async () => {
+  await seedApprovedTeacher("teacher-revoked-access", "class-still-stored", true);
+  await env.withSecurityRulesDisabled(async (context) => {
+    const db = context.firestore();
+    await setDoc(doc(db, "published_lessons/teacher-revoked-access__lesson-still-stored"), {
+      ownerUid: "teacher-revoked-access",
+      lessonId: "lesson-still-stored",
+      classId: "class-still-stored",
+      isPublished: true,
+      lessonJson: JSON.stringify({ transcript: "must not be readable after revocation" })
+    });
+    await updateDoc(doc(db, "users/teacher-revoked-access"), { role: "STUDENT" });
+    await import("firebase/firestore").then(({ deleteDoc }) =>
+      deleteDoc(doc(db, "approved_teachers/teacher-revoked-access"))
+    );
+  });
+
+  const studentDb = env.authenticatedContext("student-after-teacher-revocation").firestore();
+  await assertFails(getDoc(doc(studentDb, "published_classes/teacher-revoked-access__class-still-stored")));
+  await assertFails(getDoc(doc(studentDb, "published_lessons/teacher-revoked-access__lesson-still-stored")));
+});
