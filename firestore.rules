@@ -85,8 +85,8 @@ service cloud.firestore {
                             && request.resource.data.isPublished is bool
                             && (request.resource.data.isPublished == false
                                 || (request.resource.data.classId is string
-                                    && exists(/databases/$(database)/documents/published_classes/$(request.auth.uid + '__' + request.resource.data.classId))
-                                    && get(/databases/$(database)/documents/published_classes/$(request.auth.uid + '__' + request.resource.data.classId)).data.isPublished == true));
+                                    && existsAfter(/databases/$(database)/documents/published_classes/$(request.auth.uid + '__' + request.resource.data.classId))
+                                    && getAfter(/databases/$(database)/documents/published_classes/$(request.auth.uid + '__' + request.resource.data.classId)).data.isPublished == true));
 
       allow delete: if approvedTeacher(request.auth.uid)
                     && resource.data.ownerUid == request.auth.uid;
