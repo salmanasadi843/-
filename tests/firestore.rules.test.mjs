@@ -324,3 +324,46 @@ test("approved teacher can create a canonical published class record", async () 
     coursesJson: "[]"
   }));
 });
+
+
+test("a stale published lesson becomes unreadable immediately when its parent class is hidden", async () => {
+  await seedApprovedTeacher("teacher-parent-revoked", "class-hidden-now", false);
+  await env.withSecurityRulesDisabled(async (context) => {
+    await setDoc(doc(context.firestore(), "published_lessons/teacher-parent-revoked__stale-lesson"), {
+      ownerUid: "teacher-parent-revoked",
+      lessonId: "stale-lesson",
+      classId: "class-hidden-now",
+      isPublished: true,
+      lessonJson: JSON.stringify({ transcript: "must not leak" })
+    });
+  });
+  const db = env.authenticatedContext("student-parent-revoked").firestore();
+  await assertFails(getDoc(doc(db, "published_lessons/teacher-parent-revoked__stale-lesson")));
+  await assertFails(getDocs(query(
+    collection(db, "published_lessons"),
+    where("ownerUid", "==", "teacher-parent-revoked"),
+    where("classId", "==", "class-hidden-now"),
+    where("isPublished", "==", true)
+  )));
+});
+
+test("student can query published lessons within a published class", async () => {
+  await seedApprovedTeacher("teacher-parent-visible", "class-visible-now", true);
+  await env.withSecurityRulesDisabled(async (context) => {
+    await setDoc(doc(context.firestore(), "published_lessons/teacher-parent-visible__lesson-visible"), {
+      ownerUid: "teacher-parent-visible",
+      lessonId: "lesson-visible",
+      classId: "class-visible-now",
+      isPublished: true,
+      lessonJson: JSON.stringify({ transcript: "public lesson" })
+    });
+  });
+  const db = env.authenticatedContext("student-parent-visible").firestore();
+  const result = await assertSucceeds(getDocs(query(
+    collection(db, "published_lessons"),
+    where("ownerUid", "==", "teacher-parent-visible"),
+    where("classId", "==", "class-visible-now"),
+    where("isPublished", "==", true)
+  )));
+  assert.equal(result.size, 1);
+});
