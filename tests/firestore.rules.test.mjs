@@ -248,6 +248,7 @@ test("published class query is permitted only with the publication filter", asyn
   const db = env.authenticatedContext("student-class-query").firestore();
   const result = await assertSucceeds(getDocs(query(
     collection(db, "published_classes"),
+    where("ownerUid", "==", "teacher-query"),
     where("isPublished", "==", true)
   )));
   assert.equal(result.size, 1);
