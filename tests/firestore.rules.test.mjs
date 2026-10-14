@@ -6,13 +6,7 @@ import {
   assertSucceeds,
   initializeTestEnvironment
 } from "@firebase/rules-unit-testing";
-import {
-  collection,
-  doc,
-  getDoc,
-  setDoc,
-  updateDoc
-} from "firebase/firestore";
+import { doc, getDoc, setDoc, updateDoc } from "firebase/firestore";
 
 const projectId = "darsyar-rules-test";
 let env;
@@ -32,7 +26,17 @@ after(async () => {
   await env?.cleanup();
 });
 
-test("student cannot promote their own profile to TEACHER", async () => {
+test("a user cannot create their own profile with the TEACHER role", async () => {
+  const db = env.authenticatedContext("new-user").firestore();
+  await assertFails(
+    setDoc(doc(db, "users/new-user"), {
+      uid: "new-user",
+      role: "TEACHER"
+    })
+  );
+});
+
+test("student cannot promote their existing profile to TEACHER", async () => {
   await env.withSecurityRulesDisabled(async (context) => {
     await setDoc(doc(context.firestore(), "users/student-1"), {
       uid: "student-1",
@@ -56,6 +60,28 @@ test("student cannot publish a forged shared-material payload", async () => {
         courses: [],
         lectures: []
       }),
+      updatedAt: Date.now()
+    })
+  );
+});
+
+test("an approved teacher can publish their own materials", async () => {
+  await env.withSecurityRulesDisabled(async (context) => {
+    const adminDb = context.firestore();
+    await setDoc(doc(adminDb, "users/teacher-1"), {
+      uid: "teacher-1",
+      role: "TEACHER"
+    });
+    await setDoc(doc(adminDb, "approved_teachers/teacher-1"), {
+      approved: true
+    });
+  });
+
+  const db = env.authenticatedContext("teacher-1").firestore();
+  await assertSucceeds(
+    setDoc(doc(db, "shared_materials/teacher-1"), {
+      ownerUid: "teacher-1",
+      payload: JSON.stringify({ classes: [], courses: [], lectures: [] }),
       updatedAt: Date.now()
     })
   );
@@ -96,7 +122,6 @@ test("legacy shared links are currently public; this behavior requires a product
   });
 
   const anonymousDb = env.unauthenticatedContext().firestore();
-  // This test records current behavior, not an endorsement of public access.
   await assertSucceeds(getDoc(doc(anonymousDb, "shared/legacy-link")));
 });
 
