@@ -8,10 +8,17 @@ service cloud.firestore {
              && request.auth.uid == 'xgUdnaQ6X0hPobOUwx3SDI0BJVc2';
     }
 
+    // All teacher writes require a live approval flag and a TEACHER profile.
+    // "approved" remains supported for legacy approval documents.
     function approvedTeacher(uid) {
       return request.auth != null
              && request.auth.uid == uid
              && exists(/databases/$(database)/documents/approved_teachers/$(uid))
+             && (
+               get(/databases/$(database)/documents/approved_teachers/$(uid)).data.enabled == true
+               || get(/databases/$(database)/documents/approved_teachers/$(uid)).data.approved == true
+             )
+             && exists(/databases/$(database)/documents/users/$(uid))
              && get(/databases/$(database)/documents/users/$(uid)).data.role == 'TEACHER';
     }
 
@@ -154,26 +161,17 @@ service cloud.firestore {
       allow read: if request.auth != null
                   && request.auth.uid == ownerUid;
 
-      allow create, update: if request.auth != null
-                            && request.auth.uid == ownerUid
-                            && exists(/databases/$(database)/documents/approved_teachers/$(ownerUid))
-                            && get(/databases/$(database)/documents/users/$(ownerUid)).data.role == 'TEACHER'
+      allow create, update: if approvedTeacher(ownerUid)
                             && request.resource.data.ownerUid == ownerUid;
 
-      allow delete: if request.auth != null
-                    && request.auth.uid == ownerUid
-                    && exists(/databases/$(database)/documents/approved_teachers/$(ownerUid))
-                    && get(/databases/$(database)/documents/users/$(ownerUid)).data.role == 'TEACHER';
+      allow delete: if approvedTeacher(ownerUid);
 
       // Individual sync records are private and restricted to approved teachers.
       match /records/{recordId} {
         allow read: if request.auth != null
                     && request.auth.uid == ownerUid;
 
-        allow create, update, delete: if request.auth != null
-                                      && request.auth.uid == ownerUid
-                                      && exists(/databases/$(database)/documents/approved_teachers/$(ownerUid))
-                                      && get(/databases/$(database)/documents/users/$(ownerUid)).data.role == 'TEACHER';
+        allow create, update, delete: if approvedTeacher(ownerUid);
       }
     }
   }
