@@ -5,6 +5,7 @@ import androidx.room.withTransaction
 import com.example.ui.screens.AuthPreferences
 import com.example.ui.screens.UserRole
 import com.google.firebase.firestore.FirebaseFirestore
+import com.google.firebase.firestore.FirebaseFirestoreException
 import com.google.android.gms.tasks.Tasks
 import kotlinx.coroutines.runBlocking
 import org.json.JSONArray
@@ -54,23 +55,60 @@ object CloudMaterialsSync {
             )
             "انتشار آنلاین کلاس‌ها و جلسات با رعایت مجوزهای نمایش به‌روزرسانی شد."
         } else {
-            val classDocuments = Tasks.await(
-                firestore.collection("published_classes").whereEqualTo("isPublished", true).get()
-            ).documents
-            // Query lessons within each published class. Rules also verify the
-            // parent class is still published, protecting against partial sync failures.
+            // Firestore rules are not filters: a global published_classes query cannot
+            // prove that every possible owner is still approved. Read the public index
+            // first, then query one owner at a time so rules can authorize each result.
+            val publicationIndexes = Tasks.await(firestore.collection("publication_index").get()).documents
+            val deniedOwners = mutableSetOf<String>()
+
+            fun isPermissionDenied(error: Throwable): Boolean =
+                generateSequence(error) { it.cause }.any {
+                    it is FirebaseFirestoreException &&
+                        it.code == FirebaseFirestoreException.Code.PERMISSION_DENIED
+                }
+
+            val classDocuments = publicationIndexes.flatMap { index ->
+                val owner = index.getString("ownerUid") ?: index.id
+                try {
+                    Tasks.await(
+                        firestore.collection("published_classes")
+                            .whereEqualTo("ownerUid", owner)
+                            .whereEqualTo("isPublished", true)
+                            .get()
+                    ).documents
+                } catch (error: Exception) {
+                    if (isPermissionDenied(error)) {
+                        // A revoked/unapproved teacher must not block other teachers' materials.
+                        deniedOwners += owner
+                        emptyList()
+                    } else {
+                        throw error
+                    }
+                }
+            }
+
+            // Query lessons inside each authorized published class. Rules also verify
+            // that the parent class and teacher approval remain active.
             val lessonDocuments = classDocuments.flatMap { classDocument ->
                 val owner = classDocument.getString("ownerUid") ?: return@flatMap emptyList()
                 val classId = classDocument.getString("classId") ?: return@flatMap emptyList()
-                Tasks.await(
-                    firestore.collection("published_lessons")
-                        .whereEqualTo("ownerUid", owner)
-                        .whereEqualTo("classId", classId)
-                        .whereEqualTo("isPublished", true)
-                        .get()
-                ).documents
+                try {
+                    Tasks.await(
+                        firestore.collection("published_lessons")
+                            .whereEqualTo("ownerUid", owner)
+                            .whereEqualTo("classId", classId)
+                            .whereEqualTo("isPublished", true)
+                            .get()
+                    ).documents
+                } catch (error: Exception) {
+                    if (isPermissionDenied(error)) {
+                        deniedOwners += owner
+                        emptyList()
+                    } else {
+                        throw error
+                    }
+                }
             }
-            val publicationIndexes = Tasks.await(firestore.collection("publication_index").get()).documents
             val payloads = mutableMapOf<String, JSONObject>()
 
             fun payloadFor(owner: String): JSONObject = payloads.getOrPut(owner) {
@@ -227,7 +265,11 @@ object CloudMaterialsSync {
                     db.lectureDao().insertAllForRestore(lecturesToInsert.distinctBy { it.id })
                 }
             }
-            "مطالب منتشرشده آنلاین به‌روزرسانی شد: ${lecturesToInsert.size} جلسه جدید از ${documents.size} حساب استاد."
+            if (deniedOwners.isEmpty()) {
+                "مطالب منتشرشده آنلاین به‌روزرسانی شد: ${lecturesToInsert.size} جلسه جدید از ${documents.size} حساب استاد."
+            } else {
+                "مطالب مجاز دریافت شد، اما دسترسی ${deniedOwners.size} حساب استاد رد شد. اگر کلاس موردنظر نمایش داده نمی‌شود، تأیید فعال حساب استاد و قوانین Firebase را بررسی کنید. مطالب خصوصی استاد دریافت نشده‌اند."
+            }
         }
     }
 
