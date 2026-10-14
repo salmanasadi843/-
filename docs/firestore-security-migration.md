@@ -17,8 +17,11 @@
 3. Audit existing `shared_materials` documents and remove/repair any student-created or unapproved publication documents before deployment. The current student app queries the whole collection and Rules are not query filters.
 4. Test teacher login, cloud backup, publish/unpublish, student sync, reinstall/restore, and account recovery against a staging Firebase project.
 5. Decide whether legacy share links should remain public and check that they contain no private data.
-6. Run the Firestore Emulator suite and Android APK build before merging/deployment.
+6. Complete Android APK/build and app-flow regression checks before merging/deployment.
 
 ## Test status
 
-The first Emulator run (2026-10-14) exposed two confirmed failures in the old rules: profile role escalation and student-created shared-material documents. This branch adds regression rules/tests; a passing run is required before merge. No production Firebase rules have been deployed by this change.
+- The first Emulator run (2026-10-14) exposed two confirmed failures in the old rules: profile role escalation and student-created shared-material documents.
+- Updated rules and regression suite passed on 2026-10-14: **12 tests passed, 0 failed**. [GitHub Actions run](https://github.com/salmanasadi843/-/actions/runs/38574609056).
+- The Emulator suite passing is not an Android app regression result. Teacher login, cloud backup, publish/unpublish, student sync, reinstall/restore, and account recovery still require staging verification.
+- No production Firestore rules have been deployed by this change.
