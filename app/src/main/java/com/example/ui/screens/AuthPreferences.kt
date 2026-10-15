@@ -18,6 +18,8 @@ object AuthPreferences {
     private const val STORAGE_BUCKET = "salmanasadi843-9149.firebasestorage.app"
     // حساب اصلی استاد در درس‌یار؛ مستقل از حساب یادنو است.
     private const val PRIMARY_TEACHER_EMAIL = "salmanasadi843@gmail.com"
+    // This account has admin privileges in Firestore rules and also uses the teacher UI.
+    private const val PRIMARY_ADMIN_UID = "xgUdnaQ6X0hPobOUwx3SDI0BJVc2"
 
     private fun ensureFirebase(context: Context) {
         if (FirebaseApp.getApps(context).isEmpty()) {
@@ -262,8 +264,16 @@ object AuthPreferences {
             }
 
             UserRole.TEACHER.name -> {
-                // A TEACHER profile alone is not enough: approval is controlled
-                // outside the client in approved_teachers/{uid}.
+                // The primary admin account also acts as a teacher. Its admin
+                // authority is enforced by Firestore rules; the app still opens
+                // the teacher UI, so it can manage its own lessons normally.
+                if (uid == PRIMARY_ADMIN_UID) {
+                    cacheProfile(context, UserRole.TEACHER, name)
+                    onResult(Result.success(UserRole.TEACHER))
+                    return
+                }
+
+                // Other TEACHER accounts require a separate trusted approval.
                 firestore(context).collection("approved_teachers").document(uid).get()
                     .addOnCompleteListener { approvalTask ->
                         if (!approvalTask.isSuccessful) {

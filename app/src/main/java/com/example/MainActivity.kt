@@ -179,8 +179,6 @@ fun OstadYarApp(
             SettingsScreen(
                 viewModel = viewModel,
                 onNavigateBack = { viewModel.navigateBack() },
-                currentTheme = ThemePreferences.load(LocalContext.current),
-                onThemeChanged = onThemeChanged,
                 onLogout = {
                     AuthPreferences.logout(context)
                     authenticated = false

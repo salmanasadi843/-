@@ -162,6 +162,22 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
                     _cloudSyncStatus.value = "بازیابی اطلاعات از فضای ابری موفق بود؛ تغییرات بعدی خودکار ارسال می‌شوند."
                 }
 
+                // Re-publish existing local classes after restoring the teacher backup.
+                // This refreshes the canonical student feed even when the teacher did not
+                // manually press the online-share button after reinstalling/updating.
+                val localClasses = withContext(Dispatchers.IO) {
+                    AppDatabase.getDatabase(app).classDao().getAllForBackup()
+                }
+                if (localClasses.isNotEmpty()) {
+                    try {
+                        withContext(Dispatchers.IO) { CloudMaterialsSync.sync(app) }
+                        _cloudSyncStatus.value = "اطلاعات استاد بازیابی و فهرست کلاس‌های مجاز دانشجو به‌روزرسانی شد."
+                    } catch (publicationError: Exception) {
+                        Log.e(TAG, "Teacher backup restored but student publication refresh failed", publicationError)
+                        _cloudSyncStatus.value = "پشتیبان استاد بازیابی شد، اما انتشار آنلاین کلاس‌ها ناموفق بود: ${publicationError.localizedMessage ?: "خطای نامشخص"}"
+                    }
+                }
+
                 combine(
                     repository.allLectures,
                     repository.allClasses,
