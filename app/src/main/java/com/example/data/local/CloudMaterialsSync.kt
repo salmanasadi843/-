@@ -248,9 +248,6 @@ object CloudMaterialsSync {
             }
             buildString {
                 append("مطالب منتشرشده آنلاین به‌روزرسانی شد: ${lecturesToInsert.size} جلسه جدید از ${documents.size} حساب استاد.")
-                if (skippedInactiveTeachers > 0) append(" ${skippedInactiveTeachers} حساب استاد غیرفعال نادیده گرفته شد.")
-                if (deniedTeacherQueries > 0) append(" برای ${deniedTeacherQueries} حساب دسترسی وجود نداشت؛ همگام‌سازی بقیه مطالب انجام شد.")
-                if (deniedLessonQueries > 0) append(" ${deniedLessonQueries} درخواست دریافت جلسه با محدودیت دسترسی روبه‌رو شد.")
             }
         }
     }
