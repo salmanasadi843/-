@@ -8,6 +8,11 @@ service cloud.firestore {
              && request.auth.uid == 'xgUdnaQ6X0hPobOUwx3SDI0BJVc2';
     }
 
+    // The primary admin identity can also own teacher publications.
+    function isPrimaryAdmin(uid) {
+      return uid == 'xgUdnaQ6X0hPobOUwx3SDI0BJVc2';
+    }
+
     // All teacher writes require a live approval flag and a TEACHER profile.
     // "approved" remains supported for legacy approval documents.
     function approvedTeacher(uid) {
@@ -34,7 +39,7 @@ service cloud.firestore {
       return exists(/databases/$(database)/documents/users/$(uid))
              && get(/databases/$(database)/documents/users/$(uid)).data.role == 'TEACHER'
              && (
-               (request.auth != null && request.auth.uid == uid && isAdmin())
+               isPrimaryAdmin(uid)
                || (
                  exists(/databases/$(database)/documents/approved_teachers/$(uid))
                  && (
