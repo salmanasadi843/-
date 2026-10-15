@@ -2,10 +2,6 @@ package com.example.ui.screens
 
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
-import androidx.compose.foundation.BorderStroke
-import androidx.compose.foundation.background
-import androidx.compose.foundation.border
-import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -17,7 +13,6 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
-import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
@@ -51,7 +46,6 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
-import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.input.PasswordVisualTransformation
@@ -63,19 +57,18 @@ import com.example.data.api.GeminiApiService
 import com.example.data.api.GroqApiService
 import com.example.data.api.SpeechmaticsApiService
 import com.example.ui.screens.AuthPreferences
-import com.example.ui.theme.AppThemeMode
-import com.example.ui.theme.themeAccent
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
+import com.google.firebase.auth.FirebaseAuth
+import com.google.firebase.firestore.FieldValue
+import com.google.firebase.firestore.FirebaseFirestore
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun SettingsScreen(
     viewModel: MainViewModel,
     onNavigateBack: () -> Unit,
-    currentTheme: AppThemeMode = AppThemeMode.PURPLE,
-    onThemeChanged: (AppThemeMode) -> Unit = {},
     onLogout: () -> Unit = {}
 ) {
     val context = LocalContext.current
@@ -86,6 +79,11 @@ fun SettingsScreen(
     var cloudBusy by remember { mutableStateOf(false) }
     var cloudStatus by remember { mutableStateOf<String?>(null) }
     var cloudError by remember { mutableStateOf(false) }
+    var teacherField by remember { mutableStateOf("") }
+    var teacherInstitution by remember { mutableStateOf("") }
+    var teacherRequestBusy by remember { mutableStateOf(false) }
+    var teacherRequestStatus by remember { mutableStateOf<String?>(null) }
+    var teacherRequestError by remember { mutableStateOf(false) }
     var showPublishConfirm by remember { mutableStateOf(false) }
     val createBackup = rememberLauncherForActivityResult(ActivityResultContracts.CreateDocument("application/json")) { uri ->
         if (uri != null) backupScope.launch {
@@ -200,62 +198,98 @@ fun SettingsScreen(
                     )
                 }
             }
-            Card(
-                colors = CardDefaults.cardColors(
-                    containerColor = MaterialTheme.colorScheme.surface
-                ),
-                elevation = CardDefaults.cardElevation(2.dp),
-                modifier = Modifier.fillMaxWidth()
-            ) {
-                Column(modifier = Modifier.padding(18.dp)) {
-                    Text(
-                        "ظاهر برنامه",
-                        style = MaterialTheme.typography.titleLarge
-                    )
-                    Spacer(Modifier.height(6.dp))
-                    Text(
-                        "رنگ مورد علاقه‌تان را انتخاب کنید. تغییر تم بلافاصله روی کل برنامه اعمال می‌شود.",
-                        style = MaterialTheme.typography.bodyMedium,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant
-                    )
-                    Spacer(Modifier.height(14.dp))
-
-                    Row(
-                        modifier = Modifier.fillMaxWidth(),
-                        horizontalArrangement = Arrangement.spacedBy(8.dp)
-                    ) {
-                        ThemeChoiceCard(
-                            mode = AppThemeMode.PURPLE,
-                            selected = currentTheme == AppThemeMode.PURPLE,
-                            onClick = { onThemeChanged(AppThemeMode.PURPLE) },
-                            modifier = Modifier.weight(1f)
+            if (AuthPreferences.currentRole(context) == UserRole.STUDENT) {
+                Card(
+                    colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
+                    elevation = CardDefaults.cardElevation(2.dp),
+                    modifier = Modifier.fillMaxWidth()
+                ) {
+                    Column(modifier = Modifier.padding(18.dp)) {
+                        Text("درخواست تأیید به‌عنوان استاد", style = MaterialTheme.typography.titleLarge)
+                        Spacer(Modifier.height(6.dp))
+                        Text(
+                            "اگر مدرس هستید، مشخصات کوتاه خود را ارسال کنید. درخواست برای بررسی مدیر ثبت می‌شود؛ ارسال درخواست به‌تنهایی نقش استاد را فعال نمی‌کند.",
+                            style = MaterialTheme.typography.bodyMedium,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant
                         )
-                        ThemeChoiceCard(
-                            mode = AppThemeMode.BLUE,
-                            selected = currentTheme == AppThemeMode.BLUE,
-                            onClick = { onThemeChanged(AppThemeMode.BLUE) },
-                            modifier = Modifier.weight(1f)
+                        Spacer(Modifier.height(12.dp))
+                        OutlinedTextField(
+                            value = teacherField,
+                            onValueChange = { teacherField = it; teacherRequestStatus = null },
+                            modifier = Modifier.fillMaxWidth(),
+                            label = { Text("رشته یا حوزه تدریس") },
+                            placeholder = { Text("مثلاً اصول فقه، زبان انگلیسی") },
+                            singleLine = true,
+                            enabled = !teacherRequestBusy
                         )
-                    }
-
-                    Spacer(Modifier.height(8.dp))
-
-                    Row(
-                        modifier = Modifier.fillMaxWidth(),
-                        horizontalArrangement = Arrangement.spacedBy(8.dp)
-                    ) {
-                        ThemeChoiceCard(
-                            mode = AppThemeMode.GREEN,
-                            selected = currentTheme == AppThemeMode.GREEN,
-                            onClick = { onThemeChanged(AppThemeMode.GREEN) },
-                            modifier = Modifier.weight(1f)
+                        Spacer(Modifier.height(8.dp))
+                        OutlinedTextField(
+                            value = teacherInstitution,
+                            onValueChange = { teacherInstitution = it; teacherRequestStatus = null },
+                            modifier = Modifier.fillMaxWidth(),
+                            label = { Text("نام مؤسسه یا محل تدریس (اختیاری)") },
+                            singleLine = true,
+                            enabled = !teacherRequestBusy
                         )
-                        ThemeChoiceCard(
-                            mode = AppThemeMode.ORANGE,
-                            selected = currentTheme == AppThemeMode.ORANGE,
-                            onClick = { onThemeChanged(AppThemeMode.ORANGE) },
-                            modifier = Modifier.weight(1f)
-                        )
+                        Spacer(Modifier.height(12.dp))
+                        Button(
+                            onClick = {
+                                val user = FirebaseAuth.getInstance().currentUser
+                                if (user == null) {
+                                    teacherRequestError = true
+                                    teacherRequestStatus = "برای ارسال درخواست ابتدا وارد حساب شوید."
+                                } else if (teacherField.isBlank()) {
+                                    teacherRequestError = true
+                                    teacherRequestStatus = "حوزه تدریس را وارد کنید."
+                                } else {
+                                    teacherRequestBusy = true
+                                    teacherRequestStatus = null
+                                    val request = hashMapOf<String, Any>(
+                                        "uid" to user.uid,
+                                        "email" to (user.email ?: ""),
+                                        "name" to AuthPreferences.currentName(context),
+                                        "teachingField" to teacherField.trim(),
+                                        "institution" to teacherInstitution.trim(),
+                                        "status" to "PENDING",
+                                        "createdAt" to FieldValue.serverTimestamp(),
+                                        "updatedAt" to FieldValue.serverTimestamp()
+                                    )
+                                    FirebaseFirestore.getInstance()
+                                        .collection("users")
+                                        .document(user.uid)
+                                        .collection("teacher_requests")
+                                        .document("current")
+                                        .set(request)
+                                        .addOnCompleteListener { task ->
+                                            teacherRequestBusy = false
+                                            teacherRequestError = !task.isSuccessful
+                                            teacherRequestStatus = if (task.isSuccessful) {
+                                                "درخواست ثبت شد و در انتظار بررسی مدیر است."
+                                            } else {
+                                                "ثبت درخواست ناموفق بود: ${task.exception?.localizedMessage ?: "خطای نامشخص"}"
+                                            }
+                                        }
+                                }
+                            },
+                            enabled = !teacherRequestBusy,
+                            modifier = Modifier.fillMaxWidth()
+                        ) {
+                            if (teacherRequestBusy) {
+                                CircularProgressIndicator(modifier = Modifier.size(18.dp), strokeWidth = 2.dp)
+                                Spacer(Modifier.width(8.dp))
+                                Text("در حال ارسال...")
+                            } else {
+                                Text("ارسال درخواست تأیید")
+                            }
+                        }
+                        if (teacherRequestStatus != null) {
+                            Spacer(Modifier.height(10.dp))
+                            Text(
+                                teacherRequestStatus!!,
+                                color = if (teacherRequestError) MaterialTheme.colorScheme.error else MaterialTheme.colorScheme.primary,
+                                style = MaterialTheme.typography.bodyMedium
+                            )
+                        }
                     }
                 }
             }
@@ -679,61 +713,3 @@ fun SettingsScreen(
     }
 }
 
-
-@Composable
-private fun ThemeChoiceCard(
-    mode: AppThemeMode,
-    selected: Boolean,
-    onClick: () -> Unit,
-    modifier: Modifier = Modifier
-) {
-    val accent = themeAccent(mode)
-
-    Card(
-        modifier = modifier
-            .clickable(onClick = onClick)
-            .border(
-                width = if (selected) 2.dp else 1.dp,
-                color = if (selected) accent else MaterialTheme.colorScheme.outlineVariant,
-                shape = MaterialTheme.shapes.medium
-            ),
-        colors = CardDefaults.cardColors(
-            containerColor = if (selected)
-                accent.copy(alpha = 0.08f)
-            else
-                MaterialTheme.colorScheme.surface
-        ),
-        elevation = CardDefaults.cardElevation(
-            defaultElevation = if (selected) 3.dp else 0.dp
-        )
-    ) {
-        Column(
-            modifier = Modifier
-                .fillMaxWidth()
-                .padding(vertical = 12.dp, horizontal = 8.dp),
-            horizontalAlignment = Alignment.CenterHorizontally
-        ) {
-            Box(
-                modifier = Modifier
-                    .size(34.dp)
-                    .background(accent, CircleShape)
-                    .border(2.dp, Color.White, CircleShape)
-                    .border(1.dp, accent, CircleShape)
-            )
-            Spacer(Modifier.height(8.dp))
-            Text(
-                text = mode.title,
-                style = MaterialTheme.typography.labelLarge,
-                color = if (selected) accent else MaterialTheme.colorScheme.onSurface
-            )
-            if (selected) {
-                Spacer(Modifier.height(2.dp))
-                Text(
-                    "انتخاب‌شده",
-                    style = MaterialTheme.typography.labelMedium,
-                    color = accent
-                )
-            }
-        }
-    }
-}
