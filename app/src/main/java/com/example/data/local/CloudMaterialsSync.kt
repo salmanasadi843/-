@@ -60,73 +60,35 @@ object CloudMaterialsSync {
             // each teacher still has an active approval; a global classes query would
             // be denied once revocation is enforced by the rules.
             val publicationIndexes = Tasks.await(firestore.collection("publication_index").get()).documents
-            val classDocuments = mutableListOf<com.google.firebase.firestore.DocumentSnapshot>()
-            var skippedInactiveTeachers = 0
-            var deniedTeacherQueries = 0
 
-            publicationIndexes.forEach { index ->
-                val owner = index.getString("ownerUid") ?: index.id
-
-                // Do not query a teacher whose trusted approval has been revoked.
-                // This avoids one revoked teacher's denied query aborting every
-                // student's sync for otherwise-active teachers.
-                val approval = try {
-                    Tasks.await(firestore.collection("approved_teachers").document(owner).get())
-                } catch (e: Exception) {
-                    Log.w("CloudMaterialsSync", "Could not check publication approval for $owner", e)
-                    deniedTeacherQueries++
-                    return@forEach
-                }
-                val approved = approval.exists() &&
-                    (approval.getBoolean("enabled") == true || approval.getBoolean("approved") == true)
-                if (!approved) {
-                    skippedInactiveTeachers++
-                    return@forEach
-                }
-
-                try {
-                    classDocuments += Tasks.await(
-                        firestore.collection("published_classes")
-                            .whereEqualTo("ownerUid", owner)
-                            .whereEqualTo("isPublished", true)
-                            .get()
-                    ).documents
-                } catch (e: Exception) {
-                    // A teacher whose profile is no longer TEACHER may still have
-                    // a legacy approval document. Skip that teacher rather than
-                    // failing the whole sync; report a useful error if no records
-                    // can be read at all.
-                    Log.w("CloudMaterialsSync", "Could not read published classes for $owner", e)
-                    deniedTeacherQueries++
+            // Read exact document IDs from the public index. Collection queries
+            // are rejected by Firestore when authorization depends on a related
+            // teacher-approval/profile document; individual reads let rules verify
+            // each publication and ensure hidden or revoked content stays private.
+            val classDocuments = publicationIndexes.flatMap { index ->
+                val ids = (index.get("publishedClassIds") as? List<*>)
+                    .orEmpty().filterIsInstance<String>()
+                ids.mapNotNull { id ->
+                    runCatching {
+                        Tasks.await(firestore.collection("published_classes").document(id).get())
+                            .takeIf { it.exists() && it.getBoolean("isPublished") == true }
+                    }.onFailure {
+                        Log.w("CloudMaterialsSync", "Skipping inaccessible published class $id", it)
+                    }.getOrNull()
                 }
             }
 
-            if (publicationIndexes.isNotEmpty() && classDocuments.isEmpty() && deniedTeacherQueries > 0) {
-                error("Firebase دسترسی به کلاس‌های منتشرشده را رد کرد. قوانین Firestore و وضعیت تأیید استادها را بررسی کنید (PERMISSION_DENIED).")
-            }
-
-            // Query lessons within each published class. Rules also verify the
-            // parent class and active teacher approval, protecting against revocation.
-            var deniedLessonQueries = 0
-            val lessonDocuments = classDocuments.flatMap { classDocument ->
-                val owner = classDocument.getString("ownerUid") ?: return@flatMap emptyList()
-                val classId = classDocument.getString("classId") ?: return@flatMap emptyList()
-                try {
-                    Tasks.await(
-                        firestore.collection("published_lessons")
-                            .whereEqualTo("ownerUid", owner)
-                            .whereEqualTo("classId", classId)
-                            .whereEqualTo("isPublished", true)
-                            .get()
-                    ).documents
-                } catch (e: Exception) {
-                    Log.w("CloudMaterialsSync", "Could not read published lessons for $owner/$classId", e)
-                    deniedLessonQueries++
-                    emptyList()
+            val lessonDocuments = publicationIndexes.flatMap { index ->
+                val ids = (index.get("publishedLessonIds") as? List<*>)
+                    .orEmpty().filterIsInstance<String>()
+                ids.mapNotNull { id ->
+                    runCatching {
+                        Tasks.await(firestore.collection("published_lessons").document(id).get())
+                            .takeIf { it.exists() && it.getBoolean("isPublished") == true }
+                    }.onFailure {
+                        Log.w("CloudMaterialsSync", "Skipping inaccessible published lesson $id", it)
+                    }.getOrNull()
                 }
-            }
-            if (classDocuments.isNotEmpty() && lessonDocuments.isEmpty() && deniedLessonQueries > 0) {
-                error("Firebase دسترسی به جلسات منتشرشده را رد کرد. قوانین Firestore و مجوز انتشار را بررسی کنید (PERMISSION_DENIED).")
             }
             val payloads = mutableMapOf<String, JSONObject>()
 
@@ -329,6 +291,12 @@ object CloudMaterialsSync {
         }
         val indexData = mapOf(
             "ownerUid" to uid,
+            // Exact IDs support rule-checked individual reads by student accounts.
+            "publishedClassIds" to classes.filter { it.isPublished }
+                .map { publicationDocId(uid, it.id.toString()) },
+            "publishedLessonIds" to lectures.filter { item ->
+                item.isPublished && item.classId != null && item.classId in publishedClassIds
+            }.map { publicationDocId(uid, it.id.toString()) },
             "withdrawnClassKeys" to classes.filterNot { it.isPublished }
                 .map { hashClassKey(classKey(it.name, it.teacherName, it.term)) }.distinct(),
             "updatedAt" to now
