@@ -57,12 +57,16 @@ service cloud.firestore {
                             && resource.data.ownerUid == request.auth.uid;
     }
 
-    // همگام‌سازی مطالب منتشرشده؛ قواعد فعلی حفظ شده است
+    // مطالب اشتراکی فقط تا زمانی قابل خواندن‌اند که مالک مجوز فعال استاد داشته باشد.
+    // لغو نقش استاد، دسترسی دانشجویان به بسته اشتراکی همان حساب را می‌بندد.
     match /shared_materials/{teacherUid} {
-      allow read: if request.auth != null;
+      allow read: if request.auth != null
+                  && (isPrimaryTeacher()
+                      || get(/databases/$(database)/documents/users/$(teacherUid)).data.role == 'TEACHER');
       allow create, update, delete:
         if request.auth != null
-        && request.auth.uid == teacherUid;
+        && request.auth.uid == teacherUid
+        && get(/databases/$(database)/documents/users/$(teacherUid)).data.role == 'TEACHER';
     }
 
     // نسخه پشتیبان خصوصی درس‌یار؛ فقط صاحب حساب استاد اجازه دسترسی دارد
