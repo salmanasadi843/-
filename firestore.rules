@@ -2,10 +2,51 @@ rules_version = '2';
 service cloud.firestore {
   match /databases/{database}/documents {
 
-    // دسترسی کاربران؛ قواعد فعلی حفظ شده است
-    match /users/{userId}/{document=**} {
+    function isPrimaryTeacher() {
+      return request.auth != null
+             && request.auth.token.email == 'salmanasadi843@gmail.com';
+    }
+
+    // پروفایل کاربر: نقش استاد فقط توسط مدیر اصلی قابل اعطا یا تغییر است.
+    match /users/{userId} {
+      allow read: if request.auth != null
+                  && (request.auth.uid == userId || isPrimaryTeacher());
+      allow create: if isPrimaryTeacher()
+                    || (request.auth != null
+                        && request.auth.uid == userId
+                        && request.resource.data.role == 'STUDENT');
+      allow update: if isPrimaryTeacher()
+                    || (request.auth != null
+                        && request.auth.uid == userId
+                        && request.resource.data.role == resource.data.role);
+      allow delete: if request.auth != null && request.auth.uid == userId;
+    }
+
+    // داده‌های خصوصی زیرمجموعه حساب؛ درخواست استاد برای مدیر نیز قابل بررسی است.
+    match /users/{userId}/{collectionName}/{document=**} {
       allow read, write: if request.auth != null
                          && request.auth.uid == userId;
+    }
+
+    match /users/{userId}/teacher_requests/{requestId} {
+      allow read: if request.auth != null
+                  && (request.auth.uid == userId || isPrimaryTeacher());
+      allow create, update: if request.auth != null
+                            && request.auth.uid == userId
+                            && request.resource.data.uid == userId;
+      allow update: if isPrimaryTeacher();
+    }
+
+    // صف مرکزی درخواست‌ها؛ فقط صاحب درخواست ثبت می‌کند و مدیر آن را بررسی می‌کند.
+    match /teacher_requests/{uid} {
+      allow create, update: if request.auth != null
+                            && request.auth.uid == uid
+                            && request.resource.data.uid == uid
+                            && request.resource.data.status == 'PENDING';
+      allow read: if request.auth != null
+                  && (request.auth.uid == uid || isPrimaryTeacher());
+      allow update: if isPrimaryTeacher();
+      allow delete: if isPrimaryTeacher();
     }
 
     // اشتراک‌گذاری قبلی؛ قواعد فعلی حفظ شده است
