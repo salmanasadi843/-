@@ -220,12 +220,134 @@ object AuthPreferences {
             }
     }
 
+    fun isPrimaryTeacher(context: Context): Boolean =
+        auth(context).currentUser?.email?.trim()?.lowercase() == PRIMARY_TEACHER_EMAIL
+
     fun submitTeacherRequest(
         context: Context,
+        teacherName: String,
         teachingField: String,
         institutionName: String,
         onResult: (Result<Unit>) -> Unit
     ) {
+        val user = auth(context).currentUser
+        if (user == null) {
+            onResult(Result.failure(IllegalStateException("برای ثبت درخواست ابتدا وارد حساب شوید.")))
+            return
+        }
+        if (teacherName.isBlank()) {
+            onResult(Result.failure(IllegalArgumentException("نام استاد را وارد کنید.")))
+            return
+        }
+        if (teachingField.isBlank()) {
+            onResult(Result.failure(IllegalArgumentException("درس موردنظر برای تدریس را وارد کنید.")))
+            return
+        }
+        if (isPrimaryTeacher(context)) {
+            onResult(Result.failure(IllegalStateException("حساب مدیر سامانه نیازی به درخواست تأیید استاد ندارد.")))
+            return
+        }
+
+        val request = hashMapOf<String, Any>(
+            "uid" to user.uid,
+            "email" to (user.email ?: ""),
+            "name" to teacherName.trim(),
+            "teacherName" to teacherName.trim(),
+            "teachingField" to teachingField.trim(),
+            "subject" to teachingField.trim(),
+            "institutionName" to institutionName.trim(),
+            "status" to "PENDING",
+            "createdAt" to FieldValue.serverTimestamp(),
+            "updatedAt" to FieldValue.serverTimestamp()
+        )
+
+        val firestore = firestore(context)
+        val batch = firestore.batch()
+        batch.set(
+            firestore.collection("teacher_requests").document(user.uid),
+            request,
+            com.google.firebase.firestore.SetOptions.merge()
+        )
+        batch.set(
+            firestore.collection("users").document(user.uid)
+                .collection("teacher_requests").document("current"),
+            request,
+            com.google.firebase.firestore.SetOptions.merge()
+        )
+        batch.commit().addOnCompleteListener { task ->
+            if (task.isSuccessful) {
+                onResult(Result.success(Unit))
+            } else {
+                onResult(
+                    Result.failure(
+                        task.exception ?: IllegalStateException("ثبت درخواست استاد انجام نشد.")
+                    )
+                )
+            }
+        }
+    }
+
+    fun reviewTeacherRequest(
+        context: Context,
+        uid: String,
+        teacherName: String,
+        email: String,
+        approve: Boolean,
+        onResult: (Result<Unit>) -> Unit
+    ) {
+        if (!isPrimaryTeacher(context)) {
+            onResult(Result.failure(SecurityException("فقط مدیر اصلی سامانه اجازه بررسی درخواست استاد را دارد.")))
+            return
+        }
+        if (uid.isBlank()) {
+            onResult(Result.failure(IllegalArgumentException("شناسه حساب درخواست‌دهنده خالی است.")))
+            return
+        }
+
+        val db = firestore(context)
+        val status = if (approve) "APPROVED" else "REJECTED"
+        val batch = db.batch()
+        val requestData = hashMapOf<String, Any>(
+            "status" to status,
+            "reviewedAt" to FieldValue.serverTimestamp(),
+            "updatedAt" to FieldValue.serverTimestamp()
+        )
+        batch.set(
+            db.collection("teacher_requests").document(uid),
+            requestData,
+            com.google.firebase.firestore.SetOptions.merge()
+        )
+        batch.set(
+            db.collection("users").document(uid)
+                .collection("teacher_requests").document("current"),
+            requestData,
+            com.google.firebase.firestore.SetOptions.merge()
+        )
+        if (approve) {
+            batch.set(
+                db.collection("users").document(uid),
+                hashMapOf<String, Any>(
+                    "email" to email,
+                    "name" to teacherName,
+                    "role" to UserRole.TEACHER.name,
+                    "updatedAt" to FieldValue.serverTimestamp()
+                ),
+                com.google.firebase.firestore.SetOptions.merge()
+            )
+        }
+        batch.commit().addOnCompleteListener { task ->
+            if (task.isSuccessful) {
+                onResult(Result.success(Unit))
+            } else {
+                onResult(
+                    Result.failure(
+                        task.exception ?: IllegalStateException("بررسی درخواست استاد انجام نشد.")
+                    )
+                )
+            }
+        }
+    }
+
         val user = auth(context).currentUser
         if (user == null) {
             onResult(Result.failure(IllegalStateException("برای ثبت درخواست ابتدا وارد حساب شوید.")))
