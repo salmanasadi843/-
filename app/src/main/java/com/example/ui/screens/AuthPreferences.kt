@@ -19,7 +19,8 @@ data class TeacherRequestRecord(
 data class TeacherAccountRecord(
     val uid: String,
     val teacherName: String,
-    val email: String
+    val email: String,
+    val role: String
 )
 
 object AuthPreferences {
@@ -403,13 +404,18 @@ object AuthPreferences {
         firestore(context).collection("users").get()
             .addOnSuccessListener { snapshot ->
                 val accounts = snapshot.documents.mapNotNull { doc ->
-                    if (doc.getString("role") != UserRole.TEACHER.name) return@mapNotNull null
+                    val role = doc.getString("role") ?: return@mapNotNull null
+                    if (role != UserRole.TEACHER.name && role != UserRole.STUDENT.name) return@mapNotNull null
                     TeacherAccountRecord(
                         uid = doc.id,
                         teacherName = doc.getString("name").orEmpty().ifBlank { "بدون نام" },
-                        email = doc.getString("email").orEmpty()
+                        email = doc.getString("email").orEmpty(),
+                        role = role
                     )
-                }.sortedBy { it.teacherName }
+                }.sortedWith(
+                    compareBy<TeacherAccountRecord> { it.role != UserRole.STUDENT.name }
+                        .thenBy { it.teacherName }
+                )
                 onResult(Result.success(accounts))
             }
             .addOnFailureListener { error ->
