@@ -87,6 +87,7 @@ fun SettingsScreen(
     var cloudStatus by remember { mutableStateOf<String?>(null) }
     var cloudError by remember { mutableStateOf(false) }
     var showPublishConfirm by remember { mutableStateOf(false) }
+    var teacherName by remember { mutableStateOf(AuthPreferences.currentName(context)) }
     var teacherField by remember { mutableStateOf("") }
     var institutionName by remember { mutableStateOf("") }
     var teacherRequestBusy by remember { mutableStateOf(false) }
@@ -566,9 +567,20 @@ fun SettingsScreen(
                             style = MaterialTheme.typography.titleLarge
                         )
                         Text(
-                            "اگر مدرس هستید، حوزه تدریس و نام دانشگاه یا مؤسسه را وارد کنید تا درخواست شما برای بررسی ثبت شود. ثبت درخواست به‌تنهایی نقش حساب را تغییر نمی‌دهد.",
+                            "نام استاد و درس موردنظر را وارد کنید تا مدیر سامانه درخواست را بررسی کند. ثبت درخواست به‌تنهایی نقش حساب را تغییر نمی‌دهد.",
                             style = MaterialTheme.typography.bodyMedium,
                             color = MaterialTheme.colorScheme.onSurfaceVariant
+                        )
+                        OutlinedTextField(
+                            value = teacherName,
+                            onValueChange = {
+                                teacherName = it
+                                teacherRequestStatus = null
+                            },
+                            modifier = Modifier.fillMaxWidth(),
+                            label = { Text("نام و نام خانوادگی استاد") },
+                            placeholder = { Text("نام استاد درخواست‌دهنده") },
+                            singleLine = true
                         )
                         OutlinedTextField(
                             value = teacherField,
@@ -577,7 +589,7 @@ fun SettingsScreen(
                                 teacherRequestStatus = null
                             },
                             modifier = Modifier.fillMaxWidth(),
-                            label = { Text("حوزه تدریس") },
+                            label = { Text("درس موردنظر برای تدریس") },
                             placeholder = { Text("مثلاً اصول فقه، زبان انگلیسی") },
                             singleLine = true
                         )
@@ -594,14 +606,15 @@ fun SettingsScreen(
                         )
                         Button(
                             onClick = {
-                                if (teacherField.isBlank()) {
-                                    teacherRequestStatus = "لطفاً حوزه تدریس را وارد کنید."
+                                if (teacherName.isBlank() || teacherField.isBlank()) {
+                                    teacherRequestStatus = "نام استاد و درس موردنظر را وارد کنید."
                                     teacherRequestError = true
                                 } else {
                                     teacherRequestBusy = true
                                     teacherRequestStatus = null
                                     AuthPreferences.submitTeacherRequest(
                                         context = context,
+                                        teacherName = teacherName.trim(),
                                         teachingField = teacherField.trim(),
                                         institutionName = institutionName.trim()
                                     ) { result ->
@@ -618,7 +631,7 @@ fun SettingsScreen(
                                     }
                                 }
                             },
-                            enabled = !teacherRequestBusy && teacherField.isNotBlank(),
+                            enabled = !teacherRequestBusy && teacherName.isNotBlank() && teacherField.isNotBlank(),
                             modifier = Modifier.fillMaxWidth()
                         ) {
                             if (teacherRequestBusy) {
