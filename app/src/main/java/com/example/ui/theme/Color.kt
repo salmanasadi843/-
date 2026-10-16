@@ -111,4 +111,9 @@ val TagPillText = Color(0xFF4A381D)
 val SuccessGreen = Color(0xFF4F7A5A)
 val RecordRed = Color(0xFFB94A48)
 
-fun themeAccent(mode: AppThemeMode): Color = PurplePrimaryLight
+fun themeAccent(mode: AppThemeMode): Color = when (mode) {
+    AppThemeMode.PURPLE -> Color(0xFF1C2F4A)
+    AppThemeMode.BLUE -> Color(0xFF2457A7)
+    AppThemeMode.GREEN -> Color(0xFF286448)
+    AppThemeMode.ORANGE -> Color(0xFF9A481A)
+}
