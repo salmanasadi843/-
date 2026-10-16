@@ -14,8 +14,8 @@ object AuthPreferences {
 
     private const val API_KEY = "AIzaSyCuVR2qgUAepZhLbEUPAOK3XoZK86YSkdE"
     private const val APP_ID = "1:72182911776:android:bd94d0b630f72977a87d45"
-    private const val PROJECT_ID = "salmanasadi843-9149"
-    private const val STORAGE_BUCKET = "salmanasadi843-9149.firebasestorage.app"
+    private const val PROJECT_ID = "salmanasadi843-9149a"
+    private const val STORAGE_BUCKET = "salmanasadi843-9149a.firebasestorage.app"
     // حساب اصلی استاد در درس‌یار؛ مستقل از حساب یادنو است.
     private const val PRIMARY_TEACHER_EMAIL = "salmanasadi843@gmail.com"
 
