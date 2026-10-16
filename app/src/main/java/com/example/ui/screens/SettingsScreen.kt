@@ -552,8 +552,7 @@ fun SettingsScreen(
                 }
             }
 
-            if (AuthPreferences.currentRole(context) == UserRole.STUDENT) {
-                Card(
+            Card(
                     colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
                     elevation = CardDefaults.cardElevation(2.dp),
                     modifier = Modifier.fillMaxWidth()
@@ -643,7 +642,6 @@ fun SettingsScreen(
                         }
                     }
                 }
-            }
 
             Card(
                 colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
