@@ -176,6 +176,10 @@ fun SettingsScreen(
                 .padding(16.dp),
             verticalArrangement = Arrangement.spacedBy(16.dp)
         ) {
+            if (AuthPreferences.isPrimaryTeacher(context)) {
+                AdminTeacherManagementCard()
+            }
+
             val cloudSyncStatus by viewModel.cloudSyncStatus.collectAsState()
             Card(
                 colors = CardDefaults.cardColors(
@@ -553,6 +557,7 @@ fun SettingsScreen(
                 }
             }
 
+            if (!AuthPreferences.isPrimaryTeacher(context)) {
             Card(
                     colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
                     elevation = CardDefaults.cardElevation(2.dp),
@@ -655,6 +660,8 @@ fun SettingsScreen(
                         }
                     }
                 }
+            }
+
 
             Card(
                 colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
