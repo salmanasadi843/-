@@ -23,6 +23,12 @@ import android.net.Network
 import android.net.NetworkCapabilities
 import com.example.data.local.ClassEntity
 import com.example.data.local.LectureEntity
+import com.google.firebase.firestore.FirebaseFirestore
+import com.google.firebase.firestore.ListenerRegistration
+import androidx.compose.foundation.layout.heightIn
+import androidx.compose.ui.text.style.TextAlign
+import androidx.compose.material3.AlertDialog
+import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.mutableStateOf
@@ -37,6 +43,14 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 
 @OptIn(ExperimentalMaterial3Api::class)
+private data class TeacherRequestItem(
+    val uid: String,
+    val name: String,
+    val email: String,
+    val subject: String,
+    val institution: String
+)
+
 @Composable
 fun HomeScreen(
     viewModel: MainViewModel,
@@ -55,8 +69,122 @@ fun HomeScreen(
     } else allLectures
     val studentSyncStatus by viewModel.studentMaterialsSyncStatus.collectAsState()
     val isTeacher = userRole == UserRole.TEACHER
+    val isPrimaryTeacher = isTeacher && AuthPreferences.isPrimaryTeacher(LocalContext.current)
+    val context = LocalContext.current
     val isOnline = rememberNetworkConnection()
     var showBulkExportDialog by androidx.compose.runtime.remember { androidx.compose.runtime.mutableStateOf(false) }
+    var showTeacherRequests by remember { mutableStateOf(false) }
+    var pendingTeacherRequests by remember { mutableStateOf<List<TeacherRequestItem>>(emptyList()) }
+    var teacherRequestsLoadError by remember { mutableStateOf<String?>(null) }
+    var reviewingRequestUid by remember { mutableStateOf<String?>(null) }
+
+    DisposableEffect(isPrimaryTeacher) {
+        var registration: ListenerRegistration? = null
+        if (isPrimaryTeacher) {
+            registration = FirebaseFirestore.getInstance()
+                .collection("teacher_requests")
+                .whereEqualTo("status", "PENDING")
+                .addSnapshotListener { snapshot, error ->
+                    if (error != null) {
+                        teacherRequestsLoadError = error.localizedMessage ?: "دریافت درخواست‌ها ناموفق بود."
+                    } else {
+                        teacherRequestsLoadError = null
+                        pendingTeacherRequests = snapshot?.documents.orEmpty().map { doc ->
+                            TeacherRequestItem(
+                                uid = doc.getString("uid") ?: doc.id,
+                                name = doc.getString("teacherName") ?: doc.getString("name").orEmpty(),
+                                email = doc.getString("email").orEmpty(),
+                                subject = doc.getString("subject") ?: doc.getString("teachingField").orEmpty(),
+                                institution = doc.getString("institutionName").orEmpty()
+                            )
+                        }
+                    }
+                }
+        }
+        onDispose { registration?.remove() }
+    }
+
+    if (showTeacherRequests) {
+        AlertDialog(
+            onDismissRequest = { if (reviewingRequestUid == null) showTeacherRequests = false },
+            title = { Text("درخواست‌های تأیید استاد") },
+            text = {
+                when {
+                    teacherRequestsLoadError != null -> Text(teacherRequestsLoadError!!, color = MaterialTheme.colorScheme.error)
+                    pendingTeacherRequests.isEmpty() -> Text(
+                        "در حال حاضر درخواست تأییدنشده‌ای وجود ندارد.",
+                        textAlign = TextAlign.Center,
+                        modifier = Modifier.fillMaxWidth()
+                    )
+                    else -> Column(
+                        modifier = Modifier.fillMaxWidth().heightIn(max = 460.dp).verticalScroll(rememberScrollState()),
+                        verticalArrangement = Arrangement.spacedBy(10.dp)
+                    ) {
+                        pendingTeacherRequests.forEach { request ->
+                            Card(
+                                modifier = Modifier.fillMaxWidth(),
+                                colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant)
+                            ) {
+                                Column(Modifier.padding(12.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                                    Text(request.name.ifBlank { "نام ثبت نشده" }, style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
+                                    Text("ایمیل: " + request.email, style = MaterialTheme.typography.bodySmall)
+                                    Text("درس درخواستی: " + request.subject.ifBlank { "ثبت نشده" })
+                                    if (request.institution.isNotBlank()) Text("مؤسسه: " + request.institution, style = MaterialTheme.typography.bodySmall)
+                                    Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                                        Button(
+                                            onClick = {
+                                                reviewingRequestUid = request.uid
+                                                AuthPreferences.reviewTeacherRequest(
+                                                    context = context,
+                                                    uid = request.uid,
+                                                    teacherName = request.name,
+                                                    email = request.email,
+                                                    approve = true
+                                                ) { result ->
+                                                    reviewingRequestUid = null
+                                                    result.fold(
+                                                        onSuccess = { Toast.makeText(context, "درخواست تأیید شد و نقش استاد اعمال شد.", Toast.LENGTH_LONG).show() },
+                                                        onFailure = { Toast.makeText(context, "تأیید ناموفق بود: ${it.localizedMessage}", Toast.LENGTH_LONG).show() }
+                                                    )
+                                                }
+                                            },
+                                            enabled = reviewingRequestUid == null,
+                                            modifier = Modifier.weight(1f)
+                                        ) { Text(if (reviewingRequestUid == request.uid) "در حال انجام..." else "تأیید") }
+                                        OutlinedButton(
+                                            onClick = {
+                                                reviewingRequestUid = request.uid
+                                                AuthPreferences.reviewTeacherRequest(
+                                                    context = context,
+                                                    uid = request.uid,
+                                                    teacherName = request.name,
+                                                    email = request.email,
+                                                    approve = false
+                                                ) { result ->
+                                                    reviewingRequestUid = null
+                                                    result.fold(
+                                                        onSuccess = { Toast.makeText(context, "درخواست رد شد.", Toast.LENGTH_SHORT).show() },
+                                                        onFailure = { Toast.makeText(context, "رد درخواست ناموفق بود: ${it.localizedMessage}", Toast.LENGTH_LONG).show() }
+                                                    )
+                                                }
+                                            },
+                                            enabled = reviewingRequestUid == null,
+                                            modifier = Modifier.weight(1f)
+                                        ) { Text("رد درخواست") }
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+            },
+            confirmButton = {
+                TextButton(onClick = { showTeacherRequests = false }, enabled = reviewingRequestUid == null) {
+                    Text("بستن")
+                }
+            }
+        )
+    }
 
     Scaffold(
         containerColor = MaterialTheme.colorScheme.background,
@@ -100,6 +228,30 @@ fun HomeScreen(
             verticalArrangement = Arrangement.spacedBy(14.dp)
         ) {
             if (isTeacher) {
+                if (isPrimaryTeacher) {
+                    item {
+                        Card(
+                            modifier = Modifier.fillMaxWidth().clickable { showTeacherRequests = true },
+                            colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.secondaryContainer)
+                        ) {
+                            Row(
+                                Modifier.fillMaxWidth().padding(16.dp),
+                                verticalAlignment = Alignment.CenterVertically,
+                                horizontalArrangement = Arrangement.spacedBy(12.dp)
+                            ) {
+                                Icon(Icons.Default.School, contentDescription = null, tint = MaterialTheme.colorScheme.onSecondaryContainer)
+                                Column(Modifier.weight(1f)) {
+                                    Text("درخواست‌های تأیید استاد", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
+                                    Text(
+                                        if (pendingTeacherRequests.isEmpty()) "درخواستی در انتظار نیست" else "${pendingTeacherRequests.size} درخواست در انتظار بررسی",
+                                        style = MaterialTheme.typography.bodySmall
+                                    )
+                                }
+                                Text("بررسی", color = MaterialTheme.colorScheme.primary, fontWeight = FontWeight.Bold)
+                            }
+                        }
+                    }
+                }
                 item {
                     Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(10.dp)) {
                         HomeActionCard(
