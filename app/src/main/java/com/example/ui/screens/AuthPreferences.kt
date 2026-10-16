@@ -349,50 +349,6 @@ object AuthPreferences {
         }
     }
 
-        val user = auth(context).currentUser
-        if (user == null) {
-            onResult(Result.failure(IllegalStateException("برای ثبت درخواست ابتدا وارد حساب شوید.")))
-            return
-        }
-        if (teachingField.isBlank()) {
-            onResult(Result.failure(IllegalArgumentException("حوزه تدریس را وارد کنید.")))
-            return
-        }
-        if (currentRole(context) == UserRole.TEACHER) {
-            onResult(Result.failure(IllegalStateException("این حساب در حال حاضر نقش استاد دارد.")))
-            return
-        }
-
-        val request = hashMapOf<String, Any>(
-            "uid" to user.uid,
-            "email" to (user.email ?: ""),
-            "name" to currentName(context),
-            "teachingField" to teachingField.trim(),
-            "institutionName" to institutionName.trim(),
-            "status" to "PENDING",
-            "createdAt" to FieldValue.serverTimestamp(),
-            "updatedAt" to FieldValue.serverTimestamp()
-        )
-
-        firestore(context)
-            .collection("users")
-            .document(user.uid)
-            .collection("teacher_requests")
-            .document("current")
-            .set(request, com.google.firebase.firestore.SetOptions.merge())
-            .addOnCompleteListener { task ->
-                if (task.isSuccessful) {
-                    onResult(Result.success(Unit))
-                } else {
-                    onResult(
-                        Result.failure(
-                            task.exception
-                                ?: IllegalStateException("ثبت درخواست استاد انجام نشد.")
-                        )
-                    )
-                }
-            }
-    }
 
     fun sendPasswordReset(
         context: Context,
