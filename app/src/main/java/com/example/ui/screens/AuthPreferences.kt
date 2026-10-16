@@ -7,6 +7,21 @@ import com.google.firebase.auth.FirebaseAuth
 import com.google.firebase.firestore.FieldValue
 import com.google.firebase.firestore.FirebaseFirestore
 
+data class TeacherRequestRecord(
+    val uid: String,
+    val teacherName: String,
+    val email: String,
+    val teachingField: String,
+    val institutionName: String,
+    val status: String
+)
+
+data class TeacherAccountRecord(
+    val uid: String,
+    val teacherName: String,
+    val email: String
+)
+
 object AuthPreferences {
     private const val PREFS = "ostadyar_auth"
     private const val ROLE = "role"
@@ -339,6 +354,116 @@ object AuthPreferences {
         }
     }
 
+
+    /**
+     * Returns teacher approval requests for the primary administrator only.
+     * Reads the central queue used by submitTeacherRequest().
+     */
+    fun loadTeacherRequests(
+        context: Context,
+        onResult: (Result<List<TeacherRequestRecord>>) -> Unit
+    ) {
+        if (!isPrimaryTeacher(context)) {
+            onResult(Result.failure(SecurityException("فقط مدیر اصلی اجازه مشاهده درخواست‌ها را دارد.")))
+            return
+        }
+        firestore(context).collection("teacher_requests").get()
+            .addOnSuccessListener { snapshot ->
+                val requests = snapshot.documents.mapNotNull { doc ->
+                    val uid = doc.getString("uid") ?: doc.id
+                    if (uid.isBlank()) null else TeacherRequestRecord(
+                        uid = uid,
+                        teacherName = doc.getString("teacherName")
+                            ?: doc.getString("name").orEmpty(),
+                        email = doc.getString("email").orEmpty(),
+                        teachingField = doc.getString("teachingField")
+                            ?: doc.getString("subject").orEmpty(),
+                        institutionName = doc.getString("institutionName").orEmpty(),
+                        status = doc.getString("status").orEmpty().ifBlank { "PENDING" }
+                    )
+                }.sortedWith(compareBy<TeacherRequestRecord> { it.status != "PENDING" }.thenBy { it.teacherName })
+                onResult(Result.success(requests))
+            }
+            .addOnFailureListener { error ->
+                onResult(Result.failure(error))
+            }
+    }
+
+    /**
+     * Lists teacher profiles for the primary administrator.
+     */
+    fun loadTeacherAccounts(
+        context: Context,
+        onResult: (Result<List<TeacherAccountRecord>>) -> Unit
+    ) {
+        if (!isPrimaryTeacher(context)) {
+            onResult(Result.failure(SecurityException("فقط مدیر اصلی اجازه مدیریت استادان را دارد.")))
+            return
+        }
+        firestore(context).collection("users").get()
+            .addOnSuccessListener { snapshot ->
+                val accounts = snapshot.documents.mapNotNull { doc ->
+                    if (doc.getString("role") != UserRole.TEACHER.name) return@mapNotNull null
+                    TeacherAccountRecord(
+                        uid = doc.id,
+                        teacherName = doc.getString("name").orEmpty().ifBlank { "بدون نام" },
+                        email = doc.getString("email").orEmpty()
+                    )
+                }.sortedBy { it.teacherName }
+                onResult(Result.success(accounts))
+            }
+            .addOnFailureListener { error ->
+                onResult(Result.failure(error))
+            }
+    }
+
+    /**
+     * Changes a user's app role. This updates the trusted user profile only;
+     * published-content access must also be enforced by deployed Firestore rules.
+     */
+    fun setTeacherRole(
+        context: Context,
+        uid: String,
+        teacherName: String,
+        email: String,
+        enabled: Boolean,
+        onResult: (Result<Unit>) -> Unit
+    ) {
+        if (!isPrimaryTeacher(context)) {
+            onResult(Result.failure(SecurityException("فقط مدیر اصلی اجازه تغییر مجوز استاد را دارد.")))
+            return
+        }
+        if (uid.isBlank() || uid == currentUid(context)) {
+            onResult(Result.failure(IllegalArgumentException("تغییر نقش حساب مدیر اصلی از این بخش مجاز نیست.")))
+            return
+        }
+        val db = firestore(context)
+        val role = if (enabled) UserRole.TEACHER.name else UserRole.STUDENT.name
+        val batch = db.batch()
+        batch.set(
+            db.collection("users").document(uid),
+            hashMapOf<String, Any>(
+                "uid" to uid,
+                "name" to teacherName,
+                "email" to email,
+                "role" to role,
+                "updatedAt" to FieldValue.serverTimestamp()
+            ),
+            com.google.firebase.firestore.SetOptions.merge()
+        )
+        batch.set(
+            db.collection("teacher_requests").document(uid),
+            hashMapOf<String, Any>(
+                "uid" to uid,
+                "status" to if (enabled) "APPROVED" else "REVOKED",
+                "updatedAt" to FieldValue.serverTimestamp()
+            ),
+            com.google.firebase.firestore.SetOptions.merge()
+        )
+        batch.commit()
+            .addOnSuccessListener { onResult(Result.success(Unit)) }
+            .addOnFailureListener { onResult(Result.failure(it)) }
+    }
 
     fun sendPasswordReset(
         context: Context,
