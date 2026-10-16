@@ -87,6 +87,11 @@ fun SettingsScreen(
     var cloudStatus by remember { mutableStateOf<String?>(null) }
     var cloudError by remember { mutableStateOf(false) }
     var showPublishConfirm by remember { mutableStateOf(false) }
+    var teacherField by remember { mutableStateOf("") }
+    var institutionName by remember { mutableStateOf("") }
+    var teacherRequestBusy by remember { mutableStateOf(false) }
+    var teacherRequestStatus by remember { mutableStateOf<String?>(null) }
+    var teacherRequestError by remember { mutableStateOf(false) }
     val createBackup = rememberLauncherForActivityResult(ActivityResultContracts.CreateDocument("application/json")) { uri ->
         if (uri != null) backupScope.launch {
             backupBusy = true; backupStatus = null
@@ -544,6 +549,99 @@ fun SettingsScreen(
                         style = MaterialTheme.typography.bodySmall,
                         color = MaterialTheme.colorScheme.primary
                     )
+                }
+            }
+
+            if (AuthPreferences.currentRole(context) == UserRole.STUDENT) {
+                Card(
+                    colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
+                    elevation = CardDefaults.cardElevation(2.dp),
+                    modifier = Modifier.fillMaxWidth()
+                ) {
+                    Column(
+                        modifier = Modifier.padding(18.dp),
+                        verticalArrangement = Arrangement.spacedBy(10.dp)
+                    ) {
+                        Text(
+                            "درخواست تأیید به‌عنوان استاد",
+                            style = MaterialTheme.typography.titleLarge
+                        )
+                        Text(
+                            "اگر مدرس هستید، حوزه تدریس و نام دانشگاه یا مؤسسه را وارد کنید تا درخواست شما برای بررسی ثبت شود. ثبت درخواست به‌تنهایی نقش حساب را تغییر نمی‌دهد.",
+                            style = MaterialTheme.typography.bodyMedium,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                        )
+                        OutlinedTextField(
+                            value = teacherField,
+                            onValueChange = {
+                                teacherField = it
+                                teacherRequestStatus = null
+                            },
+                            modifier = Modifier.fillMaxWidth(),
+                            label = { Text("حوزه تدریس") },
+                            placeholder = { Text("مثلاً اصول فقه، زبان انگلیسی") },
+                            singleLine = true
+                        )
+                        OutlinedTextField(
+                            value = institutionName,
+                            onValueChange = {
+                                institutionName = it
+                                teacherRequestStatus = null
+                            },
+                            modifier = Modifier.fillMaxWidth(),
+                            label = { Text("دانشگاه یا مؤسسه آموزشی") },
+                            placeholder = { Text("نام محل تدریس (اختیاری)") },
+                            singleLine = true
+                        )
+                        Button(
+                            onClick = {
+                                if (teacherField.isBlank()) {
+                                    teacherRequestStatus = "لطفاً حوزه تدریس را وارد کنید."
+                                    teacherRequestError = true
+                                } else {
+                                    teacherRequestBusy = true
+                                    teacherRequestStatus = null
+                                    AuthPreferences.submitTeacherRequest(
+                                        context = context,
+                                        teachingField = teacherField.trim(),
+                                        institutionName = institutionName.trim()
+                                    ) { result ->
+                                        teacherRequestBusy = false
+                                        teacherRequestError = result.isFailure
+                                        teacherRequestStatus = result.fold(
+                                            onSuccess = {
+                                                "درخواست شما ثبت شد و در انتظار بررسی است."
+                                            },
+                                            onFailure = {
+                                                "ثبت درخواست ناموفق بود: ${it.localizedMessage ?: "خطای نامشخص"}"
+                                            }
+                                        )
+                                    }
+                                }
+                            },
+                            enabled = !teacherRequestBusy && teacherField.isNotBlank(),
+                            modifier = Modifier.fillMaxWidth()
+                        ) {
+                            if (teacherRequestBusy) {
+                                CircularProgressIndicator(
+                                    modifier = Modifier.size(18.dp),
+                                    strokeWidth = 2.dp
+                                )
+                                Spacer(Modifier.width(8.dp))
+                                Text("در حال ثبت درخواست...")
+                            } else {
+                                Text("ثبت درخواست استاد")
+                            }
+                        }
+                        if (teacherRequestStatus != null) {
+                            Text(
+                                teacherRequestStatus!!,
+                                color = if (teacherRequestError) MaterialTheme.colorScheme.error
+                                        else MaterialTheme.colorScheme.primary,
+                                style = MaterialTheme.typography.bodyMedium
+                            )
+                        }
+                    }
                 }
             }
 
