@@ -557,6 +557,7 @@ fun SettingsScreen(
                 }
             }
 
+            if (!AuthPreferences.isPrimaryTeacher(context)) {
             Card(
                     colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
                     elevation = CardDefaults.cardElevation(2.dp),
@@ -659,6 +660,8 @@ fun SettingsScreen(
                         }
                     }
                 }
+            }
+
 
             Card(
                 colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
