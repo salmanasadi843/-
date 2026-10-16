@@ -269,12 +269,7 @@ object AuthPreferences {
             request,
             com.google.firebase.firestore.SetOptions.merge()
         )
-        batch.set(
-            firestore.collection("users").document(user.uid)
-                .collection("teacher_requests").document("current"),
-            request,
-            com.google.firebase.firestore.SetOptions.merge()
-        )
+        // درخواست فقط در صف مرکزی ثبت می‌شود تا ثبت درخواست به نوشتن در دو مسیر وابسته نباشد.
         batch.commit().addOnCompleteListener { task ->
             if (task.isSuccessful) {
                 onResult(Result.success(Unit))
@@ -318,12 +313,7 @@ object AuthPreferences {
             requestData,
             com.google.firebase.firestore.SetOptions.merge()
         )
-        batch.set(
-            db.collection("users").document(uid)
-                .collection("teacher_requests").document("current"),
-            requestData,
-            com.google.firebase.firestore.SetOptions.merge()
-        )
+        // وضعیت درخواست در صف مرکزی به‌روزرسانی می‌شود؛ از نوشتن تکراری در زیرمجموعه حساب پرهیز می‌کنیم.
         if (approve) {
             batch.set(
                 db.collection("users").document(uid),
