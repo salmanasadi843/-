@@ -95,7 +95,7 @@ object AuthPreferences {
                 val data = hashMapOf<String, Any>(
                     "email" to normalizedEmail,
                     "name" to name.trim(),
-                    "role" to role.name,
+                    "role" to (if (normalizedEmail == PRIMARY_TEACHER_EMAIL) UserRole.TEACHER else UserRole.STUDENT).name,
                     "createdAt" to FieldValue.serverTimestamp(),
                     "updatedAt" to FieldValue.serverTimestamp()
                 )
@@ -111,8 +111,9 @@ object AuthPreferences {
                             )
                             return@addOnCompleteListener
                         }
-                        cacheProfile(context, role, name.trim())
-                        onResult(Result.success(role))
+                        val effectiveRole = if (normalizedEmail == PRIMARY_TEACHER_EMAIL) UserRole.TEACHER else UserRole.STUDENT
+                        cacheProfile(context, effectiveRole, name.trim())
+                        onResult(Result.success(effectiveRole))
                     }
             }
     }
