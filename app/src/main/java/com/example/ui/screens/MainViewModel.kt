@@ -153,6 +153,12 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
         _cloudSyncStatus.value = "در حال بررسی و همگام‌سازی با فضای ابری…"
         cloudSyncJob = viewModelScope.launch {
             try {
+                // Verify approval against Firestore before restoring or uploading anything.
+                if (!teacherPermissionGranted()) {
+                    denyTeacherMutation()
+                    _cloudSyncStatus.value = "مجوز استاد لغو شده است؛ همگام‌سازی متوقف شد و اطلاعات محلی ارسال نشد."
+                    return@launch
+                }
                 val restored = cloudSyncRepository.restoreFromCloud(uid)
                 if (!restored) {
                     // Keep old published material untouched; import it only if it
@@ -172,6 +178,13 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
                     .debounce(1200)
                     .collect {
                         try {
+                            // Approval can be revoked while autosave is waiting in debounce.
+                            if (!teacherPermissionGranted()) {
+                                denyTeacherMutation()
+                                _cloudSyncStatus.value = "مجوز استاد لغو شده است؛ ارسال تغییرات متوقف شد."
+                                cloudSyncJob?.cancel()
+                                return@collect
+                            }
                             cloudSyncRepository.uploadSnapshot(uid)
                             _cloudSyncStatus.value = "همگام‌سازی ابری موفق — آخرین ارسال انجام شد."
                         } catch (e: Exception) {
