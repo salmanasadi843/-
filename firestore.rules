@@ -56,9 +56,17 @@ service cloud.firestore {
       allow read: if request.auth != null
                   && (request.auth.uid == userId || isAdmin());
 
-      allow create: if request.auth != null
-                    && request.auth.uid == userId
-                    && request.resource.data.role == 'STUDENT';
+      allow create: if (
+                      request.auth != null
+                      && request.auth.uid == userId
+                      && request.resource.data.role == 'STUDENT'
+                    ) || (
+                      // The primary admin may provision a missing profile while
+                      // approving/revoking an account. Clients still cannot grant themselves TEACHER.
+                      isAdmin()
+                      && request.resource.data.role in ['TEACHER', 'STUDENT']
+                      && request.resource.data.keys().hasOnly(['role', 'name', 'email', 'createdAt', 'updatedAt'])
+                    );
 
       allow update: if request.auth != null
                     && (
