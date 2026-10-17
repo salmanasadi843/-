@@ -81,9 +81,11 @@ service cloud.firestore {
       allow read: if true;
       allow create: if approvedTeacher(request.auth.uid)
                     && request.resource.data.ownerUid == request.auth.uid;
-      allow update, delete: if approvedTeacher(request.auth.uid)
+      allow update: if approvedTeacher(request.auth.uid)
                             && resource.data.ownerUid == request.auth.uid
                             && request.resource.data.ownerUid == request.auth.uid;
+      allow delete: if approvedTeacher(request.auth.uid)
+                    && resource.data.ownerUid == request.auth.uid;
     }
 
     // همگام‌سازی مطالب منتشرشده؛ قواعد فعلی حفظ شده است
