@@ -104,10 +104,13 @@ service cloud.firestore {
       allow read: if request.auth != null
                   && (isAdmin() || request.auth.uid == requestUid);
 
-      allow create: if request.auth != null
-                    && request.auth.uid == requestUid
-                    && request.resource.data.uid == requestUid
-                    && request.resource.data.status == 'PENDING';
+      allow create: if (request.auth != null
+                         && request.auth.uid == requestUid
+                         && request.resource.data.uid == requestUid
+                         && request.resource.data.status == 'PENDING')
+                    || (isAdmin()
+                        && request.resource.data.uid == requestUid
+                        && request.resource.data.status in ['APPROVED', 'REJECTED', 'REVOKED']);
 
       allow update: if isAdmin()
                     || (request.auth != null
