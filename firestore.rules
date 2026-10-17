@@ -79,9 +79,11 @@ service cloud.firestore {
     // اشتراک‌گذاری قبلی؛ قواعد فعلی حفظ شده است
     match /shared/{shareId} {
       allow read: if true;
-      allow create: if request.auth != null;
-      allow update, delete: if request.auth != null
-                            && resource.data.ownerUid == request.auth.uid;
+      allow create: if approvedTeacher(request.auth.uid)
+                    && request.resource.data.ownerUid == request.auth.uid;
+      allow update, delete: if approvedTeacher(request.auth.uid)
+                            && resource.data.ownerUid == request.auth.uid
+                            && request.resource.data.ownerUid == request.auth.uid;
     }
 
     // همگام‌سازی مطالب منتشرشده؛ قواعد فعلی حفظ شده است
@@ -93,12 +95,71 @@ service cloud.firestore {
                     && resource.data.ownerUid == teacherUid;
     }
 
-    match /approved_teachers/{teacherUid} {
+    function activeTeacher(uid) {
+      return exists(/databases/$(database)/documents/users/$(uid))
+             && get(/databases/$(database)/documents/users/$(uid)).data.role == 'TEACHER'
+             && (
+               uid == 'xgUdnaQ6X0hPobOUwx3SDI0BJVc2'
+               || (
+                 exists(/databases/$(database)/documents/approved_teachers/$(uid))
+                 && (
+                   get(/databases/$(database)/documents/approved_teachers/$(uid)).data.enabled == true
+                   || get(/databases/$(database)/documents/approved_teachers/$(uid)).data.approved == true
+                 )
+               )
+             );
+    }
+
+    // Published class/lesson documents are also protected in case the newer
+    // publication sync path is used by an app build.
+    match /published_classes/{publicationId} {
+      allow read: if request.auth != null
+                  && (
+                    resource.data.ownerUid == request.auth.uid
+                    || (resource.data.isPublished == true && activeTeacher(resource.data.ownerUid))
+                  );
+      allow create, update: if approvedTeacher(request.auth.uid)
+                            && request.resource.data.ownerUid == request.auth.uid
+                            && publicationId == request.auth.uid + '__' + request.resource.data.classId
+                            && request.resource.data.isPublished is bool;
+      allow delete: if approvedTeacher(request.auth.uid)
+                    && resource.data.ownerUid == request.auth.uid;
+    }
+
+    match /published_lessons/{publicationId} {
+      allow read: if request.auth != null
+                  && (
+                    resource.data.ownerUid == request.auth.uid
+                    || (
+                      resource.data.isPublished == true
+                      && activeTeacher(resource.data.ownerUid)
+                      && resource.data.classId is string
+                      && exists(/databases/$(database)/documents/published_classes/$(resource.data.ownerUid + '__' + resource.data.classId))
+                      && get(/databases/$(database)/documents/published_classes/$(resource.data.ownerUid + '__' + resource.data.classId)).data.isPublished == true
+                    )
+                  );
+      allow create, update: if approvedTeacher(request.auth.uid)
+                            && request.resource.data.ownerUid == request.auth.uid
+                            && publicationId == request.auth.uid + '__' + request.resource.data.lessonId
+                            && request.resource.data.isPublished is bool
+                            && (
+                              request.resource.data.isPublished == false
+                              || (
+                                request.resource.data.classId is string
+                                && existsAfter(/databases/$(database)/documents/published_classes/$(request.auth.uid + '__' + request.resource.data.classId))
+                                && getAfter(/databases/$(database)/documents/published_classes/$(request.auth.uid + '__' + request.resource.data.classId)).data.isPublished == true
+                              )
+                            );
+      allow delete: if approvedTeacher(request.auth.uid)
+                    && resource.data.ownerUid == request.auth.uid;
+    }
+
+    match /publication_index/{teacherUid} {
       allow read: if request.auth != null;
-      allow create, update: if isPrimaryTeacher()
-                            && request.resource.data.ownerUid == teacherUid
-                            && request.resource.data.enabled == true;
-      allow delete: if isPrimaryTeacher();
+      allow create, update: if approvedTeacher(teacherUid)
+                            && request.resource.data.ownerUid == teacherUid;
+      allow delete: if approvedTeacher(teacherUid)
+                    && resource.data.ownerUid == teacherUid;
     }
 
     // نسخه پشتیبان خصوصی درس‌یار؛ فقط صاحب حساب استاد اجازه دسترسی دارد
