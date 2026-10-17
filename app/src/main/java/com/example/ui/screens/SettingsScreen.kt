@@ -168,7 +168,7 @@ fun SettingsScreen(
                 .padding(16.dp),
             verticalArrangement = Arrangement.spacedBy(16.dp)
         ) {
-            val cloudSyncStatus by viewModel.cloudSyncStatus.collectAsState()
+            if (AuthPreferences.isPrimaryTeacher(context)) {\n                AdminTeacherManagementCard()\n            }\n\n            val cloudSyncStatus by viewModel.cloudSyncStatus.collectAsState()
             Card(
                 colors = CardDefaults.cardColors(
                     containerColor = MaterialTheme.colorScheme.surface
@@ -198,7 +198,7 @@ fun SettingsScreen(
                     )
                 }
             }
-            if (AuthPreferences.currentRole(context) == UserRole.STUDENT) {
+            if (AuthPreferences.currentRole(context) == UserRole.STUDENT && !AuthPreferences.isPrimaryTeacher(context)) {
                 Card(
                     colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
                     elevation = CardDefaults.cardElevation(2.dp),
@@ -255,10 +255,8 @@ fun SettingsScreen(
                                         "updatedAt" to FieldValue.serverTimestamp()
                                     )
                                     FirebaseFirestore.getInstance()
-                                        .collection("users")
-                                        .document(user.uid)
                                         .collection("teacher_requests")
-                                        .document("current")
+                                        .document(user.uid)
                                         .set(request)
                                         .addOnCompleteListener { task ->
                                             teacherRequestBusy = false
