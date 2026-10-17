@@ -494,3 +494,22 @@ test("admin can approve a teacher profile while changing only role and safe prof
     status: "APPROVED"
   }));
 });
+
+test("admin can provision a missing user profile as TEACHER during approval", async () => {
+  const adminDb = env.authenticatedContext("xgUdnaQ6X0hPobOUwx3SDI0BJVc2").firestore();
+  await assertSucceeds(setDoc(doc(adminDb, "users/teacher-profile-missing"), {
+    role: "TEACHER",
+    name: "New Teacher",
+    email: "new.teacher@example.com",
+    createdAt: Date.now(),
+    updatedAt: Date.now()
+  }));
+  await assertSucceeds(setDoc(doc(adminDb, "approved_teachers/teacher-profile-missing"), {
+    ownerUid: "teacher-profile-missing",
+    enabled: true,
+    approved: true
+  }));
+  const teacherDb = env.authenticatedContext("teacher-profile-missing").firestore();
+  await assertSucceeds(getDoc(doc(teacherDb, "approved_teachers/teacher-profile-missing")));
+  await assertSucceeds(getDoc(doc(teacherDb, "users/teacher-profile-missing")));
+});
