@@ -313,7 +313,6 @@ object AuthPreferences {
             requestData,
             com.google.firebase.firestore.SetOptions.merge()
         )
-        // وضعیت درخواست در صف مرکزی به‌روزرسانی می‌شود؛ از نوشتن تکراری در زیرمجموعه حساب پرهیز می‌کنیم.
         if (approve) {
             batch.set(
                 db.collection("users").document(uid),
@@ -321,6 +320,28 @@ object AuthPreferences {
                     "email" to email,
                     "name" to teacherName,
                     "role" to UserRole.TEACHER.name,
+                    "updatedAt" to FieldValue.serverTimestamp()
+                ),
+                com.google.firebase.firestore.SetOptions.merge()
+            )
+            // Approval is the trusted source used by login and Firestore write rules.
+            batch.set(
+                db.collection("approved_teachers").document(uid),
+                hashMapOf<String, Any>(
+                    "ownerUid" to uid,
+                    "enabled" to true,
+                    "approved" to true,
+                    "updatedAt" to FieldValue.serverTimestamp()
+                ),
+                com.google.firebase.firestore.SetOptions.merge()
+            )
+        } else {
+            // Revocation must remove trusted approval as well as update the request status.
+            batch.delete(db.collection("approved_teachers").document(uid))
+            batch.set(
+                db.collection("users").document(uid),
+                hashMapOf<String, Any>(
+                    "role" to UserRole.STUDENT.name,
                     "updatedAt" to FieldValue.serverTimestamp()
                 ),
                 com.google.firebase.firestore.SetOptions.merge()
