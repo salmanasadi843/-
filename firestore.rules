@@ -70,8 +70,19 @@ service cloud.firestore {
 
       allow update: if request.auth != null
                     && (
+                      // Ordinary users cannot change their role, except that a
+                      // previously approved teacher may repair a stale STUDENT role.
                       (request.auth.uid == userId
                        && request.resource.data.role == resource.data.role)
+                      || (request.auth.uid == userId
+                          && request.resource.data.role == 'TEACHER'
+                          && resource.data.role == 'STUDENT'
+                          && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['role', 'updatedAt'])
+                          && exists(/databases/$(database)/documents/approved_teachers/$(userId))
+                          && (
+                            get(/databases/$(database)/documents/approved_teachers/$(userId)).data.enabled == true
+                            || get(/databases/$(database)/documents/approved_teachers/$(userId)).data.approved == true
+                          ))
                       || (isAdmin()
                           && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['role', 'name', 'email', 'updatedAt'])
                           && request.resource.data.role in ['TEACHER', 'STUDENT'])
