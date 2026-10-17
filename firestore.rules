@@ -56,13 +56,20 @@ service cloud.firestore {
 
     // صف مرکزی درخواست‌ها؛ فقط صاحب درخواست ثبت می‌کند و مدیر آن را بررسی می‌کند.
     match /teacher_requests/{uid} {
-      allow create, update: if request.auth != null
-                            && request.auth.uid == uid
-                            && request.resource.data.uid == uid
-                            && request.resource.data.status == 'PENDING';
+      allow create: if (isPrimaryTeacher()
+                       && request.resource.data.uid == uid
+                       && request.resource.data.status in ['APPROVED', 'REJECTED', 'REVOKED'])
+                    || (request.auth != null
+                        && request.auth.uid == uid
+                        && request.resource.data.uid == uid
+                        && request.resource.data.status == 'PENDING');
+      allow update: if isPrimaryTeacher()
+                    || (request.auth != null
+                        && request.auth.uid == uid
+                        && request.resource.data.uid == uid
+                        && request.resource.data.status == 'PENDING');
       allow read: if request.auth != null
                   && (request.auth.uid == uid || isPrimaryTeacher());
-      allow update: if isPrimaryTeacher();
       allow delete: if isPrimaryTeacher();
     }
 
