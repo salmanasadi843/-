@@ -65,7 +65,7 @@ service cloud.firestore {
                       (request.auth.uid == userId
                        && request.resource.data.role == resource.data.role)
                       || (isAdmin()
-                          && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['role'])
+                          && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['role', 'name', 'email', 'updatedAt'])
                           && request.resource.data.role in ['TEACHER', 'STUDENT'])
                     );
 
@@ -109,7 +109,13 @@ service cloud.firestore {
                     && request.resource.data.uid == requestUid
                     && request.resource.data.status == 'PENDING';
 
-      allow update, delete: if isAdmin();
+      allow update: if isAdmin()
+                    || (request.auth != null
+                        && request.auth.uid == requestUid
+                        && resource.data.status in ['REJECTED', 'REVOKED']
+                        && request.resource.data.uid == requestUid
+                        && request.resource.data.status == 'PENDING');
+      allow delete: if isAdmin();
     }
 
     // Legacy aggregate payload is private. Students must use canonical records.
