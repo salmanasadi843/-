@@ -489,4 +489,8 @@ test("admin can approve a teacher profile while changing only role and safe prof
     enabled: true,
     approved: true
   }));
+  await assertSucceeds(setDoc(doc(adminDb, "teacher_requests/teacher-awaiting-admin"), {
+    uid: "teacher-awaiting-admin",
+    status: "APPROVED"
+  }));
 });
