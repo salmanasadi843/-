@@ -30,6 +30,8 @@ fun ClassScreen(
     // Never expose teacher-local or unpublished classes in student mode.
     val classes = if (userRole == UserRole.STUDENT) allClasses.filter { it.id < 0L && it.isPublished } else allClasses
     var showAdd by remember { mutableStateOf(false) }
+    var isSaving by remember { mutableStateOf(false) }
+    var saveError by remember { mutableStateOf<String?>(null) }
     var name by remember { mutableStateOf("") }
     var teacher by remember { mutableStateOf("") }
     var term by remember { mutableStateOf("") }
@@ -40,6 +42,8 @@ fun ClassScreen(
         teacher = ""
         term = ""
         editingClass = null
+        saveError = null
+        isSaving = false
     }
 
     Scaffold(
@@ -165,12 +169,17 @@ fun ClassScreen(
                     OutlinedTextField(name, { name = it }, label = { Text("نام کلاس") }, placeholder = { Text("مثلاً اصول فقه") }, singleLine = true, modifier = Modifier.fillMaxWidth())
                     OutlinedTextField(teacher, { teacher = it }, label = { Text("نام استاد") }, singleLine = true, modifier = Modifier.fillMaxWidth())
                     OutlinedTextField(term, { term = it }, label = { Text("ترم / نیمسال (اختیاری)") }, singleLine = true, modifier = Modifier.fillMaxWidth())
+                    if (saveError != null) {
+                        Text(saveError!!, color = MaterialTheme.colorScheme.error, style = MaterialTheme.typography.bodySmall)
+                    }
                 }
             },
             confirmButton = {
                 TextButton(
-                    enabled = name.isNotBlank(),
+                    enabled = name.isNotBlank() && !isSaving,
                     onClick = {
+                        saveError = null
+                        isSaving = true
                         viewModel.saveClass(
                             ClassEntity(
                                 id = editingClass?.id ?: 0L,
@@ -180,12 +189,19 @@ fun ClassScreen(
                                 description = editingClass?.description.orEmpty(),
                                 classDateMillis = editingClass?.classDateMillis ?: System.currentTimeMillis(),
                                 createdAtMillis = editingClass?.createdAtMillis ?: System.currentTimeMillis()
-                            )
+                            ),
+                            onSaved = {
+                                isSaving = false
+                                showAdd = false
+                                resetForm()
+                            },
+                            onFailure = { message ->
+                                isSaving = false
+                                saveError = message
+                            }
                         )
-                        showAdd = false
-                        resetForm()
                     }
-                ) { Text(if (editingClass == null) "ایجاد" else "ذخیره تغییرات", color = MaterialTheme.colorScheme.secondary) }
+                ) { Text(if (isSaving) "در حال ذخیره..." else if (editingClass == null) "ایجاد" else "ذخیره تغییرات", color = MaterialTheme.colorScheme.secondary) }
             },
             dismissButton = { TextButton(onClick = { showAdd = false }) { Text("انصراف") } }
         )
