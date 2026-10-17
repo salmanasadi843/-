@@ -7,6 +7,9 @@ import com.google.firebase.auth.FirebaseAuth
 import com.google.firebase.firestore.FieldValue
 import com.google.firebase.firestore.FirebaseFirestore
 
+data class TeacherRequestRecord(val uid: String, val teacherName: String, val email: String, val teachingField: String, val institutionName: String, val status: String)
+data class TeacherAccountRecord(val uid: String, val teacherName: String, val email: String, val role: String)
+
 object AuthPreferences {
     private const val PREFS = "ostadyar_auth"
     private const val ROLE = "role"
@@ -14,8 +17,8 @@ object AuthPreferences {
 
     private const val API_KEY = "AIzaSyCuVR2qgUAepZhLbEUPAOK3XoZK86YSkdE"
     private const val APP_ID = "1:72182911776:android:bd94d0b630f72977a87d45"
-    private const val PROJECT_ID = "salmanasadi843-9149"
-    private const val STORAGE_BUCKET = "salmanasadi843-9149.firebasestorage.app"
+    private const val PROJECT_ID = "salmanasadi843-9149a"
+    private const val STORAGE_BUCKET = "salmanasadi843-9149a.firebasestorage.app"
     // حساب اصلی استاد در درس‌یار؛ مستقل از حساب یادنو است.
     private const val PRIMARY_TEACHER_EMAIL = "salmanasadi843@gmail.com"
     // This account has admin privileges in Firestore rules and also uses the teacher UI.
@@ -306,6 +309,54 @@ object AuthPreferences {
                 )
             )
         }
+    }
+
+
+    fun isPrimaryTeacher(context: Context): Boolean {
+        val user = auth(context).currentUser ?: return false
+        return user.uid == PRIMARY_ADMIN_UID || user.email?.trim()?.lowercase() == PRIMARY_TEACHER_EMAIL
+    }
+    fun loadTeacherRequests(context: Context, onResult: (Result<List<TeacherRequestRecord>>) -> Unit) {
+        if (!isPrimaryTeacher(context)) { onResult(Result.failure(SecurityException("فقط مدیر اصلی اجازه مشاهده درخواست‌ها را دارد."))); return }
+        firestore(context).collection("teacher_requests").get().addOnSuccessListener { snapshot ->
+            val requests = snapshot.documents.mapNotNull { doc ->
+                val uid = doc.getString("uid") ?: doc.id
+                if (uid.isBlank()) null else TeacherRequestRecord(uid, doc.getString("teacherName") ?: doc.getString("name").orEmpty(), doc.getString("email").orEmpty(), doc.getString("teachingField") ?: doc.getString("subject").orEmpty(), doc.getString("institutionName") ?: doc.getString("institution").orEmpty(), doc.getString("status").orEmpty().ifBlank { "PENDING" })
+            }.sortedWith(compareBy<TeacherRequestRecord> { it.status != "PENDING" }.thenBy { it.teacherName })
+            onResult(Result.success(requests))
+        }.addOnFailureListener { onResult(Result.failure(it)) }
+    }
+    fun loadTeacherAccounts(context: Context, onResult: (Result<List<TeacherAccountRecord>>) -> Unit) {
+        if (!isPrimaryTeacher(context)) { onResult(Result.failure(SecurityException("فقط مدیر اصلی اجازه مدیریت استادان را دارد."))); return }
+        firestore(context).collection("users").get().addOnSuccessListener { snapshot ->
+            val accounts = snapshot.documents.mapNotNull { doc ->
+                val role = doc.getString("role") ?: return@mapNotNull null
+                if (role != UserRole.TEACHER.name && role != UserRole.STUDENT.name) return@mapNotNull null
+                TeacherAccountRecord(doc.id, doc.getString("name").orEmpty().ifBlank { "بدون نام" }, doc.getString("email").orEmpty(), role)
+            }.sortedWith(compareBy<TeacherAccountRecord> { it.role != UserRole.STUDENT.name }.thenBy { it.teacherName })
+            onResult(Result.success(accounts))
+        }.addOnFailureListener { onResult(Result.failure(it)) }
+    }
+    fun reviewTeacherRequest(context: Context, uid: String, teacherName: String, email: String, approve: Boolean, onResult: (Result<Unit>) -> Unit) {
+        if (!isPrimaryTeacher(context)) { onResult(Result.failure(SecurityException("فقط مدیر اصلی اجازه بررسی درخواست استاد را دارد."))); return }
+        if (uid.isBlank() || uid == currentUid(context)) { onResult(Result.failure(IllegalArgumentException("شناسه حساب درخواست‌دهنده معتبر نیست."))); return }
+        val db = firestore(context); val batch = db.batch()
+        batch.set(db.collection("teacher_requests").document(uid), mapOf("uid" to uid, "teacherName" to teacherName, "email" to email, "status" to if (approve) "APPROVED" else "REJECTED", "reviewedAt" to FieldValue.serverTimestamp(), "updatedAt" to FieldValue.serverTimestamp()), com.google.firebase.firestore.SetOptions.merge())
+        if (approve) {
+            batch.set(db.collection("users").document(uid), mapOf("uid" to uid, "name" to teacherName, "email" to email, "role" to UserRole.TEACHER.name, "updatedAt" to FieldValue.serverTimestamp()), com.google.firebase.firestore.SetOptions.merge())
+            batch.set(db.collection("approved_teachers").document(uid), mapOf("ownerUid" to uid, "enabled" to true, "approved" to true, "updatedAt" to FieldValue.serverTimestamp()), com.google.firebase.firestore.SetOptions.merge())
+        }
+        batch.commit().addOnSuccessListener { onResult(Result.success(Unit)) }.addOnFailureListener { onResult(Result.failure(it)) }
+    }
+    fun setTeacherRole(context: Context, uid: String, teacherName: String, email: String, enabled: Boolean, onResult: (Result<Unit>) -> Unit) {
+        if (!isPrimaryTeacher(context)) { onResult(Result.failure(SecurityException("فقط مدیر اصلی اجازه تغییر مجوز استاد را دارد."))); return }
+        if (uid.isBlank() || uid == currentUid(context)) { onResult(Result.failure(IllegalArgumentException("تغییر نقش حساب مدیر اصلی از این بخش مجاز نیست."))); return }
+        val db = firestore(context); val batch = db.batch()
+        batch.set(db.collection("users").document(uid), mapOf("uid" to uid, "name" to teacherName, "email" to email, "role" to if (enabled) UserRole.TEACHER.name else UserRole.STUDENT.name, "updatedAt" to FieldValue.serverTimestamp()), com.google.firebase.firestore.SetOptions.merge())
+        batch.set(db.collection("teacher_requests").document(uid), mapOf("uid" to uid, "teacherName" to teacherName, "email" to email, "status" to if (enabled) "APPROVED" else "REVOKED", "updatedAt" to FieldValue.serverTimestamp()), com.google.firebase.firestore.SetOptions.merge())
+        val approvalRef = db.collection("approved_teachers").document(uid)
+        if (enabled) batch.set(approvalRef, mapOf("ownerUid" to uid, "enabled" to true, "approved" to true, "updatedAt" to FieldValue.serverTimestamp()), com.google.firebase.firestore.SetOptions.merge()) else batch.delete(approvalRef)
+        batch.commit().addOnSuccessListener { onResult(Result.success(Unit)) }.addOnFailureListener { onResult(Result.failure(it)) }
     }
 
     fun logout(context: Context) {
