@@ -260,55 +260,66 @@ object AuthPreferences {
         name: String,
         onResult: (Result<UserRole>) -> Unit
     ) {
-        when (roleValue) {
-            UserRole.STUDENT.name -> {
-                cacheProfile(context, UserRole.STUDENT, name)
-                onResult(Result.success(UserRole.STUDENT))
-            }
+        if (uid == PRIMARY_ADMIN_UID) {
+            cacheProfile(context, UserRole.TEACHER, name)
+            onResult(Result.success(UserRole.TEACHER))
+            return
+        }
 
-            UserRole.TEACHER.name -> {
-                // The primary admin account also acts as a teacher. Its admin
-                // authority is enforced by Firestore rules; the app still opens
-                // the teacher UI, so it can manage its own lessons normally.
-                if (uid == PRIMARY_ADMIN_UID) {
-                    cacheProfile(context, UserRole.TEACHER, name)
-                    onResult(Result.success(UserRole.TEACHER))
-                    return
+        // Trusted approval is authoritative for previously approved teachers.
+        // A stale STUDENT role must not silently demote an already-approved account.
+        firestore(context).collection("approved_teachers").document(uid).get()
+            .addOnCompleteListener { approvalTask ->
+                if (!approvalTask.isSuccessful) {
+                    onResult(Result.failure(
+                        approvalTask.exception
+                            ?: IllegalStateException("بررسی تأیید استاد انجام نشد.")
+                    ))
+                    return@addOnCompleteListener
                 }
 
-                // Other TEACHER accounts require a separate trusted approval.
-                firestore(context).collection("approved_teachers").document(uid).get()
-                    .addOnCompleteListener { approvalTask ->
-                        if (!approvalTask.isSuccessful) {
-                            onResult(
-                                Result.failure(
-                                    approvalTask.exception
-                                        ?: IllegalStateException("بررسی تأیید استاد انجام نشد.")
-                                )
-                            )
-                            return@addOnCompleteListener
-                        }
-                        if (!approvalTask.result.exists()) {
-                            onResult(
-                                Result.failure(
-                                    IllegalStateException(
-                                        "این حساب هنوز توسط مدیر به‌عنوان استاد تأیید نشده است."
-                                    )
-                                )
-                            )
-                            return@addOnCompleteListener
-                        }
+                val approval = approvalTask.result
+                val isApproved = approval.exists() &&
+                    (approval.getBoolean("enabled") == true || approval.getBoolean("approved") == true)
+
+                if (isApproved) {
+                    if (roleValue == UserRole.TEACHER.name) {
                         cacheProfile(context, UserRole.TEACHER, name)
                         onResult(Result.success(UserRole.TEACHER))
+                    } else {
+                        // Repair legacy profiles only when an admin-created trusted approval exists.
+                        firestore(context).collection("users").document(uid)
+                            .update(
+                                mapOf(
+                                    "role" to UserRole.TEACHER.name,
+                                    "updatedAt" to FieldValue.serverTimestamp()
+                                )
+                            )
+                            .addOnSuccessListener {
+                                cacheProfile(context, UserRole.TEACHER, name)
+                                onResult(Result.success(UserRole.TEACHER))
+                            }
+                            .addOnFailureListener { error ->
+                                onResult(Result.failure(
+                                    IllegalStateException(
+                                        "مجوز استاد وجود دارد، اما نقش حساب در Firebase اصلاح نشد. از مدیر بخواهید مجوز این حساب را دوباره فعال کند.",
+                                        error
+                                    )
+                                ))
+                            }
                     }
-            }
+                    return@addOnCompleteListener
+                }
 
-            else -> onResult(
-                Result.failure(
-                    IllegalStateException("نقش این حساب در Firebase مشخص نشده است.")
-                )
-            )
-        }
+                if (roleValue == UserRole.STUDENT.name) {
+                    cacheProfile(context, UserRole.STUDENT, name)
+                    onResult(Result.success(UserRole.STUDENT))
+                } else {
+                    onResult(Result.failure(
+                        IllegalStateException("این حساب مجوز فعال استادی ندارد. از مدیر بخواهید مجوز را بررسی کند.")
+                    ))
+                }
+            }
     }
 
 
