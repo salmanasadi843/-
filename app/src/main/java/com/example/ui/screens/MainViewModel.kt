@@ -1071,6 +1071,7 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
     }
 
     private suspend fun saveTranscriptionResult(transcript: String) {
+        if (!teacherPermissionGranted()) { denyTeacherMutation(); return }
         formTranscript.value = transcript
         formOriginalTranscript.value = transcript
         _aiError.value = null
@@ -1138,6 +1139,7 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
         }
 
         viewModelScope.launch {
+            if (!teacherPermissionGranted()) { denyTeacherMutation(); return@launch }
 
             _isAiLoading.value = true
 
@@ -1192,6 +1194,7 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
         }
 
         viewModelScope.launch {
+            if (!teacherPermissionGranted()) { denyTeacherMutation(); return@launch }
 
             _isAiLoading.value = true
 
@@ -1247,6 +1250,7 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
         }
 
         viewModelScope.launch {
+            if (!teacherPermissionGranted()) { denyTeacherMutation(); return@launch }
 
             _isAiLoading.value = true
 
@@ -1309,6 +1313,7 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
             _chatMessages.value + userMsg
 
         viewModelScope.launch {
+            if (!teacherPermissionGranted()) { denyTeacherMutation(); return@launch }
 
             _isAiLoading.value = true
 
@@ -1360,6 +1365,7 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
         if (raw.isBlank()) return
 
         viewModelScope.launch {
+            if (!teacherPermissionGranted()) { denyTeacherMutation(); return@launch }
             _isAiLoading.value = true
             _aiError.value = null
             formAiSummary.value = ""
