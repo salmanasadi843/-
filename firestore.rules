@@ -56,16 +56,35 @@ service cloud.firestore {
       allow read: if request.auth != null
                   && (request.auth.uid == userId || isAdmin());
 
-      allow create: if request.auth != null
-                    && request.auth.uid == userId
-                    && request.resource.data.role == 'STUDENT';
+      allow create: if (
+                      request.auth != null
+                      && request.auth.uid == userId
+                      && request.resource.data.role == 'STUDENT'
+                    ) || (
+                      // The primary admin may provision a missing profile while
+                      // approving/revoking an account. Clients still cannot grant themselves TEACHER.
+                      isAdmin()
+                      && request.resource.data.role in ['TEACHER', 'STUDENT']
+                      && request.resource.data.keys().hasOnly(['role', 'name', 'email', 'createdAt', 'updatedAt'])
+                    );
 
       allow update: if request.auth != null
                     && (
+                      // Ordinary users cannot change their role, except that a
+                      // previously approved teacher may repair a stale STUDENT role.
                       (request.auth.uid == userId
                        && request.resource.data.role == resource.data.role)
+                      || (request.auth.uid == userId
+                          && request.resource.data.role == 'TEACHER'
+                          && resource.data.role == 'STUDENT'
+                          && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['role', 'updatedAt'])
+                          && exists(/databases/$(database)/documents/approved_teachers/$(userId))
+                          && (
+                            get(/databases/$(database)/documents/approved_teachers/$(userId)).data.enabled == true
+                            || get(/databases/$(database)/documents/approved_teachers/$(userId)).data.approved == true
+                          ))
                       || (isAdmin()
-                          && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['role'])
+                          && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['role', 'name', 'email', 'updatedAt'])
                           && request.resource.data.role in ['TEACHER', 'STUDENT'])
                     );
 
@@ -104,12 +123,21 @@ service cloud.firestore {
       allow read: if request.auth != null
                   && (isAdmin() || request.auth.uid == requestUid);
 
-      allow create: if request.auth != null
-                    && request.auth.uid == requestUid
-                    && request.resource.data.uid == requestUid
-                    && request.resource.data.status == 'PENDING';
+      allow create: if (request.auth != null
+                         && request.auth.uid == requestUid
+                         && request.resource.data.uid == requestUid
+                         && request.resource.data.status == 'PENDING')
+                    || (isAdmin()
+                        && request.resource.data.uid == requestUid
+                        && request.resource.data.status in ['APPROVED', 'REJECTED', 'REVOKED']);
 
-      allow update, delete: if isAdmin();
+      allow update: if isAdmin()
+                    || (request.auth != null
+                        && request.auth.uid == requestUid
+                        && resource.data.status in ['REJECTED', 'REVOKED']
+                        && request.resource.data.uid == requestUid
+                        && request.resource.data.status == 'PENDING');
+      allow delete: if isAdmin();
     }
 
     // Legacy aggregate payload is private. Students must use canonical records.

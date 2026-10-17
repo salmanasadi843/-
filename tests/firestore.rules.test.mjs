@@ -436,3 +436,110 @@ test("a teacher with disabled approval cannot publish or write privileged cloud 
   }));
 });
 
+
+
+test("an approved teacher can read another teacher's published class but not hidden content or private aggregate", async () => {
+  await seedApprovedTeacher("teacher-owner-isolated", "visible-class", true);
+  await env.withSecurityRulesDisabled(async (context) => {
+    const db = context.firestore();
+    await setDoc(doc(db, "published_classes/teacher-owner-isolated__hidden-class"), {
+      ownerUid: "teacher-owner-isolated",
+      classId: "hidden-class",
+      isPublished: false,
+      classJson: "{}",
+      coursesJson: "[]"
+    });
+    await setDoc(doc(db, "shared_materials/teacher-owner-isolated"), {
+      ownerUid: "teacher-owner-isolated",
+      payload: JSON.stringify({ classes: [{ name: "private aggregate" }] })
+    });
+    await setDoc(doc(db, "users/teacher-reader-isolated"), {
+      uid: "teacher-reader-isolated",
+      role: "TEACHER"
+    });
+    await setDoc(doc(db, "approved_teachers/teacher-reader-isolated"), {
+      ownerUid: "teacher-reader-isolated",
+      enabled: true,
+      approved: true
+    });
+  });
+
+  const readerDb = env.authenticatedContext("teacher-reader-isolated").firestore();
+  await assertSucceeds(getDoc(doc(readerDb, "published_classes/teacher-owner-isolated__visible-class")));
+  await assertFails(getDoc(doc(readerDb, "published_classes/teacher-owner-isolated__hidden-class")));
+  await assertFails(getDoc(doc(readerDb, "shared_materials/teacher-owner-isolated")));
+});
+
+test("admin can approve a teacher profile while changing only role and safe profile metadata", async () => {
+  await env.withSecurityRulesDisabled(async (context) => {
+    await setDoc(doc(context.firestore(), "users/teacher-awaiting-admin"), {
+      uid: "teacher-awaiting-admin",
+      role: "STUDENT",
+      name: "Teacher",
+      email: "teacher@example.com"
+    });
+  });
+  const adminDb = env.authenticatedContext("xgUdnaQ6X0hPobOUwx3SDI0BJVc2").firestore();
+  await assertSucceeds(updateDoc(doc(adminDb, "users/teacher-awaiting-admin"), {
+    role: "TEACHER",
+    updatedAt: Date.now()
+  }));
+  await assertSucceeds(setDoc(doc(adminDb, "approved_teachers/teacher-awaiting-admin"), {
+    ownerUid: "teacher-awaiting-admin",
+    enabled: true,
+    approved: true
+  }));
+  await assertSucceeds(setDoc(doc(adminDb, "teacher_requests/teacher-awaiting-admin"), {
+    uid: "teacher-awaiting-admin",
+    status: "APPROVED"
+  }));
+});
+
+test("admin can provision a missing user profile as TEACHER during approval", async () => {
+  const adminDb = env.authenticatedContext("xgUdnaQ6X0hPobOUwx3SDI0BJVc2").firestore();
+  await assertSucceeds(setDoc(doc(adminDb, "users/teacher-profile-missing"), {
+    role: "TEACHER",
+    name: "New Teacher",
+    email: "new.teacher@example.com",
+    createdAt: Date.now(),
+    updatedAt: Date.now()
+  }));
+  await assertSucceeds(setDoc(doc(adminDb, "approved_teachers/teacher-profile-missing"), {
+    ownerUid: "teacher-profile-missing",
+    enabled: true,
+    approved: true
+  }));
+  const teacherDb = env.authenticatedContext("teacher-profile-missing").firestore();
+  await assertSucceeds(getDoc(doc(teacherDb, "approved_teachers/teacher-profile-missing")));
+  await assertSucceeds(getDoc(doc(teacherDb, "users/teacher-profile-missing")));
+});
+
+test("a previously approved teacher can repair a stale STUDENT role but cannot self-approve", async () => {
+  await env.withSecurityRulesDisabled(async (context) => {
+    const db = context.firestore();
+    await setDoc(doc(db, "users/teacher-stale-role"), {
+      uid: "teacher-stale-role",
+      role: "STUDENT",
+      name: "Previously Approved Teacher"
+    });
+    await setDoc(doc(db, "approved_teachers/teacher-stale-role"), {
+      ownerUid: "teacher-stale-role",
+      enabled: true,
+      approved: true
+    });
+  });
+
+  const db = env.authenticatedContext("teacher-stale-role").firestore();
+  await assertSucceeds(updateDoc(doc(db, "users/teacher-stale-role"), {
+    role: "TEACHER",
+    updatedAt: Date.now()
+  }));
+  await assertFails(updateDoc(doc(db, "users/teacher-stale-role"), {
+    role: "STUDENT"
+  }));
+  await assertFails(setDoc(doc(db, "approved_teachers/teacher-not-approved"), {
+    ownerUid: "teacher-not-approved",
+    enabled: true,
+    approved: true
+  }));
+});
