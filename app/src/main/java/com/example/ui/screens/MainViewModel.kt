@@ -521,15 +521,28 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
         }
 
     private fun denyTeacherMutation() {
-        _cloudSyncStatus.value = "مجوز فعال استاد برای این حساب وجود ندارد؛ ایجاد و ویرایش مطالب مسدود شد."
-        _userRole.value = UserRole.STUDENT
-        rolePrefs.edit().putString("role", UserRole.STUDENT.name).apply()
+        // Keep the visible role unchanged on a failed live check (which may be a
+        // temporary network/rules issue). Every mutation remains guarded below.
+        _cloudSyncStatus.value = "مجوز فعال استاد تأیید نشد؛ ایجاد و ویرایش مطالب متوقف شد."
     }
 
-    fun saveClass(item: com.example.data.local.ClassEntity, onSaved: (Long) -> Unit = {}) {
+    fun saveClass(
+        item: com.example.data.local.ClassEntity,
+        onSaved: (Long) -> Unit = {},
+        onFailure: (String) -> Unit = {}
+    ) {
         viewModelScope.launch {
-            if (!teacherPermissionGranted()) { denyTeacherMutation(); return@launch }
-            onSaved(repository.saveClass(item))
+            try {
+                if (!teacherPermissionGranted()) {
+                    denyTeacherMutation()
+                    onFailure("مجوز فعال این حساب به‌عنوان استاد در Firebase تأیید نشد. از حساب مدیر اصلی، درخواست این استاد را بررسی و دوباره تأیید کنید؛ سپس خارج شوید و دوباره وارد شوید.")
+                    return@launch
+                }
+                onSaved(repository.saveClass(item))
+            } catch (e: Exception) {
+                Log.e(TAG, "Saving class failed", e)
+                onFailure("ذخیره کلاس ناموفق بود: ${e.localizedMessage ?: "خطای نامشخص Firebase یا پایگاه داده"}")
+            }
         }
     }
 
