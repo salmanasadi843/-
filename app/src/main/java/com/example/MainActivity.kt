@@ -87,6 +87,14 @@ fun OstadYarApp(
                         // دانشجو هنگام ورود، مطالب منتشرشده را خودکار دریافت می‌کند.
                         viewModel.startStudentMaterialsSync()
                     }
+                }.onFailure {
+                    // اگر مجوز استاد لغو شده یا قابل تأیید نباشد، نشست قبلی نباید
+                    // با نقش ذخیره‌شده محلی اجازه ساخت/ویرایش بدهد.
+                    AuthPreferences.logout(context)
+                    authenticated = false
+                    userRole = UserRole.STUDENT
+                    viewModel.setUserRole(UserRole.STUDENT)
+                    viewModel.navigateTo(Screen.Home)
                 }
             }
         }
