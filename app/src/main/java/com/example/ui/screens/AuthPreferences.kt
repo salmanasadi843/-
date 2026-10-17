@@ -139,83 +139,83 @@ object AuthPreferences {
 
                 val user = auth(context).currentUser
                 if (user == null) {
+                    auth(context).signOut()
                     onResult(Result.failure(IllegalStateException("ورود انجام شد اما کاربر در دسترس نیست.")))
                     return@addOnCompleteListener
                 }
 
                 firestore(context).collection("users").document(user.uid).get()
-                    .addOnCompleteListener { profileTask ->
+                    .addOnCompleteListener profileListener@{ profileTask ->
                         if (!profileTask.isSuccessful) {
-                            onResult(
-                                Result.failure(
-                                    profileTask.exception
-                                        ?: IllegalStateException("دریافت نقش کاربر از Firebase انجام نشد.")
-                                )
-                            )
-                            return@addOnCompleteListener
+                            auth(context).signOut()
+                            onResult(Result.failure(profileTask.exception ?: IllegalStateException("دریافت نقش کاربر از Firebase انجام نشد.")))
+                            return@profileListener
                         }
 
                         val snapshot = profileTask.result
                         if (!snapshot.exists()) {
-                            onResult(
-                                Result.failure(
-                                    IllegalStateException(
-                                        "پروفایل این حساب در Firebase وجود ندارد. نقش کاربر مشخص نشده است."
-                                    )
-                                )
-                            )
-                            return@addOnCompleteListener
+                            auth(context).signOut()
+                            onResult(Result.failure(IllegalStateException("پروفایل این حساب در Firebase وجود ندارد. نقش کاربر مشخص نشده است.")))
+                            return@profileListener
                         }
 
-                        val isPrimaryTeacher =
-                            normalizedEmail == PRIMARY_TEACHER_EMAIL
+                        val isPrimary = normalizedEmail == PRIMARY_TEACHER_EMAIL
                         val roleValue = snapshot.getString("role")
                         val role = when {
-                            isPrimaryTeacher -> UserRole.TEACHER
+                            isPrimary -> UserRole.TEACHER
                             roleValue == UserRole.TEACHER.name -> UserRole.TEACHER
                             roleValue == UserRole.STUDENT.name -> UserRole.STUDENT
                             else -> {
-                                onResult(
-                                    Result.failure(
-                                        IllegalStateException(
-                                            "نقش این حساب در Firebase مشخص نشده است. مقدار role باید TEACHER یا STUDENT باشد."
-                                        )
-                                    )
-                                )
-                                return@addOnCompleteListener
+                                auth(context).signOut()
+                                onResult(Result.failure(IllegalStateException("نقش این حساب در Firebase مشخص نشده است. مقدار role باید TEACHER یا STUDENT باشد.")))
+                                return@profileListener
                             }
                         }
                         val name = snapshot.getString("name").orEmpty().ifBlank {
-                            if (isPrimaryTeacher) "سلمان اسدی" else ""
+                            if (isPrimary) "سلمان اسدی" else ""
                         }
 
-                        if (isPrimaryTeacher &&
-                            (roleValue != UserRole.TEACHER.name || snapshot.getString("name").isNullOrBlank())
-                        ) {
-                            val teacherProfile = hashMapOf<String, Any>(
-                                "email" to normalizedEmail,
-                                "name" to name,
-                                "role" to UserRole.TEACHER.name,
-                                "updatedAt" to FieldValue.serverTimestamp()
-                            )
-                            firestore(context).collection("users").document(user.uid)
-                                .set(teacherProfile, com.google.firebase.firestore.SetOptions.merge())
-                                .addOnCompleteListener { updateTask ->
-                                    if (!updateTask.isSuccessful) {
-                                        onResult(
-                                            Result.failure(
-                                                updateTask.exception
-                                                    ?: IllegalStateException("تنظیم نقش استاد انجام نشد.")
-                                            )
-                                        )
-                                        return@addOnCompleteListener
+                        verifyTeacherApproval(context, user.uid, isPrimary) { approvalResult ->
+                            approvalResult.fold(
+                                onSuccess = { approved ->
+                                    if (role == UserRole.TEACHER && !approved) {
+                                        auth(context).signOut()
+                                        context.getSharedPreferences(PREFS, Context.MODE_PRIVATE).edit().clear().apply()
+                                        onResult(Result.failure(IllegalStateException("این حساب نقش استاد دارد، اما مجوز فعال استادی ندارد. مدیر اصلی باید مجوز را دوباره فعال کند.")))
+                                        return@fold
                                     }
-                                    cacheProfile(context, UserRole.TEACHER, name)
-                                    onResult(Result.success(UserRole.TEACHER))
+
+                                    if (isPrimary &&
+                                        (roleValue != UserRole.TEACHER.name || snapshot.getString("name").isNullOrBlank())
+                                    ) {
+                                        val teacherProfile = hashMapOf<String, Any>(
+                                            "email" to normalizedEmail,
+                                            "name" to name,
+                                            "role" to UserRole.TEACHER.name,
+                                            "updatedAt" to FieldValue.serverTimestamp()
+                                        )
+                                        firestore(context).collection("users").document(user.uid)
+                                            .set(teacherProfile, com.google.firebase.firestore.SetOptions.merge())
+                                            .addOnCompleteListener { updateTask ->
+                                                if (!updateTask.isSuccessful) {
+                                                    auth(context).signOut()
+                                                    onResult(Result.failure(updateTask.exception ?: IllegalStateException("تنظیم نقش استاد انجام نشد.")))
+                                                } else {
+                                                    cacheProfile(context, UserRole.TEACHER, name)
+                                                    onResult(Result.success(UserRole.TEACHER))
+                                                }
+                                            }
+                                    } else {
+                                        cacheProfile(context, role, name)
+                                        onResult(Result.success(role))
+                                    }
+                                },
+                                onFailure = {
+                                    auth(context).signOut()
+                                    context.getSharedPreferences(PREFS, Context.MODE_PRIVATE).edit().clear().apply()
+                                    onResult(Result.failure(it))
                                 }
-                        } else {
-                            cacheProfile(context, role, name)
-                            onResult(Result.success(role))
+                            )
                         }
                     }
             }
@@ -376,38 +376,112 @@ object AuthPreferences {
         }
 
         firestore(context).collection("users").document(user.uid).get()
-            .addOnCompleteListener { task ->
+            .addOnCompleteListener profileListener@{ task ->
                 if (!task.isSuccessful) {
-                    onResult(
-                        Result.failure(
-                            task.exception ?: IllegalStateException("دریافت پروفایل کاربر انجام نشد.")
-                        )
-                    )
-                    return@addOnCompleteListener
+                    onResult(Result.failure(task.exception ?: IllegalStateException("دریافت پروفایل کاربر انجام نشد.")))
+                    return@profileListener
                 }
 
                 val snapshot = task.result
+                if (!snapshot.exists()) {
+                    auth(context).signOut()
+                    context.getSharedPreferences(PREFS, Context.MODE_PRIVATE).edit().clear().apply()
+                    onResult(Result.failure(IllegalStateException("پروفایل این حساب در Firebase وجود ندارد.")))
+                    return@profileListener
+                }
+
                 val userEmail = user.email?.trim()?.lowercase().orEmpty()
-                val role = if (
-                    userEmail == PRIMARY_TEACHER_EMAIL ||
-                    snapshot.getString("role") == UserRole.TEACHER.name
-                ) {
-                    UserRole.TEACHER
-                } else if (snapshot.getString("role") == UserRole.STUDENT.name) {
-                    UserRole.STUDENT
-                } else {
-                    onResult(
-                        Result.failure(
-                            IllegalStateException("نقش این حساب در Firebase مشخص نشده است.")
-                        )
-                    )
-                    return@addOnCompleteListener
+                val isPrimary = userEmail == PRIMARY_TEACHER_EMAIL
+                val role = when {
+                    isPrimary -> UserRole.TEACHER
+                    snapshot.getString("role") == UserRole.TEACHER.name -> UserRole.TEACHER
+                    snapshot.getString("role") == UserRole.STUDENT.name -> UserRole.STUDENT
+                    else -> {
+                        onResult(Result.failure(IllegalStateException("نقش این حساب در Firebase مشخص نشده است.")))
+                        return@profileListener
+                    }
                 }
                 val name = snapshot.getString("name").orEmpty().ifBlank {
-                    if (userEmail == PRIMARY_TEACHER_EMAIL) "سلمان اسدی" else ""
+                    if (isPrimary) "سلمان اسدی" else ""
                 }
-                cacheProfile(context, role, name)
-                onResult(Result.success(role))
+
+                verifyTeacherApproval(context, user.uid, isPrimary) { approvalResult ->
+                    approvalResult.fold(
+                        onSuccess = { approved ->
+                            if (role == UserRole.TEACHER && !approved) {
+                                auth(context).signOut()
+                                context.getSharedPreferences(PREFS, Context.MODE_PRIVATE).edit().clear().apply()
+                                onResult(Result.failure(IllegalStateException("مجوز فعال استادی این حساب وجود ندارد؛ دسترسی استاد مسدود شد. از مدیر اصلی بخواهید مجوز را بررسی کند.")))
+                            } else {
+                                cacheProfile(context, role, name)
+                                onResult(Result.success(role))
+                            }
+                        },
+                        onFailure = {
+                            // Fail closed: never retain a cached teacher role if permission cannot be verified.
+                            auth(context).signOut()
+                            context.getSharedPreferences(PREFS, Context.MODE_PRIVATE).edit().clear().apply()
+                            onResult(Result.failure(it))
+                        }
+                    )
+                }
+            }
+    }
+
+    private fun verifyTeacherApproval(
+        context: Context,
+        uid: String,
+        isPrimary: Boolean,
+        onResult: (Result<Boolean>) -> Unit
+    ) {
+        if (isPrimary) {
+            onResult(Result.success(true))
+            return
+        }
+        firestore(context).collection("approved_teachers").document(uid).get()
+            .addOnCompleteListener { task ->
+                if (!task.isSuccessful) {
+                    onResult(Result.failure(task.exception ?: IllegalStateException("بررسی مجوز استاد انجام نشد.")))
+                    return@addOnCompleteListener
+                }
+                val snapshot = task.result
+                val enabled = snapshot.exists() &&
+                    (snapshot.getBoolean("enabled") == true || snapshot.getBoolean("approved") == true)
+                onResult(Result.success(enabled))
+            }
+    }
+
+    /**
+     * Live authorization check for every teacher-only mutation.
+     * The primary teacher is trusted; all other teachers must have both a TEACHER profile
+     * and an active approved_teachers document.
+     */
+    fun hasActiveTeacherPermission(
+        context: Context,
+        onResult: (Boolean) -> Unit
+    ) {
+        val user = auth(context).currentUser
+        if (user == null) {
+            onResult(false)
+            return
+        }
+        val isPrimary = user.email?.trim()?.lowercase() == PRIMARY_TEACHER_EMAIL
+        if (isPrimary) {
+            onResult(true)
+            return
+        }
+        firestore(context).collection("users").document(user.uid).get()
+            .addOnCompleteListener profileListener@{ profileTask ->
+                if (!profileTask.isSuccessful ||
+                    !profileTask.result.exists() ||
+                    profileTask.result.getString("role") != UserRole.TEACHER.name
+                ) {
+                    onResult(false)
+                    return@profileListener
+                }
+                verifyTeacherApproval(context, user.uid, false) { approval ->
+                    onResult(approval.getOrNull() == true)
+                }
             }
     }
 
