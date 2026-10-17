@@ -304,6 +304,7 @@ object AuthPreferences {
         val status = if (approve) "APPROVED" else "REJECTED"
         val batch = db.batch()
         val requestData = hashMapOf<String, Any>(
+            "uid" to uid,
             "status" to status,
             "reviewedAt" to FieldValue.serverTimestamp(),
             "updatedAt" to FieldValue.serverTimestamp()
