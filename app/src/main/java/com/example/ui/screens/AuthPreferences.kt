@@ -459,7 +459,8 @@ object AuthPreferences {
             onResult(Result.success(true))
             return
         }
-        firestore(context).collection("approved_teachers").document(uid).get()
+        firestore(context).collection("approved_teachers").document(uid)
+            .get(com.google.firebase.firestore.Source.SERVER)
             .addOnCompleteListener { task ->
                 if (!task.isSuccessful) {
                     onResult(Result.failure(task.exception ?: IllegalStateException("بررسی مجوز استاد انجام نشد.")))
@@ -491,7 +492,8 @@ object AuthPreferences {
             onResult(true)
             return
         }
-        firestore(context).collection("users").document(user.uid).get()
+        firestore(context).collection("users").document(user.uid)
+            .get(com.google.firebase.firestore.Source.SERVER)
             .addOnCompleteListener profileListener@{ profileTask ->
                 if (!profileTask.isSuccessful ||
                     !profileTask.result.exists() ||
