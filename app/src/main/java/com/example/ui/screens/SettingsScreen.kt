@@ -168,7 +168,11 @@ fun SettingsScreen(
                 .padding(16.dp),
             verticalArrangement = Arrangement.spacedBy(16.dp)
         ) {
-            if (AuthPreferences.isPrimaryTeacher(context)) {\n                AdminTeacherManagementCard()\n            }\n\n            val cloudSyncStatus by viewModel.cloudSyncStatus.collectAsState()
+            if (AuthPreferences.isPrimaryTeacher(context)) {
+                AdminTeacherManagementCard()
+            }
+
+            val cloudSyncStatus by viewModel.cloudSyncStatus.collectAsState()
             Card(
                 colors = CardDefaults.cardColors(
                     containerColor = MaterialTheme.colorScheme.surface
