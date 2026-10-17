@@ -343,7 +343,7 @@ object AuthPreferences {
         val db = firestore(context); val batch = db.batch()
         batch.set(db.collection("teacher_requests").document(uid), mapOf("uid" to uid, "teacherName" to teacherName, "email" to email, "status" to if (approve) "APPROVED" else "REJECTED", "reviewedAt" to FieldValue.serverTimestamp(), "updatedAt" to FieldValue.serverTimestamp()), com.google.firebase.firestore.SetOptions.merge())
         if (approve) {
-            batch.set(db.collection("users").document(uid), mapOf("uid" to uid, "name" to teacherName, "email" to email, "role" to UserRole.TEACHER.name, "updatedAt" to FieldValue.serverTimestamp()), com.google.firebase.firestore.SetOptions.merge())
+            batch.set(db.collection("users").document(uid), mapOf("name" to teacherName, "email" to email, "role" to UserRole.TEACHER.name, "updatedAt" to FieldValue.serverTimestamp()), com.google.firebase.firestore.SetOptions.merge())
             batch.set(db.collection("approved_teachers").document(uid), mapOf("ownerUid" to uid, "enabled" to true, "approved" to true, "updatedAt" to FieldValue.serverTimestamp()), com.google.firebase.firestore.SetOptions.merge())
         }
         batch.commit().addOnSuccessListener { onResult(Result.success(Unit)) }.addOnFailureListener { onResult(Result.failure(it)) }
@@ -352,7 +352,7 @@ object AuthPreferences {
         if (!isPrimaryTeacher(context)) { onResult(Result.failure(SecurityException("فقط مدیر اصلی اجازه تغییر مجوز استاد را دارد."))); return }
         if (uid.isBlank() || uid == currentUid(context)) { onResult(Result.failure(IllegalArgumentException("تغییر نقش حساب مدیر اصلی از این بخش مجاز نیست."))); return }
         val db = firestore(context); val batch = db.batch()
-        batch.set(db.collection("users").document(uid), mapOf("uid" to uid, "name" to teacherName, "email" to email, "role" to if (enabled) UserRole.TEACHER.name else UserRole.STUDENT.name, "updatedAt" to FieldValue.serverTimestamp()), com.google.firebase.firestore.SetOptions.merge())
+        batch.set(db.collection("users").document(uid), mapOf("name" to teacherName, "email" to email, "role" to if (enabled) UserRole.TEACHER.name else UserRole.STUDENT.name, "updatedAt" to FieldValue.serverTimestamp()), com.google.firebase.firestore.SetOptions.merge())
         batch.set(db.collection("teacher_requests").document(uid), mapOf("uid" to uid, "teacherName" to teacherName, "email" to email, "status" to if (enabled) "APPROVED" else "REVOKED", "updatedAt" to FieldValue.serverTimestamp()), com.google.firebase.firestore.SetOptions.merge())
         val approvalRef = db.collection("approved_teachers").document(uid)
         if (enabled) batch.set(approvalRef, mapOf("ownerUid" to uid, "enabled" to true, "approved" to true, "updatedAt" to FieldValue.serverTimestamp()), com.google.firebase.firestore.SetOptions.merge()) else batch.delete(approvalRef)
