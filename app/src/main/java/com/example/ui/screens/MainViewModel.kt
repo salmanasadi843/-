@@ -30,6 +30,8 @@ import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.debounce
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.suspendCancellableCoroutine
+import kotlin.coroutines.resume
 import kotlinx.coroutines.withContext
 import android.content.Context
 import org.json.JSONArray
@@ -89,7 +91,7 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
 
     private val rolePrefs = application.getSharedPreferences("ostadyar_role", Context.MODE_PRIVATE)
     private val _userRole = MutableStateFlow(
-        if (rolePrefs.getString("role", "TEACHER") == "STUDENT") UserRole.STUDENT else UserRole.TEACHER
+        if (rolePrefs.getString("role", "STUDENT") == "TEACHER") UserRole.TEACHER else UserRole.STUDENT
     )
     val userRole: StateFlow<UserRole> = _userRole.asStateFlow()
 
@@ -498,20 +500,47 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
 
     fun openCourse(courseId: Long) { /* Legacy compatibility: course screens are no longer part of the user flow. */ }
 
+    private suspend fun teacherPermissionGranted(): Boolean =
+        suspendCancellableCoroutine { continuation ->
+            AuthPreferences.hasActiveTeacherPermission(getApplication<Application>()) { allowed ->
+                if (continuation.isActive) continuation.resume(allowed)
+            }
+        }
+
+    private fun denyTeacherMutation() {
+        _cloudSyncStatus.value = "مجوز فعال استاد برای این حساب وجود ندارد؛ ایجاد و ویرایش مطالب مسدود شد."
+        _userRole.value = UserRole.STUDENT
+        rolePrefs.edit().putString("role", UserRole.STUDENT.name).apply()
+    }
+
     fun saveClass(item: com.example.data.local.ClassEntity, onSaved: (Long) -> Unit = {}) {
-        viewModelScope.launch { onSaved(repository.saveClass(item)) }
+        viewModelScope.launch {
+            if (!teacherPermissionGranted()) { denyTeacherMutation(); return@launch }
+            onSaved(repository.saveClass(item))
+        }
     }
 
     fun saveCourse(item: com.example.data.local.CourseEntity, onSaved: (Long) -> Unit = {}) {
-        viewModelScope.launch { onSaved(repository.saveCourse(item)) }
+        viewModelScope.launch {
+            if (!teacherPermissionGranted()) { denyTeacherMutation(); return@launch }
+            onSaved(repository.saveCourse(item))
+        }
     }
 
     fun deleteClass(item: com.example.data.local.ClassEntity, onDeleted: () -> Unit = {}) {
-        viewModelScope.launch { repository.deleteClass(item); onDeleted() }
+        viewModelScope.launch {
+            if (!teacherPermissionGranted()) { denyTeacherMutation(); return@launch }
+            repository.deleteClass(item)
+            onDeleted()
+        }
     }
 
     fun deleteCourse(item: com.example.data.local.CourseEntity, onDeleted: () -> Unit = {}) {
-        viewModelScope.launch { repository.deleteCourse(item); onDeleted() }
+        viewModelScope.launch {
+            if (!teacherPermissionGranted()) { denyTeacherMutation(); return@launch }
+            repository.deleteCourse(item)
+            onDeleted()
+        }
     }
 
     fun setSearchQuery(query: String) {
@@ -674,6 +703,7 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
             }
 
         viewModelScope.launch {
+            if (!teacherPermissionGranted()) { denyTeacherMutation(); return@launch }
 
             val existing =
                 if (lectureId != null)
@@ -730,6 +760,7 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
 
     fun setClassPublished(classItem: ClassEntity, published: Boolean) {
         viewModelScope.launch {
+            if (!teacherPermissionGranted()) { denyTeacherMutation(); return@launch }
             repository.saveClass(classItem.copy(isPublished = published))
             // Refresh the shared student feed immediately after class visibility changes.
             try {
@@ -747,6 +778,7 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
     fun toggleFavorite(lecture: LectureEntity) {
 
         viewModelScope.launch {
+            if (!teacherPermissionGranted()) { denyTeacherMutation(); return@launch }
 
             repository.toggleFavorite(lecture)
 
@@ -766,6 +798,7 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
     ) {
 
         viewModelScope.launch {
+            if (!teacherPermissionGranted()) { denyTeacherMutation(); return@launch }
 
             audioPlayer.stop()
 
