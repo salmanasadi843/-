@@ -513,3 +513,33 @@ test("admin can provision a missing user profile as TEACHER during approval", as
   await assertSucceeds(getDoc(doc(teacherDb, "approved_teachers/teacher-profile-missing")));
   await assertSucceeds(getDoc(doc(teacherDb, "users/teacher-profile-missing")));
 });
+
+test("a previously approved teacher can repair a stale STUDENT role but cannot self-approve", async () => {
+  await env.withSecurityRulesDisabled(async (context) => {
+    const db = context.firestore();
+    await setDoc(doc(db, "users/teacher-stale-role"), {
+      uid: "teacher-stale-role",
+      role: "STUDENT",
+      name: "Previously Approved Teacher"
+    });
+    await setDoc(doc(db, "approved_teachers/teacher-stale-role"), {
+      ownerUid: "teacher-stale-role",
+      enabled: true,
+      approved: true
+    });
+  });
+
+  const db = env.authenticatedContext("teacher-stale-role").firestore();
+  await assertSucceeds(updateDoc(doc(db, "users/teacher-stale-role"), {
+    role: "TEACHER",
+    updatedAt: Date.now()
+  }));
+  await assertFails(updateDoc(doc(db, "users/teacher-stale-role"), {
+    role: "STUDENT"
+  }));
+  await assertFails(setDoc(doc(db, "approved_teachers/teacher-not-approved"), {
+    ownerUid: "teacher-not-approved",
+    enabled: true,
+    approved: true
+  }));
+});
