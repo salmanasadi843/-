@@ -221,11 +221,32 @@ fun AdminTeacherManagementCard() {
                         Text(teacher.teacherName, style = MaterialTheme.typography.bodyMedium)
                         Text(teacher.email, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
                     }
-                    OutlinedButton(
-                        enabled = actionUid == null,
-                        onClick = {
-                            if (teacher.role == UserRole.TEACHER.name) teacherToRevoke = teacher
-                            else {
+                    if (teacher.role == UserRole.TEACHER.name) {
+                        Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                            OutlinedButton(
+                                enabled = actionUid == null,
+                                onClick = {
+                                    actionUid = teacher.uid
+                                    AuthPreferences.setTeacherRole(context, teacher.uid, teacher.teacherName, teacher.email, true) { result ->
+                                        actionUid = null
+                                        statusError = result.isFailure
+                                        statusMessage = result.fold(
+                                            onSuccess = { "مجوز استادی برای ${teacher.teacherName} دوباره فعال شد." },
+                                            onFailure = { "فعال‌سازی مجدد انجام نشد: ${it.localizedMessage ?: "خطای نامشخص"}" }
+                                        )
+                                        refresh()
+                                    }
+                                }
+                            ) { Text("فعال‌سازی مجدد") }
+                            OutlinedButton(
+                                enabled = actionUid == null,
+                                onClick = { teacherToRevoke = teacher }
+                            ) { Text("لغو مجوز") }
+                        }
+                    } else {
+                        OutlinedButton(
+                            enabled = actionUid == null,
+                            onClick = {
                                 actionUid = teacher.uid
                                 AuthPreferences.setTeacherRole(context, teacher.uid, teacher.teacherName, teacher.email, true) { result ->
                                     actionUid = null
@@ -237,8 +258,8 @@ fun AdminTeacherManagementCard() {
                                     refresh()
                                 }
                             }
-                        }
-                    ) { Text(if (teacher.role == UserRole.TEACHER.name) "لغو مجوز" else "تأیید استاد") }
+                        ) { Text("تأیید استاد") }
+                    }
                 }
             }
             if (statusMessage != null) {
