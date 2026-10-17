@@ -44,6 +44,7 @@ import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Text
 import androidx.compose.material3.TopAppBar
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.getValue
@@ -65,9 +66,13 @@ import com.example.data.api.SpeechmaticsApiService
 import com.example.ui.screens.AuthPreferences
 import com.example.ui.theme.AppThemeMode
 import com.example.ui.theme.themeAccent
+import com.google.firebase.firestore.FirebaseFirestore
+import com.google.firebase.firestore.ListenerRegistration
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
+
+data class ManagedTeacherAccount(val uid: String, val name: String, val email: String)
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -93,6 +98,10 @@ fun SettingsScreen(
     var teacherRequestBusy by remember { mutableStateOf(false) }
     var teacherRequestStatus by remember { mutableStateOf<String?>(null) }
     var teacherRequestError by remember { mutableStateOf(false) }
+    val isPrimaryAdmin = remember { AuthPreferences.isPrimaryTeacher(context) }
+    var managedTeacherAccounts by remember { mutableStateOf<List<ManagedTeacherAccount>>(emptyList()) }
+    var teacherManagementStatus by remember { mutableStateOf<String?>(null) }
+    var teacherManagementBusyUid by remember { mutableStateOf<String?>(null) }
     val createBackup = rememberLauncherForActivityResult(ActivityResultContracts.CreateDocument("application/json")) { uri ->
         if (uri != null) backupScope.launch {
             backupBusy = true; backupStatus = null
@@ -120,6 +129,26 @@ fun SettingsScreen(
             backupError = result.isFailure
             backupStatus = result.getOrElse { "بازیابی ناموفق بود: ${it.localizedMessage}" }
         }
+    }
+
+    DisposableEffect(isPrimaryAdmin) {
+        var registration: ListenerRegistration? = null
+        if (isPrimaryAdmin) {
+            registration = FirebaseFirestore.getInstance().collection("users")
+                .whereEqualTo("role", UserRole.TEACHER.name)
+                .addSnapshotListener { snapshot, error ->
+                    if (error != null) {
+                        teacherManagementStatus = "دریافت حساب‌های استاد ناموفق بود: ${error.localizedMessage}"
+                    } else {
+                        managedTeacherAccounts = snapshot?.documents.orEmpty()
+                            .filter { it.getString("email")?.trim()?.lowercase() != "salmanasadi843@gmail.com" }
+                            .map { doc -> ManagedTeacherAccount(doc.id, doc.getString("name").orEmpty(), doc.getString("email").orEmpty()) }
+                            .sortedBy { it.name.lowercase() }
+                        teacherManagementStatus = null
+                    }
+                }
+        }
+        onDispose { registration?.remove() }
     }
 
     var groqKey by remember { mutableStateOf(GroqApiService.getSavedApiKey(context)) }
@@ -553,6 +582,46 @@ fun SettingsScreen(
                 }
             }
 
+            if (isPrimaryAdmin) {
+                Card(
+                    colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
+                    elevation = CardDefaults.cardElevation(2.dp),
+                    modifier = Modifier.fillMaxWidth()
+                ) {
+                    Column(Modifier.padding(18.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                        Text("مدیریت حساب استادها", style = MaterialTheme.typography.titleLarge)
+                        Text("حساب‌های دارای نقش استاد را مشاهده کنید و در صورت نیاز مجوز آن‌ها را لغو کنید.", style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                        if (teacherManagementStatus != null) Text(teacherManagementStatus!!, color = MaterialTheme.colorScheme.error)
+                        if (managedTeacherAccounts.isEmpty()) {
+                            Text("در حال حاضر حساب دیگری با نقش استاد ثبت نشده است.")
+                        } else {
+                            managedTeacherAccounts.forEach { account ->
+                                Card(Modifier.fillMaxWidth(), colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant)) {
+                                    Row(Modifier.fillMaxWidth().padding(12.dp), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                                        Column(Modifier.weight(1f)) {
+                                            Text(account.name.ifBlank { "نام ثبت نشده" }, style = MaterialTheme.typography.titleMedium)
+                                            Text(account.email, style = MaterialTheme.typography.bodySmall)
+                                        }
+                                        OutlinedButton(
+                                            enabled = teacherManagementBusyUid == null,
+                                            onClick = {
+                                                teacherManagementBusyUid = account.uid
+                                                AuthPreferences.reviewTeacherRequest(context, account.uid, account.name, account.email, false) { result ->
+                                                    teacherManagementBusyUid = null
+                                                    teacherManagementStatus = result.fold(
+                                                        onSuccess = { "مجوز استاد لغو شد." },
+                                                        onFailure = { "لغو مجوز ناموفق بود: ${it.localizedMessage}" }
+                                                    )
+                                                }
+                                            }
+                                        ) { Text(if (teacherManagementBusyUid == account.uid) "..." else "لغو مجوز") }
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+            }
             Card(
                     colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
                     elevation = CardDefaults.cardElevation(2.dp),
