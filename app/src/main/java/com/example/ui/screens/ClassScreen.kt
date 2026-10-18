@@ -144,7 +144,7 @@ fun ClassScreen(
                                 Spacer(Modifier.height(8.dp))
                                 Text("مشاهده جلسات  ›", style = MaterialTheme.typography.labelLarge, fontWeight = FontWeight.SemiBold, color = MaterialTheme.colorScheme.primary)
                             }
-                            if (userRole == UserRole.TEACHER) {
+                            if (canManageClasses) {
                                 IconButton(onClick = {
                                     editingClass = item
                                     name = item.name
