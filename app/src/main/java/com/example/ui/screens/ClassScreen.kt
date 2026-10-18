@@ -40,7 +40,6 @@ fun ClassScreen(
     )
     val classes = if (!canManageClasses) {
         if (studentFeedReady) allClasses.filter { it.id < 0L && it.isPublished }
-            .distinctBy { "${it.name.trim().lowercase()}|${it.teacherName.trim().lowercase()}|${it.term.trim().lowercase()}" }
         else emptyList()
     } else allClasses
     // Refresh the published feed whenever a student opens the class list so revoked visibility is applied.
@@ -131,7 +130,7 @@ fun ClassScreen(
                 item {
                     Text(classes.size.toString() + " کلاس", style = MaterialTheme.typography.labelLarge, color = MaterialTheme.colorScheme.onSurfaceVariant)
                 }
-                items(classes.distinctBy { "${it.name.trim().lowercase()}|${it.teacherName.trim().lowercase()}|${it.term.trim().lowercase()}" }, key = { it.id }) { item ->
+                items(classes, key = { it.id }) { item ->
                     Card(
                         Modifier.fillMaxWidth().clickable { onOpenClass(item.id) },
                         shape = RoundedCornerShape(22.dp),
