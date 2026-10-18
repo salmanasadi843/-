@@ -48,32 +48,63 @@ object CloudMaterialsSync {
             val allClasses = mutableListOf<ClassEntity>()
             val allCourses = mutableListOf<CourseEntity>()
             val allLectures = mutableListOf<LectureEntity>()
-
-            documents.forEach { document ->
+            val validPayloads = documents.mapNotNull { document ->
                 val owner = document.getString("ownerUid") ?: document.id
-                val payloadText = document.getString("payload") ?: return@forEach
-                val payload = JSONObject(payloadText)
-                if (payload.optString("format") != "darsyar-shared-materials") return@forEach
+                val payloadText = document.getString("payload") ?: return@mapNotNull null
+                val payload = runCatching { JSONObject(payloadText) }.getOrNull() ?: return@mapNotNull null
+                if (payload.optString("format") != "darsyar-shared-materials") null else owner to payload
+            }
+
+            // Merge duplicate class cards by normalized name + teacher + term, but remap
+            // every source class ID to the merged ID so no course or session is lost.
+            fun normalized(value: String): String =
+                value.trim().lowercase().replace(Regex("\\s+"), " ")
+
+            val sourceClasses = mutableListOf<Triple<String, ClassEntity, String>>()
+            validPayloads.forEach { (owner, payload) ->
                 payload.optJSONArray("classes")?.let { array ->
                     for (i in 0 until array.length()) {
                         val item = array.getJSONObject(i).toClassEntity()
-                        allClasses += item.copy(id = stableId(owner, "class:${item.id}"))
+                        if (!item.isPublished) continue
+                        val signature = listOf(item.name, item.teacherName, item.term)
+                            .joinToString("|") { normalized(it) }
+                        sourceClasses += Triple(owner, item, signature)
                     }
                 }
+            }
+
+            val classIdMap = mutableMapOf<String, Long>()
+            sourceClasses.groupBy { it.third }.forEach { (signature, entries) ->
+                val mergedId = stableId("merged-classes", signature)
+                entries.forEach { (owner, item, _) ->
+                    classIdMap["$owner:${item.id}"] = mergedId
+                }
+                val preferred = entries.maxByOrNull { it.second.createdAtMillis }!!.second
+                allClasses += preferred.copy(
+                    id = mergedId,
+                    isPublished = true,
+                    createdAtMillis = entries.maxOf { it.second.createdAtMillis },
+                    classDateMillis = entries.maxOf { it.second.classDateMillis }
+                )
+            }
+
+            validPayloads.forEach { (owner, payload) ->
                 payload.optJSONArray("courses")?.let { array ->
                     for (i in 0 until array.length()) {
                         val item = array.getJSONObject(i).toCourse()
+                        val mergedClassId = classIdMap["$owner:${item.classId}"] ?: continue
                         allCourses += item.copy(
                             id = stableId(owner, "course:${item.id}"),
-                            classId = stableId(owner, "class:${item.classId}")
+                            classId = mergedClassId
                         )
                     }
                 }
+
                 payload.optJSONArray("lectures")?.let { array ->
                     val teacherLectures = (0 until array.length()).map { array.getJSONObject(it).toLecture() }
+                    val teacherName = payload.optString("teacherName", "استاد")
                     val legacyClassId = stableId(owner, "class:legacy")
                     if (teacherLectures.any { it.classId == null }) {
-                        val teacherName = payload.optString("teacherName", "استاد")
                         allClasses += ClassEntity(
                             id = legacyClassId,
                             name = "مطالب استاد $teacherName",
@@ -85,9 +116,13 @@ object CloudMaterialsSync {
                         )
                     }
                     teacherLectures.forEach { item ->
+                        val mappedClassId = item.classId?.let { classIdMap["$owner:$it"] }
+                            ?: if (item.classId == null) legacyClassId else null
+                        // Do not attach material from a class that is not currently published.
+                        if (mappedClassId == null) return@forEach
                         allLectures += item.copy(
                             id = stableId(owner, "lecture:${item.id}"),
-                            classId = item.classId?.let { stableId(owner, "class:$it") } ?: legacyClassId,
+                            classId = mappedClassId,
                             courseId = item.courseId?.let { stableId(owner, "course:$it") },
                             audioFilePath = null,
                             isFavorite = false
