@@ -58,7 +58,14 @@ object CloudMaterialsSync {
             // Merge duplicate class cards by normalized name + teacher + term, but remap
             // every source class ID to the merged ID so no course or session is lost.
             fun normalized(value: String): String =
-                value.trim().lowercase().replace(Regex("\\s+"), " ")
+                value.trim()
+                    .lowercase()
+                    .replace('ي', 'ی')
+                    .replace('ك', 'ک')
+                    .replace('ى', 'ی')
+                    .replace('ـ', ' ')
+                    .replace(Regex("[\\u200c\\u200d]"), "")
+                    .replace(Regex("\\s+"), " ")
 
             val sourceClasses = mutableListOf<Triple<String, ClassEntity, String>>()
             validPayloads.forEach { (owner, payload) ->
@@ -73,8 +80,15 @@ object CloudMaterialsSync {
                 }
             }
 
+            // A source class ID belongs to one teacher and must remain one class even if
+            // stale duplicate records carry slightly different text after an edit.
+            val canonicalSourceClasses = sourceClasses
+                .groupBy { (owner, item, _) -> "$owner:${item.id}" }
+                .values
+                .mapNotNull { entries -> entries.maxByOrNull { it.second.createdAtMillis } }
+
             val classIdMap = mutableMapOf<String, Long>()
-            sourceClasses.groupBy { it.third }.forEach { (signature, entries) ->
+            canonicalSourceClasses.groupBy { it.third }.forEach { (signature, entries) ->
                 val mergedId = stableId("merged-classes", signature)
                 entries.forEach { (owner, item, _) ->
                     classIdMap["$owner:${item.id}"] = mergedId
