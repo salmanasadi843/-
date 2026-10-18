@@ -246,7 +246,7 @@ fun LectureDetailScreen(
                     IconButton(onClick = { showExportDialog = true }) {
                         Icon(imageVector = Icons.Default.Description, contentDescription = "خروجی Word و PDF")
                     }
-                    if (isTeacher) {
+                    if (canManageLecture) {
                     IconButton(onClick = { showDeleteConfirmDialog = true }) {
                         Icon(
                             imageVector = Icons.Default.Delete,
