@@ -139,7 +139,7 @@ fun ClassSessionsScreen(
                                 }
                             }
                         }
-                        if (userRole == UserRole.TEACHER) {
+                        if (canManageSessions) {
                             IconButton(onClick = { showDeleteDialog = lecture }) {
                                 Icon(Icons.Default.Delete, contentDescription = "حذف جلسه")
                             }
