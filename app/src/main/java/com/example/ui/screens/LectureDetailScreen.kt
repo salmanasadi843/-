@@ -122,6 +122,7 @@ fun LectureDetailScreen(
 ) {
     val lecture by viewModel.selectedLecture.collectAsState()
     val context = LocalContext.current
+    val canManageLecture = isTeacher || AuthPreferences.isPrimaryTeacher(context)
 
     val isPlaying by viewModel.audioPlayer.isPlaying.collectAsState()
     val currentPos by viewModel.audioPlayer.currentPosition.collectAsState()
@@ -239,7 +240,7 @@ fun LectureDetailScreen(
                             tint = if (currentLecture.isFavorite) MaterialTheme.colorScheme.tertiary else MaterialTheme.colorScheme.onSurfaceVariant
                         )
                     }
-                    if (isTeacher) { IconButton(onClick = { onNavigateToEdit(lectureId) }, modifier = Modifier.testTag("detail_edit_button")) {
+                    if (canManageLecture) { IconButton(onClick = { onNavigateToEdit(lectureId) }, modifier = Modifier.testTag("detail_edit_button")) {
                         Icon(imageVector = Icons.Default.Edit, contentDescription = "ویرایش")
                         } }
                     IconButton(onClick = { showExportDialog = true }) {
