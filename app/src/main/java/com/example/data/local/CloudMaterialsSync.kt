@@ -26,10 +26,15 @@ object CloudMaterialsSync {
             val allClasses = runBlocking { db.classDao().getAllForBackup() }
             val allCourses = runBlocking { db.courseDao().getAllForBackup() }
             val allLectures = runBlocking { db.lectureDao().getAllForBackup() }
-            val classes = allClasses.filter { it.isPublished }
+            // Imported/shared records use stable negative IDs. They belong to their
+            // original teacher and must never be republished or managed by this account.
+            val classes = allClasses.filter { it.id > 0L && it.isPublished }
             val visibleClassIds = classes.map { it.id }.toSet()
-            val courses = allCourses.filter { it.classId in visibleClassIds }
-            val lectures = allLectures.filter { lecture -> lecture.isPublished && lecture.classId?.let { it in visibleClassIds } == true }
+            val courses = allCourses.filter { it.id > 0L && it.classId > 0L && it.classId in visibleClassIds }
+            val lectures = allLectures.filter { lecture ->
+                lecture.id > 0L && lecture.isPublished &&
+                    lecture.classId?.let { it > 0L && it in visibleClassIds } == true
+            }
             val payload = JSONObject()
                 .put("format", "darsyar-shared-materials")
                 .put("version", 1)
