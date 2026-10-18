@@ -33,6 +33,7 @@ import kotlinx.coroutines.launch
 import kotlinx.coroutines.suspendCancellableCoroutine
 import kotlin.coroutines.resume
 import kotlinx.coroutines.withContext
+import kotlinx.coroutines.withTimeoutOrNull
 import android.content.Context
 import org.json.JSONArray
 import java.io.File
@@ -514,11 +515,13 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
     fun openCourse(courseId: Long) { /* Legacy compatibility: course screens are no longer part of the user flow. */ }
 
     private suspend fun teacherPermissionGranted(): Boolean =
-        suspendCancellableCoroutine { continuation ->
-            AuthPreferences.hasActiveTeacherPermission(getApplication<Application>()) { allowed ->
-                if (continuation.isActive) continuation.resume(allowed)
+        withTimeoutOrNull(15_000L) {
+            suspendCancellableCoroutine { continuation ->
+                AuthPreferences.hasActiveTeacherPermission(getApplication<Application>()) { allowed ->
+                    if (continuation.isActive) continuation.resume(allowed)
+                }
             }
-        }
+        } ?: false
 
     private fun denyTeacherMutation() {
         // Keep the visible role unchanged on a failed live check (which may be a
