@@ -560,6 +560,11 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
         viewModelScope.launch {
             if (!teacherPermissionGranted()) { denyTeacherMutation(); return@launch }
             repository.deleteClass(item)
+            try {
+                withContext(Dispatchers.IO) { CloudMaterialsSync.sync(getApplication<Application>()) }
+            } catch (e: Exception) {
+                Log.e(TAG, "Could not refresh published feed after class deletion", e)
+            }
             onDeleted()
         }
     }
