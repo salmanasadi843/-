@@ -751,8 +751,10 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
                     title = title,
                     courseName = formCourse.value.trim(),
                     professorName = formProfessor.value.trim(),
-                    classId = formClassId.value,
-                    courseId = formCourseId.value,
+                    // Editing a session title must not detach it from its class.
+                    // Preserve the stored relation if the form field is temporarily empty.
+                    classId = formClassId.value ?: existing?.classId,
+                    courseId = formCourseId.value ?: existing?.courseId,
                     dateMillis = PersianDateUtils.parse(
                         formDateText.value,
                         existing?.dateMillis ?: System.currentTimeMillis()
