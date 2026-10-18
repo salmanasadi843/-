@@ -30,6 +30,7 @@ import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -61,13 +62,23 @@ fun HomeScreen(
 ) {
     val allClasses by viewModel.repository.allClasses.collectAsState(initial = emptyList())
     val allLectures by viewModel.repository.allLectures.collectAsState(initial = emptyList())
-    // Student mode only shows cloud-shared records. Positive IDs belong to local/teacher data.
-    val classes = if (userRole == UserRole.STUDENT) allClasses.filter { it.id < 0L && it.isPublished } else allClasses
+    val studentSyncStatus by viewModel.studentMaterialsSyncStatus.collectAsState()
+    LaunchedEffect(userRole) { if (userRole == UserRole.STUDENT) viewModel.startStudentMaterialsSync() }
+    // While refreshing, do not expose stale cached classes whose publication may have been revoked.
+    val studentFeedReady = userRole != UserRole.STUDENT || (
+        studentSyncStatus != "مطالب آنلاین هنوز بررسی نشده‌اند." &&
+        !studentSyncStatus.contains("در حال دریافت") &&
+        !studentSyncStatus.contains("دریافت خودکار مطالب انجام نشد")
+    )
+    val classes = if (userRole == UserRole.STUDENT) {
+        if (studentFeedReady) allClasses.filter { it.id < 0L && it.isPublished }
+            .distinctBy { "${it.name.trim().lowercase()}|${it.teacherName.trim().lowercase()}|${it.term.trim().lowercase()}" }
+        else emptyList()
+    } else allClasses
     val visibleClassIds = classes.map { it.id }.toSet()
     val lectures = if (userRole == UserRole.STUDENT) {
         allLectures.filter { it.id < 0L && it.isPublished && it.classId in visibleClassIds }
     } else allLectures
-    val studentSyncStatus by viewModel.studentMaterialsSyncStatus.collectAsState()
     val isTeacher = userRole == UserRole.TEACHER
     val isPrimaryTeacher = isTeacher && AuthPreferences.isPrimaryTeacher(LocalContext.current)
     val context = LocalContext.current
