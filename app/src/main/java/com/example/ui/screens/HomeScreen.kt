@@ -72,7 +72,6 @@ fun HomeScreen(
     )
     val classes = if (userRole == UserRole.STUDENT) {
         if (studentFeedReady) allClasses.filter { it.id < 0L && it.isPublished }
-            .distinctBy { "${it.name.trim().lowercase()}|${it.teacherName.trim().lowercase()}|${it.term.trim().lowercase()}" }
         else emptyList()
     } else allClasses
     val visibleClassIds = classes.map { it.id }.toSet()
