@@ -32,7 +32,17 @@ fun ClassScreen(
     val canManageClasses = userRole == UserRole.TEACHER || AuthPreferences.isPrimaryTeacher(context)
     val allClasses by viewModel.repository.allClasses.collectAsState(initial = emptyList())
     // Never expose teacher-local or unpublished classes in student mode.
-    val classes = if (!canManageClasses) allClasses.filter { it.id < 0L && it.isPublished } else allClasses
+    val studentSyncStatus by viewModel.studentMaterialsSyncStatus.collectAsState()
+    val studentFeedReady = canManageClasses || (
+        studentSyncStatus != "مطالب آنلاین هنوز بررسی نشده‌اند." &&
+        !studentSyncStatus.contains("در حال دریافت") &&
+        !studentSyncStatus.contains("دریافت خودکار مطالب انجام نشد")
+    )
+    val classes = if (!canManageClasses) {
+        if (studentFeedReady) allClasses.filter { it.id < 0L && it.isPublished }
+            .distinctBy { "${it.name.trim().lowercase()}|${it.teacherName.trim().lowercase()}|${it.term.trim().lowercase()}" }
+        else emptyList()
+    } else allClasses
     // Refresh the published feed whenever a student opens the class list so revoked visibility is applied.
     LaunchedEffect(userRole) { if (userRole == UserRole.STUDENT) viewModel.startStudentMaterialsSync() }
     var showAdd by remember { mutableStateOf(false) }
