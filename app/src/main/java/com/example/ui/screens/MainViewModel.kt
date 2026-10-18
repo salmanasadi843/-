@@ -541,6 +541,10 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
                     onFailure("مجوز فعال این حساب به‌عنوان استاد در Firebase تأیید نشد. از حساب مدیر اصلی، درخواست این استاد را بررسی و دوباره تأیید کنید؛ سپس خارج شوید و دوباره وارد شوید.")
                     return@launch
                 }
+                if (item.id < 0L) {
+                    onFailure("این کلاس متعلق به استاد دیگری است و فقط برای مطالعه در دسترس است؛ نمی‌توانید آن را ویرایش کنید.")
+                    return@launch
+                }
                 onSaved(repository.saveClass(item))
             } catch (e: Exception) {
                 Log.e(TAG, "Saving class failed", e)
@@ -552,6 +556,10 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
     fun saveCourse(item: com.example.data.local.CourseEntity, onSaved: (Long) -> Unit = {}) {
         viewModelScope.launch {
             if (!teacherPermissionGranted()) { denyTeacherMutation(); return@launch }
+            if (item.id < 0L || item.classId < 0L) {
+                _cloudSyncStatus.value = "این درس متعلق به مطالب منتشرشده استاد دیگری است؛ برای افزودن مطالب، کلاس خودتان را ایجاد کنید."
+                return@launch
+            }
             onSaved(repository.saveCourse(item))
         }
     }
@@ -559,6 +567,10 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
     fun deleteClass(item: com.example.data.local.ClassEntity, onDeleted: () -> Unit = {}) {
         viewModelScope.launch {
             if (!teacherPermissionGranted()) { denyTeacherMutation(); return@launch }
+            if (item.id < 0L) {
+                _cloudSyncStatus.value = "حذف یا پنهان‌کردن کلاس استاد دیگر مجاز نیست."
+                return@launch
+            }
             repository.deleteClass(item)
             try {
                 withContext(Dispatchers.IO) { CloudMaterialsSync.sync(getApplication<Application>()) }
@@ -572,6 +584,10 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
     fun deleteCourse(item: com.example.data.local.CourseEntity, onDeleted: () -> Unit = {}) {
         viewModelScope.launch {
             if (!teacherPermissionGranted()) { denyTeacherMutation(); return@launch }
+            if (item.id < 0L || item.classId < 0L) {
+                _cloudSyncStatus.value = "حذف درس استاد دیگر مجاز نیست."
+                return@launch
+            }
             repository.deleteCourse(item)
             onDeleted()
         }
@@ -745,6 +761,13 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
                 else
                     null
 
+            if ((lectureId != null && lectureId < 0L) ||
+                (existing?.classId ?: formClassId.value)?.let { it < 0L } == true
+            ) {
+                _cloudSyncStatus.value = "این جلسه یا کلاس متعلق به استاد دیگری است و قابل ویرایش نیست."
+                return@launch
+            }
+
             val updated =
                 LectureEntity(
                     id = lectureId ?: 0L,
@@ -797,6 +820,10 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
     fun setClassPublished(classItem: ClassEntity, published: Boolean) {
         viewModelScope.launch {
             if (!teacherPermissionGranted()) { denyTeacherMutation(); return@launch }
+            if (classItem.id < 0L) {
+                _cloudSyncStatus.value = "تغییر وضعیت انتشار کلاس استاد دیگر مجاز نیست."
+                return@launch
+            }
             repository.saveClass(classItem.copy(isPublished = published))
             // Refresh the shared student feed immediately after class visibility changes.
             try {
@@ -835,6 +862,16 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
 
         viewModelScope.launch {
             if (!teacherPermissionGranted()) { denyTeacherMutation(); return@launch }
+
+            if (id < 0L) {
+                _cloudSyncStatus.value = "حذف جلسه متعلق به استاد دیگر مجاز نیست."
+                return@launch
+            }
+            val lecture = repository.getLecture(id)
+            if (lecture?.classId?.let { it < 0L } == true) {
+                _cloudSyncStatus.value = "حذف جلسه متعلق به استاد دیگر مجاز نیست."
+                return@launch
+            }
 
             audioPlayer.stop()
 
