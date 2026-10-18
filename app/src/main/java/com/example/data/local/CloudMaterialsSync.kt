@@ -131,6 +131,19 @@ object CloudMaterialsSync {
                 }
             }
 
+            // Remove exact duplicate sessions that came from source classes later merged together.
+            // Different dates or different transcript/audio content are preserved.
+            val uniqueLectures = allLectures.distinctBy { lecture ->
+                listOf(
+                    lecture.classId?.toString().orEmpty(),
+                    normalized(lecture.title).replace('ي', 'ی').replace('ك', 'ک'),
+                    normalized(lecture.courseName).replace('ي', 'ی').replace('ك', 'ک'),
+                    lecture.dateMillis.toString(),
+                    normalized(lecture.transcript).replace('ي', 'ی').replace('ك', 'ک'),
+                    normalized(lecture.audioUrl.orEmpty())
+                ).joinToString("|")
+            }
+
             runBlocking {
                 db.withTransaction {
                     db.lectureDao().clearCloudSharedData()
@@ -138,10 +151,10 @@ object CloudMaterialsSync {
                     db.classDao().clearCloudSharedData()
                     db.classDao().insertAllForRestore(allClasses.distinctBy { it.id })
                     db.courseDao().insertAllForRestore(allCourses.distinctBy { it.id })
-                    db.lectureDao().insertAllForRestore(allLectures.distinctBy { it.id })
+                    db.lectureDao().insertAllForRestore(uniqueLectures.distinctBy { it.id })
                 }
             }
-            "مطالب آنلاین به‌روزرسانی شد: ${allLectures.size} جلسه از ${documents.size} حساب استاد."
+            "مطالب آنلاین به‌روزرسانی شد: ${uniqueLectures.size} جلسه یکتا از ${documents.size} حساب استاد."
         }
     }
 
