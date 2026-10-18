@@ -16,6 +16,7 @@ import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.dp
 import com.example.data.local.LectureEntity
 
@@ -29,6 +30,8 @@ fun ClassSessionsScreen(
     onNewSession: () -> Unit,
     onBack: () -> Unit
 ) {
+    val context = LocalContext.current
+    val canManageSessions = userRole == UserRole.TEACHER || AuthPreferences.isPrimaryTeacher(context)
     val allLectures by viewModel.repository.allLectures.collectAsState(initial = emptyList())
     val allCourses by viewModel.repository.allCoursesDetailed.collectAsState(initial = emptyList())
     var className by remember { mutableStateOf("کلاس") }
@@ -67,7 +70,7 @@ fun ClassSessionsScreen(
             )
         },
         floatingActionButton = {
-            if (userRole == UserRole.TEACHER) {
+            if (canManageSessions) {
                 ExtendedFloatingActionButton(
                     onClick = onNewSession,
                     icon = { Icon(Icons.Default.Add, null) },
@@ -100,8 +103,8 @@ fun ClassSessionsScreen(
                         Column(Modifier.fillMaxWidth().padding(28.dp), horizontalAlignment = Alignment.CenterHorizontally) {
                             Icon(Icons.Default.CalendarToday, null, tint = MaterialTheme.colorScheme.secondary, modifier = Modifier.size(42.dp))
                             Spacer(Modifier.height(12.dp))
-                            Text(if (userRole == UserRole.TEACHER) "جلسه اول را ایجاد کنید" else "هنوز جلسه‌ای برای مطالعه وجود ندارد", fontWeight = FontWeight.Bold)
-                            if (userRole == UserRole.TEACHER) {
+                            Text(if (canManageSessions) "جلسه اول را ایجاد کنید" else "هنوز جلسه‌ای برای مطالعه وجود ندارد", fontWeight = FontWeight.Bold)
+                            if (canManageSessions) {
                                 Spacer(Modifier.height(5.dp))
                                 Text("عنوان و تاریخ جلسه را ثبت کنید و سپس صوت و متن را اضافه کنید.", color = MaterialTheme.colorScheme.onSurfaceVariant)
                             }
