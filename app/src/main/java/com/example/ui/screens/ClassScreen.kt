@@ -15,6 +15,7 @@ import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.dp
 import com.example.data.local.ClassEntity
 
@@ -26,9 +27,11 @@ fun ClassScreen(
     onOpenClass: (Long) -> Unit,
     onBack: () -> Unit
 ) {
+    val context = LocalContext.current
+    val canManageClasses = userRole == UserRole.TEACHER || AuthPreferences.isPrimaryTeacher(context)
     val allClasses by viewModel.repository.allClasses.collectAsState(initial = emptyList())
     // Never expose teacher-local or unpublished classes in student mode.
-    val classes = if (userRole == UserRole.STUDENT) allClasses.filter { it.id < 0L && it.isPublished } else allClasses
+    val classes = if (!canManageClasses) allClasses.filter { it.id < 0L && it.isPublished } else allClasses
     var showAdd by remember { mutableStateOf(false) }
     var isSaving by remember { mutableStateOf(false) }
     var saveError by remember { mutableStateOf<String?>(null) }
@@ -54,7 +57,7 @@ fun ClassScreen(
                     Column {
                         Text("کلاس‌های من", fontWeight = FontWeight.Bold)
                         Text(
-                            if (userRole == UserRole.TEACHER) "مدیریت کلاس‌ها" else "کلاس‌های قابل مطالعه",
+                            if (canManageClasses) "مدیریت کلاس‌ها" else "کلاس‌های قابل مطالعه",
                             style = MaterialTheme.typography.labelMedium,
                             color = MaterialTheme.colorScheme.onSurfaceVariant
                         )
@@ -68,7 +71,7 @@ fun ClassScreen(
             )
         },
         floatingActionButton = {
-            if (userRole == UserRole.TEACHER) {
+            if (canManageClasses) {
                 ExtendedFloatingActionButton(
                     onClick = { resetForm(); showAdd = true },
                     icon = { Icon(Icons.Default.Add, contentDescription = null) },
@@ -93,13 +96,13 @@ fun ClassScreen(
                         Icon(Icons.Default.School, null, Modifier.size(48.dp), tint = MaterialTheme.colorScheme.primary)
                         Spacer(Modifier.height(14.dp))
                         Text(
-                            if (userRole == UserRole.TEACHER) "هنوز کلاسی ایجاد نشده است" else "هنوز کلاسی برای مطالعه وجود ندارد",
+                            if (canManageClasses) "هنوز کلاسی ایجاد نشده است" else "هنوز کلاسی برای مطالعه وجود ندارد",
                             style = MaterialTheme.typography.titleMedium,
                             fontWeight = FontWeight.Bold
                         )
                         Spacer(Modifier.height(6.dp))
                         Text(
-                            if (userRole == UserRole.TEACHER) "اولین کلاس خود را ایجاد کنید." else "پس از اضافه شدن کلاس، جلسات اینجا نمایش داده می‌شوند.",
+                            if (canManageClasses) "اولین کلاس خود را ایجاد کنید." else "پس از اضافه شدن کلاس، جلسات اینجا نمایش داده می‌شوند.",
                             color = MaterialTheme.colorScheme.onSurfaceVariant
                         )
                     }
