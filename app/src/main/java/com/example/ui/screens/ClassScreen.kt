@@ -8,6 +8,7 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.Edit
+import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.School
 import androidx.compose.material3.*
@@ -32,7 +33,10 @@ fun ClassScreen(
     val allClasses by viewModel.repository.allClasses.collectAsState(initial = emptyList())
     // Never expose teacher-local or unpublished classes in student mode.
     val classes = if (!canManageClasses) allClasses.filter { it.id < 0L && it.isPublished } else allClasses
+    // Refresh the published feed whenever a student opens the class list so revoked visibility is applied.
+    LaunchedEffect(userRole) { if (userRole == UserRole.STUDENT) viewModel.startStudentMaterialsSync() }
     var showAdd by remember { mutableStateOf(false) }
+    var classToDelete by remember { mutableStateOf<ClassEntity?>(null) }
     var isSaving by remember { mutableStateOf(false) }
     var saveError by remember { mutableStateOf<String?>(null) }
     var name by remember { mutableStateOf("") }
@@ -117,7 +121,7 @@ fun ClassScreen(
                 item {
                     Text(classes.size.toString() + " کلاس", style = MaterialTheme.typography.labelLarge, color = MaterialTheme.colorScheme.onSurfaceVariant)
                 }
-                items(classes, key = { it.id }) { item ->
+                items(classes.distinctBy { "${it.name.trim().lowercase()}|${it.teacherName.trim().lowercase()}|${it.term.trim().lowercase()}" }, key = { it.id }) { item ->
                     Card(
                         Modifier.fillMaxWidth().clickable { onOpenClass(item.id) },
                         shape = RoundedCornerShape(22.dp),
@@ -145,6 +149,7 @@ fun ClassScreen(
                                 Text("مشاهده جلسات  ›", style = MaterialTheme.typography.labelLarge, fontWeight = FontWeight.SemiBold, color = MaterialTheme.colorScheme.primary)
                             }
                             if (canManageClasses) {
+                                Column(horizontalAlignment = Alignment.CenterHorizontally) {
                                 IconButton(onClick = {
                                     editingClass = item
                                     name = item.name
@@ -154,12 +159,31 @@ fun ClassScreen(
                                 }) {
                                     Icon(Icons.Default.Edit, contentDescription = "ویرایش کلاس", tint = MaterialTheme.colorScheme.primary)
                                 }
+                                IconButton(onClick = { classToDelete = item }) {
+                                    Icon(Icons.Default.Delete, contentDescription = "حذف کلاس", tint = MaterialTheme.colorScheme.error)
+                                }
+                                }
                             }
                         }
                     }
                 }
             }
         }
+    }
+
+    classToDelete?.let { item ->
+        AlertDialog(
+            onDismissRequest = { classToDelete = null },
+            title = { Text("حذف کلاس") },
+            text = { Text("کلاس «${item.name}» حذف شود؟ این کار آن را از فهرست کلاس‌های استاد حذف می‌کند.") },
+            confirmButton = {
+                TextButton(onClick = {
+                    classToDelete = null
+                    viewModel.deleteClass(item)
+                }) { Text("حذف", color = MaterialTheme.colorScheme.error) }
+            },
+            dismissButton = { TextButton(onClick = { classToDelete = null }) { Text("انصراف") } }
+        )
     }
 
     if (showAdd) {
