@@ -101,12 +101,15 @@ object DatabaseBackup {
     private fun ClassEntity.toJson() = JSONObject()
         .put("id", id).put("name", name).put("teacherName", teacherName)
         .put("description", description).put("term", term)
-        .put("classDateMillis", classDateMillis).put("createdAtMillis", createdAtMillis)
+        .put("classDateMillis", classDateMillis).put("isPublished", isPublished).put("createdAtMillis", createdAtMillis)
+        .put("ownerUid", ownerUid).put("folderId", folderId ?: JSONObject.NULL)
 
     private fun JSONObject.toClassEntity() = ClassEntity(
         id = optLong("id"), name = getString("name"), teacherName = optString("teacherName"),
         description = optString("description"), term = optString("term"),
-        classDateMillis = optLong("classDateMillis"), createdAtMillis = optLong("createdAtMillis")
+        classDateMillis = optLong("classDateMillis"), isPublished = optBoolean("isPublished", true),
+        createdAtMillis = optLong("createdAtMillis"), ownerUid = optString("ownerUid"),
+        folderId = optNullableLong("folderId")
     )
 
     private fun CourseEntity.toJson() = JSONObject()
