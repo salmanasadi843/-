@@ -38,6 +38,7 @@ fun ClassScreen(
     val context = LocalContext.current
     val ownerUid = AuthPreferences.currentUid(context).orEmpty()
     val canManageClasses = userRole == UserRole.TEACHER || AuthPreferences.isPrimaryTeacher(context)
+    val canCreateInSelectedTeacher = canManageClasses && (teacherKey == null || teacherKey == ownerUid)
     val allClasses by viewModel.repository.allClasses.collectAsState(initial = emptyList())
     // Never expose teacher-local or unpublished classes in student mode.
     val studentSyncStatus by viewModel.studentMaterialsSyncStatus.collectAsState()
@@ -130,7 +131,7 @@ fun ClassScreen(
     val visibleOwnedClasses = classes.filter {
         it.id > 0L &&
             (it.ownerUid == ownerUid || it.ownerUid.isBlank()) &&
-            it.folderId == selectedFolderId
+            (teacherKey != null || it.folderId == selectedFolderId)
     }
     // Shared/foreign classes are kept in a separate read-only section at the root,
     // never mixed into the teacher's own folders.
@@ -162,7 +163,7 @@ fun ClassScreen(
             )
         },
         floatingActionButton = {
-            if (canManageClasses) {
+            if (canCreateInSelectedTeacher) {
                 ExtendedFloatingActionButton(
                     onClick = { resetForm(); showAdd = true },
                     icon = { Icon(Icons.Default.Add, contentDescription = null) },
@@ -205,7 +206,7 @@ fun ClassScreen(
                 contentPadding = PaddingValues(16.dp, 12.dp, 16.dp, 96.dp),
                 verticalArrangement = Arrangement.spacedBy(12.dp)
             ) {
-                if (canManageClasses) {
+                if (canManageClasses && teacherKey == null) {
                     item {
                         Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
                             Row(verticalAlignment = Alignment.CenterVertically) {
