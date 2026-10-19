@@ -82,7 +82,9 @@ fun HomeScreen(
     val lectures = if (userRole == UserRole.STUDENT) {
         allLectures.filter { it.id < 0L && it.isPublished && it.classId in visibleClassIds }
     } else {
-        allLectures.filter { it.id > 0L && it.classId in visibleClassIds }
+        // Keep all of this teacher's local sessions available to summary/export actions,
+        // including older sessions that have not yet been assigned to a class.
+        allLectures.filter { it.id > 0L }
     }
     val teacherNameForClass: (ClassEntity) -> String = { classItem ->
         classItem.teacherName.trim().ifBlank {
