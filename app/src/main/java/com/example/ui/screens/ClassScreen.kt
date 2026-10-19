@@ -81,8 +81,8 @@ fun ClassScreen(
     val classes = remember(allVisibleClasses, teacherKey, ownerUid, deletedTeacherKeys) {
         when (teacherKey) {
             null -> allVisibleClasses
-            "__unfiled_teachers__" -> allVisibleClasses.filter { teacherFolderKey(it, ownerUid) in deletedTeacherKeys }
-            else -> allVisibleClasses.filter { teacherFolderKey(it, ownerUid) == teacherKey }
+            "__unfiled_teachers__" -> allVisibleClasses.filter { teacherFolderKey(it, ownerUid.ifBlank { "local" }) in deletedTeacherKeys }
+            else -> allVisibleClasses.filter { teacherFolderKey(it, ownerUid.ifBlank { "local" }) == teacherKey }
         }
     }
     // Refresh the published feed whenever a student opens the class list so revoked visibility is applied.
