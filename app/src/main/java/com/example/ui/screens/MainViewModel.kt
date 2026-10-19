@@ -568,11 +568,25 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
                     onFailure("مجوز فعال این حساب به‌عنوان استاد در Firebase تأیید نشد. از حساب مدیر اصلی، درخواست این استاد را بررسی و دوباره تأیید کنید؛ سپس خارج شوید و دوباره وارد شوید.")
                     return@launch
                 }
+                val uid = AuthPreferences.currentUid(getApplication<Application>()).orEmpty()
                 if (item.id < 0L) {
                     onFailure("این کلاس متعلق به استاد دیگری است و فقط برای مطالعه در دسترس است؛ نمی‌توانید آن را ویرایش کنید.")
                     return@launch
                 }
-                onSaved(repository.saveClass(item))
+                if (uid.isBlank()) {
+                    onFailure("برای ثبت مالکیت کلاس باید ابتدا وارد حساب کاربری شوید.")
+                    return@launch
+                }
+                if (item.id == 0L) {
+                    onSaved(repository.saveClass(item.copy(ownerUid = uid)))
+                } else {
+                    val existing = repository.getClass(item.id)
+                    if (existing == null || existing.ownerUid != uid) {
+                        onFailure("ویرایش فقط برای کلاسی مجاز است که مالکیت آن برای همین حساب تأیید شده باشد.")
+                        return@launch
+                    }
+                    onSaved(repository.saveClass(item))
+                }
             } catch (e: Exception) {
                 Log.e(TAG, "Saving class failed", e)
                 onFailure("ذخیره کلاس ناموفق بود: ${e.localizedMessage ?: "خطای نامشخص Firebase یا پایگاه داده"}")
