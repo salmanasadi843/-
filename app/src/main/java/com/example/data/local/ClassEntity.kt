@@ -14,5 +14,9 @@ data class ClassEntity(
     /** تاریخ برگزاری/شروع کلاس؛ مستقل از تاریخ ایجاد رکورد */
     val classDateMillis: Long = System.currentTimeMillis(),
     val isPublished: Boolean = true,
-    val createdAtMillis: Long = System.currentTimeMillis()
+    val createdAtMillis: Long = System.currentTimeMillis(),
+    /** Stable Firebase owner; blank only for legacy rows pending safe reconciliation. */
+    val ownerUid: String = "",
+    /** Local folder placement; null means the teacher's root folder. */
+    val folderId: Long? = null
 )
