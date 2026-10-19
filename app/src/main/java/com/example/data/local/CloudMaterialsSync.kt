@@ -52,7 +52,7 @@ object CloudMaterialsSync {
                 .put("format", "darsyar-shared-materials")
                 .put("version", 1)
                 .put("teacherName", AuthPreferences.currentName(context))
-                .put("classes", JSONArray().apply { classes.forEach { put(it.toJson()) } })
+                .put("classes", JSONArray().apply { classes.forEach { put(it.copy(ownerUid = uid).toJson()) } })
                 .put("courses", JSONArray().apply { courses.forEach { put(it.toJson()) } })
                 .put("lectures", JSONArray().apply { lectures.map { it.toJson() }.forEach { put(it) } })
             Tasks.await(
@@ -93,7 +93,7 @@ object CloudMaterialsSync {
                         if (!item.isPublished) continue
                         val signature = listOf(item.name, item.teacherName, item.term)
                             .joinToString("|") { normalized(it) }
-                        sourceClasses += Triple(owner, item, signature)
+                        sourceClasses += Triple(owner, item.copy(ownerUid = owner, folderId = null), signature)
                     }
                 }
             }
@@ -154,7 +154,7 @@ object CloudMaterialsSync {
                 }
                 classIdMap["$owner:${item.id}"] = importedClassId
                 if (allClasses.none { it.id == importedClassId }) {
-                    allClasses += item.copy(id = importedClassId, isPublished = true)
+                    allClasses += item.copy(id = importedClassId, ownerUid = owner, folderId = null, isPublished = true)
                 }
             }
 
