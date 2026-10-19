@@ -33,17 +33,20 @@ fun ClassSessionsScreen(
     onBack: () -> Unit
 ) {
     val context = LocalContext.current
-    val canManageSessions = (userRole == UserRole.TEACHER || AuthPreferences.isPrimaryTeacher(context)) && classId > 0L
+    val canManageSessions = (userRole == UserRole.TEACHER || AuthPreferences.isPrimaryTeacher(context)) && classId > 0L && classOwnerUid == currentOwnerUid && currentOwnerUid.isNotBlank()
     val allLectures by viewModel.repository.allLectures.collectAsState(initial = emptyList())
     val allCourses by viewModel.repository.allCoursesDetailed.collectAsState(initial = emptyList())
     var className by remember { mutableStateOf("کلاس") }
     var teacherName by remember { mutableStateOf("") }
+    var classOwnerUid by remember { mutableStateOf("") }
+    val currentOwnerUid = AuthPreferences.currentUid(context).orEmpty()
     var showDeleteDialog by remember { mutableStateOf<LectureEntity?>(null) }
 
     LaunchedEffect(classId) {
         viewModel.repository.getClass(classId)?.let {
             className = it.name
             teacherName = it.teacherName
+            classOwnerUid = it.ownerUid
         }
     }
 
