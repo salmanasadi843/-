@@ -41,7 +41,7 @@ object CloudMaterialsSync {
             val allLectures = runBlocking { db.lectureDao().getAllForBackup() }
             // Imported/shared records use stable negative IDs. They belong to their
             // original teacher and must never be republished or managed by this account.
-            val classes = allClasses.filter { it.id > 0L && it.isPublished }
+            val classes = allClasses.filter { it.id > 0L && it.ownerUid == uid && it.isPublished }
             val visibleClassIds = classes.map { it.id }.toSet()
             val courses = allCourses.filter { it.id > 0L && it.classId > 0L && it.classId in visibleClassIds }
             val lectures = allLectures.filter { lecture ->
