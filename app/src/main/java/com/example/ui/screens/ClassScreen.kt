@@ -32,6 +32,7 @@ fun ClassScreen(
     onBack: () -> Unit
 ) {
     val context = LocalContext.current
+    val ownerUid = AuthPreferences.currentUid(context).orEmpty()
     val canManageClasses = userRole == UserRole.TEACHER || AuthPreferences.isPrimaryTeacher(context)
     val allClasses by viewModel.repository.allClasses.collectAsState(initial = emptyList())
     // Never expose teacher-local or unpublished classes in student mode.
@@ -48,7 +49,12 @@ fun ClassScreen(
         if (studentFeedReady) allClasses.filter { it.id < 0L && it.isPublished }
         else emptyList()
     } else {
-        val ownedClasses = allClasses.filter { it.id >= 0L }
+        val ownedClasses = allClasses.filter {
+            it.id > 0L && (it.ownerUid == ownerUid || it.ownerUid.isBlank())
+        }
+        val foreignPositiveClasses = allClasses.filter {
+            it.id > 0L && it.ownerUid.isNotBlank() && it.ownerUid != ownerUid
+        }
         val sharedClasses = allClasses.filter { it.id < 0L && it.isPublished }
             .distinctBy {
                 listOf(it.name, it.teacherName, it.term)
@@ -60,7 +66,7 @@ fun ClassScreen(
                             .replace(Regex("\\s+"), " ")
                     }
             }
-        ownedClasses + sharedClasses
+        ownedClasses + foreignPositiveClasses + sharedClasses
     }
     // Refresh the published feed whenever a student opens the class list so revoked visibility is applied.
     LaunchedEffect(userRole) {
@@ -69,7 +75,6 @@ fun ClassScreen(
             UserRole.TEACHER -> viewModel.syncPublishedMaterialsForTeacher()
         }
     }
-    val ownerUid = AuthPreferences.currentUid(context).orEmpty()
     val folderDao = remember(ownerUid) { AppDatabase.getDatabase(context).teacherFolderDao() }
     val classDao = remember { AppDatabase.getDatabase(context).classDao() }
     val folders by remember(ownerUid) { folderDao.observeFolders(ownerUid) }.collectAsState(initial = emptyList())
@@ -78,6 +83,7 @@ fun ClassScreen(
     var showCreateFolder by remember { mutableStateOf(false) }
     var newFolderName by remember { mutableStateOf("") }
     var classToMove by remember { mutableStateOf<ClassEntity?>(null) }
+    var classToClaim by remember { mutableStateOf<ClassEntity?>(null) }
     var showAdd by remember { mutableStateOf(false) }
     var classToDelete by remember { mutableStateOf<ClassEntity?>(null) }
     var isSaving by remember { mutableStateOf(false) }
@@ -196,7 +202,7 @@ fun ClassScreen(
                     }
                     item {
                         Text(
-                            classes.count { it.id > 0L && it.folderId == selectedFolderId }.toString() + " کلاس در این پوشه",
+                            classes.count { it.id > 0L && (it.ownerUid == ownerUid || it.ownerUid.isBlank()) && it.folderId == selectedFolderId }.toString() + " کلاس در این پوشه",
                             style = MaterialTheme.typography.labelLarge,
                             color = MaterialTheme.colorScheme.onSurfaceVariant
                         )
@@ -207,7 +213,7 @@ fun ClassScreen(
                     }
                 }
                 items(
-                    if (canManageClasses) classes.filter { it.id > 0L && it.folderId == selectedFolderId } + classes.filter { it.id < 0L }
+                    if (canManageClasses) classes.filter { it.id > 0L && (it.ownerUid == ownerUid || it.ownerUid.isBlank()) && it.folderId == selectedFolderId } + classes.filter { it.id > 0L && it.ownerUid.isNotBlank() && it.ownerUid != ownerUid } + classes.filter { it.id < 0L }
                     else classes,
                     key = { it.id }
                 ) { item ->
@@ -246,28 +252,36 @@ fun ClassScreen(
                                 Text("مشاهده جلسات  ›", style = MaterialTheme.typography.labelLarge, fontWeight = FontWeight.SemiBold, color = MaterialTheme.colorScheme.primary)
                             }
                             if (canManageClasses && item.id > 0L) {
-                                // Only locally owned classes can be managed by this teacher.
-                                Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                                IconButton(onClick = {
-                                    editingClass = item
-                                    name = item.name
-                                    teacher = item.teacherName
-                                    term = item.term
-                                    showAdd = true
-                                }) {
-                                    Icon(Icons.Default.Edit, contentDescription = "ویرایش کلاس", tint = MaterialTheme.colorScheme.primary)
-                                }
-                                if (item.ownerUid == ownerUid && ownerUid.isNotBlank()) {
-                                    IconButton(onClick = { classToMove = item }) {
-                                        Icon(Icons.Default.School, contentDescription = "انتقال به پوشه", tint = MaterialTheme.colorScheme.secondary)
+                                when {
+                                    item.ownerUid == ownerUid && ownerUid.isNotBlank() -> {
+                                        Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                                            IconButton(onClick = {
+                                                editingClass = item
+                                                name = item.name
+                                                teacher = item.teacherName
+                                                term = item.term
+                                                showAdd = true
+                                            }) {
+                                                Icon(Icons.Default.Edit, contentDescription = "ویرایش کلاس", tint = MaterialTheme.colorScheme.primary)
+                                            }
+                                            IconButton(onClick = { classToMove = item }) {
+                                                Icon(Icons.Default.School, contentDescription = "انتقال به پوشه", tint = MaterialTheme.colorScheme.secondary)
+                                            }
+                                            IconButton(onClick = { classToDelete = item }) {
+                                                Icon(Icons.Default.Delete, contentDescription = "حذف کلاس", tint = MaterialTheme.colorScheme.error)
+                                            }
+                                        }
+                                    }
+                                    item.ownerUid.isBlank() -> {
+                                        IconButton(onClick = { classToClaim = item }) {
+                                            Icon(Icons.Default.School, contentDescription = "تأیید مالکیت کلاس", tint = MaterialTheme.colorScheme.tertiary)
+                                        }
+                                    }
+                                    else -> {
+                                        Text("فقط مشاهده", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.tertiary)
                                     }
                                 }
-                                IconButton(onClick = { classToDelete = item }) {
-                                    Icon(Icons.Default.Delete, contentDescription = "حذف کلاس", tint = MaterialTheme.colorScheme.error)
-                                }
-                                }
-                            }
-                        }
+                            }                        }
                     }
                 }
             }
@@ -304,6 +318,27 @@ fun ClassScreen(
                 }, enabled = newFolderName.isNotBlank() && ownerUid.isNotBlank()) { Text("ایجاد") }
             },
             dismissButton = { TextButton(onClick = { showCreateFolder = false }) { Text("انصراف") } }
+        )
+    }
+
+    classToClaim?.let { item ->
+        AlertDialog(
+            onDismissRequest = { classToClaim = null },
+            title = { Text("تأیید مالکیت کلاس قدیمی") },
+            text = {
+                Text("شناسهٔ مالک برای کلاس «${item.name}» ثبت نشده است. فقط اگر این کلاس و جلساتش واقعاً متعلق به حساب شماست، مالکیت را تأیید کنید. هیچ جلسه یا متنی حذف نمی‌شود.")
+            },
+            confirmButton = {
+                TextButton(onClick = {
+                    if (ownerUid.isNotBlank()) {
+                        scope.launch {
+                            classDao.update(item.copy(ownerUid = ownerUid))
+                            classToClaim = null
+                        }
+                    }
+                }, enabled = ownerUid.isNotBlank()) { Text("این کلاس متعلق به من است") }
+            },
+            dismissButton = { TextButton(onClick = { classToClaim = null }) { Text("انصراف") } }
         )
     }
 
