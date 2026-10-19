@@ -19,6 +19,9 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.dp
 import com.example.data.local.ClassEntity
+import com.example.data.local.AppDatabase
+import com.example.data.local.TeacherFolderEntity
+import kotlinx.coroutines.launch
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -66,6 +69,15 @@ fun ClassScreen(
             UserRole.TEACHER -> viewModel.syncPublishedMaterialsForTeacher()
         }
     }
+    val ownerUid = AuthPreferences.currentUid(context).orEmpty()
+    val folderDao = remember(ownerUid) { AppDatabase.getDatabase(context).teacherFolderDao() }
+    val classDao = remember { AppDatabase.getDatabase(context).classDao() }
+    val folders by remember(ownerUid) { folderDao.observeFolders(ownerUid) }.collectAsState(initial = emptyList())
+    val scope = rememberCoroutineScope()
+    var selectedFolderId by remember { mutableStateOf<Long?>(null) }
+    var showCreateFolder by remember { mutableStateOf(false) }
+    var newFolderName by remember { mutableStateOf("") }
+    var classToMove by remember { mutableStateOf<ClassEntity?>(null) }
     var showAdd by remember { mutableStateOf(false) }
     var classToDelete by remember { mutableStateOf<ClassEntity?>(null) }
     var isSaving by remember { mutableStateOf(false) }
@@ -149,10 +161,56 @@ fun ClassScreen(
                 contentPadding = PaddingValues(16.dp, 12.dp, 16.dp, 96.dp),
                 verticalArrangement = Arrangement.spacedBy(12.dp)
             ) {
-                item {
-                    Text(classes.size.toString() + " کلاس", style = MaterialTheme.typography.labelLarge, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                if (canManageClasses) {
+                    item {
+                        Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                            Row(verticalAlignment = Alignment.CenterVertically) {
+                                Text(
+                                    folders.firstOrNull { it.id == selectedFolderId }?.name ?: "پوشهٔ من",
+                                    modifier = Modifier.weight(1f),
+                                    style = MaterialTheme.typography.titleMedium,
+                                    fontWeight = FontWeight.Bold
+                                )
+                                TextButton(onClick = { showCreateFolder = true }) { Text("پوشهٔ جدید +") }
+                            }
+                            if (selectedFolderId != null) {
+                                TextButton(onClick = {
+                                    selectedFolderId = folders.firstOrNull { it.id == selectedFolderId }?.parentFolderId
+                                }) { Text("← بازگشت به پوشهٔ والد") }
+                            }
+                        }
+                    }
+                    items(folders.filter { it.parentFolderId == selectedFolderId }, key = { "folder-${it.id}" }) { folder ->
+                        Card(
+                            Modifier.fillMaxWidth().clickable { selectedFolderId = folder.id },
+                            shape = RoundedCornerShape(16.dp),
+                            colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant)
+                        ) {
+                            Row(Modifier.fillMaxWidth().padding(14.dp), verticalAlignment = Alignment.CenterVertically) {
+                                Text("📁", style = MaterialTheme.typography.titleLarge)
+                                Spacer(Modifier.width(10.dp))
+                                Text(folder.name, modifier = Modifier.weight(1f), fontWeight = FontWeight.SemiBold)
+                                Text("باز کردن  ›", color = MaterialTheme.colorScheme.primary)
+                            }
+                        }
+                    }
+                    item {
+                        Text(
+                            classes.count { it.id > 0L && it.folderId == selectedFolderId }.toString() + " کلاس در این پوشه",
+                            style = MaterialTheme.typography.labelLarge,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                        )
+                    }
+                } else {
+                    item {
+                        Text(classes.size.toString() + " کلاس", style = MaterialTheme.typography.labelLarge, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                    }
                 }
-                items(classes, key = { it.id }) { item ->
+                items(
+                    if (canManageClasses) classes.filter { it.id > 0L && it.folderId == selectedFolderId } + classes.filter { it.id < 0L }
+                    else classes,
+                    key = { it.id }
+                ) { item ->
                     Card(
                         Modifier.fillMaxWidth().clickable { onOpenClass(item.id) },
                         shape = RoundedCornerShape(22.dp),
@@ -199,6 +257,9 @@ fun ClassScreen(
                                 }) {
                                     Icon(Icons.Default.Edit, contentDescription = "ویرایش کلاس", tint = MaterialTheme.colorScheme.primary)
                                 }
+                                IconButton(onClick = { classToMove = item }) {
+                                    Icon(Icons.Default.School, contentDescription = "انتقال به پوشه", tint = MaterialTheme.colorScheme.secondary)
+                                }
                                 IconButton(onClick = { classToDelete = item }) {
                                     Icon(Icons.Default.Delete, contentDescription = "حذف کلاس", tint = MaterialTheme.colorScheme.error)
                                 }
@@ -209,6 +270,67 @@ fun ClassScreen(
                 }
             }
         }
+    }
+
+    if (showCreateFolder) {
+        AlertDialog(
+            onDismissRequest = { showCreateFolder = false },
+            title = { Text("پوشهٔ جدید") },
+            text = {
+                OutlinedTextField(
+                    value = newFolderName,
+                    onValueChange = { newFolderName = it },
+                    label = { Text("نام پوشه") },
+                    singleLine = true
+                )
+            },
+            confirmButton = {
+                TextButton(onClick = {
+                    val nameToSave = newFolderName.trim()
+                    if (nameToSave.isNotBlank() && ownerUid.isNotBlank()) {
+                        scope.launch {
+                            runCatching {
+                                folderDao.insert(TeacherFolderEntity(ownerUid = ownerUid, name = nameToSave, parentFolderId = selectedFolderId))
+                            }.onSuccess {
+                                newFolderName = ""
+                                showCreateFolder = false
+                            }.onFailure {
+                                saveError = "ساخت پوشه ناموفق بود؛ شاید پوشه‌ای با همین نام در این مسیر وجود دارد."
+                            }
+                        }
+                    }
+                }, enabled = newFolderName.isNotBlank() && ownerUid.isNotBlank()) { Text("ایجاد") }
+            },
+            dismissButton = { TextButton(onClick = { showCreateFolder = false }) { Text("انصراف") } }
+        )
+    }
+
+    classToMove?.let { item ->
+        AlertDialog(
+            onDismissRequest = { classToMove = null },
+            title = { Text("انتقال کلاس به پوشه") },
+            text = {
+                Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                    Text("کلاس «${item.name}» به کدام پوشه منتقل شود؟")
+                    TextButton(onClick = {
+                        scope.launch {
+                            classDao.update(item.copy(folderId = null, ownerUid = item.ownerUid.ifBlank { ownerUid }))
+                            classToMove = null
+                        }
+                    }) { Text("پوشهٔ اصلی استاد") }
+                    folders.forEach { folder ->
+                        TextButton(onClick = {
+                            scope.launch {
+                                classDao.update(item.copy(folderId = folder.id, ownerUid = item.ownerUid.ifBlank { ownerUid }))
+                                classToMove = null
+                            }
+                        }) { Text("📁 ${folder.name}") }
+                    }
+                }
+            },
+            confirmButton = {},
+            dismissButton = { TextButton(onClick = { classToMove = null }) { Text("بستن") } }
+        )
     }
 
     classToDelete?.let { item ->
@@ -255,7 +377,9 @@ fun ClassScreen(
                                 term = term.trim(),
                                 description = editingClass?.description.orEmpty(),
                                 classDateMillis = editingClass?.classDateMillis ?: System.currentTimeMillis(),
-                                createdAtMillis = editingClass?.createdAtMillis ?: System.currentTimeMillis()
+                                createdAtMillis = editingClass?.createdAtMillis ?: System.currentTimeMillis(),
+                                ownerUid = editingClass?.ownerUid?.takeIf { it.isNotBlank() } ?: ownerUid,
+                                folderId = editingClass?.folderId ?: selectedFolderId
                             ),
                             onSaved = {
                                 isSaving = false
