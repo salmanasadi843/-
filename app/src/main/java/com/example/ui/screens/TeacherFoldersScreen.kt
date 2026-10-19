@@ -1,14 +1,3 @@
-
-/** Stable grouping key; a teacher UID is preferred over a display name. */
-internal fun teacherFolderKey(clazz: com.example.data.local.ClassEntity, currentUid: String): String {
-    if (clazz.ownerUid.isNotBlank()) return clazz.ownerUid
-    if (clazz.id > 0L && currentUid.isNotBlank()) return currentUid
-    val normalized = clazz.teacherName.trim().lowercase()
-        .replace('ي', 'ی').replace('ك', 'ک')
-        .replace(Regex("[\\u200c\\u200d]"), "")
-        .replace(Regex("\\s+"), " ")
-    return "name:" + normalized.ifBlank { "بدون-نام" }
-}
 package com.example.ui.screens
 
 import android.content.Context
@@ -31,6 +20,17 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import com.example.data.local.ClassEntity
+
+/** Stable grouping key; a teacher UID is preferred over a display name. */
+internal fun teacherFolderKey(clazz: com.example.data.local.ClassEntity, currentUid: String): String {
+    if (clazz.ownerUid.isNotBlank()) return clazz.ownerUid
+    if (clazz.id > 0L && currentUid.isNotBlank()) return currentUid
+    val normalized = clazz.teacherName.trim().lowercase()
+        .replace('ي', 'ی').replace('ك', 'ک')
+        .replace(Regex("[\\u200c\\u200d]"), "")
+        .replace(Regex("\\s+"), " ")
+    return "name:" + normalized.ifBlank { "بدون-نام" }
+}
 
 private const val UNFILED_TEACHERS_KEY = "__unfiled_teachers__"
 
