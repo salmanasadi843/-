@@ -13,6 +13,9 @@ interface TeacherFolderDao {
     @Query("SELECT * FROM teacher_folders WHERE ownerUid = :ownerUid ORDER BY name COLLATE NOCASE")
     fun observeFolders(ownerUid: String): Flow<List<TeacherFolderEntity>>
 
+    @Query("SELECT * FROM teacher_folders ORDER BY ownerUid, name COLLATE NOCASE")
+    suspend fun observeFoldersForBackup(): List<TeacherFolderEntity>
+
     @Query("SELECT * FROM teacher_folders WHERE id = :id AND ownerUid = :ownerUid")
     suspend fun getOwnedFolder(id: Long, ownerUid: String): TeacherFolderEntity?
 
