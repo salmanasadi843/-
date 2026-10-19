@@ -612,6 +612,12 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
                 _cloudSyncStatus.value = "حذف یا پنهان‌کردن کلاس استاد دیگر مجاز نیست."
                 return@launch
             }
+            val uid = AuthPreferences.currentUid(getApplication<Application>()).orEmpty()
+            val existing = repository.getClass(item.id)
+            if (uid.isBlank() || existing == null || existing.ownerUid != uid) {
+                _cloudSyncStatus.value = "حذف فقط برای کلاسی مجاز است که مالکیت آن برای همین حساب تأیید شده باشد."
+                return@launch
+            }
             repository.deleteClass(item)
             try {
                 withContext(Dispatchers.IO) { CloudMaterialsSync.sync(getApplication<Application>()) }
