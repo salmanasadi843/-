@@ -128,6 +128,26 @@ fun OstadYarApp(
             )
         }
 
+        Screen.Teachers -> {
+            TeacherFoldersScreen(
+                viewModel = viewModel,
+                userRole = userRole,
+                onOpenTeacher = { key, name -> viewModel.openTeacherClasses(key, name) },
+                onBack = { viewModel.navigateBack() }
+            )
+        }
+
+        is Screen.TeacherClasses -> {
+            ClassScreen(
+                viewModel = viewModel,
+                userRole = userRole,
+                teacherKey = screen.teacherKey,
+                teacherLabel = screen.teacherName,
+                onOpenClass = { id -> viewModel.openClass(id, screen.teacherKey, screen.teacherName) },
+                onBack = { viewModel.navigateBack() }
+            )
+        }
+
         Screen.Classes -> {
             ClassScreen(
                 viewModel = viewModel,
