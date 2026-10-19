@@ -86,7 +86,7 @@ class FirestoreSyncRepository(
     suspend fun uploadSnapshot(uid: String) {
         // Shared published records are imported with negative IDs. They belong to
         // their original teachers and must never enter this account's private backup.
-        val classes = classDao.getAllForBackup().filter { it.id > 0L && it.ownerUid == uid }
+        val classes = classDao.getAllForBackup().filter { it.id > 0L && (it.ownerUid == uid || it.ownerUid.isBlank()) }
         val ownedClassIds = classes.map { it.id }.toSet()
         val courses = courseDao.getAllForBackup().filter {
             it.id > 0L && it.classId in ownedClassIds
