@@ -11,6 +11,8 @@ import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.AudioFile
 import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.CalendarToday
+import androidx.compose.material.icons.filled.KeyboardArrowUp
+import androidx.compose.material.icons.filled.KeyboardArrowDown
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
@@ -31,7 +33,7 @@ fun ClassSessionsScreen(
     onBack: () -> Unit
 ) {
     val context = LocalContext.current
-    val canManageSessions = userRole == UserRole.TEACHER || AuthPreferences.isPrimaryTeacher(context)
+    val canManageSessions = (userRole == UserRole.TEACHER || AuthPreferences.isPrimaryTeacher(context)) && classId > 0L
     val allLectures by viewModel.repository.allLectures.collectAsState(initial = emptyList())
     val allCourses by viewModel.repository.allCoursesDetailed.collectAsState(initial = emptyList())
     var className by remember { mutableStateOf("کلاس") }
@@ -48,9 +50,17 @@ fun ClassSessionsScreen(
     val courseIdsForClass = remember(allCourses, classId) {
         allCourses.filter { it.classId == classId }.map { it.id }.toSet()
     }
-    val sessions = allLectures
+    val classSessions = allLectures
         .filter { it.classId == classId || (it.classId == null && it.courseId in courseIdsForClass) }
-        .sortedByDescending { it.dateMillis }
+    // Legacy sessions keep their previous date-based order until a manual order is saved.
+    val sessions = if (classSessions.any { it.sortOrder != 0 }) {
+        classSessions.sortedWith(
+            compareBy<LectureEntity> { if (it.sortOrder == 0) Int.MAX_VALUE else it.sortOrder }
+                .thenByDescending { it.dateMillis }
+        )
+    } else {
+        classSessions.sortedByDescending { it.dateMillis }
+    }
 
     Scaffold(
         containerColor = MaterialTheme.colorScheme.background,
@@ -140,8 +150,36 @@ fun ClassSessionsScreen(
                             }
                         }
                         if (canManageSessions) {
-                            IconButton(onClick = { showDeleteDialog = lecture }) {
-                                Icon(Icons.Default.Delete, contentDescription = "حذف جلسه")
+                            Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                                IconButton(
+                                    enabled = sessions.indexOfFirst { it.id == lecture.id } > 0,
+                                    onClick = {
+                                        val reordered = sessions.toMutableList()
+                                        val index = reordered.indexOfFirst { it.id == lecture.id }
+                                        if (index > 0) {
+                                            val previous = reordered[index - 1]
+                                            reordered[index - 1] = reordered[index]
+                                            reordered[index] = previous
+                                            viewModel.reorderClassSessions(classId, reordered.map { it.id })
+                                        }
+                                    }
+                                ) { Icon(Icons.Default.KeyboardArrowUp, contentDescription = "افزایش اولویت جلسه") }
+                                IconButton(
+                                    enabled = sessions.indexOfFirst { it.id == lecture.id } < sessions.lastIndex,
+                                    onClick = {
+                                        val reordered = sessions.toMutableList()
+                                        val index = reordered.indexOfFirst { it.id == lecture.id }
+                                        if (index in 0 until reordered.lastIndex) {
+                                            val next = reordered[index + 1]
+                                            reordered[index + 1] = reordered[index]
+                                            reordered[index] = next
+                                            viewModel.reorderClassSessions(classId, reordered.map { it.id })
+                                        }
+                                    }
+                                ) { Icon(Icons.Default.KeyboardArrowDown, contentDescription = "کاهش اولویت جلسه") }
+                                IconButton(onClick = { showDeleteDialog = lecture }) {
+                                    Icon(Icons.Default.Delete, contentDescription = "حذف جلسه")
+                                }
                             }
                         }
                     }
