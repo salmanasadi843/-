@@ -119,17 +119,8 @@ class FirestoreSyncRepository(
             batch.commit().awaitResult()
         }
 
-        // Folder metadata is stored separately so older clients can still read record documents.
-        teacherFolderDao?.let { foldersDao ->
-            val folderCollection = root.collection("folders")
-            val folderRows = foldersDao.observeFoldersForBackup().filter { it.ownerUid == uid }
-            val desiredFolders = folderRows.associate { "folder_${it.id}" to it.toCloudMap() }
-            val existingFolders = folderCollection.get().awaitResult().documents
-            val folderBatch = firestore.batch()
-            desiredFolders.forEach { (id, data) -> folderBatch.set(folderCollection.document(id), data) }
-            existingFolders.filter { it.id !in desiredFolders.keys }.forEach { folderBatch.delete(it.reference) }
-            folderBatch.commit().awaitResult()
-        }
+        // Keep folder metadata in the existing owner document, avoiding new Firebase rule paths.
+        val folderRows = teacherFolderDao?.observeFoldersForBackup()?.filter { it.ownerUid == uid }.orEmpty()
 
         // Commit the version marker only after all individual records were written.
         root.set(
@@ -137,6 +128,7 @@ class FirestoreSyncRepository(
                 "schemaVersion" to SCHEMA_VERSION,
                 "ownerUid" to uid,
                 "recordCount" to desired.size,
+                "folders" to folderRows.map { it.toCloudMap() },
                 "updatedAt" to FieldValue.serverTimestamp()
             )
         ).awaitResult()
@@ -153,12 +145,11 @@ class FirestoreSyncRepository(
         val classes = mutableListOf<ClassEntity>()
         val courses = mutableListOf<CourseEntity>()
         val lectures = mutableListOf<LectureEntity>()
+        val rootSnapshot = firestore.collection(TEACHER_DATA).document(uid).get().awaitResult()
         val folders = teacherFolderDao?.let {
-            firestore.collection(TEACHER_DATA).document(uid).collection("folders")
-                .get().awaitResult().documents.mapNotNull { doc ->
-                    val data = doc.data ?: return@mapNotNull null
-                    data.toFolderEntity()
-                }
+            (rootSnapshot.get("folders") as? List<*>)?.mapNotNull { value ->
+                (value as? Map<*, *>)?.asStringMap()?.toFolderEntity()
+            }.orEmpty()
         }.orEmpty()
 
         documents.forEach { document ->
