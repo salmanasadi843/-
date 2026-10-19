@@ -20,6 +20,8 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import com.example.data.local.ClassEntity
+import com.example.data.local.AppDatabase
+import kotlinx.coroutines.launch
 
 /** Stable grouping key; a teacher UID is preferred over a display name. */
 internal fun teacherFolderKey(clazz: com.example.data.local.ClassEntity, currentUid: String): String {
@@ -72,6 +74,7 @@ fun TeacherFoldersScreen(
     var deletedKeys by remember(uid) { mutableStateOf(prefs.getStringSet("deleted_keys", emptySet())?.toSet().orEmpty()) }
     var showHidden by remember { mutableStateOf(false) }
     var folderToDelete by remember { mutableStateOf<TeacherFolderRow?>(null) }
+    val scope = rememberCoroutineScope()
 
     val visibleClasses = remember(allClasses, canManage, studentReady, uid) {
         if (!canManage) {
@@ -216,6 +219,13 @@ fun TeacherFoldersScreen(
             },
             confirmButton = {
                 TextButton(onClick = {
+                    // A folder deletion only changes placement; it never deletes classes or sessions.
+                    scope.launch {
+                        val classDao = AppDatabase.getDatabase(context).classDao()
+                        row.classes
+                            .filter { it.id > 0L && (it.ownerUid == uid || it.ownerUid.isBlank()) }
+                            .forEach { clazz -> classDao.update(clazz.copy(folderId = null)) }
+                    }
                     deletedKeys = deletedKeys + row.key
                     hiddenKeys = hiddenKeys - row.key
                     prefs.edit()
