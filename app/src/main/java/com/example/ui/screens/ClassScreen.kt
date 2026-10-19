@@ -129,7 +129,7 @@ fun ClassScreen(
             }
         }
     ) { padding ->
-        if (classes.isEmpty()) {
+        if (classes.isEmpty() && !canManageClasses) {
             Box(
                 Modifier.fillMaxSize().padding(padding).padding(24.dp),
                 contentAlignment = Alignment.Center
