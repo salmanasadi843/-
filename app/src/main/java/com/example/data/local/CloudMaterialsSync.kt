@@ -168,7 +168,7 @@ object CloudMaterialsSync {
                 .groupBy { lecture ->
                     listOf(
                         lecture.classId?.toString().orEmpty(),
-                        lecture.courseId?.toString().orEmpty(),
+                        normalized(lecture.courseName).replace('ي', 'ی').replace('ك', 'ک'),
                         normalized(lecture.title).replace('ي', 'ی').replace('ك', 'ک'),
                         lecture.dateMillis.toString()
                     ).joinToString("|")
