@@ -1,6 +1,8 @@
 package com.example.ui.screens
 
 import android.Manifest
+import android.content.ClipboardManager
+import android.content.Context
 import android.content.pm.PackageManager
 import android.widget.Toast
 import androidx.activity.compose.rememberLauncherForActivityResult
@@ -1313,6 +1315,16 @@ fun AddEditLectureScreen(
                         }
                     }
 
+                    // جای‌گذاری مستقیم متن آماده از کلیپ‌بورد، بدون نیاز به برنامه واسطه داخل درس‌یار
+                    Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.End) {
+                        PasteClipboardButton { pasted ->
+                            viewModel.formTranscript.value = pasted
+                            if (viewModel.formOriginalTranscript.value.isBlank()) {
+                                viewModel.formOriginalTranscript.value = pasted
+                            }
+                        }
+                    }
+
                     // Transcript Text Field
 
                     OutlinedTextField(
@@ -1388,28 +1400,35 @@ fun AddEditLectureScreen(
                                 .onSurfaceVariant
                     )
 
-                    if (formAiSummary.isNotBlank()) {
-                        ElevatedCard(
-                            modifier = Modifier.fillMaxWidth(),
-                            shape = RoundedCornerShape(14.dp)
-                        ) {
-                            Column(Modifier.padding(14.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                                Text("خلاصه هوشمند", fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.primary)
-                                Text(formAiSummary, style = MaterialTheme.typography.bodyMedium, lineHeight = 23.sp)
-                            }
+                    // خلاصه و کلیدواژه‌ها باید مستقل از تولید هوشمند قابل ویرایش و جای‌گذاری باشند.
+                    Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                        Text("خلاصه هوشمند", fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.primary)
+                        Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.End) {
+                            PasteClipboardButton { pasted -> viewModel.formAiSummary.value = pasted }
                         }
+                        OutlinedTextField(
+                            value = formAiSummary,
+                            onValueChange = { viewModel.formAiSummary.value = it },
+                            placeholder = { Text("خلاصه را اینجا بنویسید یا از برنامه دیگری جای‌گذاری کنید.") },
+                            modifier = Modifier.fillMaxWidth().height(180.dp).testTag("lecture_summary_input"),
+                            shape = RoundedCornerShape(12.dp),
+                            minLines = 5
+                        )
                     }
 
-                    if (formAiKeyPoints.isNotBlank()) {
-                        ElevatedCard(
-                            modifier = Modifier.fillMaxWidth(),
-                            shape = RoundedCornerShape(14.dp)
-                        ) {
-                            Column(Modifier.padding(14.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                                Text("کلیدواژه‌ها و مباحث اصلی", fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.primary)
-                                Text(formAiKeyPoints, style = MaterialTheme.typography.bodyMedium, lineHeight = 23.sp)
-                            }
+                    Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                        Text("کلیدواژه‌ها و مباحث اصلی", fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.primary)
+                        Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.End) {
+                            PasteClipboardButton { pasted -> viewModel.formAiKeyPoints.value = pasted }
                         }
+                        OutlinedTextField(
+                            value = formAiKeyPoints,
+                            onValueChange = { viewModel.formAiKeyPoints.value = it },
+                            placeholder = { Text("کلیدواژه‌ها یا فهرست مباحث را اینجا جای‌گذاری کنید.") },
+                            modifier = Modifier.fillMaxWidth().height(160.dp).testTag("lecture_keywords_input"),
+                            shape = RoundedCornerShape(12.dp),
+                            minLines = 4
+                        )
                     }
                 }
             }
@@ -1419,6 +1438,30 @@ fun AddEditLectureScreen(
                     Modifier.height(16.dp)
             )
         }
+    }
+}
+
+@Composable
+private fun PasteClipboardButton(onPaste: (String) -> Unit) {
+    val context = LocalContext.current
+    OutlinedButton(
+        onClick = {
+            val clipboard = context.getSystemService(Context.CLIPBOARD_SERVICE) as? ClipboardManager
+            val pasted = clipboard?.primaryClip
+                ?.takeIf { it.itemCount > 0 }
+                ?.getItemAt(0)
+                ?.coerceToText(context)
+                ?.toString()
+            if (pasted.isNullOrEmpty()) {
+                Toast.makeText(context, "متنی در کلیپ‌بورد نیست؛ ابتدا متن را کپی کنید.", Toast.LENGTH_SHORT).show()
+            } else {
+                onPaste(pasted)
+                Toast.makeText(context, "متن جای‌گذاری شد؛ برای ثبت تغییرات، ذخیره را بزنید.", Toast.LENGTH_SHORT).show()
+            }
+        },
+        shape = RoundedCornerShape(10.dp)
+    ) {
+        Text("جای‌گذاری از کلیپ‌بورد", fontSize = 12.sp)
     }
 }
 
