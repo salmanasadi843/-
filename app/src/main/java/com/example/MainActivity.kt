@@ -25,6 +25,7 @@ import com.example.ui.screens.AddEditLectureScreen
 import com.example.ui.screens.AuthPreferences
 import com.example.ui.screens.AuthScreen
 import com.example.ui.screens.ClassScreen
+import com.example.ui.screens.TeacherFoldersScreen
 import com.example.ui.screens.ClassSessionsScreen
 import com.example.ui.screens.HomeScreen
 import com.example.ui.screens.LectureDetailScreen
@@ -124,6 +125,26 @@ fun OstadYarApp(
                 onNavigateToAdd = { viewModel.openClasses() },
                 onNavigateToDetail = { lectureId -> viewModel.navigateTo(Screen.Detail(lectureId)) },
                 onNavigateToAiSummary = { lectureId -> viewModel.navigateTo(Screen.Detail(lectureId)) }
+            )
+        }
+
+        Screen.Teachers -> {
+            TeacherFoldersScreen(
+                viewModel = viewModel,
+                userRole = userRole,
+                onOpenTeacher = { key, name -> viewModel.openTeacherClasses(key, name) },
+                onBack = { viewModel.navigateBack() }
+            )
+        }
+
+        is Screen.TeacherClasses -> {
+            ClassScreen(
+                viewModel = viewModel,
+                userRole = userRole,
+                teacherKey = screen.teacherKey,
+                teacherLabel = screen.teacherName,
+                onOpenClass = { id -> viewModel.openClass(id, screen.teacherKey, screen.teacherName) },
+                onBack = { viewModel.navigateBack() }
             )
         }
 

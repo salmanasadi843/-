@@ -41,7 +41,7 @@ object CloudMaterialsSync {
             val allLectures = runBlocking { db.lectureDao().getAllForBackup() }
             // Imported/shared records use stable negative IDs. They belong to their
             // original teacher and must never be republished or managed by this account.
-            val classes = allClasses.filter { it.id > 0L && it.isPublished }
+            val classes = allClasses.filter { it.id > 0L && it.ownerUid == uid && it.isPublished }
             val visibleClassIds = classes.map { it.id }.toSet()
             val courses = allCourses.filter { it.id > 0L && it.classId > 0L && it.classId in visibleClassIds }
             val lectures = allLectures.filter { lecture ->
@@ -52,7 +52,7 @@ object CloudMaterialsSync {
                 .put("format", "darsyar-shared-materials")
                 .put("version", 1)
                 .put("teacherName", AuthPreferences.currentName(context))
-                .put("classes", JSONArray().apply { classes.forEach { put(it.toJson()) } })
+                .put("classes", JSONArray().apply { classes.forEach { put(it.copy(ownerUid = uid).toJson()) } })
                 .put("courses", JSONArray().apply { courses.forEach { put(it.toJson()) } })
                 .put("lectures", JSONArray().apply { lectures.map { it.toJson() }.forEach { put(it) } })
             Tasks.await(
@@ -93,7 +93,7 @@ object CloudMaterialsSync {
                         if (!item.isPublished) continue
                         val signature = listOf(item.name, item.teacherName, item.term)
                             .joinToString("|") { normalized(it) }
-                        sourceClasses += Triple(owner, item, signature)
+                        sourceClasses += Triple(owner, item.copy(ownerUid = owner, folderId = null), signature)
                     }
                 }
             }
@@ -154,7 +154,7 @@ object CloudMaterialsSync {
                 }
                 classIdMap["$owner:${item.id}"] = importedClassId
                 if (allClasses.none { it.id == importedClassId }) {
-                    allClasses += item.copy(id = importedClassId, isPublished = true)
+                    allClasses += item.copy(id = importedClassId, ownerUid = owner, folderId = null, isPublished = true)
                 }
             }
 
@@ -260,12 +260,13 @@ object CloudMaterialsSync {
     private fun ClassEntity.toJson() = JSONObject()
         .put("id", id).put("name", name).put("teacherName", teacherName)
         .put("description", description).put("term", term)
-        .put("classDateMillis", classDateMillis).put("isPublished", isPublished).put("createdAtMillis", createdAtMillis)
+        .put("classDateMillis", classDateMillis).put("isPublished", isPublished).put("createdAtMillis", createdAtMillis).put("ownerUid", ownerUid)
 
     private fun JSONObject.toClassEntity() = ClassEntity(
         id = optLong("id"), name = optString("name"), teacherName = optString("teacherName"),
         description = optString("description"), term = optString("term"),
-        classDateMillis = optLong("classDateMillis"), isPublished = optBoolean("isPublished", true), createdAtMillis = optLong("createdAtMillis")
+        classDateMillis = optLong("classDateMillis"), isPublished = optBoolean("isPublished", true), createdAtMillis = optLong("createdAtMillis"),
+        ownerUid = optString("ownerUid")
     )
 
     private fun CourseEntity.toJson() = JSONObject()
@@ -287,6 +288,7 @@ object CloudMaterialsSync {
         .put("transcript", transcript).put("aiSummary", aiSummary ?: JSONObject.NULL)
         .put("aiKeyPoints", aiKeyPoints ?: JSONObject.NULL).put("tags", tags)
         .put("isPublished", isPublished).put("lastEditedMillis", lastEditedMillis)
+        .put("sortOrder", sortOrder)
 
     private fun JSONObject.toLecture() = LectureEntity(
         id = optLong("id"), title = optString("title"), courseName = optString("courseName"),
@@ -295,7 +297,8 @@ object CloudMaterialsSync {
         audioFilePath = null, audioUrl = nullableString("audioUrl"),
         audioDurationMs = optLong("audioDurationMs"), transcript = optString("transcript"),
         aiSummary = nullableString("aiSummary"), aiKeyPoints = nullableString("aiKeyPoints"),
-        tags = optString("tags"), isPublished = optBoolean("isPublished", true), lastEditedMillis = optLong("lastEditedMillis")
+        tags = optString("tags"), isPublished = optBoolean("isPublished", true), lastEditedMillis = optLong("lastEditedMillis"),
+        sortOrder = optInt("sortOrder", 0)
     )
 
     private fun JSONObject.nullableString(key: String): String? =

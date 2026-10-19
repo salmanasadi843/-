@@ -26,5 +26,7 @@ data class LectureEntity(
     val isFavorite: Boolean = false,
     /** Whether this lesson is currently published to students. */
     val isPublished: Boolean = true,
-    val lastEditedMillis: Long = System.currentTimeMillis()
+    val lastEditedMillis: Long = System.currentTimeMillis(),
+    /** Manual ordering within a class; dateMillis remains the actual lecture date. */
+    val sortOrder: Int = 0
 )
