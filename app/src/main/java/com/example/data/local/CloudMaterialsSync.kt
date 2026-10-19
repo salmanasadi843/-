@@ -161,18 +161,28 @@ object CloudMaterialsSync {
                 }
             }
 
-            // Remove exact duplicate sessions that came from source classes later merged together.
-            // Different dates or different transcript/audio content are preserved.
-            val uniqueLectures = allLectures.distinctBy { lecture ->
-                listOf(
-                    lecture.classId?.toString().orEmpty(),
-                    normalized(lecture.title).replace('ي', 'ی').replace('ك', 'ک'),
-                    normalized(lecture.courseName).replace('ي', 'ی').replace('ك', 'ک'),
-                    lecture.dateMillis.toString(),
-                    normalized(lecture.transcript).replace('ي', 'ی').replace('ك', 'ک'),
-                    normalized(lecture.audioUrl.orEmpty())
-                ).joinToString("|")
-            }
+            // Collapse duplicate copies of the same session within a class even if one
+            // copy has a slightly different transcript/audio URL. Keep the richest copy
+            // so deduplication does not discard summaries, keywords, or audio links.
+            val uniqueLectures = allLectures
+                .groupBy { lecture ->
+                    listOf(
+                        lecture.classId?.toString().orEmpty(),
+                        lecture.courseId?.toString().orEmpty(),
+                        normalized(lecture.title).replace('ي', 'ی').replace('ك', 'ک'),
+                        lecture.dateMillis.toString()
+                    ).joinToString("|")
+                }
+                .values
+                .map { copies ->
+                    copies.maxByOrNull { lecture ->
+                        lecture.transcript.length +
+                            (lecture.aiSummary?.length ?: 0) +
+                            (lecture.aiKeyPoints?.length ?: 0) +
+                            lecture.tags.length +
+                            if (!lecture.audioUrl.isNullOrBlank()) 1000 else 0
+                    }!!
+                }
 
             runBlocking {
                 db.withTransaction {
