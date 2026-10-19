@@ -105,7 +105,7 @@ object CloudMaterialsSync {
                 val courses = validPayloads
                     .filter { it.first == owner }
                     .flatMap { (_, payload) ->
-                        val array = payload.optJSONArray("courses") ?: return@flatMap emptyList<String>()
+                        val array = payload.optJSONArray("courses") ?: return@flatMap emptyList<CourseEntity>()
                         (0 until array.length()).mapNotNull { index ->
                             runCatching { array.getJSONObject(index).toCourse() }.getOrNull()
                         }
@@ -128,7 +128,6 @@ object CloudMaterialsSync {
                             normalized(lecture.title),
                             normalized(lecture.courseName),
                             lecture.dateMillis.toString(),
-                            normalized(lecture.transcript)
                         ).joinToString("~")
                     }
                     .sorted()
