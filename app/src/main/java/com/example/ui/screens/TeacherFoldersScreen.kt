@@ -148,6 +148,13 @@ fun TeacherFoldersScreen(
                     }
                 },
                 actions = {
+                    if (canManage) {
+                        TextButton(onClick = {
+                            onOpenTeacher(uid, AuthPreferences.currentName(context).ifBlank { "کلاس‌های من" })
+                        }) {
+                            Text("کلاس جدید +")
+                        }
+                    }
                     TextButton(onClick = { showHidden = !showHidden }) {
                         Text(if (showHidden) "پنهان‌ها" else "نمایش پنهان‌ها")
                     }
