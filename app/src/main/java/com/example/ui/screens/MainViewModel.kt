@@ -887,8 +887,11 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
     fun reorderClassSessions(classId: Long, orderedLectureIds: List<Long>) {
         viewModelScope.launch {
             if (!teacherPermissionGranted()) { denyTeacherMutation(); return@launch }
-            if (classId < 0L || orderedLectureIds.any { it < 0L }) {
-                _cloudSyncStatus.value = "تغییر ترتیب جلسات مطالب استاد دیگر مجاز نیست."
+            val uid = AuthPreferences.currentUid(getApplication<Application>()).orEmpty()
+            val ownerClass = repository.getClass(classId)
+            if (classId < 0L || orderedLectureIds.any { it < 0L } || ownerClass == null ||
+                uid.isBlank() || ownerClass.ownerUid != uid) {
+                _cloudSyncStatus.value = "تغییر ترتیب فقط برای کلاس متعلق به همین حساب مجاز است."
                 return@launch
             }
             try {
