@@ -478,6 +478,7 @@ fun HomeScreen(
             }
         }
     }
+    }
     if (showBulkExportDialog && isTeacher) {
         BulkExportDialog(
             lectures = lectures,
