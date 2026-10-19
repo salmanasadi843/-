@@ -200,8 +200,9 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
                 combine(
                     repository.allLectures,
                     repository.allClasses,
-                    repository.allCoursesDetailed
-                ) { _, _, _ -> Unit }
+                    repository.allCoursesDetailed,
+                    database.teacherFolderDao().observeFolders(uid)
+                ) { _, _, _, _ -> Unit }
                     .debounce(1200)
                     .collect {
                         try {
