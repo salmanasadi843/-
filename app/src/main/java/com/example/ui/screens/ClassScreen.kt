@@ -281,7 +281,8 @@ fun ClassScreen(
                                         Text("فقط مشاهده", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.tertiary)
                                     }
                                 }
-                            }                        }
+                            }
+                        }
                     }
                 }
             }
