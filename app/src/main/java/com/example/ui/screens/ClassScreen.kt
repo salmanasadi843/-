@@ -257,8 +257,10 @@ fun ClassScreen(
                                 }) {
                                     Icon(Icons.Default.Edit, contentDescription = "ویرایش کلاس", tint = MaterialTheme.colorScheme.primary)
                                 }
-                                IconButton(onClick = { classToMove = item }) {
-                                    Icon(Icons.Default.School, contentDescription = "انتقال به پوشه", tint = MaterialTheme.colorScheme.secondary)
+                                if (item.ownerUid == ownerUid && ownerUid.isNotBlank()) {
+                                    IconButton(onClick = { classToMove = item }) {
+                                        Icon(Icons.Default.School, contentDescription = "انتقال به پوشه", tint = MaterialTheme.colorScheme.secondary)
+                                    }
                                 }
                                 IconButton(onClick = { classToDelete = item }) {
                                     Icon(Icons.Default.Delete, contentDescription = "حذف کلاس", tint = MaterialTheme.colorScheme.error)
@@ -313,18 +315,22 @@ fun ClassScreen(
                 Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
                     Text("کلاس «${item.name}» به کدام پوشه منتقل شود؟")
                     TextButton(onClick = {
-                        scope.launch {
-                            classDao.update(item.copy(folderId = null, ownerUid = item.ownerUid.ifBlank { ownerUid }))
-                            classToMove = null
-                        }
-                    }) { Text("پوشهٔ اصلی استاد") }
-                    folders.forEach { folder ->
-                        TextButton(onClick = {
+                        if (item.ownerUid == ownerUid && ownerUid.isNotBlank()) {
                             scope.launch {
-                                classDao.update(item.copy(folderId = folder.id, ownerUid = item.ownerUid.ifBlank { ownerUid }))
+                                classDao.update(item.copy(folderId = null))
                                 classToMove = null
                             }
-                        }) { Text("📁 ${folder.name}") }
+                        }
+                    }, enabled = item.ownerUid == ownerUid && ownerUid.isNotBlank()) { Text("پوشهٔ اصلی استاد") }
+                    folders.forEach { folder ->
+                        TextButton(onClick = {
+                            if (item.ownerUid == ownerUid && ownerUid.isNotBlank()) {
+                                scope.launch {
+                                    classDao.update(item.copy(folderId = folder.id))
+                                    classToMove = null
+                                }
+                            }
+                        }, enabled = item.ownerUid == ownerUid && ownerUid.isNotBlank()) { Text("📁 ${folder.name}") }
                     }
                 }
             },
@@ -378,7 +384,7 @@ fun ClassScreen(
                                 description = editingClass?.description.orEmpty(),
                                 classDateMillis = editingClass?.classDateMillis ?: System.currentTimeMillis(),
                                 createdAtMillis = editingClass?.createdAtMillis ?: System.currentTimeMillis(),
-                                ownerUid = editingClass?.ownerUid?.takeIf { it.isNotBlank() } ?: ownerUid,
+                                ownerUid = if (editingClass == null) ownerUid else editingClass.ownerUid,
                                 folderId = editingClass?.folderId ?: selectedFolderId
                             ),
                             onSaved = {
