@@ -128,11 +128,17 @@ fun ClassScreen(
         return if (parent == null) folder.name else folderPath(parent) + " / " + folder.name
     }
 
+    // Only the current teacher's own folder uses the editable class list.
+    // Other teachers' folders (and the unfiled view) must show the selected rows
+    // as read-only, including imported negative-ID classes.
     val visibleOwnedClasses = classes.filter {
         it.id > 0L &&
             (it.ownerUid == ownerUid || it.ownerUid.isBlank()) &&
             (teacherKey != null || it.folderId == selectedFolderId)
     }
+    val canManageSelectedTeacher = canManageClasses &&
+        (teacherKey == null || teacherKey == ownerUid)
+    val classesToDisplay = if (canManageSelectedTeacher) visibleOwnedClasses else classes
     // Shared/foreign classes are kept in a separate read-only section at the root,
     // never mixed into the teacher's own folders.
     val visibleOtherClasses = if (selectedFolderId == null && canManageClasses) {
@@ -262,7 +268,7 @@ fun ClassScreen(
                     }
                 }
                 items(
-                    if (canManageClasses) visibleOwnedClasses else classes,
+                    classesToDisplay,
                     key = { it.id }
                 ) { item ->
                     Card(
