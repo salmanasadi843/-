@@ -260,12 +260,13 @@ object CloudMaterialsSync {
     private fun ClassEntity.toJson() = JSONObject()
         .put("id", id).put("name", name).put("teacherName", teacherName)
         .put("description", description).put("term", term)
-        .put("classDateMillis", classDateMillis).put("isPublished", isPublished).put("createdAtMillis", createdAtMillis)
+        .put("classDateMillis", classDateMillis).put("isPublished", isPublished).put("createdAtMillis", createdAtMillis).put("ownerUid", ownerUid)
 
     private fun JSONObject.toClassEntity() = ClassEntity(
         id = optLong("id"), name = optString("name"), teacherName = optString("teacherName"),
         description = optString("description"), term = optString("term"),
-        classDateMillis = optLong("classDateMillis"), isPublished = optBoolean("isPublished", true), createdAtMillis = optLong("createdAtMillis")
+        classDateMillis = optLong("classDateMillis"), isPublished = optBoolean("isPublished", true), createdAtMillis = optLong("createdAtMillis"),
+        ownerUid = optString("ownerUid")
     )
 
     private fun CourseEntity.toJson() = JSONObject()
@@ -287,6 +288,7 @@ object CloudMaterialsSync {
         .put("transcript", transcript).put("aiSummary", aiSummary ?: JSONObject.NULL)
         .put("aiKeyPoints", aiKeyPoints ?: JSONObject.NULL).put("tags", tags)
         .put("isPublished", isPublished).put("lastEditedMillis", lastEditedMillis)
+        .put("sortOrder", sortOrder)
 
     private fun JSONObject.toLecture() = LectureEntity(
         id = optLong("id"), title = optString("title"), courseName = optString("courseName"),
@@ -295,7 +297,8 @@ object CloudMaterialsSync {
         audioFilePath = null, audioUrl = nullableString("audioUrl"),
         audioDurationMs = optLong("audioDurationMs"), transcript = optString("transcript"),
         aiSummary = nullableString("aiSummary"), aiKeyPoints = nullableString("aiKeyPoints"),
-        tags = optString("tags"), isPublished = optBoolean("isPublished", true), lastEditedMillis = optLong("lastEditedMillis")
+        tags = optString("tags"), isPublished = optBoolean("isPublished", true), lastEditedMillis = optLong("lastEditedMillis"),
+        sortOrder = optInt("sortOrder", 0)
     )
 
     private fun JSONObject.nullableString(key: String): String? =
