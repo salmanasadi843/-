@@ -43,7 +43,12 @@ fun ClassScreen(
         else emptyList()
     } else allClasses
     // Refresh the published feed whenever a student opens the class list so revoked visibility is applied.
-    LaunchedEffect(userRole) { if (userRole == UserRole.STUDENT) viewModel.startStudentMaterialsSync() }
+    LaunchedEffect(userRole) {
+        when (userRole) {
+            UserRole.STUDENT -> viewModel.startStudentMaterialsSync()
+            UserRole.TEACHER -> viewModel.syncPublishedMaterialsForTeacher()
+        }
+    }
     var showAdd by remember { mutableStateOf(false) }
     var classToDelete by remember { mutableStateOf<ClassEntity?>(null) }
     var isSaving by remember { mutableStateOf(false) }
@@ -154,10 +159,19 @@ fun ClassScreen(
                                 if (item.term.isNotBlank()) {
                                     Text(item.term, style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
                                 }
+                                if (canManageClasses && item.id < 0L) {
+                                    Spacer(Modifier.height(4.dp))
+                                    Text(
+                                        "مطالب منتشرشده از استاد دیگر • فقط مشاهده",
+                                        style = MaterialTheme.typography.labelSmall,
+                                        color = MaterialTheme.colorScheme.tertiary
+                                    )
+                                }
                                 Spacer(Modifier.height(8.dp))
                                 Text("مشاهده جلسات  ›", style = MaterialTheme.typography.labelLarge, fontWeight = FontWeight.SemiBold, color = MaterialTheme.colorScheme.primary)
                             }
-                            if (canManageClasses) {
+                            if (canManageClasses && item.id > 0L) {
+                                // Only locally owned classes can be managed by this teacher.
                                 Column(horizontalAlignment = Alignment.CenterHorizontally) {
                                 IconButton(onClick = {
                                     editingClass = item
