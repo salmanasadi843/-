@@ -81,9 +81,12 @@ class FirestoreSyncRepository(
     }
 
     suspend fun uploadSnapshot(uid: String) {
-        val classes = classDao.getAllForBackup()
-        val courses = courseDao.getAllForBackup()
+        // Shared published records are imported with negative IDs. They belong to
+        // their original teachers and must never enter this account's private backup.
+        val classes = classDao.getAllForBackup().filter { it.id > 0L }
+        val courses = courseDao.getAllForBackup().filter { it.id > 0L && it.classId > 0L }
         val lectures = lectureDao.getAllForBackup()
+            .filter { it.id > 0L }
             .filterNot {
                 it.title == "جلسه ۴: شبکه‌های عصبی و یادگیری عمیق" ||
                     it.title == "جلسه ۷: سری و تبدیل فوریه و کاربرد در سیگنال"
