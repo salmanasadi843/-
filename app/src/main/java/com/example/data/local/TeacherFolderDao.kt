@@ -25,6 +25,12 @@ interface TeacherFolderDao {
     @Delete
     suspend fun delete(folder: TeacherFolderEntity)
 
+    @Insert(onConflict = OnConflictStrategy.REPLACE)
+    suspend fun insertAllForRestore(items: List<TeacherFolderEntity>)
+
+    @Query("DELETE FROM teacher_folders")
+    suspend fun clearForRestore()
+
     @Query("SELECT COUNT(*) FROM classes WHERE folderId = :folderId")
     suspend fun countClasses(folderId: Long): Int
 
