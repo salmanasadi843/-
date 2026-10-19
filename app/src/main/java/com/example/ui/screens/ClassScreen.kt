@@ -9,6 +9,8 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.Edit
 import androidx.compose.material.icons.filled.Delete
+import androidx.compose.material.icons.filled.Visibility
+import androidx.compose.material.icons.filled.VisibilityOff
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.School
 import androidx.compose.material3.*
@@ -88,6 +90,7 @@ fun ClassScreen(
     var classToClaim by remember { mutableStateOf<ClassEntity?>(null) }
     var showAdd by remember { mutableStateOf(false) }
     var classToDelete by remember { mutableStateOf<ClassEntity?>(null) }
+    var folderToDelete by remember { mutableStateOf<TeacherFolderEntity?>(null) }
     var isSaving by remember { mutableStateOf(false) }
     var saveError by remember { mutableStateOf<String?>(null) }
     var name by remember { mutableStateOf("") }
@@ -223,6 +226,9 @@ fun ClassScreen(
                                 Text("📁", style = MaterialTheme.typography.titleLarge)
                                 Spacer(Modifier.width(10.dp))
                                 Text(folder.name, modifier = Modifier.weight(1f), fontWeight = FontWeight.SemiBold)
+                                IconButton(onClick = { folderToDelete = folder }) {
+                                    Icon(Icons.Default.Delete, contentDescription = "حذف پوشه", tint = MaterialTheme.colorScheme.error)
+                                }
                                 Text("باز کردن  ›", color = MaterialTheme.colorScheme.primary)
                             }
                         }
@@ -301,6 +307,19 @@ fun ClassScreen(
                                             }
                                             IconButton(onClick = { classToMove = item }) {
                                                 Icon(Icons.Default.School, contentDescription = "انتقال به پوشه", tint = MaterialTheme.colorScheme.secondary)
+                                            }
+                                            IconButton(onClick = {
+                                                scope.launch {
+                                                    if (item.ownerUid == ownerUid && ownerUid.isNotBlank()) {
+                                                        classDao.update(item.copy(isPublished = !item.isPublished))
+                                                    }
+                                                }
+                                            }) {
+                                                Icon(
+                                                    if (item.isPublished) Icons.Default.VisibilityOff else Icons.Default.Visibility,
+                                                    contentDescription = if (item.isPublished) "پنهان‌کردن کلاس از دانشجو" else "نمایش دوباره کلاس برای دانشجو",
+                                                    tint = if (item.isPublished) MaterialTheme.colorScheme.tertiary else MaterialTheme.colorScheme.primary
+                                                )
                                             }
                                             IconButton(onClick = { classToDelete = item }) {
                                                 Icon(Icons.Default.Delete, contentDescription = "حذف کلاس", tint = MaterialTheme.colorScheme.error)
@@ -474,6 +493,33 @@ fun ClassScreen(
             },
             confirmButton = {},
             dismissButton = { TextButton(onClick = { showBulkMove = false }) { Text("انصراف") } }
+        )
+    }
+
+    folderToDelete?.let { folder ->
+        AlertDialog(
+            onDismissRequest = { folderToDelete = null },
+            title = { Text("حذف پوشه") },
+            text = {
+                Text("پوشهٔ «${folder.name}» حذف شود؟ کلاس‌ها و زیرپوشه‌ها حذف نمی‌شوند؛ به پوشهٔ والد منتقل می‌شوند.")
+            },
+            confirmButton = {
+                TextButton(onClick = {
+                    folderToDelete = null
+                    scope.launch {
+                        val owned = folderDao.getOwnedFolder(folder.id, ownerUid)
+                        if (owned != null && owned.ownerUid == ownerUid && ownerUid.isNotBlank()) {
+                            allClasses.filter { it.folderId == folder.id && it.id > 0L && it.ownerUid == ownerUid }
+                                .forEach { classDao.update(it.copy(folderId = folder.parentFolderId)) }
+                            folders.filter { it.parentFolderId == folder.id }
+                                .forEach { folderDao.update(it.copy(parentFolderId = folder.parentFolderId)) }
+                            folderDao.delete(owned)
+                            if (selectedFolderId == folder.id) selectedFolderId = folder.parentFolderId
+                        }
+                    }
+                }) { Text("حذف پوشه", color = MaterialTheme.colorScheme.error) }
+            },
+            dismissButton = { TextButton(onClick = { folderToDelete = null }) { Text("انصراف") } }
         )
     }
 
