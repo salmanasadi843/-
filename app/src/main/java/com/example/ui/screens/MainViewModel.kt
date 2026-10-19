@@ -881,6 +881,30 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
         }
     }
 
+
+    /** Persist the teacher's manual session order without changing the actual lecture dates. */
+    fun reorderClassSessions(classId: Long, orderedLectureIds: List<Long>) {
+        viewModelScope.launch {
+            if (!teacherPermissionGranted()) { denyTeacherMutation(); return@launch }
+            if (classId < 0L || orderedLectureIds.any { it < 0L }) {
+                _cloudSyncStatus.value = "تغییر ترتیب جلسات مطالب استاد دیگر مجاز نیست."
+                return@launch
+            }
+            try {
+                orderedLectureIds.forEachIndexed { index, lectureId ->
+                    val lecture = repository.getLecture(lectureId) ?: return@forEachIndexed
+                    if (lecture.classId == classId) {
+                        repository.saveLecture(lecture.copy(sortOrder = index + 1, lastEditedMillis = System.currentTimeMillis()))
+                    }
+                }
+                withContext(Dispatchers.IO) { CloudMaterialsSync.sync(getApplication<Application>()) }
+            } catch (e: Exception) {
+                Log.e(TAG, "Reordering class sessions failed", e)
+                _cloudSyncStatus.value = "ذخیره ترتیب جلسات ناموفق بود: ${e.localizedMessage ?: "خطای نامشخص"}"
+            }
+        }
+    }
+
     fun deleteLecture(
         id: Long,
         onDeleted: () -> Unit
