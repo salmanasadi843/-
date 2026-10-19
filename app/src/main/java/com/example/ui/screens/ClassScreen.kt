@@ -30,6 +30,8 @@ import kotlinx.coroutines.launch
 fun ClassScreen(
     viewModel: MainViewModel,
     userRole: UserRole,
+    teacherKey: String? = null,
+    teacherLabel: String? = null,
     onOpenClass: (Long) -> Unit,
     onBack: () -> Unit
 ) {
@@ -47,7 +49,7 @@ fun ClassScreen(
     // Keep the student list unchanged (its published-feed deduplication is already verified).
     // In teacher mode, collapse duplicate imported cards by their visible class identity,
     // while never collapsing teacher-owned positive-ID classes.
-    val classes = if (!canManageClasses) {
+    val allVisibleClasses = if (!canManageClasses) {
         if (studentFeedReady) allClasses.filter { it.id < 0L && it.isPublished }
         else emptyList()
     } else {
@@ -69,6 +71,19 @@ fun ClassScreen(
                     }
             }
         ownedClasses + foreignPositiveClasses + sharedClasses
+    }
+    val folderPrefs = remember(ownerUid) {
+        context.getSharedPreferences("teacher_folders_local_${ownerUid.ifBlank { "local" }}", android.content.Context.MODE_PRIVATE)
+    }
+    val deletedTeacherKeys = remember(teacherKey, ownerUid) {
+        folderPrefs.getStringSet("deleted_keys", emptySet())?.toSet().orEmpty()
+    }
+    val classes = remember(allVisibleClasses, teacherKey, ownerUid, deletedTeacherKeys) {
+        when (teacherKey) {
+            null -> allVisibleClasses
+            "__unfiled_teachers__" -> allVisibleClasses.filter { teacherFolderKey(it, ownerUid) in deletedTeacherKeys }
+            else -> allVisibleClasses.filter { teacherFolderKey(it, ownerUid) == teacherKey }
+        }
     }
     // Refresh the published feed whenever a student opens the class list so revoked visibility is applied.
     LaunchedEffect(userRole) {
@@ -131,9 +146,9 @@ fun ClassScreen(
             TopAppBar(
                 title = {
                     Column {
-                        Text("کلاس‌های من", fontWeight = FontWeight.Bold)
+                        Text(teacherLabel ?: "کلاس‌های من", fontWeight = FontWeight.Bold)
                         Text(
-                            if (canManageClasses) "مدیریت کلاس‌ها" else "کلاس‌های قابل مطالعه",
+                            if (canManageClasses) "مدیریت کلاس‌های استاد" else "کلاس‌های قابل مطالعه",
                             style = MaterialTheme.typography.labelMedium,
                             color = MaterialTheme.colorScheme.onSurfaceVariant
                         )
@@ -158,7 +173,7 @@ fun ClassScreen(
             }
         }
     ) { padding ->
-        if (classes.isEmpty() && !canManageClasses) {
+        if (classes.isEmpty() && (!canManageClasses || teacherKey != null)) {
             Box(
                 Modifier.fillMaxSize().padding(padding).padding(24.dp),
                 contentAlignment = Alignment.Center
@@ -172,13 +187,13 @@ fun ClassScreen(
                         Icon(Icons.Default.School, null, Modifier.size(48.dp), tint = MaterialTheme.colorScheme.primary)
                         Spacer(Modifier.height(14.dp))
                         Text(
-                            if (canManageClasses) "هنوز کلاسی ایجاد نشده است" else "هنوز کلاسی برای مطالعه وجود ندارد",
+                            if (canManageClasses && teacherKey == null) "هنوز کلاسی ایجاد نشده است" else "کلاسی در این پوشه وجود ندارد",
                             style = MaterialTheme.typography.titleMedium,
                             fontWeight = FontWeight.Bold
                         )
                         Spacer(Modifier.height(6.dp))
                         Text(
-                            if (canManageClasses) "اولین کلاس خود را ایجاد کنید." else "پس از اضافه شدن کلاس، جلسات اینجا نمایش داده می‌شوند.",
+                            if (canManageClasses && teacherKey == null) "اولین کلاس خود را ایجاد کنید." else "پس از انتشار یا اضافه‌شدن کلاس، اینجا نمایش داده می‌شود.",
                             color = MaterialTheme.colorScheme.onSurfaceVariant
                         )
                     }
