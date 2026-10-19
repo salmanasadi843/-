@@ -41,8 +41,14 @@ import java.io.FileOutputStream
 
 sealed class Screen {
     object Home : Screen()
+    object Teachers : Screen()
+    data class TeacherClasses(val teacherKey: String, val teacherName: String) : Screen()
     object Classes : Screen()
-    data class ClassDetail(val classId: Long) : Screen()
+    data class ClassDetail(
+        val classId: Long,
+        val parentTeacherKey: String? = null,
+        val parentTeacherName: String? = null
+    ) : Screen()
     data class Detail(val lectureId: Long) : Screen()
     data class AddEdit(val lectureId: Long? = null, val classId: Long? = null) : Screen()
     data class AiStudy(val lectureId: Long) : Screen()
