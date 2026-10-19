@@ -16,13 +16,26 @@ import java.security.MessageDigest
  * Audio binaries are never uploaded; only an optional audio URL is shared.
  */
 object CloudMaterialsSync {
-    fun sync(context: Context): String {
+    fun sync(context: Context): String = syncInternal(context, receiveOnly = false)
+
+    /**
+     * Allows a secondary teacher to read other teachers' published materials without
+     * publishing their own snapshot. Imported rows retain negative IDs and are read-only.
+     */
+    fun syncPublishedForTeacher(context: Context): String {
+        require(AuthPreferences.currentRole(context) == UserRole.TEACHER) {
+            "این همگام‌سازی فقط برای حساب استاد است."
+        }
+        return syncInternal(context, receiveOnly = true)
+    }
+
+    private fun syncInternal(context: Context, receiveOnly: Boolean): String {
         val uid = AuthPreferences.currentUid(context)
             ?: error("ابتدا وارد حساب کاربری شوید.")
         val db = AppDatabase.getDatabase(context)
         val firestore = FirebaseFirestore.getInstance()
 
-        return if (AuthPreferences.currentRole(context) == UserRole.TEACHER) {
+        return if (AuthPreferences.currentRole(context) == UserRole.TEACHER && !receiveOnly) {
             val allClasses = runBlocking { db.classDao().getAllForBackup() }
             val allCourses = runBlocking { db.courseDao().getAllForBackup() }
             val allLectures = runBlocking { db.lectureDao().getAllForBackup() }
