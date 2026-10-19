@@ -239,18 +239,8 @@ fun ClassScreen(
                         Text(classes.size.toString() + " کلاس", style = MaterialTheme.typography.labelLarge, color = MaterialTheme.colorScheme.onSurfaceVariant)
                     }
                 }
-                if (canManageClasses && visibleOtherClasses.isNotEmpty()) {
-                    item {
-                        Text(
-                            "مطالب استادان دیگر (فقط مشاهده)",
-                            style = MaterialTheme.typography.titleSmall,
-                            fontWeight = FontWeight.Bold,
-                            color = MaterialTheme.colorScheme.tertiary
-                        )
-                    }
-                }
                 items(
-                    if (canManageClasses) visibleOwnedClasses + visibleOtherClasses else classes,
+                    if (canManageClasses) visibleOwnedClasses else classes,
                     key = { it.id }
                 ) { item ->
                     Card(
@@ -325,6 +315,34 @@ fun ClassScreen(
                                     else -> {
                                         Text("فقط مشاهده", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.tertiary)
                                     }
+                                }
+                            }
+                        }
+                    }
+                }
+                if (canManageClasses && visibleOtherClasses.isNotEmpty()) {
+                    item {
+                        Text(
+                            "مطالب استادان دیگر (فقط مشاهده)",
+                            style = MaterialTheme.typography.titleSmall,
+                            fontWeight = FontWeight.Bold,
+                            color = MaterialTheme.colorScheme.tertiary
+                        )
+                    }
+                    items(visibleOtherClasses, key = { it.id }) { item ->
+                        Card(
+                            Modifier.fillMaxWidth().clickable { onOpenClass(item.id) },
+                            shape = RoundedCornerShape(22.dp),
+                            colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
+                            elevation = CardDefaults.cardElevation(1.dp)
+                        ) {
+                            Row(Modifier.fillMaxWidth().padding(18.dp), verticalAlignment = Alignment.CenterVertically) {
+                                Icon(Icons.Default.School, contentDescription = null, tint = MaterialTheme.colorScheme.tertiary)
+                                Spacer(Modifier.width(12.dp))
+                                Column(Modifier.weight(1f)) {
+                                    Text(item.name, style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
+                                    if (item.teacherName.isNotBlank()) Text("استاد: " + item.teacherName, style = MaterialTheme.typography.bodySmall)
+                                    Text("فقط مشاهده", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.tertiary)
                                 }
                             }
                         }
