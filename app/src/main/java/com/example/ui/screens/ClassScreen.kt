@@ -384,7 +384,7 @@ fun ClassScreen(
                                 description = editingClass?.description.orEmpty(),
                                 classDateMillis = editingClass?.classDateMillis ?: System.currentTimeMillis(),
                                 createdAtMillis = editingClass?.createdAtMillis ?: System.currentTimeMillis(),
-                                ownerUid = if (editingClass == null) ownerUid else editingClass.ownerUid,
+                                ownerUid = editingClass?.ownerUid ?: ownerUid,
                                 folderId = editingClass?.folderId ?: selectedFolderId
                             ),
                             onSaved = {
