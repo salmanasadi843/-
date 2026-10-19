@@ -105,18 +105,16 @@ object CloudMaterialsSync {
                 .values
                 .mapNotNull { entries -> entries.maxByOrNull { it.second.createdAtMillis } }
 
+            // Preserve every distinct class from each teacher. Grouping by name/teacher/term
+            // incorrectly collapsed two different classes when those fields matched.
+            // Deduplication is limited to stale records of the same source class ID above.
             val classIdMap = mutableMapOf<String, Long>()
-            canonicalSourceClasses.groupBy { it.third }.forEach { (signature, entries) ->
-                val mergedId = stableId("merged-classes", signature)
-                entries.forEach { (owner, item, _) ->
-                    classIdMap["$owner:${item.id}"] = mergedId
-                }
-                val preferred = entries.maxByOrNull { it.second.createdAtMillis }!!.second
-                allClasses += preferred.copy(
-                    id = mergedId,
-                    isPublished = true,
-                    createdAtMillis = entries.maxOf { it.second.createdAtMillis },
-                    classDateMillis = entries.maxOf { it.second.classDateMillis }
+            canonicalSourceClasses.forEach { (owner, item, _) ->
+                val importedClassId = stableId(owner, "class:${item.id}")
+                classIdMap["$owner:${item.id}"] = importedClassId
+                allClasses += item.copy(
+                    id = importedClassId,
+                    isPublished = true
                 )
             }
 
