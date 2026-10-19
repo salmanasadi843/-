@@ -105,10 +105,24 @@ fun TeacherFoldersScreen(
                     classes = classes
                 )
             }
+            .toMutableList()
+
+        // Always provide the signed-in teacher a route to create their first class.
+        // This is a virtual folder, so it cannot be deleted like a real teacher group.
+        if (canManage && uid.isNotBlank() && teacherRows.none { it.key == uid }) {
+            teacherRows.add(
+                TeacherFolderRow(
+                    key = uid,
+                    title = AuthPreferences.currentName(context).ifBlank { "کلاس‌های من" },
+                    classes = emptyList()
+                )
+            )
+        }
+        val visibleTeacherRows = teacherRows
             .filter { showHidden || it.key !in hiddenKeys }
             .sortedBy { it.title.lowercase() }
         val unfiledClasses = visibleClasses.filter { teacherFolderKey(it, uid) in deletedKeys }
-        val result = teacherRows.toMutableList()
+        val result = visibleTeacherRows.toMutableList()
         if (unfiledClasses.isNotEmpty()) {
             result.add(0, TeacherFolderRow(UNFILED_TEACHERS_KEY, "بدون پوشه", unfiledClasses, true))
         }
@@ -188,8 +202,10 @@ fun TeacherFoldersScreen(
                                         contentDescription = if (row.key in hiddenKeys) "نمایش پوشه" else "پنهان‌کردن پوشه"
                                     )
                                 }
-                                IconButton(onClick = { folderToDelete = row }) {
-                                    Icon(Icons.Default.Delete, contentDescription = "حذف پوشه")
+                                if (row.key != uid) {
+                                    IconButton(onClick = { folderToDelete = row }) {
+                                        Icon(Icons.Default.Delete, contentDescription = "حذف پوشه")
+                                    }
                                 }
                             }
                         }
