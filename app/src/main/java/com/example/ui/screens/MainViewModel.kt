@@ -230,7 +230,7 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
     private val database = AppDatabase.getDatabase(application)
     val repository = LectureRepository(database.lectureDao(), database.classDao(), database.courseDao())
     private val cloudSyncRepository = FirestoreSyncRepository(
-        database.lectureDao(), database.classDao(), database.courseDao()
+        database.lectureDao(), database.classDao(), database.courseDao(), database.teacherFolderDao()
     )
     private var cloudSyncJob: Job? = null
 
