@@ -25,6 +25,7 @@ import com.example.ui.screens.AddEditLectureScreen
 import com.example.ui.screens.AuthPreferences
 import com.example.ui.screens.AuthScreen
 import com.example.ui.screens.ClassScreen
+import com.example.ui.screens.TeacherFoldersScreen
 import com.example.ui.screens.ClassSessionsScreen
 import com.example.ui.screens.HomeScreen
 import com.example.ui.screens.LectureDetailScreen
