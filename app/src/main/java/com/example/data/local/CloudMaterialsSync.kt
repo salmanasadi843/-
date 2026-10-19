@@ -145,9 +145,12 @@ object CloudMaterialsSync {
             val classIdMap = mutableMapOf<String, Long>()
             val fingerprintToClassId = mutableMapOf<String, Long>()
             canonicalSourceClasses.forEach { (owner, item, _) ->
-                val fingerprint = "$owner:${classFingerprint(owner, item)}"
+                // The same published class can appear in feeds from more than one
+                // teacher account. Use its normalized metadata + content as the identity,
+                // not the feed owner, so identical copies share one imported class.
+                val fingerprint = classFingerprint(owner, item)
                 val importedClassId = fingerprintToClassId.getOrPut(fingerprint) {
-                    stableId(owner, "class-content:$fingerprint")
+                    stableId("shared-feed", "class-content:$fingerprint")
                 }
                 classIdMap["$owner:${item.id}"] = importedClassId
                 if (allClasses.none { it.id == importedClassId }) {
@@ -165,14 +168,13 @@ object CloudMaterialsSync {
                         val item = array.getJSONObject(i).toCourse()
                         val importedClassId = classIdMap["$owner:${item.classId}"] ?: continue
                         val fingerprint = listOf(
-                            owner,
                             importedClassId.toString(),
                             normalized(item.name),
                             normalized(item.teacherName),
                             normalized(item.description)
                         ).joinToString("|")
                         val importedCourseId = courseFingerprintToId.getOrPut(fingerprint) {
-                            stableId(owner, "course-content:$fingerprint")
+                            stableId("shared-feed", "course-content:$fingerprint")
                         }
                         courseIdMap["$owner:${item.id}"] = importedCourseId
                         if (allCourses.none { it.id == importedCourseId }) {
