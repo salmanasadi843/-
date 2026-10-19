@@ -246,6 +246,7 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
     val speechRecognizer = SpeechRecognizerHelper(application)
 
     // Navigation State
+    private val classParentContexts = mutableMapOf<Long, Pair<String, String>>()
     private val _currentScreen = MutableStateFlow<Screen>(Screen.Home)
     val currentScreen: StateFlow<Screen> = _currentScreen.asStateFlow()
 
@@ -482,6 +483,9 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
             )
 
     fun navigateTo(screen: Screen) {
+        if (screen is Screen.ClassDetail && screen.parentTeacherKey != null) {
+            classParentContexts[screen.classId] = screen.parentTeacherKey to (screen.parentTeacherName ?: "")
+        }
 
         if (screen is Screen.Detail) {
             loadLecture(screen.lectureId)
@@ -501,11 +505,18 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
             is Screen.AiStudy -> {
                 _currentScreen.value = Screen.Detail(screen.lectureId)
             }
+            Screen.Teachers -> {
+                _currentScreen.value = Screen.Home
+            }
+            is Screen.TeacherClasses -> {
+                _currentScreen.value = Screen.Teachers
+            }
             Screen.Classes -> {
                 _currentScreen.value = Screen.Home
             }
             is Screen.ClassDetail -> {
-                _currentScreen.value = Screen.Classes
+                val parent = classParentContexts[screen.classId]
+                _currentScreen.value = parent?.let { Screen.TeacherClasses(it.first, it.second) } ?: Screen.Classes
             }
             is Screen.Detail -> {
                 audioPlayer.stop()
@@ -515,18 +526,26 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
                     val classId = lecture?.classId ?: lecture?.courseId?.let { courseId ->
                         repository.getCourse(courseId)?.classId
                     }
-                    _currentScreen.value = classId?.let { Screen.ClassDetail(it) } ?: Screen.Home
+                    _currentScreen.value = classId?.let { id ->
+                        classParentContexts[id]?.let { Screen.ClassDetail(id, it.first, it.second) }
+                            ?: Screen.ClassDetail(id)
+                    } ?: Screen.Home
                 }
             }
             is Screen.AddEdit -> {
                 audioPlayer.stop()
                 speechRecognizer.stopListening()
                 if (screen.classId != null) {
-                    _currentScreen.value = Screen.ClassDetail(screen.classId)
+                    val parent = classParentContexts[screen.classId]
+                    _currentScreen.value = parent?.let { Screen.ClassDetail(screen.classId, it.first, it.second) }
+                        ?: Screen.ClassDetail(screen.classId)
                 } else if (screen.lectureId != null) {
                     viewModelScope.launch {
                         val lecture = repository.getLecture(screen.lectureId)
-                        _currentScreen.value = lecture?.classId?.let { Screen.ClassDetail(it) } ?: Screen.Home
+                        _currentScreen.value = lecture?.classId?.let { id ->
+                            classParentContexts[id]?.let { Screen.ClassDetail(id, it.first, it.second) }
+                                ?: Screen.ClassDetail(id)
+                        } ?: Screen.Home
                     }
                 } else {
                     _currentScreen.value = Screen.Home
@@ -541,9 +560,16 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
         }
     }
 
-    fun openClasses() { _currentScreen.value = Screen.Classes }
+    fun openClasses() { _currentScreen.value = Screen.Teachers }
 
-    fun openClass(classId: Long) { _currentScreen.value = Screen.ClassDetail(classId) }
+    fun openTeacherClasses(teacherKey: String, teacherName: String) {
+        _currentScreen.value = Screen.TeacherClasses(teacherKey, teacherName)
+    }
+
+    fun openClass(classId: Long, teacherKey: String? = null, teacherName: String? = null) {
+        if (teacherKey != null) classParentContexts[classId] = teacherKey to (teacherName ?: "")
+        _currentScreen.value = Screen.ClassDetail(classId, teacherKey, teacherName)
+    }
 
     fun openCourse(courseId: Long) { /* Legacy compatibility: course screens are no longer part of the user flow. */ }
 
