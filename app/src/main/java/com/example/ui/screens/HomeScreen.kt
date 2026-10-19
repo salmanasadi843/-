@@ -80,7 +80,10 @@ fun HomeScreen(
         UserRole.TEACHER -> allClasses.filter { classItem ->
             // Positive IDs are locally created teacher classes. Some existing teacher records
             // may have been restored with non-positive IDs, so also recognize them by ownership.
-            classItem.id > 0L ||
+            (classItem.id > 0L && (
+                classItem.teacherName.isBlank() ||
+                    classItem.teacherName.trim().equals(currentTeacherName, ignoreCase = true)
+                )) ||
                 classItem.teacherName.trim().equals(currentTeacherName, ignoreCase = true) ||
                 (classItem.teacherName.isBlank() &&
                     allLectures.any { lecture ->
@@ -648,4 +651,3 @@ private fun HomeActionCard(
             Text(subtitle, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
         }
     }
-}
