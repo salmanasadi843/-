@@ -83,6 +83,8 @@ fun ClassScreen(
     var showCreateFolder by remember { mutableStateOf(false) }
     var newFolderName by remember { mutableStateOf("") }
     var classToMove by remember { mutableStateOf<ClassEntity?>(null) }
+    var selectedClassIds by remember { mutableStateOf<Set<Long>>(emptySet()) }
+    var showBulkMove by remember { mutableStateOf(false) }
     var classToClaim by remember { mutableStateOf<ClassEntity?>(null) }
     var showAdd by remember { mutableStateOf(false) }
     var classToDelete by remember { mutableStateOf<ClassEntity?>(null) }
@@ -101,6 +103,24 @@ fun ClassScreen(
         saveError = null
         isSaving = false
     }
+
+    fun folderPath(folder: TeacherFolderEntity): String {
+        val parent = folders.firstOrNull { it.id == folder.parentFolderId }
+        return if (parent == null) folder.name else folderPath(parent) + " / " + folder.name
+    }
+
+    val visibleOwnedClasses = classes.filter {
+        it.id > 0L &&
+            (it.ownerUid == ownerUid || it.ownerUid.isBlank()) &&
+            it.folderId == selectedFolderId
+    }
+    // Shared/foreign classes are kept in a separate read-only section at the root,
+    // never mixed into the teacher's own folders.
+    val visibleOtherClasses = if (selectedFolderId == null && canManageClasses) {
+        classes.filter {
+            (it.id > 0L && it.ownerUid.isNotBlank() && it.ownerUid != ownerUid) || it.id < 0L
+        }
+    } else emptyList()
 
     Scaffold(
         containerColor = MaterialTheme.colorScheme.background,
@@ -177,7 +197,14 @@ fun ClassScreen(
                                     style = MaterialTheme.typography.titleMedium,
                                     fontWeight = FontWeight.Bold
                                 )
-                                TextButton(onClick = { showCreateFolder = true }) { Text("پوشهٔ جدید +") }
+                                Row(verticalAlignment = Alignment.CenterVertically) {
+                                    if (selectedClassIds.isNotEmpty()) {
+                                        TextButton(onClick = { showBulkMove = true }) {
+                                            Text("انتقال ${selectedClassIds.size} کلاس")
+                                        }
+                                    }
+                                    TextButton(onClick = { showCreateFolder = true }) { Text("پوشهٔ جدید +") }
+                                }
                             }
                             if (selectedFolderId != null) {
                                 TextButton(onClick = {
@@ -212,9 +239,18 @@ fun ClassScreen(
                         Text(classes.size.toString() + " کلاس", style = MaterialTheme.typography.labelLarge, color = MaterialTheme.colorScheme.onSurfaceVariant)
                     }
                 }
+                if (canManageClasses && visibleOtherClasses.isNotEmpty()) {
+                    item {
+                        Text(
+                            "مطالب استادان دیگر (فقط مشاهده)",
+                            style = MaterialTheme.typography.titleSmall,
+                            fontWeight = FontWeight.Bold,
+                            color = MaterialTheme.colorScheme.tertiary
+                        )
+                    }
+                }
                 items(
-                    if (canManageClasses) classes.filter { it.id > 0L && (it.ownerUid == ownerUid || it.ownerUid.isBlank()) && it.folderId == selectedFolderId } + classes.filter { it.id > 0L && it.ownerUid.isNotBlank() && it.ownerUid != ownerUid } + classes.filter { it.id < 0L }
-                    else classes,
+                    if (canManageClasses) visibleOwnedClasses + visibleOtherClasses else classes,
                     key = { it.id }
                 ) { item ->
                     Card(
@@ -250,6 +286,15 @@ fun ClassScreen(
                                 }
                                 Spacer(Modifier.height(8.dp))
                                 Text("مشاهده جلسات  ›", style = MaterialTheme.typography.labelLarge, fontWeight = FontWeight.SemiBold, color = MaterialTheme.colorScheme.primary)
+                            }
+                            if (canManageClasses && item.id > 0L && item.ownerUid == ownerUid && ownerUid.isNotBlank()) {
+                                Checkbox(
+                                    checked = item.id in selectedClassIds,
+                                    onCheckedChange = { checked ->
+                                        selectedClassIds = if (checked) selectedClassIds + item.id
+                                            else selectedClassIds - item.id
+                                    }
+                                )
                             }
                             if (canManageClasses && item.id > 0L) {
                                 when {
@@ -363,15 +408,54 @@ fun ClassScreen(
                             if (item.ownerUid == ownerUid && ownerUid.isNotBlank()) {
                                 scope.launch {
                                     classDao.update(item.copy(folderId = folder.id))
+                                    selectedClassIds = selectedClassIds - item.id
                                     classToMove = null
                                 }
                             }
-                        }, enabled = item.ownerUid == ownerUid && ownerUid.isNotBlank()) { Text("📁 ${folder.name}") }
+                        }, enabled = item.ownerUid == ownerUid && ownerUid.isNotBlank()) {
+                            Text("📁 ${folderPath(folder)}")
+                        }
                     }
                 }
             },
             confirmButton = {},
             dismissButton = { TextButton(onClick = { classToMove = null }) { Text("بستن") } }
+        )
+    }
+
+    if (showBulkMove) {
+        AlertDialog(
+            onDismissRequest = { showBulkMove = false },
+            title = { Text("انتقال کلاس‌های انتخاب‌شده") },
+            text = {
+                Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                    Text("${selectedClassIds.size} کلاس انتخاب شده است. مقصد را انتخاب کنید:")
+                    TextButton(onClick = {
+                        scope.launch {
+                            val selected = allClasses.filter {
+                                it.id in selectedClassIds && it.id > 0L && it.ownerUid == ownerUid
+                            }
+                            selected.forEach { classDao.update(it.copy(folderId = null)) }
+                            selectedClassIds = emptySet()
+                            showBulkMove = false
+                        }
+                    }) { Text("پوشهٔ اصلی استاد (خارج از پوشه)") }
+                    folders.forEach { folder ->
+                        TextButton(onClick = {
+                            scope.launch {
+                                val selected = allClasses.filter {
+                                    it.id in selectedClassIds && it.id > 0L && it.ownerUid == ownerUid
+                                }
+                                selected.forEach { classDao.update(it.copy(folderId = folder.id)) }
+                                selectedClassIds = emptySet()
+                                showBulkMove = false
+                            }
+                        }) { Text("📁 ${folderPath(folder)}") }
+                    }
+                }
+            },
+            confirmButton = {},
+            dismissButton = { TextButton(onClick = { showBulkMove = false }) { Text("انصراف") } }
         )
     }
 
