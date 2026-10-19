@@ -74,17 +74,28 @@ fun HomeScreen(
         !studentSyncStatus.contains("دریافت خودکار مطالب انجام نشد")
     )
     // Imported student material has stable negative IDs; it must never appear in a teacher's own management list.
+    val currentTeacherName = AuthPreferences.currentName(context).trim()
     val classes = when (userRole) {
         UserRole.STUDENT -> if (studentFeedReady) allClasses.filter { it.id < 0L && it.isPublished } else emptyList()
-        UserRole.TEACHER -> allClasses.filter { it.id > 0L }
+        UserRole.TEACHER -> allClasses.filter { classItem ->
+            // Positive IDs are locally created teacher classes. Some existing teacher records
+            // may have been restored with non-positive IDs, so also recognize them by ownership.
+            classItem.id > 0L ||
+                classItem.teacherName.trim().equals(currentTeacherName, ignoreCase = true) ||
+                (classItem.teacherName.isBlank() &&
+                    allLectures.any { lecture ->
+                        lecture.classId == classItem.id &&
+                            lecture.professorName.trim().equals(currentTeacherName, ignoreCase = true)
+                    })
+        }
     }
     val visibleClassIds = classes.map { it.id }.toSet()
     val lectures = if (userRole == UserRole.STUDENT) {
         allLectures.filter { it.id < 0L && it.isPublished && it.classId in visibleClassIds }
     } else {
-        // Keep all of this teacher's local sessions available to summary/export actions,
-        // including older sessions that have not yet been assigned to a class.
-        allLectures.filter { it.id > 0L }
+        // Keep sessions linked to this teacher's visible classes, including restored records
+        // with non-positive IDs, plus older positive-ID sessions not assigned to a class.
+        allLectures.filter { it.id > 0L || it.classId in visibleClassIds }
     }
     val teacherNameForClass: (ClassEntity) -> String = { classItem ->
         classItem.teacherName.trim().ifBlank {
