@@ -16,13 +16,26 @@ import java.security.MessageDigest
  * Audio binaries are never uploaded; only an optional audio URL is shared.
  */
 object CloudMaterialsSync {
-    fun sync(context: Context): String {
+    fun sync(context: Context): String = syncInternal(context, receiveOnly = false)
+
+    /**
+     * Allows a secondary teacher to read other teachers' published materials without
+     * publishing their own snapshot. Imported rows retain negative IDs and are read-only.
+     */
+    fun syncPublishedForTeacher(context: Context): String {
+        require(AuthPreferences.currentRole(context) == UserRole.TEACHER) {
+            "این همگام‌سازی فقط برای حساب استاد است."
+        }
+        return syncInternal(context, receiveOnly = true)
+    }
+
+    private fun syncInternal(context: Context, receiveOnly: Boolean): String {
         val uid = AuthPreferences.currentUid(context)
             ?: error("ابتدا وارد حساب کاربری شوید.")
         val db = AppDatabase.getDatabase(context)
         val firestore = FirebaseFirestore.getInstance()
 
-        return if (AuthPreferences.currentRole(context) == UserRole.TEACHER) {
+        return if (AuthPreferences.currentRole(context) == UserRole.TEACHER && !receiveOnly) {
             val allClasses = runBlocking { db.classDao().getAllForBackup() }
             val allCourses = runBlocking { db.courseDao().getAllForBackup() }
             val allLectures = runBlocking { db.lectureDao().getAllForBackup() }
@@ -85,37 +98,88 @@ object CloudMaterialsSync {
                 }
             }
 
-            // A source class ID belongs to one teacher and must remain one class even if
-            // stale duplicate records carry slightly different text after an edit.
+            // Normalize class identity using both metadata and its published contents.
+            // This collapses duplicate copies with different source IDs while preserving
+            // same-named classes that contain different courses or sessions.
+            fun classFingerprint(owner: String, item: ClassEntity): String {
+                val courses = validPayloads
+                    .filter { it.first == owner }
+                    .flatMap { (_, payload) ->
+                        val array = payload.optJSONArray("courses") ?: return@flatMap emptyList<CourseEntity>()
+                        (0 until array.length()).mapNotNull { index ->
+                            runCatching { array.getJSONObject(index).toCourse() }.getOrNull()
+                        }
+                    }
+                    .filter { it.classId == item.id }
+                    .map { normalized(it.name) }
+                    .sorted()
+
+                val lectures = validPayloads
+                    .filter { it.first == owner }
+                    .flatMap { (_, payload) ->
+                        val array = payload.optJSONArray("lectures") ?: return@flatMap emptyList<LectureEntity>()
+                        (0 until array.length()).mapNotNull { index ->
+                            runCatching { array.getJSONObject(index).toLecture() }.getOrNull()
+                        }
+                    }
+                    .filter { it.classId == item.id }
+                    .map { lecture ->
+                        listOf(
+                            normalized(lecture.title),
+                            normalized(lecture.courseName),
+                            lecture.dateMillis.toString(),
+                        ).joinToString("~")
+                    }
+                    .sorted()
+
+                val metadata = listOf(item.name, item.teacherName, item.term).joinToString("|") { normalized(it) }
+                val content = (courses + lectures).joinToString("|")
+                return "$metadata##$content"
+            }
+
             val canonicalSourceClasses = sourceClasses
                 .groupBy { (owner, item, _) -> "$owner:${item.id}" }
                 .values
                 .mapNotNull { entries -> entries.maxByOrNull { it.second.createdAtMillis } }
 
             val classIdMap = mutableMapOf<String, Long>()
-            canonicalSourceClasses.groupBy { it.third }.forEach { (signature, entries) ->
-                val mergedId = stableId("merged-classes", signature)
-                entries.forEach { (owner, item, _) ->
-                    classIdMap["$owner:${item.id}"] = mergedId
+            val fingerprintToClassId = mutableMapOf<String, Long>()
+            canonicalSourceClasses.forEach { (owner, item, _) ->
+                // The same published class can appear in feeds from more than one
+                // teacher account. Use its normalized metadata + content as the identity,
+                // not the feed owner, so identical copies share one imported class.
+                val fingerprint = classFingerprint(owner, item)
+                val importedClassId = fingerprintToClassId.getOrPut(fingerprint) {
+                    stableId("shared-feed", "class-content:$fingerprint")
                 }
-                val preferred = entries.maxByOrNull { it.second.createdAtMillis }!!.second
-                allClasses += preferred.copy(
-                    id = mergedId,
-                    isPublished = true,
-                    createdAtMillis = entries.maxOf { it.second.createdAtMillis },
-                    classDateMillis = entries.maxOf { it.second.classDateMillis }
-                )
+                classIdMap["$owner:${item.id}"] = importedClassId
+                if (allClasses.none { it.id == importedClassId }) {
+                    allClasses += item.copy(id = importedClassId, isPublished = true)
+                }
             }
 
+            // Deduplicate courses inside the canonical class and remember the canonical
+            // course ID for every source course ID so sessions keep the correct relation.
+            val courseIdMap = mutableMapOf<String, Long>()
+            val courseFingerprintToId = mutableMapOf<String, Long>()
             validPayloads.forEach { (owner, payload) ->
                 payload.optJSONArray("courses")?.let { array ->
                     for (i in 0 until array.length()) {
                         val item = array.getJSONObject(i).toCourse()
-                        val mergedClassId = classIdMap["$owner:${item.classId}"] ?: continue
-                        allCourses += item.copy(
-                            id = stableId(owner, "course:${item.id}"),
-                            classId = mergedClassId
-                        )
+                        val importedClassId = classIdMap["$owner:${item.classId}"] ?: continue
+                        val fingerprint = listOf(
+                            importedClassId.toString(),
+                            normalized(item.name),
+                            normalized(item.teacherName),
+                            normalized(item.description)
+                        ).joinToString("|")
+                        val importedCourseId = courseFingerprintToId.getOrPut(fingerprint) {
+                            stableId("shared-feed", "course-content:$fingerprint")
+                        }
+                        courseIdMap["$owner:${item.id}"] = importedCourseId
+                        if (allCourses.none { it.id == importedCourseId }) {
+                            allCourses += item.copy(id = importedCourseId, classId = importedClassId)
+                        }
                     }
                 }
 
@@ -123,7 +187,7 @@ object CloudMaterialsSync {
                     val teacherLectures = (0 until array.length()).map { array.getJSONObject(it).toLecture() }
                     val teacherName = payload.optString("teacherName", "استاد")
                     val legacyClassId = stableId(owner, "class:legacy")
-                    if (teacherLectures.any { it.classId == null }) {
+                    if (teacherLectures.any { it.classId == null } && allClasses.none { it.id == legacyClassId }) {
                         allClasses += ClassEntity(
                             id = legacyClassId,
                             name = "مطالب استاد $teacherName",
@@ -142,7 +206,7 @@ object CloudMaterialsSync {
                         allLectures += item.copy(
                             id = stableId(owner, "lecture:${item.id}"),
                             classId = mappedClassId,
-                            courseId = item.courseId?.let { stableId(owner, "course:$it") },
+                            courseId = item.courseId?.let { courseIdMap["$owner:$it"] },
                             audioFilePath = null,
                             isFavorite = false
                         )
@@ -150,18 +214,27 @@ object CloudMaterialsSync {
                 }
             }
 
-            // Remove exact duplicate sessions that came from source classes later merged together.
-            // Different dates or different transcript/audio content are preserved.
-            val uniqueLectures = allLectures.distinctBy { lecture ->
-                listOf(
-                    lecture.classId?.toString().orEmpty(),
-                    normalized(lecture.title).replace('ي', 'ی').replace('ك', 'ک'),
-                    normalized(lecture.courseName).replace('ي', 'ی').replace('ك', 'ک'),
-                    lecture.dateMillis.toString(),
-                    normalized(lecture.transcript).replace('ي', 'ی').replace('ك', 'ک'),
-                    normalized(lecture.audioUrl.orEmpty())
-                ).joinToString("|")
-            }
+            // Remove duplicate sessions by canonical class, course name, title and date;
+            // keep the richest copy so metadata/audio links are not lost.
+            val uniqueLectures = allLectures
+                .groupBy { lecture ->
+                    listOf(
+                        lecture.classId?.toString().orEmpty(),
+                        normalized(lecture.courseName),
+                        normalized(lecture.title),
+                        lecture.dateMillis.toString()
+                    ).joinToString("|")
+                }
+                .values
+                .map { copies ->
+                    copies.maxByOrNull { lecture ->
+                        lecture.transcript.length +
+                            (lecture.aiSummary?.length ?: 0) +
+                            (lecture.aiKeyPoints?.length ?: 0) +
+                            lecture.tags.length +
+                            if (!lecture.audioUrl.isNullOrBlank()) 1000 else 0
+                    }!!
+                }
 
             runBlocking {
                 db.withTransaction {

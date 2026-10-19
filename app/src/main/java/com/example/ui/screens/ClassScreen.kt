@@ -38,12 +38,34 @@ fun ClassScreen(
         !studentSyncStatus.contains("در حال دریافت") &&
         !studentSyncStatus.contains("دریافت خودکار مطالب انجام نشد")
     )
+    // Keep the student list unchanged (its published-feed deduplication is already verified).
+    // In teacher mode, collapse duplicate imported cards by their visible class identity,
+    // while never collapsing teacher-owned positive-ID classes.
     val classes = if (!canManageClasses) {
         if (studentFeedReady) allClasses.filter { it.id < 0L && it.isPublished }
         else emptyList()
-    } else allClasses
+    } else {
+        val ownedClasses = allClasses.filter { it.id >= 0L }
+        val sharedClasses = allClasses.filter { it.id < 0L && it.isPublished }
+            .distinctBy {
+                listOf(it.name, it.teacherName, it.term)
+                    .joinToString("|") { value ->
+                        value.trim().lowercase()
+                            .replace('ي', 'ی')
+                            .replace('ك', 'ک')
+                            .replace(Regex("[\\u200c\\u200d]"), "")
+                            .replace(Regex("\\s+"), " ")
+                    }
+            }
+        ownedClasses + sharedClasses
+    }
     // Refresh the published feed whenever a student opens the class list so revoked visibility is applied.
-    LaunchedEffect(userRole) { if (userRole == UserRole.STUDENT) viewModel.startStudentMaterialsSync() }
+    LaunchedEffect(userRole) {
+        when (userRole) {
+            UserRole.STUDENT -> viewModel.startStudentMaterialsSync()
+            UserRole.TEACHER -> viewModel.syncPublishedMaterialsForTeacher()
+        }
+    }
     var showAdd by remember { mutableStateOf(false) }
     var classToDelete by remember { mutableStateOf<ClassEntity?>(null) }
     var isSaving by remember { mutableStateOf(false) }
@@ -154,10 +176,19 @@ fun ClassScreen(
                                 if (item.term.isNotBlank()) {
                                     Text(item.term, style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
                                 }
+                                if (canManageClasses && item.id < 0L) {
+                                    Spacer(Modifier.height(4.dp))
+                                    Text(
+                                        "مطالب منتشرشده از استاد دیگر • فقط مشاهده",
+                                        style = MaterialTheme.typography.labelSmall,
+                                        color = MaterialTheme.colorScheme.tertiary
+                                    )
+                                }
                                 Spacer(Modifier.height(8.dp))
                                 Text("مشاهده جلسات  ›", style = MaterialTheme.typography.labelLarge, fontWeight = FontWeight.SemiBold, color = MaterialTheme.colorScheme.primary)
                             }
-                            if (canManageClasses) {
+                            if (canManageClasses && item.id > 0L) {
+                                // Only locally owned classes can be managed by this teacher.
                                 Column(horizontalAlignment = Alignment.CenterHorizontally) {
                                 IconButton(onClick = {
                                     editingClass = item

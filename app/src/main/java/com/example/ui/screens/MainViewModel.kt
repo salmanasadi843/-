@@ -107,6 +107,32 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
     private val _studentMaterialsSyncStatus = MutableStateFlow("مطالب آنلاین هنوز بررسی نشده‌اند.")
     val studentMaterialsSyncStatus: StateFlow<String> = _studentMaterialsSyncStatus.asStateFlow()
     private var studentMaterialsSyncJob: Job? = null
+    private var teacherPublishedSyncJob: Job? = null
+
+    /**
+     * Refresh read-only publications for teacher accounts as well. This is separate
+     * from private backup sync, so shared records cannot become owned teacher data.
+     */
+    fun syncPublishedMaterialsForTeacher() {
+        if (_userRole.value != UserRole.TEACHER) return
+        if (teacherPublishedSyncJob?.isActive == true) return
+
+        val app = getApplication<Application>()
+        if (AuthPreferences.currentUid(app).isNullOrBlank()) return
+
+        teacherPublishedSyncJob = viewModelScope.launch {
+            try {
+                val result = withContext(Dispatchers.IO) {
+                    CloudMaterialsSync.syncPublishedForTeacher(app)
+                }
+                _cloudSyncStatus.value = result
+            } catch (e: Exception) {
+                Log.e(TAG, "Published feed sync for teacher failed", e)
+                _cloudSyncStatus.value =
+                    "دریافت کلاس‌های منتشرشده انجام نشد: ${e.localizedMessage ?: "خطای نامشخص"}"
+            }
+        }
+    }
 
     /**
      * Automatically fetch published teacher materials for a student after login.
