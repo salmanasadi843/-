@@ -12,6 +12,7 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.AutoAwesome
 import androidx.compose.material.icons.filled.PlayArrow
 import androidx.compose.material.icons.filled.Settings
+import androidx.compose.material.icons.filled.Search
 import androidx.compose.material.icons.filled.Share
 import androidx.compose.material.icons.filled.School
 import androidx.compose.material3.*
@@ -83,6 +84,7 @@ fun HomeScreen(
     val context = LocalContext.current
     val isOnline = rememberNetworkConnection()
     var showBulkExportDialog by androidx.compose.runtime.remember { androidx.compose.runtime.mutableStateOf(false) }
+    var showAdvancedSearch by remember { mutableStateOf(false) }
     var showTeacherRequests by remember { mutableStateOf(false) }
     var pendingTeacherRequests by remember { mutableStateOf<List<TeacherRequestItem>>(emptyList()) }
     var teacherRequestsLoadError by remember { mutableStateOf<String?>(null) }
@@ -196,6 +198,16 @@ fun HomeScreen(
         )
     }
 
+    if (showAdvancedSearch) {
+        AdvancedSearchScreen(
+            viewModel = viewModel,
+            userRole = userRole,
+            onOpenLecture = onNavigateToDetail,
+            onBack = { showAdvancedSearch = false }
+        )
+        return
+    }
+
     Scaffold(
         containerColor = MaterialTheme.colorScheme.background,
         topBar = {
@@ -225,6 +237,7 @@ fun HomeScreen(
                     }
                 },
                 actions = {
+                    IconButton(onClick = { showAdvancedSearch = true }) { Icon(Icons.Default.Search, contentDescription = "جستجوی پیشرفته در درس‌ها") }
                     if (isTeacher) IconButton(onClick = { showBulkExportDialog = true }) { Icon(Icons.Default.Share, contentDescription = "ارسال گروهی مطالب") }
                     IconButton(onClick = viewModel::openClasses) { Icon(Icons.Default.School, "کلاس‌ها") }
                     IconButton(onClick = { viewModel.navigateTo(Screen.Settings) }) { Icon(Icons.Default.Settings, "تنظیمات") }
