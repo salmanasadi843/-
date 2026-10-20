@@ -11,6 +11,7 @@ import androidx.compose.material.icons.filled.Edit
 import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.School
+import androidx.compose.material.icons.filled.MoreVert
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
@@ -73,6 +74,10 @@ fun ClassScreen(
     var folderNameInput by remember { mutableStateOf("") }
     var moveClassTarget by remember { mutableStateOf<ClassEntity?>(null) }
     var folderMenuExpanded by remember { mutableStateOf(false) }
+    var folderActionsExpanded by remember { mutableStateOf(false) }
+    var showRenameFolder by remember { mutableStateOf(false) }
+    var showDeleteFolder by remember { mutableStateOf(false) }
+    var renameFolderInput by remember { mutableStateOf("") }
     val teacherFolders = remember(organizationRevision) { ClassOrganizationPrefs.folders(context) }
     val orderedClasses = remember(classes, organizationRevision) {
         val ids = ClassOrganizationPrefs.orderedClasses(context, classes.map { it.id })
@@ -81,6 +86,7 @@ fun ClassScreen(
     val visibleClasses = remember(orderedClasses, selectedFolder, organizationRevision) {
         orderedClasses.filter { item ->
             selectedFolder == "همه پوشه‌ها" ||
+                (selectedFolder == "بدون پوشه" && ClassOrganizationPrefs.folderForClass(context, item.id).isBlank()) ||
                 ClassOrganizationPrefs.folderForClass(context, item.id) == selectedFolder
         }
     }
@@ -171,9 +177,30 @@ fun ClassScreen(
                                     DropdownMenuItem(text = { Text("همه پوشه‌ها") }, onClick = {
                                         selectedFolder = "همه پوشه‌ها"; folderMenuExpanded = false
                                     })
+                                    DropdownMenuItem(text = { Text("بدون پوشه") }, onClick = {
+                                        selectedFolder = "بدون پوشه"; folderMenuExpanded = false
+                                    })
                                     teacherFolders.forEach { folder ->
                                         DropdownMenuItem(text = { Text(folder) }, onClick = {
                                             selectedFolder = folder; folderMenuExpanded = false
+                                        })
+                                    }
+                                }
+                            }
+                            if (canManageClasses && selectedFolder != "همه پوشه‌ها" && selectedFolder != "بدون پوشه" && selectedFolder in teacherFolders) {
+                                Box {
+                                    IconButton(onClick = { folderActionsExpanded = true }) {
+                                        Icon(Icons.Default.MoreVert, contentDescription = "مدیریت پوشه")
+                                    }
+                                    DropdownMenu(expanded = folderActionsExpanded, onDismissRequest = { folderActionsExpanded = false }) {
+                                        DropdownMenuItem(text = { Text("تغییر نام پوشه") }, onClick = {
+                                            renameFolderInput = selectedFolder
+                                            showRenameFolder = true
+                                            folderActionsExpanded = false
+                                        })
+                                        DropdownMenuItem(text = { Text("حذف پوشه") }, onClick = {
+                                            showDeleteFolder = true
+                                            folderActionsExpanded = false
                                         })
                                     }
                                 }
@@ -247,6 +274,54 @@ fun ClassScreen(
                 }
             }
         }
+    }
+
+    if (showRenameFolder) {
+        AlertDialog(
+            onDismissRequest = { showRenameFolder = false },
+            title = { Text("تغییر نام پوشه") },
+            text = {
+                OutlinedTextField(
+                    value = renameFolderInput,
+                    onValueChange = { renameFolderInput = it },
+                    label = { Text("نام جدید پوشه") },
+                    singleLine = true
+                )
+            },
+            confirmButton = {
+                TextButton(
+                    enabled = renameFolderInput.isNotBlank(),
+                    onClick = {
+                        val oldName = selectedFolder
+                        if (ClassOrganizationPrefs.renameFolder(context, oldName, renameFolderInput)) {
+                            selectedFolder = renameFolderInput.trim()
+                            organizationRevision++
+                            showRenameFolder = false
+                        }
+                    }
+                ) { Text("ذخیره") }
+            },
+            dismissButton = { TextButton(onClick = { showRenameFolder = false }) { Text("انصراف") } }
+        )
+    }
+
+    if (showDeleteFolder) {
+        AlertDialog(
+            onDismissRequest = { showDeleteFolder = false },
+            title = { Text("حذف پوشه") },
+            text = {
+                Text("پوشه «$selectedFolder» حذف شود؟ کلاس‌های داخل آن حذف نمی‌شوند و به بخش «بدون پوشه» منتقل می‌شوند.")
+            },
+            confirmButton = {
+                TextButton(onClick = {
+                    ClassOrganizationPrefs.deleteFolder(context, selectedFolder)
+                    selectedFolder = "همه پوشه‌ها"
+                    organizationRevision++
+                    showDeleteFolder = false
+                }) { Text("حذف پوشه") }
+            },
+            dismissButton = { TextButton(onClick = { showDeleteFolder = false }) { Text("انصراف") } }
+        )
     }
 
     if (showCreateFolder) {
