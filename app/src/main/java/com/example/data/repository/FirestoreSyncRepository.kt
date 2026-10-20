@@ -6,6 +6,8 @@ import com.example.data.local.CourseDao
 import com.example.data.local.CourseEntity
 import com.example.data.local.LectureDao
 import com.example.data.local.LectureEntity
+import com.example.data.local.TeacherFolderDao
+import com.example.data.local.TeacherFolderEntity
 import com.google.android.gms.tasks.Task
 import com.google.firebase.firestore.DocumentSnapshot
 import com.google.firebase.firestore.FieldValue
@@ -26,6 +28,7 @@ class FirestoreSyncRepository(
     private val lectureDao: LectureDao,
     private val classDao: ClassDao,
     private val courseDao: CourseDao,
+    private val teacherFolderDao: TeacherFolderDao? = null,
     private val firestore: FirebaseFirestore = FirebaseFirestore.getInstance()
 ) {
     private companion object {
@@ -81,9 +84,15 @@ class FirestoreSyncRepository(
     }
 
     suspend fun uploadSnapshot(uid: String) {
-        val classes = classDao.getAllForBackup()
-        val courses = courseDao.getAllForBackup()
+        // Shared published records are imported with negative IDs. They belong to
+        // their original teachers and must never enter this account's private backup.
+        val classes = classDao.getAllForBackup().filter { it.id > 0L && (it.ownerUid == uid || it.ownerUid.isBlank()) }
+        val ownedClassIds = classes.map { it.id }.toSet()
+        val courses = courseDao.getAllForBackup().filter {
+            it.id > 0L && it.classId in ownedClassIds
+        }
         val lectures = lectureDao.getAllForBackup()
+            .filter { it.id > 0L && it.classId in ownedClassIds }
             .filterNot {
                 it.title == "جلسه ۴: شبکه‌های عصبی و یادگیری عمیق" ||
                     it.title == "جلسه ۷: سری و تبدیل فوریه و کاربرد در سیگنال"
@@ -113,12 +122,16 @@ class FirestoreSyncRepository(
             batch.commit().awaitResult()
         }
 
+        // Keep folder metadata in the existing owner document, avoiding new Firebase rule paths.
+        val folderRows = teacherFolderDao?.observeFoldersForBackup()?.filter { it.ownerUid == uid }.orEmpty()
+
         // Commit the version marker only after all individual records were written.
         root.set(
             mapOf(
                 "schemaVersion" to SCHEMA_VERSION,
                 "ownerUid" to uid,
                 "recordCount" to desired.size,
+                "folders" to folderRows.map { it.toCloudMap() },
                 "updatedAt" to FieldValue.serverTimestamp()
             )
         ).awaitResult()
@@ -135,6 +148,12 @@ class FirestoreSyncRepository(
         val classes = mutableListOf<ClassEntity>()
         val courses = mutableListOf<CourseEntity>()
         val lectures = mutableListOf<LectureEntity>()
+        val rootSnapshot = firestore.collection(TEACHER_DATA).document(uid).get().awaitResult()
+        val folders = teacherFolderDao?.let {
+            (rootSnapshot.get("folders") as? List<*>)?.mapNotNull { value ->
+                (value as? Map<*, *>)?.asStringMap()?.toFolderEntity()
+            }.orEmpty()
+        }.orEmpty()
 
         documents.forEach { document ->
             val data = document.data ?: throw IllegalStateException(
@@ -150,6 +169,10 @@ class FirestoreSyncRepository(
             }
         }
         validateAndReplaceLocalData(classes, courses, lectures)
+        teacherFolderDao?.let { dao ->
+            dao.clearForRestore()
+            if (folders.isNotEmpty()) dao.insertAllForRestore(folders)
+        }
     }
 
     private suspend fun restoreSnapshot(
@@ -209,7 +232,9 @@ class FirestoreSyncRepository(
         "term" to term,
         "classDateMillis" to classDateMillis,
         "isPublished" to isPublished,
-        "createdAtMillis" to createdAtMillis
+        "createdAtMillis" to createdAtMillis,
+        "ownerUid" to ownerUid,
+        "folderId" to folderId
     )
 
     private fun CourseEntity.toCloudMap(): Map<String, Any?> = mapOf(
@@ -239,7 +264,8 @@ class FirestoreSyncRepository(
         "tags" to tags,
         "isFavorite" to isFavorite,
         "isPublished" to isPublished,
-        "lastEditedMillis" to lastEditedMillis
+        "lastEditedMillis" to lastEditedMillis,
+        "sortOrder" to sortOrder
     )
 
     private fun Map<String, Any?>.toClassEntity() = ClassEntity(
@@ -250,7 +276,9 @@ class FirestoreSyncRepository(
         term = text("term"),
         classDateMillis = number("classDateMillis", System.currentTimeMillis()),
         isPublished = this["isPublished"] as? Boolean ?: true,
-        createdAtMillis = number("createdAtMillis", System.currentTimeMillis())
+        createdAtMillis = number("createdAtMillis", System.currentTimeMillis()),
+        ownerUid = text("ownerUid"),
+        folderId = nullableNumber("folderId")
     )
 
     private fun Map<String, Any?>.toCourseEntity() = CourseEntity(
@@ -281,7 +309,24 @@ class FirestoreSyncRepository(
         tags = text("tags"),
         isFavorite = this["isFavorite"] as? Boolean ?: false,
         isPublished = this["isPublished"] as? Boolean ?: true,
-        lastEditedMillis = number("lastEditedMillis", System.currentTimeMillis())
+        lastEditedMillis = number("lastEditedMillis", System.currentTimeMillis()),
+        sortOrder = number("sortOrder").toInt()
+    )
+
+    private fun TeacherFolderEntity.toCloudMap(): Map<String, Any?> = mapOf(
+        "id" to id,
+        "ownerUid" to ownerUid,
+        "name" to name,
+        "parentFolderId" to parentFolderId,
+        "createdAtMillis" to createdAtMillis
+    )
+
+    private fun Map<String, Any?>.toFolderEntity() = TeacherFolderEntity(
+        id = number("id"),
+        ownerUid = text("ownerUid"),
+        name = text("name"),
+        parentFolderId = nullableNumber("parentFolderId"),
+        createdAtMillis = number("createdAtMillis", System.currentTimeMillis())
     )
 
     private fun Map<*, *>.asStringMap(): Map<String, Any?>? {

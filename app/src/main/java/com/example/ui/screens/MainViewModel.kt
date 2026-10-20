@@ -41,8 +41,14 @@ import java.io.FileOutputStream
 
 sealed class Screen {
     object Home : Screen()
+    object Teachers : Screen()
+    data class TeacherClasses(val teacherKey: String, val teacherName: String) : Screen()
     object Classes : Screen()
-    data class ClassDetail(val classId: Long) : Screen()
+    data class ClassDetail(
+        val classId: Long,
+        val parentTeacherKey: String? = null,
+        val parentTeacherName: String? = null
+    ) : Screen()
     data class Detail(val lectureId: Long) : Screen()
     data class AddEdit(val lectureId: Long? = null, val classId: Long? = null) : Screen()
     data class AiStudy(val lectureId: Long) : Screen()
@@ -107,6 +113,32 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
     private val _studentMaterialsSyncStatus = MutableStateFlow("مطالب آنلاین هنوز بررسی نشده‌اند.")
     val studentMaterialsSyncStatus: StateFlow<String> = _studentMaterialsSyncStatus.asStateFlow()
     private var studentMaterialsSyncJob: Job? = null
+    private var teacherPublishedSyncJob: Job? = null
+
+    /**
+     * Refresh read-only publications for teacher accounts as well. This is separate
+     * from private backup sync, so shared records cannot become owned teacher data.
+     */
+    fun syncPublishedMaterialsForTeacher() {
+        if (_userRole.value != UserRole.TEACHER) return
+        if (teacherPublishedSyncJob?.isActive == true) return
+
+        val app = getApplication<Application>()
+        if (AuthPreferences.currentUid(app).isNullOrBlank()) return
+
+        teacherPublishedSyncJob = viewModelScope.launch {
+            try {
+                val result = withContext(Dispatchers.IO) {
+                    CloudMaterialsSync.syncPublishedForTeacher(app)
+                }
+                _cloudSyncStatus.value = result
+            } catch (e: Exception) {
+                Log.e(TAG, "Published feed sync for teacher failed", e)
+                _cloudSyncStatus.value =
+                    "دریافت کلاس‌های منتشرشده انجام نشد: ${e.localizedMessage ?: "خطای نامشخص"}"
+            }
+        }
+    }
 
     /**
      * Automatically fetch published teacher materials for a student after login.
@@ -174,8 +206,9 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
                 combine(
                     repository.allLectures,
                     repository.allClasses,
-                    repository.allCoursesDetailed
-                ) { _, _, _ -> Unit }
+                    repository.allCoursesDetailed,
+                    database.teacherFolderDao().observeFolders(uid)
+                ) { _, _, _, _ -> Unit }
                     .debounce(1200)
                     .collect {
                         try {
@@ -204,7 +237,7 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
     private val database = AppDatabase.getDatabase(application)
     val repository = LectureRepository(database.lectureDao(), database.classDao(), database.courseDao())
     private val cloudSyncRepository = FirestoreSyncRepository(
-        database.lectureDao(), database.classDao(), database.courseDao()
+        database.lectureDao(), database.classDao(), database.courseDao(), database.teacherFolderDao()
     )
     private var cloudSyncJob: Job? = null
 
@@ -213,6 +246,7 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
     val speechRecognizer = SpeechRecognizerHelper(application)
 
     // Navigation State
+    private val classParentContexts = mutableMapOf<Long, Pair<String, String>>()
     private val _currentScreen = MutableStateFlow<Screen>(Screen.Home)
     val currentScreen: StateFlow<Screen> = _currentScreen.asStateFlow()
 
@@ -449,6 +483,9 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
             )
 
     fun navigateTo(screen: Screen) {
+        if (screen is Screen.ClassDetail && screen.parentTeacherKey != null) {
+            classParentContexts[screen.classId] = screen.parentTeacherKey to (screen.parentTeacherName ?: "")
+        }
 
         if (screen is Screen.Detail) {
             loadLecture(screen.lectureId)
@@ -468,11 +505,18 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
             is Screen.AiStudy -> {
                 _currentScreen.value = Screen.Detail(screen.lectureId)
             }
+            Screen.Teachers -> {
+                _currentScreen.value = Screen.Home
+            }
+            is Screen.TeacherClasses -> {
+                _currentScreen.value = Screen.Teachers
+            }
             Screen.Classes -> {
                 _currentScreen.value = Screen.Home
             }
             is Screen.ClassDetail -> {
-                _currentScreen.value = Screen.Classes
+                val parent = classParentContexts[screen.classId]
+                _currentScreen.value = parent?.let { Screen.TeacherClasses(it.first, it.second) } ?: Screen.Classes
             }
             is Screen.Detail -> {
                 audioPlayer.stop()
@@ -482,18 +526,26 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
                     val classId = lecture?.classId ?: lecture?.courseId?.let { courseId ->
                         repository.getCourse(courseId)?.classId
                     }
-                    _currentScreen.value = classId?.let { Screen.ClassDetail(it) } ?: Screen.Home
+                    _currentScreen.value = classId?.let { id ->
+                        classParentContexts[id]?.let { Screen.ClassDetail(id, it.first, it.second) }
+                            ?: Screen.ClassDetail(id)
+                    } ?: Screen.Home
                 }
             }
             is Screen.AddEdit -> {
                 audioPlayer.stop()
                 speechRecognizer.stopListening()
                 if (screen.classId != null) {
-                    _currentScreen.value = Screen.ClassDetail(screen.classId)
+                    val parent = classParentContexts[screen.classId]
+                    _currentScreen.value = parent?.let { Screen.ClassDetail(screen.classId, it.first, it.second) }
+                        ?: Screen.ClassDetail(screen.classId)
                 } else if (screen.lectureId != null) {
                     viewModelScope.launch {
                         val lecture = repository.getLecture(screen.lectureId)
-                        _currentScreen.value = lecture?.classId?.let { Screen.ClassDetail(it) } ?: Screen.Home
+                        _currentScreen.value = lecture?.classId?.let { id ->
+                            classParentContexts[id]?.let { Screen.ClassDetail(id, it.first, it.second) }
+                                ?: Screen.ClassDetail(id)
+                        } ?: Screen.Home
                     }
                 } else {
                     _currentScreen.value = Screen.Home
@@ -508,9 +560,16 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
         }
     }
 
-    fun openClasses() { _currentScreen.value = Screen.Classes }
+    fun openClasses() { _currentScreen.value = Screen.Teachers }
 
-    fun openClass(classId: Long) { _currentScreen.value = Screen.ClassDetail(classId) }
+    fun openTeacherClasses(teacherKey: String, teacherName: String) {
+        _currentScreen.value = Screen.TeacherClasses(teacherKey, teacherName)
+    }
+
+    fun openClass(classId: Long, teacherKey: String? = null, teacherName: String? = null) {
+        if (teacherKey != null) classParentContexts[classId] = teacherKey to (teacherName ?: "")
+        _currentScreen.value = Screen.ClassDetail(classId, teacherKey, teacherName)
+    }
 
     fun openCourse(courseId: Long) { /* Legacy compatibility: course screens are no longer part of the user flow. */ }
 
@@ -541,11 +600,25 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
                     onFailure("مجوز فعال این حساب به‌عنوان استاد در Firebase تأیید نشد. از حساب مدیر اصلی، درخواست این استاد را بررسی و دوباره تأیید کنید؛ سپس خارج شوید و دوباره وارد شوید.")
                     return@launch
                 }
+                val uid = AuthPreferences.currentUid(getApplication<Application>()).orEmpty()
                 if (item.id < 0L) {
                     onFailure("این کلاس متعلق به استاد دیگری است و فقط برای مطالعه در دسترس است؛ نمی‌توانید آن را ویرایش کنید.")
                     return@launch
                 }
-                onSaved(repository.saveClass(item))
+                if (uid.isBlank()) {
+                    onFailure("برای ثبت مالکیت کلاس باید ابتدا وارد حساب کاربری شوید.")
+                    return@launch
+                }
+                if (item.id == 0L) {
+                    onSaved(repository.saveClass(item.copy(ownerUid = uid)))
+                } else {
+                    val existing = repository.getClass(item.id)
+                    if (existing == null || existing.ownerUid != uid) {
+                        onFailure("ویرایش فقط برای کلاسی مجاز است که مالکیت آن برای همین حساب تأیید شده باشد.")
+                        return@launch
+                    }
+                    onSaved(repository.saveClass(item))
+                }
             } catch (e: Exception) {
                 Log.e(TAG, "Saving class failed", e)
                 onFailure("ذخیره کلاس ناموفق بود: ${e.localizedMessage ?: "خطای نامشخص Firebase یا پایگاه داده"}")
@@ -569,6 +642,12 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
             if (!teacherPermissionGranted()) { denyTeacherMutation(); return@launch }
             if (item.id < 0L) {
                 _cloudSyncStatus.value = "حذف یا پنهان‌کردن کلاس استاد دیگر مجاز نیست."
+                return@launch
+            }
+            val uid = AuthPreferences.currentUid(getApplication<Application>()).orEmpty()
+            val existing = repository.getClass(item.id)
+            if (uid.isBlank() || existing == null || existing.ownerUid != uid) {
+                _cloudSyncStatus.value = "حذف فقط برای کلاسی مجاز است که مالکیت آن برای همین حساب تأیید شده باشد."
                 return@launch
             }
             repository.deleteClass(item)
@@ -851,6 +930,33 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
                     _selectedLecture.value?.copy(
                         isFavorite = !lecture.isFavorite
                     )
+            }
+        }
+    }
+
+
+    /** Persist the teacher's manual session order without changing the actual lecture dates. */
+    fun reorderClassSessions(classId: Long, orderedLectureIds: List<Long>) {
+        viewModelScope.launch {
+            if (!teacherPermissionGranted()) { denyTeacherMutation(); return@launch }
+            val uid = AuthPreferences.currentUid(getApplication<Application>()).orEmpty()
+            val ownerClass = repository.getClass(classId)
+            if (classId < 0L || orderedLectureIds.any { it < 0L } || ownerClass == null ||
+                uid.isBlank() || ownerClass.ownerUid != uid) {
+                _cloudSyncStatus.value = "تغییر ترتیب فقط برای کلاس متعلق به همین حساب مجاز است."
+                return@launch
+            }
+            try {
+                orderedLectureIds.forEachIndexed { index, lectureId ->
+                    val lecture = repository.getLecture(lectureId) ?: return@forEachIndexed
+                    if (lecture.classId == classId) {
+                        repository.saveLecture(lecture.copy(sortOrder = index + 1, lastEditedMillis = System.currentTimeMillis()))
+                    }
+                }
+                withContext(Dispatchers.IO) { CloudMaterialsSync.sync(getApplication<Application>()) }
+            } catch (e: Exception) {
+                Log.e(TAG, "Reordering class sessions failed", e)
+                _cloudSyncStatus.value = "ذخیره ترتیب جلسات ناموفق بود: ${e.localizedMessage ?: "خطای نامشخص"}"
             }
         }
     }
