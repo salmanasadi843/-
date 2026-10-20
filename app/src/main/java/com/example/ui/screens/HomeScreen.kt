@@ -66,7 +66,10 @@ fun HomeScreen(
     val context = LocalContext.current
     val isTeacher = userRole == UserRole.TEACHER
     val isPrimaryTeacher = isTeacher && AuthPreferences.isPrimaryTeacher(context)
-    LaunchedEffect(userRole) { if (userRole == UserRole.STUDENT) viewModel.startStudentMaterialsSync() }
+    LaunchedEffect(userRole) {
+        if (userRole == UserRole.STUDENT) viewModel.startStudentMaterialsSync()
+        else viewModel.startTeacherSharedMaterialsSync()
+    }
     // While refreshing, do not expose stale cached classes whose publication may have been revoked.
     val studentFeedReady = userRole != UserRole.STUDENT || (
         studentSyncStatus != "مطالب آنلاین هنوز بررسی نشده‌اند." &&
