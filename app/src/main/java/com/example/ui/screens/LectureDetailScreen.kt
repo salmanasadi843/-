@@ -138,6 +138,7 @@ fun LectureDetailScreen(
     val searchResultIds by viewModel.searchResultLectureIds.collectAsState()
     val searchResultIndex by viewModel.currentSearchResultIndex.collectAsState()
     val searchNavigationActive by viewModel.isSearchResultNavigationActive.collectAsState()
+    val activeSearchQuery by viewModel.advancedSearchQuery.collectAsState()
 
     var showDeleteConfirmDialog by remember { mutableStateOf(false) }
     var showExportDialog by remember { mutableStateOf(false) }
