@@ -56,7 +56,10 @@ fun ClassScreen(
                     item.teacherName.trim().equals(currentTeacherName, ignoreCase = true))
         )
     // Refresh the published feed whenever a student opens the class list so revoked visibility is applied.
-    LaunchedEffect(userRole) { if (userRole == UserRole.STUDENT) viewModel.startStudentMaterialsSync() }
+    LaunchedEffect(userRole) {
+        if (userRole == UserRole.STUDENT) viewModel.startStudentMaterialsSync()
+        else viewModel.startTeacherSharedMaterialsSync()
+    }
     var showAdd by remember { mutableStateOf(false) }
     var classToDelete by remember { mutableStateOf<ClassEntity?>(null) }
     var isSaving by remember { mutableStateOf(false) }
