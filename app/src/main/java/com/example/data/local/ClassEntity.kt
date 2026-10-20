@@ -1,5 +1,6 @@
 package com.example.data.local
 
+import androidx.room.ColumnInfo
 import androidx.room.Entity
 import androidx.room.PrimaryKey
 
@@ -10,6 +11,7 @@ data class ClassEntity(
     val name: String,
     val teacherName: String = "",
     /** Firebase account that owns this class. */
+    @ColumnInfo(defaultValue = "''")
     val ownerUid: String = "",
     val description: String = "",
     val term: String = "",
