@@ -85,13 +85,14 @@ fun HomeScreen(
             // A regular teacher sees only classes associated with their own profile name.
             // Keep legacy positive-ID classes with a blank teacher name for compatibility.
             allClasses.filter { classItem ->
+                // Legacy classes may retain an old/mismatched teacherName. Prefer the
+                // lecture-to-professor relationship as an additional ownership signal.
                 (classItem.id > 0L && classItem.teacherName.isBlank()) ||
                     classItem.teacherName.trim().equals(currentTeacherName, ignoreCase = true) ||
-                    (classItem.teacherName.isBlank() &&
-                        allLectures.any { lecture ->
-                            lecture.classId == classItem.id &&
-                                lecture.professorName.trim().equals(currentTeacherName, ignoreCase = true)
-                        })
+                    allLectures.any { lecture ->
+                        lecture.classId == classItem.id &&
+                            lecture.professorName.trim().equals(currentTeacherName, ignoreCase = true)
+                    }
             }
         }
     }
