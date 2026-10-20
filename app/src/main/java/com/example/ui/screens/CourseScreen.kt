@@ -31,7 +31,15 @@ fun ClassSessionsScreen(
     onBack: () -> Unit
 ) {
     val context = LocalContext.current
-    val canManageSessions = userRole == UserRole.TEACHER || AuthPreferences.isPrimaryTeacher(context)
+    val currentUid = AuthPreferences.currentUid(context).orEmpty()
+    val currentTeacherName = AuthPreferences.currentName(context).trim()
+    var classOwnerUid by remember { mutableStateOf("") }
+    var organizationRevision by remember { mutableIntStateOf(0) }
+    val canManageSessions = userRole == UserRole.TEACHER && (
+        AuthPreferences.isPrimaryTeacher(context) ||
+            (classId > 0L && classOwnerUid.isNotBlank() && classOwnerUid == currentUid) ||
+            (classId > 0L && classOwnerUid.isBlank() && teacherName.trim().equals(currentTeacherName, ignoreCase = true))
+    )
     val allLectures by viewModel.repository.allLectures.collectAsState(initial = emptyList())
     val allCourses by viewModel.repository.allCoursesDetailed.collectAsState(initial = emptyList())
     var className by remember { mutableStateOf("کلاس") }
@@ -42,15 +50,20 @@ fun ClassSessionsScreen(
         viewModel.repository.getClass(classId)?.let {
             className = it.name
             teacherName = it.teacherName
+            classOwnerUid = it.ownerUid
         }
     }
 
     val courseIdsForClass = remember(allCourses, classId) {
         allCourses.filter { it.classId == classId }.map { it.id }.toSet()
     }
-    val sessions = allLectures
-        .filter { it.classId == classId || (it.classId == null && it.courseId in courseIdsForClass) }
-        .sortedByDescending { it.dateMillis }
+    val sessions = remember(allLectures, classId, courseIdsForClass, organizationRevision) {
+        val matching = allLectures
+            .filter { it.classId == classId || (it.classId == null && it.courseId in courseIdsForClass) }
+            .sortedByDescending { it.dateMillis }
+        val order = ClassOrganizationPrefs.orderedSessions(context, classId, matching.map { it.id })
+        order.mapNotNull { id -> matching.firstOrNull { it.id == id } }
+    }
 
     Scaffold(
         containerColor = MaterialTheme.colorScheme.background,
@@ -140,8 +153,26 @@ fun ClassSessionsScreen(
                             }
                         }
                         if (canManageSessions) {
-                            IconButton(onClick = { showDeleteDialog = lecture }) {
-                                Icon(Icons.Default.Delete, contentDescription = "حذف جلسه")
+                            Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                                Row {
+                                    TextButton(
+                                        onClick = {
+                                            ClassOrganizationPrefs.moveSession(context, classId, sessions.map { it.id }, lecture.id, -1)
+                                            organizationRevision++
+                                        },
+                                        enabled = sessions.indexOfFirst { it.id == lecture.id } > 0
+                                    ) { Text("↑") }
+                                    TextButton(
+                                        onClick = {
+                                            ClassOrganizationPrefs.moveSession(context, classId, sessions.map { it.id }, lecture.id, 1)
+                                            organizationRevision++
+                                        },
+                                        enabled = sessions.indexOfFirst { it.id == lecture.id } < sessions.lastIndex
+                                    ) { Text("↓") }
+                                }
+                                IconButton(onClick = { showDeleteDialog = lecture }) {
+                                    Icon(Icons.Default.Delete, contentDescription = "حذف جلسه")
+                                }
                             }
                         }
                     }
