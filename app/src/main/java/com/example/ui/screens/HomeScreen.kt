@@ -82,7 +82,7 @@ fun HomeScreen(
     val classes = when (userRole) {
         UserRole.STUDENT -> if (studentFeedReady) allClasses.filter { it.id < 0L && it.isPublished } else emptyList()
         UserRole.TEACHER -> if (isPrimaryTeacher) {
-            allClasses.filter { it.id >= 0L }
+            allClasses.filter { it.id != 0L }
         } else {
             // کلاس‌های استادان دیگر قابل مشاهده‌اند؛ مدیریت آن‌ها جداگانه محدود می‌شود.
             allClasses.filter { it.id != 0L }
