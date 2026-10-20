@@ -58,7 +58,6 @@ fun ClassScreen(
     // Refresh the published feed whenever a student opens the class list so revoked visibility is applied.
     LaunchedEffect(userRole) {
         if (userRole == UserRole.STUDENT) viewModel.startStudentMaterialsSync()
-        else viewModel.startTeacherSharedMaterialsSync()
     }
     var showAdd by remember { mutableStateOf(false) }
     var classToDelete by remember { mutableStateOf<ClassEntity?>(null) }
