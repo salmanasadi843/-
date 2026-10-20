@@ -78,21 +78,19 @@ fun HomeScreen(
     val classes = when (userRole) {
         UserRole.STUDENT -> if (studentFeedReady) allClasses.filter { it.id < 0L && it.isPublished } else emptyList()
         UserRole.TEACHER -> if (isPrimaryTeacher) {
-            // The primary teacher/manager needs the complete teacher-side catalogue.
-            // Negative IDs are imported student-feed copies and must not enter management.
             allClasses.filter { it.id >= 0L }
         } else {
-            // A regular teacher sees only classes associated with their own profile name.
-            // Keep legacy positive-ID classes with a blank teacher name for compatibility.
+            // Account ownership is primary; name/session matching is only a legacy fallback.
+            val currentUid = AuthPreferences.currentUid(context).orEmpty()
             allClasses.filter { classItem ->
-                // Legacy classes may retain an old/mismatched teacherName. Prefer the
-                // lecture-to-professor relationship as an additional ownership signal.
-                (classItem.id > 0L && classItem.teacherName.isBlank()) ||
-                    classItem.teacherName.trim().equals(currentTeacherName, ignoreCase = true) ||
-                    allLectures.any { lecture ->
-                        lecture.classId == classItem.id &&
-                            lecture.professorName.trim().equals(currentTeacherName, ignoreCase = true)
-                    }
+                classItem.id > 0L && (
+                    classItem.ownerUid == currentUid ||
+                        (classItem.ownerUid.isBlank() && classItem.teacherName.trim().equals(currentTeacherName, ignoreCase = true)) ||
+                        (classItem.ownerUid.isBlank() && allLectures.any { lecture ->
+                            lecture.classId == classItem.id &&
+                                lecture.professorName.trim().equals(currentTeacherName, ignoreCase = true)
+                        })
+                )
             }
         }
     }
