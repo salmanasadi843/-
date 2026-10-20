@@ -197,6 +197,9 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
                     _cloudSyncStatus.value = "بازیابی اطلاعات از فضای ابری موفق بود؛ تغییرات بعدی خودکار ارسال می‌شوند."
                 }
 
+                // پس از پایان بازیابی داده‌های خصوصی، کلاس‌های منتشرشده سایر استادان را وارد کن.
+                startTeacherSharedMaterialsSync()
+
                 combine(
                     repository.allLectures,
                     repository.allClasses,
