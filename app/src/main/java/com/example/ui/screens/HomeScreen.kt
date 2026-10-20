@@ -82,14 +82,14 @@ fun HomeScreen(
             allClasses.filter { it.id >= 0L }
         } else {
             // کلاس‌های استادان دیگر قابل مشاهده‌اند؛ مدیریت آن‌ها جداگانه محدود می‌شود.
-            allClasses.filter { it.id > 0L }
+            allClasses.filter { it.id != 0L }
         }
     }
     fun canManageClass(classItem: ClassEntity): Boolean =
         isTeacher && (
             isPrimaryTeacher ||
-                (classItem.ownerUid.isNotBlank() && classItem.ownerUid == currentUid) ||
-                (classItem.ownerUid.isBlank() &&
+                (classItem.id > 0L && classItem.ownerUid.isNotBlank() && classItem.ownerUid == currentUid) ||
+                (classItem.id > 0L && classItem.ownerUid.isBlank() &&
                     (classItem.teacherName.trim().equals(currentTeacherName, ignoreCase = true) ||
                         allLectures.any { lecture ->
                             lecture.classId == classItem.id &&
