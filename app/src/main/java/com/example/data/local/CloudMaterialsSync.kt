@@ -51,6 +51,13 @@ object CloudMaterialsSync {
         return syncSharedMaterials(uid, db, firestore)
     }
 
+    /** دریافت فقط مطالب منتشرشده سایر استادان، بدون بازنویسی انتشار حساب فعلی. */
+    fun syncOtherTeachers(context: Context): String {
+        val uid = AuthPreferences.currentUid(context)
+            ?: error("ابتدا وارد حساب کاربری شوید.")
+        return syncSharedMaterials(uid, AppDatabase.getDatabase(context), FirebaseFirestore.getInstance())
+    }
+
     private fun syncSharedMaterials(uid: String, db: AppDatabase, firestore: FirebaseFirestore): String {
             val documents = Tasks.await(firestore.collection("shared_materials").get()).documents
                 .filter { it.id != uid }
