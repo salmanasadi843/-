@@ -77,19 +77,22 @@ fun HomeScreen(
     val currentTeacherName = AuthPreferences.currentName(context).trim()
     val classes = when (userRole) {
         UserRole.STUDENT -> if (studentFeedReady) allClasses.filter { it.id < 0L && it.isPublished } else emptyList()
-        UserRole.TEACHER -> allClasses.filter { classItem ->
-            // Positive IDs are locally created teacher classes. Some existing teacher records
-            // may have been restored with non-positive IDs, so also recognize them by ownership.
-            (classItem.id > 0L && (
-                classItem.teacherName.isBlank() ||
-                    classItem.teacherName.trim().equals(currentTeacherName, ignoreCase = true)
-                )) ||
-                classItem.teacherName.trim().equals(currentTeacherName, ignoreCase = true) ||
-                (classItem.teacherName.isBlank() &&
-                    allLectures.any { lecture ->
-                        lecture.classId == classItem.id &&
-                            lecture.professorName.trim().equals(currentTeacherName, ignoreCase = true)
-                    })
+        UserRole.TEACHER -> if (isPrimaryTeacher) {
+            // The primary teacher/manager needs the complete teacher-side catalogue.
+            // Negative IDs are imported student-feed copies and must not enter management.
+            allClasses.filter { it.id >= 0L }
+        } else {
+            // A regular teacher sees only classes associated with their own profile name.
+            // Keep legacy positive-ID classes with a blank teacher name for compatibility.
+            allClasses.filter { classItem ->
+                (classItem.id > 0L && classItem.teacherName.isBlank()) ||
+                    classItem.teacherName.trim().equals(currentTeacherName, ignoreCase = true) ||
+                    (classItem.teacherName.isBlank() &&
+                        allLectures.any { lecture ->
+                            lecture.classId == classItem.id &&
+                                lecture.professorName.trim().equals(currentTeacherName, ignoreCase = true)
+                        })
+            }
         }
     }
     val visibleClassIds = classes.map { it.id }.toSet()
