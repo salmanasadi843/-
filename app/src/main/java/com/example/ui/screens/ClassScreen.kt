@@ -29,7 +29,10 @@ fun ClassScreen(
     onBack: () -> Unit
 ) {
     val context = LocalContext.current
-    val canManageClasses = userRole == UserRole.TEACHER || AuthPreferences.isPrimaryTeacher(context)
+    val isPrimaryTeacher = userRole == UserRole.TEACHER && AuthPreferences.isPrimaryTeacher(context)
+    val canManageClasses = userRole == UserRole.TEACHER
+    val currentUid = AuthPreferences.currentUid(context).orEmpty()
+    val currentTeacherName = AuthPreferences.currentName(context).trim()
     val allClasses by viewModel.repository.allClasses.collectAsState(initial = emptyList())
     // Never expose teacher-local or unpublished classes in student mode.
     val studentSyncStatus by viewModel.studentMaterialsSyncStatus.collectAsState()
@@ -41,7 +44,16 @@ fun ClassScreen(
     val classes = if (!canManageClasses) {
         if (studentFeedReady) allClasses.filter { it.id < 0L && it.isPublished }
         else emptyList()
-    } else allClasses
+    } else if (isPrimaryTeacher) {
+        allClasses.filter { it.id >= 0L }
+    } else {
+        allClasses.filter { item ->
+            item.id > 0L && (
+                item.ownerUid == currentUid ||
+                    (item.ownerUid.isBlank() && item.teacherName.trim().equals(currentTeacherName, ignoreCase = true))
+            )
+        }
+    }
     // Refresh the published feed whenever a student opens the class list so revoked visibility is applied.
     LaunchedEffect(userRole) { if (userRole == UserRole.STUDENT) viewModel.startStudentMaterialsSync() }
     var showAdd by remember { mutableStateOf(false) }
@@ -49,13 +61,13 @@ fun ClassScreen(
     var isSaving by remember { mutableStateOf(false) }
     var saveError by remember { mutableStateOf<String?>(null) }
     var name by remember { mutableStateOf("") }
-    var teacher by remember { mutableStateOf("") }
+    var teacher by remember { mutableStateOf(AuthPreferences.currentName(context)) }
     var term by remember { mutableStateOf("") }
     var editingClass by remember { mutableStateOf<ClassEntity?>(null) }
 
     fun resetForm() {
         name = ""
-        teacher = ""
+        teacher = AuthPreferences.currentName(context)
         term = ""
         editingClass = null
         saveError = null
@@ -220,7 +232,8 @@ fun ClassScreen(
                             ClassEntity(
                                 id = editingClass?.id ?: 0L,
                                 name = name.trim(),
-                                teacherName = teacher.trim(),
+                                teacherName = teacher.trim().ifBlank { currentTeacherName },
+                                ownerUid = editingClass?.ownerUid?.ifBlank { currentUid } ?: currentUid,
                                 term = term.trim(),
                                 description = editingClass?.description.orEmpty(),
                                 classDateMillis = editingClass?.classDateMillis ?: System.currentTimeMillis(),
