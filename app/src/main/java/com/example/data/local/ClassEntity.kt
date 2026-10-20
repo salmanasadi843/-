@@ -9,6 +9,8 @@ data class ClassEntity(
     val id: Long = 0,
     val name: String,
     val teacherName: String = "",
+    /** Firebase account that owns this class. */
+    val ownerUid: String = "",
     val description: String = "",
     val term: String = "",
     /** تاریخ برگزاری/شروع کلاس؛ مستقل از تاریخ ایجاد رکورد */
