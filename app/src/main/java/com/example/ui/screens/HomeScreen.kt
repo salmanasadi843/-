@@ -17,6 +17,7 @@ import androidx.compose.material.icons.filled.School
 import androidx.compose.material3.*
 import androidx.compose.ui.platform.LocalContext
 import android.content.Context
+import android.content.Intent
 import android.widget.Toast
 import android.net.ConnectivityManager
 import android.net.Network
