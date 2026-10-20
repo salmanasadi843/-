@@ -107,6 +107,7 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
     private val _studentMaterialsSyncStatus = MutableStateFlow("مطالب آنلاین هنوز بررسی نشده‌اند.")
     val studentMaterialsSyncStatus: StateFlow<String> = _studentMaterialsSyncStatus.asStateFlow()
     private var studentMaterialsSyncJob: Job? = null
+    private var teacherSharedMaterialsSyncJob: Job? = null
 
     /**
      * Automatically fetch published teacher materials for a student after login.
@@ -133,6 +134,31 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
                 Log.e(TAG, "Automatic student materials sync failed", e)
                 _studentMaterialsSyncStatus.value =
                     "دریافت خودکار مطالب انجام نشد؛ به بخش اتصال بروید و «دریافت مطالب آنلاین» را بزنید. ${e.localizedMessage ?: ""}".trim()
+            }
+        }
+    }
+
+    /**
+     * دریافت خودکار کلاس‌های منتشرشده استادان دیگر برای نمایش فقط‌خواندنی در پنل استاد.
+     * این مسیر انتشار داده‌های خود استاد را تغییر نمی‌دهد.
+     */
+    fun startTeacherSharedMaterialsSync() {
+        if (_userRole.value != UserRole.TEACHER) return
+        if (teacherSharedMaterialsSyncJob?.isActive == true) return
+
+        val app = getApplication<Application>()
+        if (AuthPreferences.currentUid(app).isNullOrBlank()) return
+
+        teacherSharedMaterialsSyncJob = viewModelScope.launch {
+            try {
+                val result = withContext(Dispatchers.IO) {
+                    CloudMaterialsSync.syncOtherTeachers(app)
+                }
+                _cloudSyncStatus.value = result
+            } catch (e: Exception) {
+                Log.e(TAG, "Automatic read-only teacher materials sync failed", e)
+                _cloudSyncStatus.value =
+                    "دریافت کلاس‌های منتشرشده استادان دیگر ناموفق بود: ${e.localizedMessage ?: "خطای نامشخص"}"
             }
         }
     }
