@@ -107,6 +107,8 @@ fun ClassScreen(
     var showAdd by remember { mutableStateOf(false) }
     var classToDelete by remember { mutableStateOf<ClassEntity?>(null) }
     var folderToDelete by remember { mutableStateOf<TeacherFolderEntity?>(null) }
+    var folderToRename by remember { mutableStateOf<TeacherFolderEntity?>(null) }
+    var renamedFolderName by remember { mutableStateOf("") }
     var isSaving by remember { mutableStateOf(false) }
     var saveError by remember { mutableStateOf<String?>(null) }
     var name by remember { mutableStateOf("") }
@@ -248,6 +250,12 @@ fun ClassScreen(
                                 Text("📁", style = MaterialTheme.typography.titleLarge)
                                 Spacer(Modifier.width(10.dp))
                                 Text(folder.name, modifier = Modifier.weight(1f), fontWeight = FontWeight.SemiBold)
+                                IconButton(onClick = {
+                                    folderToRename = folder
+                                    renamedFolderName = folder.name
+                                }) {
+                                    Icon(Icons.Default.Edit, contentDescription = "ویرایش نام پوشه")
+                                }
                                 IconButton(onClick = { folderToDelete = folder }) {
                                     Icon(Icons.Default.Delete, contentDescription = "حذف پوشه", tint = MaterialTheme.colorScheme.error)
                                 }
@@ -423,6 +431,45 @@ fun ClassScreen(
                 }, enabled = newFolderName.isNotBlank() && ownerUid.isNotBlank()) { Text("ایجاد") }
             },
             dismissButton = { TextButton(onClick = { showCreateFolder = false }) { Text("انصراف") } }
+        )
+    }
+
+    folderToRename?.let { folder ->
+        AlertDialog(
+            onDismissRequest = { folderToRename = null },
+            title = { Text("ویرایش نام پوشه") },
+            text = {
+                OutlinedTextField(
+                    value = renamedFolderName,
+                    onValueChange = { renamedFolderName = it },
+                    label = { Text("نام جدید پوشه") },
+                    singleLine = true
+                )
+            },
+            confirmButton = {
+                TextButton(
+                    onClick = {
+                        val cleanName = renamedFolderName.trim()
+                        if (cleanName.isNotBlank() && ownerUid.isNotBlank()) {
+                            scope.launch {
+                                runCatching {
+                                    val ownedFolder = folderDao.getOwnedFolder(folder.id, ownerUid)
+                                        ?: error("این پوشه متعلق به حساب فعلی نیست.")
+                                    folderDao.update(ownedFolder.copy(name = cleanName))
+                                }.onSuccess {
+                                    folderToRename = null
+                                }.onFailure {
+                                    saveError = "تغییر نام پوشه انجام نشد؛ ممکن است پوشه‌ای با همین نام در این مسیر وجود داشته باشد."
+                                }
+                            }
+                        }
+                    },
+                    enabled = renamedFolderName.isNotBlank() && renamedFolderName.trim() != folder.name && ownerUid.isNotBlank()
+                ) { Text("ذخیره") }
+            },
+            dismissButton = {
+                TextButton(onClick = { folderToRename = null }) { Text("انصراف") }
+            }
         )
     }
 
