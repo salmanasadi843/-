@@ -570,8 +570,8 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
                     onFailure("مجوز فعال این حساب به‌عنوان استاد در Firebase تأیید نشد. از حساب مدیر اصلی، درخواست این استاد را بررسی و دوباره تأیید کنید؛ سپس خارج شوید و دوباره وارد شوید.")
                     return@launch
                 }
-                if (item.id < 0L) {
-                    onFailure("این کلاس متعلق به استاد دیگری است و فقط برای مطالعه در دسترس است؛ نمی‌توانید آن را ویرایش کنید.")
+                if (item.id < 0L && !AuthPreferences.isPrimaryTeacher(getApplication<Application>())) {
+                    onFailure("این کلاس متعلق به استاد دیگری است و فقط مدیر اصلی می‌تواند آن را ویرایش کند.")
                     return@launch
                 }
                 val app = getApplication<Application>()
@@ -591,7 +591,8 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
                 }
                 val safeItem = item.copy(
                     teacherName = item.teacherName.trim().ifBlank { currentName },
-                    ownerUid = existing?.ownerUid?.ifBlank { uid } ?: uid
+                    ownerUid = if (item.id < 0L) existing?.ownerUid.orEmpty()
+                        else existing?.ownerUid?.ifBlank { uid } ?: uid
                 )
                 onSaved(repository.saveClass(safeItem))
             } catch (e: Exception) {
@@ -615,8 +616,8 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
     fun deleteClass(item: com.example.data.local.ClassEntity, onDeleted: () -> Unit = {}) {
         viewModelScope.launch {
             if (!teacherPermissionGranted()) { denyTeacherMutation(); return@launch }
-            if (item.id < 0L) {
-                _cloudSyncStatus.value = "حذف یا پنهان‌کردن کلاس استاد دیگر مجاز نیست."
+            if (item.id < 0L && !AuthPreferences.isPrimaryTeacher(getApplication<Application>())) {
+                _cloudSyncStatus.value = "حذف کلاس استاد دیگر فقط برای مدیر اصلی مجاز است."
                 return@launch
             }
             val app = getApplication<Application>()
@@ -631,10 +632,13 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
                 return@launch
             }
             repository.deleteClass(item)
-            try {
-                withContext(Dispatchers.IO) { CloudMaterialsSync.sync(getApplication<Application>()) }
-            } catch (e: Exception) {
-                Log.e(TAG, "Could not refresh published feed after class deletion", e)
+            // Do not immediately pull a shared negative-ID class back after an admin deletion.
+            if (item.id > 0L) {
+                try {
+                    withContext(Dispatchers.IO) { CloudMaterialsSync.sync(getApplication<Application>()) }
+                } catch (e: Exception) {
+                    Log.e(TAG, "Could not refresh published feed after class deletion", e)
+                }
             }
             onDeleted()
         }
@@ -879,8 +883,8 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
     fun setClassPublished(classItem: ClassEntity, published: Boolean) {
         viewModelScope.launch {
             if (!teacherPermissionGranted()) { denyTeacherMutation(); return@launch }
-            if (classItem.id < 0L) {
-                _cloudSyncStatus.value = "تغییر وضعیت انتشار کلاس استاد دیگر مجاز نیست."
+            if (classItem.id < 0L && !AuthPreferences.isPrimaryTeacher(getApplication<Application>())) {
+                _cloudSyncStatus.value = "تغییر وضعیت انتشار کلاس استاد دیگر فقط برای مدیر اصلی مجاز است."
                 return@launch
             }
             val app = getApplication<Application>()
@@ -895,15 +899,18 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
                 return@launch
             }
             repository.saveClass(classItem.copy(isPublished = published))
-            // Refresh the shared student feed immediately after class visibility changes.
-            try {
-                withContext(Dispatchers.IO) {
-                    CloudMaterialsSync.sync(getApplication<Application>())
+            // Shared negative-ID records are local read-only imports for ordinary teachers.
+            // The primary admin can change their local visibility without immediately overwriting it.
+            if (classItem.id > 0L) {
+                try {
+                    withContext(Dispatchers.IO) {
+                        CloudMaterialsSync.sync(getApplication<Application>())
+                    }
+                } catch (e: Exception) {
+                    Log.e(TAG, "Could not refresh published class feed", e)
+                    _cloudSyncStatus.value =
+                        "وضعیت انتشار کلاس در دستگاه ذخیره شد؛ همگام‌سازی آنلاین ناموفق بود و باید دوباره تلاش شود."
                 }
-            } catch (e: Exception) {
-                Log.e(TAG, "Could not refresh published class feed", e)
-                _cloudSyncStatus.value =
-                    "وضعیت انتشار کلاس در دستگاه ذخیره شد؛ همگام‌سازی آنلاین ناموفق بود و باید دوباره تلاش شود."
             }
         }
     }
