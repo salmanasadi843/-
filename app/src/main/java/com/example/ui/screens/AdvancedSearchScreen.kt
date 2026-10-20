@@ -13,7 +13,12 @@ import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.text.AnnotatedString
+import androidx.compose.ui.text.SpanStyle
+import androidx.compose.ui.text.buildAnnotatedString
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.withStyle
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import com.example.data.local.LectureEntity
@@ -27,7 +32,11 @@ fun AdvancedSearchScreen(
     onOpenLecture: (Long) -> Unit,
     onBack: () -> Unit
 ) {
-    BackHandler(onBack = onBack)
+    val exitSearch = {
+        viewModel.clearSearchNavigation()
+        onBack()
+    }
+    BackHandler(onBack = exitSearch)
     val allClasses by viewModel.repository.allClasses.collectAsState(initial = emptyList())
     val allLectures by viewModel.repository.allLectures.collectAsState(initial = emptyList())
     val syncStatus by viewModel.studentMaterialsSyncStatus.collectAsState()
@@ -44,11 +53,11 @@ fun AdvancedSearchScreen(
         allLectures.filter { it.id < 0L && it.isPublished && it.classId in visibleClassIds }
     } else allLectures
 
-    var query by remember { mutableStateOf("") }
-    var matchMode by remember { mutableStateOf("all") }
-    var selectedProfessor by remember { mutableStateOf("همه استادان") }
-    var selectedCourse by remember { mutableStateOf("همه درس‌ها") }
-    var selectedClassId by remember { mutableStateOf<Long?>(null) }
+    var query by remember { mutableStateOf(viewModel.advancedSearchQuery.value) }
+    var matchMode by remember { mutableStateOf(viewModel.advancedSearchMatchMode.value) }
+    var selectedProfessor by remember { mutableStateOf(viewModel.advancedSearchProfessor.value) }
+    var selectedCourse by remember { mutableStateOf(viewModel.advancedSearchCourse.value) }
+    var selectedClassId by remember { mutableStateOf(viewModel.advancedSearchClassId.value) }
     var openFilter by remember { mutableStateOf("") }
 
     val professors = listOf("همه استادان") + searchableLectures.map { it.professorName.trim() }
@@ -86,7 +95,7 @@ fun AdvancedSearchScreen(
             TopAppBar(
                 title = { Text("جستجوی پیشرفته", fontWeight = FontWeight.Bold) },
                 navigationIcon = {
-                    IconButton(onClick = onBack) {
+                    IconButton(onClick = exitSearch) {
                         Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "بازگشت")
                     }
                 }
@@ -99,7 +108,7 @@ fun AdvancedSearchScreen(
         ) {
             OutlinedTextField(
                 value = query,
-                onValueChange = { query = it },
+                onValueChange = { query = it; viewModel.advancedSearchQuery.value = it },
                 modifier = Modifier.fillMaxWidth(),
                 singleLine = false,
                 maxLines = 3,
@@ -110,12 +119,12 @@ fun AdvancedSearchScreen(
             SingleChoiceSegmentedButtonRow(Modifier.fillMaxWidth()) {
                 SegmentedButton(
                     selected = matchMode == "all",
-                    onClick = { matchMode = "all" },
+                    onClick = { matchMode = "all"; viewModel.advancedSearchMatchMode.value = "all" },
                     shape = SegmentedButtonDefaults.itemShape(index = 0, count = 2)
                 ) { Text("همه واژه‌ها") }
                 SegmentedButton(
                     selected = matchMode == "phrase",
-                    onClick = { matchMode = "phrase" },
+                    onClick = { matchMode = "phrase"; viewModel.advancedSearchMatchMode.value = "phrase" },
                     shape = SegmentedButtonDefaults.itemShape(index = 1, count = 2)
                 ) { Text("عبارت دقیق") }
             }
@@ -130,7 +139,7 @@ fun AdvancedSearchScreen(
                     }
                     DropdownMenu(expanded = openFilter == "professor", onDismissRequest = { openFilter = "" }) {
                         professors.forEach { name ->
-                            DropdownMenuItem(text = { Text(name) }, onClick = { selectedProfessor = name; openFilter = "" })
+                            DropdownMenuItem(text = { Text(name) }, onClick = { selectedProfessor = name; viewModel.advancedSearchProfessor.value = name; openFilter = "" })
                         }
                     }
                 }
@@ -140,7 +149,7 @@ fun AdvancedSearchScreen(
                     }
                     DropdownMenu(expanded = openFilter == "course", onDismissRequest = { openFilter = "" }) {
                         courses.forEach { name ->
-                            DropdownMenuItem(text = { Text(name) }, onClick = { selectedCourse = name; openFilter = "" })
+                            DropdownMenuItem(text = { Text(name) }, onClick = { selectedCourse = name; viewModel.advancedSearchCourse.value = name; openFilter = "" })
                         }
                     }
                 }
@@ -149,9 +158,9 @@ fun AdvancedSearchScreen(
                         Text(classes.firstOrNull { it.id == selectedClassId }?.name ?: "کلاس: همه", maxLines = 1, overflow = TextOverflow.Ellipsis)
                     }
                     DropdownMenu(expanded = openFilter == "class", onDismissRequest = { openFilter = "" }) {
-                        DropdownMenuItem(text = { Text("همه کلاس‌ها") }, onClick = { selectedClassId = null; openFilter = "" })
+                        DropdownMenuItem(text = { Text("همه کلاس‌ها") }, onClick = { selectedClassId = null; viewModel.advancedSearchClassId.value = null; openFilter = "" })
                         classes.forEach { item ->
-                            DropdownMenuItem(text = { Text(item.name) }, onClick = { selectedClassId = item.id; openFilter = "" })
+                            DropdownMenuItem(text = { Text(item.name) }, onClick = { selectedClassId = item.id; viewModel.advancedSearchClassId.value = item.id; openFilter = "" })
                         }
                     }
                 }
@@ -165,6 +174,11 @@ fun AdvancedSearchScreen(
                     selectedProfessor = "همه استادان"
                     selectedCourse = "همه درس‌ها"
                     selectedClassId = null
+                    viewModel.advancedSearchQuery.value = ""
+                    viewModel.advancedSearchMatchMode.value = "all"
+                    viewModel.advancedSearchProfessor.value = "همه استادان"
+                    viewModel.advancedSearchCourse.value = "همه درس‌ها"
+                    viewModel.advancedSearchClassId.value = null
                 }) { Text("پاک‌کردن فیلترها") }
             }
             if (userRole == UserRole.STUDENT && !studentFeedReady) {
@@ -182,7 +196,10 @@ fun AdvancedSearchScreen(
                     val className = classes.firstOrNull { it.id == lecture.classId }?.name
                     val excerpt = makeSearchExcerpt(lecture, terms)
                     Card(
-                        modifier = Modifier.fillMaxWidth().clickable { onOpenLecture(lecture.id) },
+                        modifier = Modifier.fillMaxWidth().clickable {
+                            viewModel.beginSearchNavigation(results.map { it.id }, lecture.id)
+                            onOpenLecture(lecture.id)
+                        },
                         shape = RoundedCornerShape(16.dp),
                         colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface)
                     ) {
@@ -200,7 +217,7 @@ fun AdvancedSearchScreen(
                             )
                             if (excerpt.isNotBlank()) {
                                 Spacer(Modifier.height(8.dp))
-                                Text(excerpt, maxLines = 4, overflow = TextOverflow.Ellipsis, style = MaterialTheme.typography.bodyMedium)
+                                Text(highlightSearchExcerpt(excerpt, terms), maxLines = 4, overflow = TextOverflow.Ellipsis, style = MaterialTheme.typography.bodyMedium)
                             }
                             Spacer(Modifier.height(6.dp))
                             Text("برای باز کردن جلسه لمس کنید  ←", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.primary)
@@ -233,4 +250,35 @@ private fun makeSearchExcerpt(lecture: LectureEntity, terms: List<String>): Stri
     val start = if (index > 70) index - 70 else 0
     return (if (start > 0) "… " else "") + source.substring(start, minOf(source.length, start + 240)) +
         if (start + 240 < source.length) " …" else ""
+}
+
+private fun highlightSearchExcerpt(excerpt: String, terms: List<String>): AnnotatedString = buildAnnotatedString {
+    val patterns = terms.filter { it.isNotBlank() }.distinct().sortedByDescending { it.length }
+    if (excerpt.isBlank() || patterns.isEmpty()) {
+        append(excerpt)
+        return@buildAnnotatedString
+    }
+    val regex = runCatching {
+        Regex(patterns.joinToString("|") { Regex.escape(it) }, RegexOption.IGNORE_CASE)
+    }.getOrNull()
+    if (regex == null) {
+        append(excerpt)
+        return@buildAnnotatedString
+    }
+    var cursor = 0
+    regex.findAll(excerpt).forEach { match ->
+        if (match.range.first < cursor) return@forEach
+        append(excerpt.substring(cursor, match.range.first))
+        withStyle(
+            SpanStyle(
+                background = Color(0xFFFFD54F),
+                color = Color(0xFF302400),
+                fontWeight = FontWeight.Bold
+            )
+        ) {
+            append(match.value)
+        }
+        cursor = match.range.last + 1
+    }
+    if (cursor < excerpt.length) append(excerpt.substring(cursor))
 }
