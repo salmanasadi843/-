@@ -250,6 +250,45 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
     private val _currentScreen = MutableStateFlow<Screen>(Screen.Home)
     val currentScreen: StateFlow<Screen> = _currentScreen.asStateFlow()
 
+    // Advanced-search state survives opening a result and returning from its detail page.
+    val advancedSearchQuery = MutableStateFlow("")
+    val advancedSearchMatchMode = MutableStateFlow("all")
+    val advancedSearchProfessor = MutableStateFlow("همه استادان")
+    val advancedSearchCourse = MutableStateFlow("همه درس‌ها")
+    val advancedSearchClassId = MutableStateFlow<Long?>(null)
+    val searchResultLectureIds = MutableStateFlow<List<Long>>(emptyList())
+    val currentSearchResultIndex = MutableStateFlow(0)
+    val isSearchResultNavigationActive = MutableStateFlow(false)
+    private val reopenAdvancedSearch = MutableStateFlow(false)
+
+    fun beginSearchNavigation(ids: List<Long>, selectedId: Long) {
+        searchResultLectureIds.value = ids.distinct()
+        currentSearchResultIndex.value = searchResultLectureIds.value.indexOf(selectedId).coerceAtLeast(0)
+        isSearchResultNavigationActive.value = searchResultLectureIds.value.isNotEmpty()
+    }
+
+    fun clearSearchNavigation() {
+        isSearchResultNavigationActive.value = false
+        searchResultLectureIds.value = emptyList()
+        currentSearchResultIndex.value = 0
+        reopenAdvancedSearch.value = false
+    }
+
+    fun consumeSearchReopenFlag(): Boolean {
+        val shouldReopen = reopenAdvancedSearch.value
+        reopenAdvancedSearch.value = false
+        return shouldReopen
+    }
+
+    fun navigateSearchResult(direction: Int) {
+        val ids = searchResultLectureIds.value
+        if (!isSearchResultNavigationActive.value || ids.isEmpty()) return
+        val nextIndex = (currentSearchResultIndex.value + direction).coerceIn(0, ids.lastIndex)
+        if (nextIndex == currentSearchResultIndex.value) return
+        currentSearchResultIndex.value = nextIndex
+        navigateTo(Screen.Detail(ids[nextIndex]))
+    }
+
     // Unified Filter Criteria State
     private val _filterCriteria = MutableStateFlow(FilterCriteria())
 
@@ -521,15 +560,20 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
             is Screen.Detail -> {
                 audioPlayer.stop()
                 speechRecognizer.stopListening()
-                viewModelScope.launch {
-                    val lecture = repository.getLecture(screen.lectureId)
-                    val classId = lecture?.classId ?: lecture?.courseId?.let { courseId ->
-                        repository.getCourse(courseId)?.classId
+                if (isSearchResultNavigationActive.value) {
+                    reopenAdvancedSearch.value = true
+                    _currentScreen.value = Screen.Home
+                } else {
+                    viewModelScope.launch {
+                        val lecture = repository.getLecture(screen.lectureId)
+                        val classId = lecture?.classId ?: lecture?.courseId?.let { courseId ->
+                            repository.getCourse(courseId)?.classId
+                        }
+                        _currentScreen.value = classId?.let { id ->
+                            classParentContexts[id]?.let { Screen.ClassDetail(id, it.first, it.second) }
+                                ?: Screen.ClassDetail(id)
+                        } ?: Screen.Home
                     }
-                    _currentScreen.value = classId?.let { id ->
-                        classParentContexts[id]?.let { Screen.ClassDetail(id, it.first, it.second) }
-                            ?: Screen.ClassDetail(id)
-                    } ?: Screen.Home
                 }
             }
             is Screen.AddEdit -> {
