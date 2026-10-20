@@ -545,7 +545,26 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
                     onFailure("این کلاس متعلق به استاد دیگری است و فقط برای مطالعه در دسترس است؛ نمی‌توانید آن را ویرایش کنید.")
                     return@launch
                 }
-                onSaved(repository.saveClass(item))
+                val app = getApplication<Application>()
+                val uid = AuthPreferences.currentUid(app).orEmpty()
+                val currentName = AuthPreferences.currentName(app).trim()
+                val isPrimaryTeacher = AuthPreferences.isPrimaryTeacher(app)
+                val existing = if (item.id > 0L) repository.getClass(item.id) else null
+                if (!isPrimaryTeacher && existing != null) {
+                    val belongsToAnotherAccount =
+                        (existing.ownerUid.isNotBlank() && existing.ownerUid != uid) ||
+                            (existing.ownerUid.isBlank() && existing.teacherName.isNotBlank() &&
+                                !existing.teacherName.trim().equals(currentName, ignoreCase = true))
+                    if (belongsToAnotherAccount) {
+                        onFailure("این کلاس به حساب استاد دیگری تعلق دارد و قابل ویرایش نیست.")
+                        return@launch
+                    }
+                }
+                val safeItem = item.copy(
+                    teacherName = item.teacherName.trim().ifBlank { currentName },
+                    ownerUid = existing?.ownerUid?.ifBlank { uid } ?: uid
+                )
+                onSaved(repository.saveClass(safeItem))
             } catch (e: Exception) {
                 Log.e(TAG, "Saving class failed", e)
                 onFailure("ذخیره کلاس ناموفق بود: ${e.localizedMessage ?: "خطای نامشخص Firebase یا پایگاه داده"}")
