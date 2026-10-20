@@ -24,6 +24,32 @@ object ClassOrganizationPrefs {
     fun folderForClass(context: Context, classId: Long): String =
         prefs(context).getString("class_folder_$classId", "").orEmpty()
 
+    fun renameFolder(context: Context, oldName: String, newName: String): Boolean {
+        val oldClean = oldName.trim()
+        val newClean = newName.trim()
+        if (oldClean.isBlank() || newClean.isBlank()) return false
+        val current = folders(context)
+        if (current.none { it == oldClean }) return false
+        if (current.any { it.equals(newClean, true) && !it.equals(oldClean, true) }) return false
+        val updated = current.map { if (it == oldClean) newClean else it }
+        val editor = prefs(context).edit().putString("folders", updated.joinToString("\n"))
+        val all = prefs(context).all
+        all.forEach { (key, value) ->
+            if (key.startsWith("class_folder_") && value == oldClean) editor.putString(key, newClean)
+        }
+        editor.apply()
+        return true
+    }
+
+    fun deleteFolder(context: Context, folder: String) {
+        val clean = folder.trim()
+        val p = prefs(context)
+        val editor = p.edit().putString("folders", folders(context).filterNot { it == clean }.joinToString("\n"))
+        p.all.keys.filter { it.startsWith("class_folder_") && p.getString(it, "") == clean }
+            .forEach { editor.remove(it) }
+        editor.apply()
+    }
+
     fun moveClassToFolder(context: Context, classId: Long, folder: String) {
         prefs(context).edit().putString("class_folder_$classId", folder).apply()
     }
