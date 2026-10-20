@@ -84,7 +84,7 @@ fun HomeScreen(
     val context = LocalContext.current
     val isOnline = rememberNetworkConnection()
     var showBulkExportDialog by androidx.compose.runtime.remember { androidx.compose.runtime.mutableStateOf(false) }
-    var showAdvancedSearch by remember { mutableStateOf(false) }
+    var showAdvancedSearch by remember { mutableStateOf(viewModel.consumeSearchReopenFlag()) }
     var showTeacherRequests by remember { mutableStateOf(false) }
     var pendingTeacherRequests by remember { mutableStateOf<List<TeacherRequestItem>>(emptyList()) }
     var teacherRequestsLoadError by remember { mutableStateOf<String?>(null) }
@@ -237,7 +237,7 @@ fun HomeScreen(
                     }
                 },
                 actions = {
-                    IconButton(onClick = { showAdvancedSearch = true }) { Icon(Icons.Default.Search, contentDescription = "جستجوی پیشرفته در درس‌ها") }
+                    IconButton(onClick = { viewModel.clearSearchNavigation(); showAdvancedSearch = true }) { Icon(Icons.Default.Search, contentDescription = "جستجوی پیشرفته در درس‌ها") }
                     if (isTeacher) IconButton(onClick = { showBulkExportDialog = true }) { Icon(Icons.Default.Share, contentDescription = "ارسال گروهی مطالب") }
                     IconButton(onClick = viewModel::openClasses) { Icon(Icons.Default.School, "کلاس‌ها") }
                     IconButton(onClick = { viewModel.navigateTo(Screen.Settings) }) { Icon(Icons.Default.Settings, "تنظیمات") }
