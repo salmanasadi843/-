@@ -184,7 +184,7 @@ object CloudMaterialsSync {
                     db.lectureDao().insertAllForRestore(uniqueLectures.distinctBy { it.id })
                 }
             }
-            "مطالب آنلاین به‌روزرسانی شد: ${uniqueLectures.size} جلسه یکتا از ${documents.size} حساب استاد."
+            return "مطالب آنلاین به‌روزرسانی شد: ${uniqueLectures.size} جلسه یکتا از ${documents.size} حساب استاد."
     }
 
     private fun stableId(owner: String, key: String): Long {
