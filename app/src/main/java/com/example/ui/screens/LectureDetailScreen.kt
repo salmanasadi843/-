@@ -135,6 +135,9 @@ fun LectureDetailScreen(
     val aiError by viewModel.aiError.collectAsState()
 
     val chatMessages by viewModel.chatMessages.collectAsState()
+    val searchResultIds by viewModel.searchResultLectureIds.collectAsState()
+    val searchResultIndex by viewModel.currentSearchResultIndex.collectAsState()
+    val searchNavigationActive by viewModel.isSearchResultNavigationActive.collectAsState()
 
     var showDeleteConfirmDialog by remember { mutableStateOf(false) }
     var showExportDialog by remember { mutableStateOf(false) }
@@ -268,6 +271,42 @@ fun LectureDetailScreen(
                 .padding(innerPadding)
                 .background(MaterialTheme.colorScheme.background)
         ) {
+            if (searchNavigationActive && searchResultIds.size > 1) {
+                Surface(
+                    modifier = Modifier.fillMaxWidth().padding(horizontal = 12.dp, vertical = 6.dp),
+                    color = MaterialTheme.colorScheme.secondaryContainer,
+                    shape = RoundedCornerShape(14.dp)
+                ) {
+                    Column(
+                        modifier = Modifier.fillMaxWidth().padding(horizontal = 10.dp, vertical = 6.dp),
+                        verticalArrangement = Arrangement.spacedBy(4.dp)
+                    ) {
+                        Text(
+                            "نتیجه " + (searchResultIndex + 1) + " از " + searchResultIds.size,
+                            modifier = Modifier.fillMaxWidth(),
+                            textAlign = TextAlign.Center,
+                            style = MaterialTheme.typography.labelMedium,
+                            color = MaterialTheme.colorScheme.onSecondaryContainer
+                        )
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.spacedBy(8.dp),
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            OutlinedButton(
+                                onClick = { viewModel.navigateSearchResult(-1) },
+                                enabled = searchResultIndex > 0,
+                                modifier = Modifier.weight(1f)
+                            ) { Text("نتیجه قبلی") }
+                            Button(
+                                onClick = { viewModel.navigateSearchResult(1) },
+                                enabled = searchResultIndex < searchResultIds.lastIndex,
+                                modifier = Modifier.weight(1f)
+                            ) { Text("نتیجه بعدی") }
+                        }
+                    }
+                }
+            }
             // AI Loading Banner
             AnimatedVisibility(visible = isAiLoading) {
                 Surface(
