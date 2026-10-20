@@ -80,6 +80,23 @@ fun HomeScreen(
         allLectures.filter { it.id < 0L && it.isPublished && it.classId in visibleClassIds }
     } else allLectures
     val isTeacher = userRole == UserRole.TEACHER
+    // Student home is organized by teacher first; classes appear after selecting a teacher.
+    val studentTeacherByClassId = remember(classes, lectures) {
+        classes.associate { classItem ->
+            val lectureTeacher = lectures.firstOrNull { it.classId == classItem.id }
+                ?.professorName?.trim().orEmpty()
+            classItem.id to classItem.teacherName.trim().ifBlank {
+                lectureTeacher.ifBlank { "استاد نامشخص" }
+            }
+        }
+    }
+    val studentTeacherNames = remember(studentTeacherByClassId) {
+        studentTeacherByClassId.values.distinct().sorted()
+    }
+    var selectedStudentTeacher by remember { mutableStateOf<String?>(null) }
+    val classesForSelectedTeacher = if (!isTeacher && selectedStudentTeacher != null) {
+        classes.filter { studentTeacherByClassId[it.id] == selectedStudentTeacher }
+    } else classes
     val isPrimaryTeacher = isTeacher && AuthPreferences.isPrimaryTeacher(LocalContext.current)
     val context = LocalContext.current
     val isOnline = rememberNetworkConnection()
@@ -320,15 +337,35 @@ fun HomeScreen(
 
             item {
                 Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.SpaceBetween) {
-                    Column {
-                        Text("کلاس‌های من", style = MaterialTheme.typography.headlineSmall, fontWeight = FontWeight.Bold)
+                    Column(Modifier.weight(1f)) {
                         Text(
-                            if (isTeacher) "کلاس‌ها را مدیریت و جلسات را ثبت کنید." else "کلاس‌ها و جلسات برای مطالعه",
+                            when {
+                                isTeacher -> "کلاس‌های من"
+                                selectedStudentTeacher != null -> "کلاس‌های استاد $selectedStudentTeacher"
+                                else -> "استادان من"
+                            },
+                            style = MaterialTheme.typography.headlineSmall,
+                            fontWeight = FontWeight.Bold
+                        )
+                        Text(
+                            when {
+                                isTeacher -> "کلاس‌ها را مدیریت و جلسات را ثبت کنید."
+                                selectedStudentTeacher != null -> "کلاس موردنظر را برای مشاهده جلسات انتخاب کنید."
+                                else -> "برای دیدن کلاس‌ها و جلسات، استاد را انتخاب کنید."
+                            },
                             style = MaterialTheme.typography.bodySmall,
                             color = MaterialTheme.colorScheme.onSurfaceVariant
                         )
                     }
-                    Text(classes.size.toString() + " کلاس", style = MaterialTheme.typography.labelLarge, color = MaterialTheme.colorScheme.secondary)
+                    if (!isTeacher && selectedStudentTeacher != null) {
+                        TextButton(onClick = { selectedStudentTeacher = null }) { Text("همه استادان") }
+                    } else {
+                        Text(
+                            if (isTeacher) classes.size.toString() + " کلاس" else studentTeacherNames.size.toString() + " استاد",
+                            style = MaterialTheme.typography.labelLarge,
+                            color = MaterialTheme.colorScheme.secondary
+                        )
+                    }
                 }
             }
 
@@ -347,8 +384,45 @@ fun HomeScreen(
                         }
                     }
                 }
+            } else if (!isTeacher && selectedStudentTeacher == null) {
+                items(studentTeacherNames, key = { it }) { teacherName ->
+                    val teacherClasses = classes.filter { studentTeacherByClassId[it.id] == teacherName }
+                    val teacherLectureCount = lectures.count { lecture -> teacherClasses.any { it.id == lecture.classId } }
+                    Card(
+                        modifier = Modifier.fillMaxWidth().clickable { selectedStudentTeacher = teacherName },
+                        shape = RoundedCornerShape(22.dp),
+                        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
+                        elevation = CardDefaults.cardElevation(1.dp)
+                    ) {
+                        Row(
+                            Modifier.fillMaxWidth().padding(18.dp),
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.spacedBy(14.dp)
+                        ) {
+                            Surface(
+                                Modifier.size(54.dp),
+                                RoundedCornerShape(17.dp),
+                                color = MaterialTheme.colorScheme.primaryContainer
+                            ) {
+                                Box(contentAlignment = Alignment.Center) {
+                                    Icon(Icons.Default.School, null, tint = MaterialTheme.colorScheme.primary)
+                                }
+                            }
+                            Column(Modifier.weight(1f)) {
+                                Text(teacherName, style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
+                                Spacer(Modifier.height(4.dp))
+                                Text(
+                                    "${teacherClasses.size} کلاس  •  ${teacherLectureCount} جلسه",
+                                    style = MaterialTheme.typography.bodySmall,
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                                )
+                            }
+                            Text("مشاهده کلاس‌ها  ›", color = MaterialTheme.colorScheme.primary, style = MaterialTheme.typography.labelMedium)
+                        }
+                    }
+                }
             } else {
-                items(classes, key = { it.id }) { classItem ->
+                items(classesForSelectedTeacher, key = { it.id }) { classItem ->
                     val classLectures = lectures.filter { it.classId == classItem.id }.sortedByDescending { it.dateMillis }
                     Card(
                         Modifier.fillMaxWidth().clickable { viewModel.openClass(classItem.id) },
