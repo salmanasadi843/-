@@ -67,6 +67,23 @@ fun ClassScreen(
     var teacher by remember { mutableStateOf(AuthPreferences.currentName(context)) }
     var term by remember { mutableStateOf("") }
     var editingClass by remember { mutableStateOf<ClassEntity?>(null) }
+    var organizationRevision by remember { mutableIntStateOf(0) }
+    var selectedFolder by remember { mutableStateOf("همه پوشه‌ها") }
+    var showCreateFolder by remember { mutableStateOf(false) }
+    var folderNameInput by remember { mutableStateOf("") }
+    var moveClassTarget by remember { mutableStateOf<ClassEntity?>(null) }
+    var folderMenuExpanded by remember { mutableStateOf(false) }
+    val teacherFolders = remember(organizationRevision) { ClassOrganizationPrefs.folders(context) }
+    val orderedClasses = remember(classes, organizationRevision) {
+        val ids = ClassOrganizationPrefs.orderedClasses(context, classes.map { it.id })
+        ids.mapNotNull { id -> classes.firstOrNull { it.id == id } }
+    }
+    val visibleClasses = remember(orderedClasses, selectedFolder, organizationRevision) {
+        orderedClasses.filter { item ->
+            selectedFolder == "همه پوشه‌ها" ||
+                ClassOrganizationPrefs.folderForClass(context, item.id) == selectedFolder
+        }
+    }
 
     fun resetForm() {
         name = ""
@@ -143,9 +160,30 @@ fun ClassScreen(
                 verticalArrangement = Arrangement.spacedBy(12.dp)
             ) {
                 item {
-                    Text(classes.size.toString() + " کلاس", style = MaterialTheme.typography.labelLarge, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                    Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                        Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp), verticalAlignment = Alignment.CenterVertically) {
+                            OutlinedButton(onClick = { folderNameInput = ""; showCreateFolder = true }, enabled = canManageClasses) {
+                                Text("＋ پوشه استاد")
+                            }
+                            Box {
+                                OutlinedButton(onClick = { folderMenuExpanded = true }) { Text(selectedFolder) }
+                                DropdownMenu(expanded = folderMenuExpanded, onDismissRequest = { folderMenuExpanded = false }) {
+                                    DropdownMenuItem(text = { Text("همه پوشه‌ها") }, onClick = {
+                                        selectedFolder = "همه پوشه‌ها"; folderMenuExpanded = false
+                                    })
+                                    teacherFolders.forEach { folder ->
+                                        DropdownMenuItem(text = { Text(folder) }, onClick = {
+                                            selectedFolder = folder; folderMenuExpanded = false
+                                        })
+                                    }
+                                }
+                            }
+                        }
+                        Text("${visibleClasses.size} کلاس • برای جابه‌جایی از دکمه‌های هر کلاس استفاده کنید",
+                            style = MaterialTheme.typography.labelLarge, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                    }
                 }
-                items(classes, key = { it.id }) { item ->
+                items(visibleClasses, key = { it.id }) { item ->
                     Card(
                         Modifier.fillMaxWidth().clickable { onOpenClass(item.id) },
                         shape = RoundedCornerShape(22.dp),
@@ -169,11 +207,27 @@ fun ClassScreen(
                                 if (item.term.isNotBlank()) {
                                     Text(item.term, style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
                                 }
+                                val itemFolder = ClassOrganizationPrefs.folderForClass(context, item.id)
+                                if (itemFolder.isNotBlank()) {
+                                    Spacer(Modifier.height(3.dp))
+                                    Text("پوشه: $itemFolder", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.secondary)
+                                }
                                 Spacer(Modifier.height(8.dp))
                                 Text("مشاهده جلسات  ›", style = MaterialTheme.typography.labelLarge, fontWeight = FontWeight.SemiBold, color = MaterialTheme.colorScheme.primary)
                             }
                             if (canManageClass(item)) {
                                 Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                                Row {
+                                    TextButton(onClick = {
+                                        ClassOrganizationPrefs.moveClass(context, visibleClasses.map { it.id }, item.id, -1)
+                                        organizationRevision++
+                                    }, enabled = visibleClasses.indexOfFirst { it.id == item.id } > 0) { Text("↑") }
+                                    TextButton(onClick = {
+                                        ClassOrganizationPrefs.moveClass(context, visibleClasses.map { it.id }, item.id, 1)
+                                        organizationRevision++
+                                    }, enabled = visibleClasses.indexOfFirst { it.id == item.id } < visibleClasses.lastIndex) { Text("↓") }
+                                }
+                                TextButton(onClick = { moveClassTarget = item }) { Text("پوشه") }
                                 IconButton(onClick = {
                                     editingClass = item
                                     name = item.name
@@ -193,6 +247,67 @@ fun ClassScreen(
                 }
             }
         }
+    }
+
+    if (showCreateFolder) {
+        AlertDialog(
+            onDismissRequest = { showCreateFolder = false },
+            title = { Text("ایجاد پوشه استاد") },
+            text = {
+                OutlinedTextField(
+                    value = folderNameInput,
+                    onValueChange = { folderNameInput = it },
+                    label = { Text("نام پوشه") },
+                    singleLine = true
+                )
+            },
+            confirmButton = {
+                TextButton(onClick = {
+                    if (ClassOrganizationPrefs.createFolder(context, folderNameInput)) {
+                        selectedFolder = folderNameInput.trim()
+                        organizationRevision++
+                        showCreateFolder = false
+                    }
+                }, enabled = folderNameInput.isNotBlank() && teacherFolders.none { it.equals(folderNameInput.trim(), true) }) {
+                    Text("ایجاد")
+                }
+            },
+            dismissButton = { TextButton(onClick = { showCreateFolder = false }) { Text("انصراف") } }
+        )
+    }
+
+    moveClassTarget?.let { item ->
+        var targetFolder by remember(item.id, organizationRevision) {
+            mutableStateOf(ClassOrganizationPrefs.folderForClass(context, item.id))
+        }
+        AlertDialog(
+            onDismissRequest = { moveClassTarget = null },
+            title = { Text("انتقال کلاس به پوشه") },
+            text = {
+                Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                    Text(item.name)
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        RadioButton(selected = targetFolder.isBlank(), onClick = { targetFolder = "" })
+                        Text("بدون پوشه")
+                    }
+                    teacherFolders.forEach { folder ->
+                        Row(verticalAlignment = Alignment.CenterVertically) {
+                            RadioButton(selected = targetFolder == folder, onClick = { targetFolder = folder })
+                            Text(folder)
+                        }
+                    }
+                    if (teacherFolders.isEmpty()) Text("ابتدا یک پوشه بسازید.")
+                }
+            },
+            confirmButton = {
+                TextButton(onClick = {
+                    ClassOrganizationPrefs.moveClassToFolder(context, item.id, targetFolder)
+                    organizationRevision++
+                    moveClassTarget = null
+                }) { Text("انتقال") }
+            },
+            dismissButton = { TextButton(onClick = { moveClassTarget = null }) { Text("انصراف") } }
+        )
     }
 
     classToDelete?.let { item ->
