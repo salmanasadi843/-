@@ -75,25 +75,27 @@ fun HomeScreen(
     )
     // Imported student material has stable negative IDs; it must never appear in a teacher's own management list.
     val currentTeacherName = AuthPreferences.currentName(context).trim()
+    val currentUid = AuthPreferences.currentUid(context).orEmpty()
     val classes = when (userRole) {
         UserRole.STUDENT -> if (studentFeedReady) allClasses.filter { it.id < 0L && it.isPublished } else emptyList()
         UserRole.TEACHER -> if (isPrimaryTeacher) {
             allClasses.filter { it.id >= 0L }
         } else {
-            // Account ownership is primary; name/session matching is only a legacy fallback.
-            val currentUid = AuthPreferences.currentUid(context).orEmpty()
-            allClasses.filter { classItem ->
-                classItem.id > 0L && (
-                    classItem.ownerUid == currentUid ||
-                        (classItem.ownerUid.isBlank() && classItem.teacherName.trim().equals(currentTeacherName, ignoreCase = true)) ||
-                        (classItem.ownerUid.isBlank() && allLectures.any { lecture ->
-                            lecture.classId == classItem.id &&
-                                lecture.professorName.trim().equals(currentTeacherName, ignoreCase = true)
-                        })
-                )
-            }
+            // کلاس‌های استادان دیگر قابل مشاهده‌اند؛ مدیریت آن‌ها جداگانه محدود می‌شود.
+            allClasses.filter { it.id > 0L }
         }
     }
+    fun canManageClass(classItem: ClassEntity): Boolean =
+        isTeacher && (
+            isPrimaryTeacher ||
+                (classItem.ownerUid.isNotBlank() && classItem.ownerUid == currentUid) ||
+                (classItem.ownerUid.isBlank() &&
+                    (classItem.teacherName.trim().equals(currentTeacherName, ignoreCase = true) ||
+                        allLectures.any { lecture ->
+                            lecture.classId == classItem.id &&
+                                lecture.professorName.trim().equals(currentTeacherName, ignoreCase = true)
+                        }))
+        )
     val visibleClassIds = classes.map { it.id }.toSet()
     val lectures = if (userRole == UserRole.STUDENT) {
         allLectures.filter { it.id < 0L && it.isPublished && it.classId in visibleClassIds }
@@ -448,7 +450,7 @@ fun HomeScreen(
                             Spacer(Modifier.height(12.dp))
                             HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant)
                             Spacer(Modifier.height(10.dp))
-                            if (isTeacher) {
+                            if (isTeacher && canManageClass(classItem)) {
                                 Row(
                                     Modifier.fillMaxWidth(),
                                     verticalAlignment = Alignment.CenterVertically,
@@ -471,6 +473,13 @@ fun HomeScreen(
                                         onCheckedChange = { published -> viewModel.setClassPublished(classItem, published) }
                                     )
                                 }
+                                Spacer(Modifier.height(6.dp))
+                            } else if (isTeacher) {
+                                Text(
+                                    "فقط مشاهده؛ مدیریت این کلاس در اختیار استاد مالک است.",
+                                    style = MaterialTheme.typography.labelSmall,
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                                )
                                 Spacer(Modifier.height(6.dp))
                             }
                             Row(verticalAlignment = Alignment.CenterVertically) {
