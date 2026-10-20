@@ -1388,29 +1388,37 @@ fun AddEditLectureScreen(
                                 .onSurfaceVariant
                     )
 
-                    if (formAiSummary.isNotBlank()) {
-                        ElevatedCard(
-                            modifier = Modifier.fillMaxWidth(),
-                            shape = RoundedCornerShape(14.dp)
-                        ) {
-                            Column(Modifier.padding(14.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                                Text("خلاصه هوشمند", fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.primary)
-                                Text(formAiSummary, style = MaterialTheme.typography.bodyMedium, lineHeight = 23.sp)
-                            }
-                        }
-                    }
+                    // The teacher can write or edit the summary manually, even when AI
+                    // has not generated one yet. These values are saved with the lecture.
+                    Text(
+                        "خلاصه جلسه (قابل ورود و ویرایش دستی)",
+                        style = MaterialTheme.typography.titleSmall,
+                        fontWeight = FontWeight.Bold
+                    )
+                    OutlinedTextField(
+                        value = formAiSummary,
+                        onValueChange = { viewModel.formAiSummary.value = it },
+                        modifier = Modifier.fillMaxWidth().testTag("lecture_summary_input"),
+                        placeholder = { Text("خلاصه بحث را اینجا بنویسید؛ لازم نیست از هوش مصنوعی استفاده کنید.") },
+                        minLines = 4,
+                        maxLines = 12,
+                        shape = RoundedCornerShape(12.dp)
+                    )
 
-                    if (formAiKeyPoints.isNotBlank()) {
-                        ElevatedCard(
-                            modifier = Modifier.fillMaxWidth(),
-                            shape = RoundedCornerShape(14.dp)
-                        ) {
-                            Column(Modifier.padding(14.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                                Text("کلیدواژه‌ها و مباحث اصلی", fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.primary)
-                                Text(formAiKeyPoints, style = MaterialTheme.typography.bodyMedium, lineHeight = 23.sp)
-                            }
-                        }
-                    }
+                    Text(
+                        "چکیده و نکات کلیدی (قابل ورود و ویرایش دستی)",
+                        style = MaterialTheme.typography.titleSmall,
+                        fontWeight = FontWeight.Bold
+                    )
+                    OutlinedTextField(
+                        value = formAiKeyPoints,
+                        onValueChange = { viewModel.formAiKeyPoints.value = it },
+                        modifier = Modifier.fillMaxWidth().testTag("lecture_keypoints_input"),
+                        placeholder = { Text("چکیده علمی، نکات اصلی یا کلیدواژه‌ها را اینجا وارد کنید.") },
+                        minLines = 4,
+                        maxLines = 12,
+                        shape = RoundedCornerShape(12.dp)
+                    )
                 }
             }
 
