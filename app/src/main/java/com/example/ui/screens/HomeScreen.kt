@@ -603,6 +603,44 @@ private fun BulkExportDialog(
                         .onFailure { Toast.makeText(context, "اشتراک‌گذاری ناموفق بود: ${it.localizedMessage}", Toast.LENGTH_LONG).show() }
                     if (selectedLectures.isNotEmpty()) onDismiss()
                 }) { Text("متن") }
+                TextButton(
+                    enabled = selectedLectures.any { !it.aiSummary.isNullOrBlank() },
+                    onClick = {
+                        val shareText = selectedLectures.mapNotNull { lecture ->
+                            lecture.aiSummary?.takeIf { it.isNotBlank() }?.let {
+                                "جلسه: ${lecture.title}\nخلاصه:\n$it"
+                            }
+                        }.joinToString("\n\n--------------------\n\n")
+                        runCatching {
+                            context.startActivity(Intent.createChooser(
+                                Intent(Intent.ACTION_SEND).apply {
+                                    type = "text/plain"
+                                    putExtra(Intent.EXTRA_SUBJECT, "خلاصه مطالب درس‌یار")
+                                    putExtra(Intent.EXTRA_TEXT, shareText)
+                                }, "انتقال دستی خلاصه‌ها"
+                            ))
+                        }.onFailure { Toast.makeText(context, "ارسال خلاصه ناموفق بود: ${it.localizedMessage}", Toast.LENGTH_LONG).show() }
+                    }
+                ) { Text("خلاصه‌ها") }
+                TextButton(
+                    enabled = selectedLectures.any { !it.aiKeyPoints.isNullOrBlank() },
+                    onClick = {
+                        val shareText = selectedLectures.mapNotNull { lecture ->
+                            lecture.aiKeyPoints?.takeIf { it.isNotBlank() }?.let {
+                                "جلسه: ${lecture.title}\nچکیده و نکات کلیدی:\n$it"
+                            }
+                        }.joinToString("\n\n--------------------\n\n")
+                        runCatching {
+                            context.startActivity(Intent.createChooser(
+                                Intent(Intent.ACTION_SEND).apply {
+                                    type = "text/plain"
+                                    putExtra(Intent.EXTRA_SUBJECT, "چکیده و نکات کلیدی درس‌یار")
+                                    putExtra(Intent.EXTRA_TEXT, shareText)
+                                }, "انتقال دستی چکیده‌ها"
+                            ))
+                        }.onFailure { Toast.makeText(context, "ارسال چکیده ناموفق بود: ${it.localizedMessage}", Toast.LENGTH_LONG).show() }
+                    }
+                ) { Text("چکیده‌ها") }
             }
         },
         dismissButton = { TextButton(onClick = onDismiss) { Text("انصراف") } }
