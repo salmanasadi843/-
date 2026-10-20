@@ -44,16 +44,17 @@ fun ClassScreen(
     val classes = if (!canManageClasses) {
         if (studentFeedReady) allClasses.filter { it.id < 0L && it.isPublished }
         else emptyList()
-    } else if (isPrimaryTeacher) {
-        allClasses.filter { it.id >= 0L }
     } else {
-        allClasses.filter { item ->
-            item.id > 0L && (
-                item.ownerUid == currentUid ||
-                    (item.ownerUid.isBlank() && item.teacherName.trim().equals(currentTeacherName, ignoreCase = true))
-            )
-        }
+        // استادان عادی همه کلاس‌ها را می‌بینند؛ کنترل مجوز ویرایش در هر ردیف جداست.
+        allClasses.filter { if (isPrimaryTeacher) it.id >= 0L else it.id > 0L }
     }
+    fun canManageClass(item: ClassEntity): Boolean =
+        canManageClasses && (
+            isPrimaryTeacher ||
+                (item.id > 0L && item.ownerUid.isNotBlank() && item.ownerUid == currentUid) ||
+                (item.id > 0L && item.ownerUid.isBlank() &&
+                    item.teacherName.trim().equals(currentTeacherName, ignoreCase = true))
+        )
     // Refresh the published feed whenever a student opens the class list so revoked visibility is applied.
     LaunchedEffect(userRole) { if (userRole == UserRole.STUDENT) viewModel.startStudentMaterialsSync() }
     var showAdd by remember { mutableStateOf(false) }
@@ -169,7 +170,7 @@ fun ClassScreen(
                                 Spacer(Modifier.height(8.dp))
                                 Text("مشاهده جلسات  ›", style = MaterialTheme.typography.labelLarge, fontWeight = FontWeight.SemiBold, color = MaterialTheme.colorScheme.primary)
                             }
-                            if (canManageClasses) {
+                            if (canManageClass(item)) {
                                 Column(horizontalAlignment = Alignment.CenterHorizontally) {
                                 IconButton(onClick = {
                                     editingClass = item
