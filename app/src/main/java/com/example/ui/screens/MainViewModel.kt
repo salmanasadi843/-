@@ -590,6 +590,17 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
                 _cloudSyncStatus.value = "حذف یا پنهان‌کردن کلاس استاد دیگر مجاز نیست."
                 return@launch
             }
+            val app = getApplication<Application>()
+            val uid = AuthPreferences.currentUid(app).orEmpty()
+            val currentName = AuthPreferences.currentName(app).trim()
+            val primary = AuthPreferences.isPrimaryTeacher(app)
+            val owned = primary ||
+                (item.ownerUid.isNotBlank() && item.ownerUid == uid) ||
+                (item.ownerUid.isBlank() && item.teacherName.trim().equals(currentName, ignoreCase = true))
+            if (!owned) {
+                _cloudSyncStatus.value = "این کلاس متعلق به استاد دیگری است؛ حذف آن مجاز نیست."
+                return@launch
+            }
             repository.deleteClass(item)
             try {
                 withContext(Dispatchers.IO) { CloudMaterialsSync.sync(getApplication<Application>()) }
@@ -841,6 +852,17 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
             if (!teacherPermissionGranted()) { denyTeacherMutation(); return@launch }
             if (classItem.id < 0L) {
                 _cloudSyncStatus.value = "تغییر وضعیت انتشار کلاس استاد دیگر مجاز نیست."
+                return@launch
+            }
+            val app = getApplication<Application>()
+            val uid = AuthPreferences.currentUid(app).orEmpty()
+            val currentName = AuthPreferences.currentName(app).trim()
+            val primary = AuthPreferences.isPrimaryTeacher(app)
+            val owned = primary ||
+                (classItem.ownerUid.isNotBlank() && classItem.ownerUid == uid) ||
+                (classItem.ownerUid.isBlank() && classItem.teacherName.trim().equals(currentName, ignoreCase = true))
+            if (!owned) {
+                _cloudSyncStatus.value = "این کلاس متعلق به استاد دیگری است؛ تغییر وضعیت انتشار مجاز نیست."
                 return@launch
             }
             repository.saveClass(classItem.copy(isPublished = published))
