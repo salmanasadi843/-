@@ -46,7 +46,7 @@ fun ClassScreen(
         else emptyList()
     } else {
         // استادان عادی همه کلاس‌ها را می‌بینند؛ کنترل مجوز ویرایش در هر ردیف جداست.
-        allClasses.filter { if (isPrimaryTeacher) it.id >= 0L else it.id > 0L }
+        allClasses.filter { if (isPrimaryTeacher) it.id >= 0L else it.id != 0L }
     }
     fun canManageClass(item: ClassEntity): Boolean =
         canManageClasses && (
