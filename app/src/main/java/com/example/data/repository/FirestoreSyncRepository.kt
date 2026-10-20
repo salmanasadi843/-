@@ -81,9 +81,11 @@ class FirestoreSyncRepository(
     }
 
     suspend fun uploadSnapshot(uid: String) {
-        val classes = classDao.getAllForBackup()
-        val courses = courseDao.getAllForBackup()
+        // Private backup must contain only this teacher's local records, never imported read-only feed items.
+        val classes = classDao.getAllForBackup().filter { it.id > 0L }
+        val courses = courseDao.getAllForBackup().filter { it.id > 0L && it.classId > 0L }
         val lectures = lectureDao.getAllForBackup()
+            .filter { it.id > 0L && (it.classId == null || it.classId > 0L) }
             .filterNot {
                 it.title == "جلسه ۴: شبکه‌های عصبی و یادگیری عمیق" ||
                     it.title == "جلسه ۷: سری و تبدیل فوریه و کاربرد در سیگنال"
