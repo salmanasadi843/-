@@ -90,6 +90,13 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.AnnotatedString
+import androidx.compose.ui.text.SpanStyle
+import androidx.compose.ui.text.TextLayoutResult
+import androidx.compose.ui.text.buildAnnotatedString
+import androidx.compose.ui.text.withStyle
+import androidx.compose.ui.layout.onGloballyPositioned
+import androidx.compose.ui.layout.positionInRoot
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
@@ -363,6 +370,7 @@ fun LectureDetailScreen(
             val playableAudio = currentLecture.audioFilePath?.takeIf { File(it).exists() } ?: currentLecture.audioUrl
             TranscriptTab(
                 lecture = currentLecture,
+                searchQuery = activeSearchQuery.takeIf { searchNavigationActive }.orEmpty(),
                 onEditClick = { onNavigateToEdit(lectureId) },
                 onCopyClick = { textToCopy ->
                     val clipboard = context.getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager
@@ -558,6 +566,7 @@ fun AudioPlayerCard(
 @Composable
 fun TranscriptTab(
     lecture: LectureEntity,
+    searchQuery: String = "",
     onEditClick: () -> Unit,
     onCopyClick: (String) -> Unit,
     audioContent: (@Composable () -> Unit)? = null,
@@ -565,6 +574,9 @@ fun TranscriptTab(
 ) {
     val scrollState = rememberScrollState()
     var selectedTextTab by remember(lecture.id) { mutableStateOf(0) }
+    var transcriptTextLayout by remember(lecture.id) { mutableStateOf<TextLayoutResult?>(null) }
+    var transcriptTextTopInRoot by remember(lecture.id) { mutableStateOf(0f) }
+    var scrollColumnTopInRoot by remember(lecture.id) { mutableStateOf(0f) }
     val originalText = lecture.originalTranscript.ifBlank { lecture.transcript }
     val correctedText = lecture.transcript
     val displayedTranscript = if (selectedTextTab == 0) originalText else correctedText
@@ -574,6 +586,7 @@ fun TranscriptTab(
     Column(
         modifier = Modifier
             .fillMaxSize()
+            .onGloballyPositioned { scrollColumnTopInRoot = it.positionInRoot().y }
             .verticalScroll(scrollState)
             .padding(horizontal = 18.dp, vertical = 16.dp)
     ) {
@@ -677,17 +690,32 @@ fun TranscriptTab(
                 }
             }
         } else {
+            val highlighted = remember(displayedTranscript, searchQuery) {
+                highlightTranscriptMatches(displayedTranscript, searchQuery)
+            }
             Surface(
                 modifier = Modifier.fillMaxWidth(),
                 shape = RoundedCornerShape(18.dp),
                 color = MaterialTheme.colorScheme.surface
             ) {
                 Text(
-                    text = displayedTranscript,
-                    modifier = Modifier.padding(horizontal = 18.dp, vertical = 20.dp),
+                    text = highlighted.first,
+                    modifier = Modifier
+                        .padding(horizontal = 18.dp, vertical = 20.dp)
+                        .onGloballyPositioned { transcriptTextTopInRoot = it.positionInRoot().y },
                     style = MaterialTheme.typography.bodyLarge.copy(lineHeight = 32.sp),
-                    textAlign = TextAlign.Start
+                    textAlign = TextAlign.Start,
+                    onTextLayout = { transcriptTextLayout = it }
                 )
+            }
+            LaunchedEffect(lecture.id, selectedTextTab, searchQuery, highlighted.second, transcriptTextLayout) {
+                val matchStart = highlighted.second
+                val layout = transcriptTextLayout
+                if (searchQuery.isNotBlank() && matchStart != null && layout != null) {
+                    val lineTop = layout.getLineTop(layout.getLineForOffset(matchStart.coerceIn(0, (displayedTranscript.length - 1).coerceAtLeast(0))))
+                    val contentY = transcriptTextTopInRoot - scrollColumnTopInRoot + scrollState.value + lineTop
+                    scrollState.animateScrollTo((contentY - 100f).toInt().coerceAtLeast(0))
+                }
             }
         }
 
@@ -787,6 +815,45 @@ fun TranscriptTab(
 
         Spacer(Modifier.height(36.dp))
     }
+}
+
+
+private fun highlightTranscriptMatches(source: String, query: String): Pair<AnnotatedString, Int?> {
+    if (source.isBlank() || query.isBlank()) return AnnotatedString(source) to null
+    val terms = query.trim().split(Regex("\\s+")).filter { it.isNotBlank() }.distinct().sortedByDescending { it.length }
+    if (terms.isEmpty()) return AnnotatedString(source) to null
+    val ranges = mutableListOf<IntRange>()
+    terms.forEach { term ->
+        var from = 0
+        while (from < source.length) {
+            val index = source.indexOf(term, startIndex = from, ignoreCase = true)
+            if (index < 0) break
+            ranges += index until (index + term.length)
+            from = index + term.length.coerceAtLeast(1)
+        }
+    }
+    val merged = ranges.sortedBy { it.first }.fold(mutableListOf<IntRange>()) { acc, range ->
+        val last = acc.lastOrNull()
+        if (last != null && range.first <= last.last + 1) {
+            acc[acc.lastIndex] = last.first..maxOf(last.last, range.last)
+        } else acc += range
+        acc
+    }
+    val annotated = buildAnnotatedString {
+        var cursor = 0
+        merged.forEach { range ->
+            if (range.first < cursor) return@forEach
+            append(source.substring(cursor, range.first))
+            withStyle(SpanStyle(background = Color(0xFFFFD54F), color = Color(0xFF302400), fontWeight = FontWeight.Bold)) {
+                append(source.substring(range.first, range.last + 1))
+            }
+            cursor = range.last + 1
+        }
+        if (cursor < source.length) append(source.substring(cursor))
+    }
+    val first = source.indexOf(query.trim(), ignoreCase = true).takeIf { it >= 0 }
+        ?: merged.firstOrNull()?.first
+    return annotated to first
 }
 
 @Composable
