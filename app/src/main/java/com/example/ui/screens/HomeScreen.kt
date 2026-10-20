@@ -17,6 +17,7 @@ import androidx.compose.material.icons.filled.School
 import androidx.compose.material3.*
 import androidx.compose.ui.platform.LocalContext
 import android.content.Context
+import android.content.Intent
 import android.widget.Toast
 import android.net.ConnectivityManager
 import android.net.Network
@@ -63,24 +64,60 @@ fun HomeScreen(
     val allClasses by viewModel.repository.allClasses.collectAsState(initial = emptyList())
     val allLectures by viewModel.repository.allLectures.collectAsState(initial = emptyList())
     val studentSyncStatus by viewModel.studentMaterialsSyncStatus.collectAsState()
-    LaunchedEffect(userRole) { if (userRole == UserRole.STUDENT) viewModel.startStudentMaterialsSync() }
+    val context = LocalContext.current
+    val isTeacher = userRole == UserRole.TEACHER
+    val isPrimaryTeacher = isTeacher && AuthPreferences.isPrimaryTeacher(context)
+    LaunchedEffect(userRole) {
+        if (userRole == UserRole.STUDENT) viewModel.startStudentMaterialsSync()
+    }
     // While refreshing, do not expose stale cached classes whose publication may have been revoked.
     val studentFeedReady = userRole != UserRole.STUDENT || (
         studentSyncStatus != "مطالب آنلاین هنوز بررسی نشده‌اند." &&
         !studentSyncStatus.contains("در حال دریافت") &&
         !studentSyncStatus.contains("دریافت خودکار مطالب انجام نشد")
     )
-    val classes = if (userRole == UserRole.STUDENT) {
-        if (studentFeedReady) allClasses.filter { it.id < 0L && it.isPublished }
-        else emptyList()
-    } else allClasses
+    // Imported student material has stable negative IDs; it must never appear in a teacher's own management list.
+    val currentTeacherName = AuthPreferences.currentName(context).trim()
+    val currentUid = AuthPreferences.currentUid(context).orEmpty()
+    val classes = when (userRole) {
+        UserRole.STUDENT -> if (studentFeedReady) allClasses.filter { it.id < 0L && it.isPublished } else emptyList()
+        UserRole.TEACHER -> if (isPrimaryTeacher) {
+            allClasses.filter { it.id != 0L }
+        } else {
+            // کلاس‌های استادان دیگر قابل مشاهده‌اند؛ مدیریت آن‌ها جداگانه محدود می‌شود.
+            allClasses.filter { it.id != 0L }
+        }
+    }
+    fun canManageClass(classItem: ClassEntity): Boolean =
+        isTeacher && (
+            isPrimaryTeacher ||
+                (classItem.id > 0L && classItem.ownerUid.isNotBlank() && classItem.ownerUid == currentUid) ||
+                (classItem.id > 0L && classItem.ownerUid.isBlank() &&
+                    (classItem.teacherName.trim().equals(currentTeacherName, ignoreCase = true) ||
+                        allLectures.any { lecture ->
+                            lecture.classId == classItem.id &&
+                                lecture.professorName.trim().equals(currentTeacherName, ignoreCase = true)
+                        }))
+        )
     val visibleClassIds = classes.map { it.id }.toSet()
     val lectures = if (userRole == UserRole.STUDENT) {
         allLectures.filter { it.id < 0L && it.isPublished && it.classId in visibleClassIds }
-    } else allLectures
-    val isTeacher = userRole == UserRole.TEACHER
-    val isPrimaryTeacher = isTeacher && AuthPreferences.isPrimaryTeacher(LocalContext.current)
-    val context = LocalContext.current
+    } else {
+        // Keep sessions linked to this teacher's visible classes, including restored records
+        // with non-positive IDs, plus older positive-ID sessions not assigned to a class.
+        allLectures.filter { it.id > 0L || it.classId in visibleClassIds }
+    }
+    val teacherNameForClass: (ClassEntity) -> String = { classItem ->
+        classItem.teacherName.trim().ifBlank {
+            lectures.firstOrNull { it.classId == classItem.id }?.professorName?.trim()?.takeIf { it.isNotBlank() }
+                ?: if (isTeacher) AuthPreferences.currentName(context).ifBlank { "استاد" } else "استاد نامشخص"
+        }
+    }
+    val teacherNames = classes.map(teacherNameForClass).distinct().sorted()
+    var selectedTeacherName by remember(userRole) { mutableStateOf<String?>(null) }
+    val displayedClasses = selectedTeacherName?.let { selected ->
+        classes.filter { teacherNameForClass(it) == selected }
+    }.orEmpty()
     val isOnline = rememberNetworkConnection()
     var showBulkExportDialog by androidx.compose.runtime.remember { androidx.compose.runtime.mutableStateOf(false) }
     var showTeacherRequests by remember { mutableStateOf(false) }
@@ -305,37 +342,94 @@ fun HomeScreen(
                 }
             }
 
-            item {
-                Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.SpaceBetween) {
-                    Column {
-                        Text("کلاس‌های من", style = MaterialTheme.typography.headlineSmall, fontWeight = FontWeight.Bold)
-                        Text(
-                            if (isTeacher) "کلاس‌ها را مدیریت و جلسات را ثبت کنید." else "کلاس‌ها و جلسات برای مطالعه",
-                            style = MaterialTheme.typography.bodySmall,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant
-                        )
-                    }
-                    Text(classes.size.toString() + " کلاس", style = MaterialTheme.typography.labelLarge, color = MaterialTheme.colorScheme.secondary)
-                }
-            }
-
-            if (classes.isEmpty()) {
+            if (selectedTeacherName == null) {
                 item {
-                    Card(Modifier.fillMaxWidth(), RoundedCornerShape(22.dp), colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface)) {
-                        Column(Modifier.fillMaxWidth().padding(24.dp), horizontalAlignment = Alignment.CenterHorizontally) {
-                            Icon(Icons.Default.School, null, Modifier.size(44.dp), tint = MaterialTheme.colorScheme.primary)
-                            Spacer(Modifier.height(10.dp))
-                            Text(if (isTeacher) "کلاس خود را ایجاد کنید" else "هنوز کلاسی در دسترس نیست", fontWeight = FontWeight.Bold)
-                            Spacer(Modifier.height(5.dp))
+                    Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.SpaceBetween) {
+                        Column {
+                            Text("استادان", style = MaterialTheme.typography.headlineSmall, fontWeight = FontWeight.Bold)
                             Text(
-                                if (isTeacher) "از کارت «کلاس جدید» شروع کنید." else "پس از اضافه شدن کلاس، جلسات اینجا قابل مشاهده خواهند بود.",
+                                if (isTeacher) "برای مدیریت کلاس‌ها، نام خود را انتخاب کنید." else "ابتدا استاد و سپس کلاس موردنظر را انتخاب کنید.",
+                                style = MaterialTheme.typography.bodySmall,
                                 color = MaterialTheme.colorScheme.onSurfaceVariant
                             )
+                        }
+                        Text("${teacherNames.size} استاد", style = MaterialTheme.typography.labelLarge, color = MaterialTheme.colorScheme.secondary)
+                    }
+                }
+                if (teacherNames.isEmpty()) {
+                    item {
+                        Card(Modifier.fillMaxWidth(), RoundedCornerShape(22.dp), colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface)) {
+                            Column(Modifier.fillMaxWidth().padding(24.dp), horizontalAlignment = Alignment.CenterHorizontally) {
+                                Icon(Icons.Default.School, null, Modifier.size(44.dp), tint = MaterialTheme.colorScheme.primary)
+                                Spacer(Modifier.height(10.dp))
+                                Text(if (isTeacher) "هنوز کلاسی ایجاد نشده است" else "هنوز استادی در دسترس نیست", fontWeight = FontWeight.Bold)
+                                Spacer(Modifier.height(5.dp))
+                                Text(
+                                    if (isTeacher) "از کارت «کلاس جدید» شروع کنید؛ کلاس‌ها زیر نام شما نمایش داده می‌شوند." else "پس از انتشار کلاس توسط استاد، نام او در این صفحه نمایش داده می‌شود.",
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                                )
+                            }
+                        }
+                    }
+                } else {
+                    items(teacherNames, key = { it }) { teacherName ->
+                        val teacherClasses = classes.filter { teacherNameForClass(it) == teacherName }
+                        Card(
+                            Modifier.fillMaxWidth().clickable { selectedTeacherName = teacherName },
+                            RoundedCornerShape(22.dp),
+                            colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
+                            elevation = CardDefaults.cardElevation(1.dp)
+                        ) {
+                            Row(
+                                Modifier.fillMaxWidth().padding(18.dp),
+                                verticalAlignment = Alignment.CenterVertically,
+                                horizontalArrangement = Arrangement.spacedBy(14.dp)
+                            ) {
+                                Surface(Modifier.size(54.dp), RoundedCornerShape(18.dp), color = MaterialTheme.colorScheme.primaryContainer) {
+                                    Box(contentAlignment = Alignment.Center) {
+                                        Icon(Icons.Default.School, null, tint = MaterialTheme.colorScheme.primary, modifier = Modifier.size(28.dp))
+                                    }
+                                }
+                                Column(Modifier.weight(1f)) {
+                                    Text(teacherName, style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
+                                    Text("${teacherClasses.size} کلاس", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                                    teacherClasses.take(2).forEach { teacherClass ->
+                                        Text("• ${teacherClass.name}", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant, maxLines = 1)
+                                    }
+                                }
+                                Text("مشاهده ›", color = MaterialTheme.colorScheme.primary, fontWeight = FontWeight.SemiBold)
+                            }
                         }
                     }
                 }
             } else {
-                items(classes, key = { it.id }) { classItem ->
+                item {
+                    Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                        TextButton(onClick = { selectedTeacherName = null }) { Text("‹ استادان") }
+                        Column(Modifier.weight(1f)) {
+                            Text("کلاس‌های ${selectedTeacherName}", style = MaterialTheme.typography.headlineSmall, fontWeight = FontWeight.Bold)
+                            Text(
+                                if (isTeacher) "کلاس‌ها را مدیریت و جلسات را ثبت کنید." else "کلاس‌ها و جلسات برای مطالعه",
+                                style = MaterialTheme.typography.bodySmall,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant
+                            )
+                        }
+                        Text(displayedClasses.size.toString() + " کلاس", style = MaterialTheme.typography.labelLarge, color = MaterialTheme.colorScheme.secondary)
+                    }
+                }
+
+                if (displayedClasses.isEmpty()) {
+                    item {
+                        Card(Modifier.fillMaxWidth(), RoundedCornerShape(22.dp), colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface)) {
+                            Column(Modifier.fillMaxWidth().padding(24.dp), horizontalAlignment = Alignment.CenterHorizontally) {
+                                Icon(Icons.Default.School, null, Modifier.size(44.dp), tint = MaterialTheme.colorScheme.primary)
+                                Spacer(Modifier.height(10.dp))
+                                Text("کلاسی برای این استاد وجود ندارد", fontWeight = FontWeight.Bold)
+                            }
+                        }
+                    }
+                } else {
+                    items(displayedClasses, key = { it.id }) { classItem ->
                     val classLectures = lectures.filter { it.classId == classItem.id }.sortedByDescending { it.dateMillis }
                     Card(
                         Modifier.fillMaxWidth().clickable { viewModel.openClass(classItem.id) },
@@ -359,7 +453,7 @@ fun HomeScreen(
                             Spacer(Modifier.height(12.dp))
                             HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant)
                             Spacer(Modifier.height(10.dp))
-                            if (isTeacher) {
+                            if (isTeacher && canManageClass(classItem)) {
                                 Row(
                                     Modifier.fillMaxWidth(),
                                     verticalAlignment = Alignment.CenterVertically,
@@ -383,6 +477,13 @@ fun HomeScreen(
                                     )
                                 }
                                 Spacer(Modifier.height(6.dp))
+                            } else if (isTeacher) {
+                                Text(
+                                    "فقط مشاهده؛ مدیریت این کلاس در اختیار استاد مالک است.",
+                                    style = MaterialTheme.typography.labelSmall,
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                                )
+                                Spacer(Modifier.height(6.dp))
                             }
                             Row(verticalAlignment = Alignment.CenterVertically) {
                                 Spacer(Modifier.weight(1f))
@@ -404,6 +505,7 @@ fun HomeScreen(
                 }
             }
         }
+    }
     }
     if (showBulkExportDialog && isTeacher) {
         BulkExportDialog(
@@ -502,6 +604,44 @@ private fun BulkExportDialog(
                         .onFailure { Toast.makeText(context, "اشتراک‌گذاری ناموفق بود: ${it.localizedMessage}", Toast.LENGTH_LONG).show() }
                     if (selectedLectures.isNotEmpty()) onDismiss()
                 }) { Text("متن") }
+                TextButton(
+                    enabled = selectedLectures.any { !it.aiSummary.isNullOrBlank() },
+                    onClick = {
+                        val shareText = selectedLectures.mapNotNull { lecture ->
+                            lecture.aiSummary?.takeIf { it.isNotBlank() }?.let {
+                                "جلسه: ${lecture.title}\nخلاصه:\n$it"
+                            }
+                        }.joinToString("\n\n--------------------\n\n")
+                        runCatching {
+                            context.startActivity(Intent.createChooser(
+                                Intent(Intent.ACTION_SEND).apply {
+                                    type = "text/plain"
+                                    putExtra(Intent.EXTRA_SUBJECT, "خلاصه مطالب درس‌یار")
+                                    putExtra(Intent.EXTRA_TEXT, shareText)
+                                }, "انتقال دستی خلاصه‌ها"
+                            ))
+                        }.onFailure { Toast.makeText(context, "ارسال خلاصه ناموفق بود: ${it.localizedMessage}", Toast.LENGTH_LONG).show() }
+                    }
+                ) { Text("خلاصه‌ها") }
+                TextButton(
+                    enabled = selectedLectures.any { !it.aiKeyPoints.isNullOrBlank() },
+                    onClick = {
+                        val shareText = selectedLectures.mapNotNull { lecture ->
+                            lecture.aiKeyPoints?.takeIf { it.isNotBlank() }?.let {
+                                "جلسه: ${lecture.title}\nچکیده و نکات کلیدی:\n$it"
+                            }
+                        }.joinToString("\n\n--------------------\n\n")
+                        runCatching {
+                            context.startActivity(Intent.createChooser(
+                                Intent(Intent.ACTION_SEND).apply {
+                                    type = "text/plain"
+                                    putExtra(Intent.EXTRA_SUBJECT, "چکیده و نکات کلیدی درس‌یار")
+                                    putExtra(Intent.EXTRA_TEXT, shareText)
+                                }, "انتقال دستی چکیده‌ها"
+                            ))
+                        }.onFailure { Toast.makeText(context, "ارسال چکیده ناموفق بود: ${it.localizedMessage}", Toast.LENGTH_LONG).show() }
+                    }
+                ) { Text("چکیده‌ها") }
             }
         },
         dismissButton = { TextButton(onClick = onDismiss) { Text("انصراف") } }

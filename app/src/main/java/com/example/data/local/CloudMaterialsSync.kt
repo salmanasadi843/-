@@ -22,7 +22,7 @@ object CloudMaterialsSync {
         val db = AppDatabase.getDatabase(context)
         val firestore = FirebaseFirestore.getInstance()
 
-        return if (AuthPreferences.currentRole(context) == UserRole.TEACHER) {
+        if (AuthPreferences.currentRole(context) == UserRole.TEACHER) {
             val allClasses = runBlocking { db.classDao().getAllForBackup() }
             val allCourses = runBlocking { db.courseDao().getAllForBackup() }
             val allLectures = runBlocking { db.lectureDao().getAllForBackup() }
@@ -46,8 +46,19 @@ object CloudMaterialsSync {
                 firestore.collection("shared_materials").document(uid)
                     .set(mapOf("ownerUid" to uid, "payload" to payload.toString(), "updatedAt" to System.currentTimeMillis()))
             )
-            "مطالب متنی و لینک‌های صوت با موفقیت در فضای آنلاین به‌روزرسانی شد."
-        } else {
+            // بعد از انتشار اطلاعات خود استاد، مطالب منتشرشده سایر استادان نیز برای مشاهده دریافت می‌شود.
+        }
+        return syncSharedMaterials(uid, db, firestore)
+    }
+
+    /** دریافت فقط مطالب منتشرشده سایر استادان، بدون بازنویسی انتشار حساب فعلی. */
+    fun syncOtherTeachers(context: Context): String {
+        val uid = AuthPreferences.currentUid(context)
+            ?: error("ابتدا وارد حساب کاربری شوید.")
+        return syncSharedMaterials(uid, AppDatabase.getDatabase(context), FirebaseFirestore.getInstance())
+    }
+
+    private fun syncSharedMaterials(uid: String, db: AppDatabase, firestore: FirebaseFirestore): String {
             val documents = Tasks.await(firestore.collection("shared_materials").get()).documents
                 .filter { it.id != uid }
             val allClasses = mutableListOf<ClassEntity>()
@@ -173,8 +184,7 @@ object CloudMaterialsSync {
                     db.lectureDao().insertAllForRestore(uniqueLectures.distinctBy { it.id })
                 }
             }
-            "مطالب آنلاین به‌روزرسانی شد: ${uniqueLectures.size} جلسه یکتا از ${documents.size} حساب استاد."
-        }
+            return "مطالب آنلاین به‌روزرسانی شد: ${uniqueLectures.size} جلسه یکتا از ${documents.size} حساب استاد."
     }
 
     private fun stableId(owner: String, key: String): Long {

@@ -45,7 +45,7 @@ class FirestoreSyncRepository(
         return when (snapshot.getLong("schemaVersion")) {
             LEGACY_SCHEMA_VERSION -> {
                 // Validate and restore the old snapshot before migrating it.
-                restoreSnapshot(snapshot, requireAllCollections = true)
+                restoreSnapshot(snapshot, requireAllCollections = true, ownerUid = uid)
                 uploadSnapshot(uid)
                 true
             }
@@ -73,7 +73,7 @@ class FirestoreSyncRepository(
         ) return false
 
         return try {
-            restoreSnapshot(snapshot, requireAllCollections = true)
+            restoreSnapshot(snapshot, requireAllCollections = true, ownerUid = uid)
             true
         } catch (_: IllegalStateException) {
             false
@@ -81,9 +81,11 @@ class FirestoreSyncRepository(
     }
 
     suspend fun uploadSnapshot(uid: String) {
-        val classes = classDao.getAllForBackup()
-        val courses = courseDao.getAllForBackup()
+        // Private backup must contain only this teacher's local records, never imported read-only feed items.
+        val classes = classDao.getAllForBackup().filter { it.id > 0L }
+        val courses = courseDao.getAllForBackup().filter { it.id > 0L && it.classId > 0L }
         val lectures = lectureDao.getAllForBackup()
+            .filter { it.id > 0L && (it.classId == null || it.classId > 0L) }
             .filterNot {
                 it.title == "جلسه ۴: شبکه‌های عصبی و یادگیری عمیق" ||
                     it.title == "جلسه ۷: سری و تبدیل فوریه و کاربرد در سیگنال"
@@ -141,7 +143,7 @@ class FirestoreSyncRepository(
                 "یکی از رکوردهای پشتیبان ابری خالی است؛ اطلاعات محلی دست‌نخورده باقی ماند."
             )
             when (data["recordType"] as? String) {
-                "class" -> classes += data.toClassEntity()
+                "class" -> classes += data.toClassEntity().copy(ownerUid = uid)
                 "course" -> courses += data.toCourseEntity()
                 "lecture" -> lectures += data.toLectureEntity()
                 else -> throw IllegalStateException(
@@ -154,7 +156,8 @@ class FirestoreSyncRepository(
 
     private suspend fun restoreSnapshot(
         snapshot: DocumentSnapshot,
-        requireAllCollections: Boolean
+        requireAllCollections: Boolean,
+        ownerUid: String
     ) {
         val rawClasses = snapshot.get("classes") as? List<*>
         val rawCourses = snapshot.get("courses") as? List<*>
@@ -169,7 +172,7 @@ class FirestoreSyncRepository(
         }
 
         val classes = rawClasses.orEmpty().map {
-            (it as? Map<*, *>)?.asStringMap()?.toClassEntity()
+            (it as? Map<*, *>)?.asStringMap()?.toClassEntity()?.copy(ownerUid = ownerUid)
                 ?: throw IllegalStateException("رکورد کلاس در پشتیبان ابری معتبر نیست.")
         }
         val courses = rawCourses.orEmpty().map {
@@ -205,6 +208,7 @@ class FirestoreSyncRepository(
         "id" to id,
         "name" to name,
         "teacherName" to teacherName,
+        "ownerUid" to ownerUid,
         "description" to description,
         "term" to term,
         "classDateMillis" to classDateMillis,
@@ -246,6 +250,7 @@ class FirestoreSyncRepository(
         id = number("id"),
         name = text("name"),
         teacherName = text("teacherName"),
+        ownerUid = text("ownerUid"),
         description = text("description"),
         term = text("term"),
         classDateMillis = number("classDateMillis", System.currentTimeMillis()),

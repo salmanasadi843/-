@@ -107,6 +107,7 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
     private val _studentMaterialsSyncStatus = MutableStateFlow("مطالب آنلاین هنوز بررسی نشده‌اند.")
     val studentMaterialsSyncStatus: StateFlow<String> = _studentMaterialsSyncStatus.asStateFlow()
     private var studentMaterialsSyncJob: Job? = null
+    private var teacherSharedMaterialsSyncJob: Job? = null
 
     /**
      * Automatically fetch published teacher materials for a student after login.
@@ -133,6 +134,31 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
                 Log.e(TAG, "Automatic student materials sync failed", e)
                 _studentMaterialsSyncStatus.value =
                     "دریافت خودکار مطالب انجام نشد؛ به بخش اتصال بروید و «دریافت مطالب آنلاین» را بزنید. ${e.localizedMessage ?: ""}".trim()
+            }
+        }
+    }
+
+    /**
+     * دریافت خودکار کلاس‌های منتشرشده استادان دیگر برای نمایش فقط‌خواندنی در پنل استاد.
+     * این مسیر انتشار داده‌های خود استاد را تغییر نمی‌دهد.
+     */
+    fun startTeacherSharedMaterialsSync() {
+        if (_userRole.value != UserRole.TEACHER) return
+        if (teacherSharedMaterialsSyncJob?.isActive == true) return
+
+        val app = getApplication<Application>()
+        if (AuthPreferences.currentUid(app).isNullOrBlank()) return
+
+        teacherSharedMaterialsSyncJob = viewModelScope.launch {
+            try {
+                val result = withContext(Dispatchers.IO) {
+                    CloudMaterialsSync.syncOtherTeachers(app)
+                }
+                _cloudSyncStatus.value = result
+            } catch (e: Exception) {
+                Log.e(TAG, "Automatic read-only teacher materials sync failed", e)
+                _cloudSyncStatus.value =
+                    "دریافت کلاس‌های منتشرشده استادان دیگر ناموفق بود: ${e.localizedMessage ?: "خطای نامشخص"}"
             }
         }
     }
@@ -170,6 +196,9 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
                 } else {
                     _cloudSyncStatus.value = "بازیابی اطلاعات از فضای ابری موفق بود؛ تغییرات بعدی خودکار ارسال می‌شوند."
                 }
+
+                // پس از پایان بازیابی داده‌های خصوصی، کلاس‌های منتشرشده سایر استادان را وارد کن.
+                startTeacherSharedMaterialsSync()
 
                 combine(
                     repository.allLectures,
@@ -541,11 +570,31 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
                     onFailure("مجوز فعال این حساب به‌عنوان استاد در Firebase تأیید نشد. از حساب مدیر اصلی، درخواست این استاد را بررسی و دوباره تأیید کنید؛ سپس خارج شوید و دوباره وارد شوید.")
                     return@launch
                 }
-                if (item.id < 0L) {
-                    onFailure("این کلاس متعلق به استاد دیگری است و فقط برای مطالعه در دسترس است؛ نمی‌توانید آن را ویرایش کنید.")
+                if (item.id < 0L && !AuthPreferences.isPrimaryTeacher(getApplication<Application>())) {
+                    onFailure("این کلاس متعلق به استاد دیگری است و فقط مدیر اصلی می‌تواند آن را ویرایش کند.")
                     return@launch
                 }
-                onSaved(repository.saveClass(item))
+                val app = getApplication<Application>()
+                val uid = AuthPreferences.currentUid(app).orEmpty()
+                val currentName = AuthPreferences.currentName(app).trim()
+                val isPrimaryTeacher = AuthPreferences.isPrimaryTeacher(app)
+                val existing = if (item.id > 0L) repository.getClass(item.id) else null
+                if (!isPrimaryTeacher && existing != null) {
+                    val belongsToAnotherAccount =
+                        (existing.ownerUid.isNotBlank() && existing.ownerUid != uid) ||
+                            (existing.ownerUid.isBlank() && existing.teacherName.isNotBlank() &&
+                                !existing.teacherName.trim().equals(currentName, ignoreCase = true))
+                    if (belongsToAnotherAccount) {
+                        onFailure("این کلاس به حساب استاد دیگری تعلق دارد و قابل ویرایش نیست.")
+                        return@launch
+                    }
+                }
+                val safeItem = item.copy(
+                    teacherName = item.teacherName.trim().ifBlank { currentName },
+                    ownerUid = if (item.id < 0L) existing?.ownerUid.orEmpty()
+                        else existing?.ownerUid?.ifBlank { uid } ?: uid
+                )
+                onSaved(repository.saveClass(safeItem))
             } catch (e: Exception) {
                 Log.e(TAG, "Saving class failed", e)
                 onFailure("ذخیره کلاس ناموفق بود: ${e.localizedMessage ?: "خطای نامشخص Firebase یا پایگاه داده"}")
@@ -567,15 +616,29 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
     fun deleteClass(item: com.example.data.local.ClassEntity, onDeleted: () -> Unit = {}) {
         viewModelScope.launch {
             if (!teacherPermissionGranted()) { denyTeacherMutation(); return@launch }
-            if (item.id < 0L) {
-                _cloudSyncStatus.value = "حذف یا پنهان‌کردن کلاس استاد دیگر مجاز نیست."
+            if (item.id < 0L && !AuthPreferences.isPrimaryTeacher(getApplication<Application>())) {
+                _cloudSyncStatus.value = "حذف کلاس استاد دیگر فقط برای مدیر اصلی مجاز است."
+                return@launch
+            }
+            val app = getApplication<Application>()
+            val uid = AuthPreferences.currentUid(app).orEmpty()
+            val currentName = AuthPreferences.currentName(app).trim()
+            val primary = AuthPreferences.isPrimaryTeacher(app)
+            val owned = primary ||
+                (item.ownerUid.isNotBlank() && item.ownerUid == uid) ||
+                (item.ownerUid.isBlank() && item.teacherName.trim().equals(currentName, ignoreCase = true))
+            if (!owned) {
+                _cloudSyncStatus.value = "این کلاس متعلق به استاد دیگری است؛ حذف آن مجاز نیست."
                 return@launch
             }
             repository.deleteClass(item)
-            try {
-                withContext(Dispatchers.IO) { CloudMaterialsSync.sync(getApplication<Application>()) }
-            } catch (e: Exception) {
-                Log.e(TAG, "Could not refresh published feed after class deletion", e)
+            // Do not immediately pull a shared negative-ID class back after an admin deletion.
+            if (item.id > 0L) {
+                try {
+                    withContext(Dispatchers.IO) { CloudMaterialsSync.sync(getApplication<Application>()) }
+                } catch (e: Exception) {
+                    Log.e(TAG, "Could not refresh published feed after class deletion", e)
+                }
             }
             onDeleted()
         }
@@ -820,20 +883,34 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
     fun setClassPublished(classItem: ClassEntity, published: Boolean) {
         viewModelScope.launch {
             if (!teacherPermissionGranted()) { denyTeacherMutation(); return@launch }
-            if (classItem.id < 0L) {
-                _cloudSyncStatus.value = "تغییر وضعیت انتشار کلاس استاد دیگر مجاز نیست."
+            if (classItem.id < 0L && !AuthPreferences.isPrimaryTeacher(getApplication<Application>())) {
+                _cloudSyncStatus.value = "تغییر وضعیت انتشار کلاس استاد دیگر فقط برای مدیر اصلی مجاز است."
+                return@launch
+            }
+            val app = getApplication<Application>()
+            val uid = AuthPreferences.currentUid(app).orEmpty()
+            val currentName = AuthPreferences.currentName(app).trim()
+            val primary = AuthPreferences.isPrimaryTeacher(app)
+            val owned = primary ||
+                (classItem.ownerUid.isNotBlank() && classItem.ownerUid == uid) ||
+                (classItem.ownerUid.isBlank() && classItem.teacherName.trim().equals(currentName, ignoreCase = true))
+            if (!owned) {
+                _cloudSyncStatus.value = "این کلاس متعلق به استاد دیگری است؛ تغییر وضعیت انتشار مجاز نیست."
                 return@launch
             }
             repository.saveClass(classItem.copy(isPublished = published))
-            // Refresh the shared student feed immediately after class visibility changes.
-            try {
-                withContext(Dispatchers.IO) {
-                    CloudMaterialsSync.sync(getApplication<Application>())
+            // Shared negative-ID records are local read-only imports for ordinary teachers.
+            // The primary admin can change their local visibility without immediately overwriting it.
+            if (classItem.id > 0L) {
+                try {
+                    withContext(Dispatchers.IO) {
+                        CloudMaterialsSync.sync(getApplication<Application>())
+                    }
+                } catch (e: Exception) {
+                    Log.e(TAG, "Could not refresh published class feed", e)
+                    _cloudSyncStatus.value =
+                        "وضعیت انتشار کلاس در دستگاه ذخیره شد؛ همگام‌سازی آنلاین ناموفق بود و باید دوباره تلاش شود."
                 }
-            } catch (e: Exception) {
-                Log.e(TAG, "Could not refresh published class feed", e)
-                _cloudSyncStatus.value =
-                    "وضعیت انتشار کلاس در دستگاه ذخیره شد؛ همگام‌سازی آنلاین ناموفق بود و باید دوباره تلاش شود."
             }
         }
     }
