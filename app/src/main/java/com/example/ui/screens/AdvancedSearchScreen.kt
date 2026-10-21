@@ -56,6 +56,13 @@ fun AdvancedSearchScreen(
 
     var query by remember { mutableStateOf(viewModel.advancedSearchQuery.value) }
     var matchMode by remember { mutableStateOf(viewModel.advancedSearchMatchMode.value) }
+    val semanticTerms by viewModel.semanticSearchTerms.collectAsState()
+    val expandingSemanticTerms by viewModel.isSemanticExpansionLoading.collectAsState()
+    val researchReport by viewModel.researchReport.collectAsState()
+    val researchLoading by viewModel.isResearchLoading.collectAsState()
+    val researchError by viewModel.researchError.collectAsState()
+    var researchType by remember { mutableStateOf("summary") }
+    var showResearchPanel by remember { mutableStateOf(false) }
     var selectedProfessor by remember { mutableStateOf(viewModel.advancedSearchProfessor.value) }
     var selectedCourse by remember { mutableStateOf(viewModel.advancedSearchCourse.value) }
     var selectedClassId by remember { mutableStateOf(viewModel.advancedSearchClassId.value) }
@@ -74,8 +81,9 @@ fun AdvancedSearchScreen(
         searchableLectures.any { it.classId == classItem.id }
     }.sortedBy { it.name }
     val terms = normalizeSearchText(query).split(Regex("\\s+")).filter { it.isNotBlank() }
+    val expandedTerms = semanticTerms.map(::normalizeSearchText).filter { it.isNotBlank() }.distinct()
 
-    val results = remember(searchableLectures, query, matchMode, selectedProfessor, selectedCourse, selectedClassId) {
+    val results = remember(searchableLectures, query, matchMode, expandedTerms, selectedProfessor, selectedCourse, selectedClassId) {
         searchableLectures.mapNotNull { lecture ->
             val title = normalizeSearchText(lecture.title)
             val metadata = normalizeSearchText(
@@ -90,6 +98,9 @@ fun AdvancedSearchScreen(
             val textMatches = when {
                 terms.isEmpty() -> true
                 matchMode == "phrase" -> content.contains(normalizeSearchText(query).trim())
+                matchMode == "semantic" && expandedTerms.isNotEmpty() -> expandedTerms.any { term ->
+                    semanticVariants(term).any { variant -> content.contains(variant) }
+                }
                 else -> terms.all { term ->
                     semanticVariants(term).any { variant -> content.contains(variant) }
                 }
@@ -158,13 +169,82 @@ fun AdvancedSearchScreen(
                 SegmentedButton(
                     selected = matchMode == "all",
                     onClick = { matchMode = "all"; viewModel.advancedSearchMatchMode.value = "all" },
-                    shape = SegmentedButtonDefaults.itemShape(index = 0, count = 2)
+                    shape = SegmentedButtonDefaults.itemShape(index = 0, count = 3)
                 ) { Text("همه واژه‌ها") }
                 SegmentedButton(
                     selected = matchMode == "phrase",
                     onClick = { matchMode = "phrase"; viewModel.advancedSearchMatchMode.value = "phrase" },
-                    shape = SegmentedButtonDefaults.itemShape(index = 1, count = 2)
+                    shape = SegmentedButtonDefaults.itemShape(index = 1, count = 3)
                 ) { Text("عبارت دقیق") }
+                SegmentedButton(
+                    selected = matchMode == "semantic",
+                    onClick = {
+                        matchMode = "semantic"
+                        viewModel.advancedSearchMatchMode.value = "semantic"
+                        if (semanticTerms.isEmpty() && query.isNotBlank()) viewModel.expandSemanticSearchQuery(query)
+                    },
+                    shape = SegmentedButtonDefaults.itemShape(index = 2, count = 3)
+                ) { Text("معنایی") }
+            }
+            if (matchMode == "semantic") {
+                Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp), verticalAlignment = Alignment.CenterVertically) {
+                    OutlinedButton(
+                        onClick = { viewModel.expandSemanticSearchQuery(query) },
+                        enabled = query.isNotBlank() && !expandingSemanticTerms
+                    ) { Text(if (expandingSemanticTerms) "در حال گسترش مفاهیم…" else "گسترش مفهومی با AI") }
+                    Text(
+                        if (semanticTerms.isEmpty()) "پس از گسترش، مفاهیم مرتبط به‌صورت محلی جست‌وجو می‌شوند."
+                        else "${semanticTerms.size} عبارت مفهومی برای جست‌وجو آماده است.",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        modifier = Modifier.weight(1f)
+                    )
+                }
+            }
+            OutlinedButton(
+                onClick = { showResearchPanel = !showResearchPanel },
+                modifier = Modifier.fillMaxWidth()
+            ) { Text(if (showResearchPanel) "بستن دستیار پژوهش" else "دستیار پژوهش: جمع‌بندی و دسته‌بندی موضوع") }
+            if (showResearchPanel) {
+                Card(Modifier.fillMaxWidth()) {
+                    Column(Modifier.padding(12.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                        Text("خروجی پژوهشی از ${results.size} جلسه بازیابی‌شده", fontWeight = FontWeight.Bold)
+                        Text("فقط منابعی که در نتایج قابل‌دسترسی شما هستند برای تحلیل فرستاده می‌شوند. برای تولید گزارش، متن منتخب به Gemini و در صورت خطا به Groq ارسال می‌شود.", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                        SingleChoiceSegmentedButtonRow(Modifier.fillMaxWidth()) {
+                            listOf("summary" to "جمع‌بندی", "categorize" to "دسته‌بندی", "compare" to "مقایسه", "article" to "طرح مقاله").forEachIndexed { index, item ->
+                                SegmentedButton(
+                                    selected = researchType == item.first,
+                                    onClick = { researchType = item.first },
+                                    shape = SegmentedButtonDefaults.itemShape(index = index, count = 4)
+                                ) { Text(item.second) }
+                            }
+                        }
+                        Button(
+                            onClick = {
+                                val sourceText = results.take(20).mapIndexed { index, lecture ->
+                                    val id = "S${index + 1}"
+                                    val body = listOf(
+                                        "متن اصلی: " + lecture.originalTranscript,
+                                        "متن ویرایش‌شده: " + lecture.transcript,
+                                        "خلاصه: " + lecture.aiSummary.orEmpty(),
+                                        "کلیدواژه‌ها: " + lecture.aiKeyPoints.orEmpty()
+                                    ).filter { it.substringAfter(": ").isNotBlank() }.joinToString("\n")
+                                    "[$id] عنوان جلسه: ${lecture.title}\nاستاد: ${lecture.professorName}\nدرس: ${lecture.courseName}\nتاریخ: ${lecture.dateMillis}\n$body"
+                                }.joinToString("\n\n")
+                                viewModel.generateResearchReport(query, researchType, sourceText)
+                            },
+                            enabled = query.isNotBlank() && results.isNotEmpty() && !researchLoading,
+                            modifier = Modifier.fillMaxWidth()
+                        ) { Text(if (researchLoading) "در حال تهیه گزارش مستند…" else "تولید خروجی مستند از نتایج") }
+                        if (researchError != null) Text(researchError.orEmpty(), color = MaterialTheme.colorScheme.error, style = MaterialTheme.typography.bodySmall)
+                        if (researchLoading) LinearProgressIndicator(Modifier.fillMaxWidth())
+                        if (researchReport.isNotBlank()) {
+                            HorizontalDivider()
+                            Text(researchReport, style = MaterialTheme.typography.bodyMedium)
+                            TextButton(onClick = { GenUI.copy(researchReport) }) { Text("کپی گزارش") }
+                        }
+                    }
+                }
             }
             Row(
                 Modifier.fillMaxWidth(),
