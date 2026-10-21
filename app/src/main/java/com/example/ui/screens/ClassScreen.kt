@@ -135,7 +135,8 @@ fun ClassScreen(
     // as read-only, including imported negative-ID classes.
     val visibleOwnedClasses = classes.filter {
         it.id > 0L &&
-            (it.ownerUid == ownerUid || it.ownerUid.isBlank()) &&
+            ((ownerUid.isNotBlank() && it.ownerUid == ownerUid) ||
+                (it.ownerUid.isBlank() && teacherFolderKey(it, ownerUid, currentTeacherName) == ownerUid)) &&
             (teacherKey != null || it.folderId == selectedFolderId)
     }
     val canManageSelectedTeacher = canManageClasses &&
