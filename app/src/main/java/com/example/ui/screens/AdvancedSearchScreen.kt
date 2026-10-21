@@ -4,6 +4,7 @@ import androidx.activity.compose.BackHandler
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
@@ -59,6 +60,11 @@ fun AdvancedSearchScreen(
     var selectedCourse by remember { mutableStateOf(viewModel.advancedSearchCourse.value) }
     var selectedClassId by remember { mutableStateOf(viewModel.advancedSearchClassId.value) }
     var openFilter by remember { mutableStateOf("") }
+    // Restore the result-list viewport when returning from a lecture detail screen.
+    val resultsListState = rememberLazyListState(
+        initialFirstVisibleItemIndex = viewModel.advancedSearchScrollIndex.value,
+        initialFirstVisibleItemScrollOffset = viewModel.advancedSearchScrollOffset.value
+    )
 
     val professors = listOf("همه استادان") + searchableLectures.map { it.professorName.trim() }
         .filter { it.isNotBlank() }.distinct().sorted()
@@ -189,7 +195,8 @@ fun AdvancedSearchScreen(
                 Text("نتیجه‌ای پیدا نشد. عبارت یا فیلترها را تغییر دهید.", color = MaterialTheme.colorScheme.onSurfaceVariant)
             }
             LazyColumn(
-                Modifier.fillMaxSize(),
+                state = resultsListState,
+                modifier = Modifier.fillMaxSize(),
                 verticalArrangement = Arrangement.spacedBy(8.dp)
             ) {
                 items(results, key = { it.id }) { lecture ->
@@ -197,6 +204,10 @@ fun AdvancedSearchScreen(
                     val excerpt = makeSearchExcerpt(lecture, terms)
                     Card(
                         modifier = Modifier.fillMaxWidth().clickable {
+                            viewModel.saveAdvancedSearchScrollPosition(
+                                resultsListState.firstVisibleItemIndex,
+                                resultsListState.firstVisibleItemScrollOffset
+                            )
                             viewModel.beginSearchNavigation(results.map { it.id }, lecture.id)
                             onOpenLecture(lecture.id)
                         },
