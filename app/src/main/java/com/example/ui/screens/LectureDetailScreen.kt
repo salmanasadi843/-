@@ -818,42 +818,89 @@ fun TranscriptTab(
 }
 
 
+private fun normalizeTranscriptForSearch(source: String): Pair<String, List<Int>> {
+    val normalized = StringBuilder()
+    val originalOffsets = mutableListOf<Int>()
+    var pendingSpaceOffset: Int? = null
+
+    source.forEachIndexed { index, original ->
+        val char = when (original) {
+            'ي' -> 'ی'
+            'ك' -> 'ک'
+            'ۀ', 'ة' -> 'ه'
+            'ؤ' -> 'و'
+            'إ', 'أ', 'آ' -> 'ا'
+            else -> original.lowercaseChar()
+        }
+        if (char in '\u064B'..'\u065F' || char == '\u0670' ||
+            char == '\u200F' || char in '\u202A'..'\u202E'
+        ) return@forEachIndexed
+
+        if (char == '\u200C' || char.isWhitespace()) {
+            if (normalized.isNotEmpty() && pendingSpaceOffset == null) pendingSpaceOffset = index
+            return@forEachIndexed
+        }
+        if (pendingSpaceOffset != null && normalized.isNotEmpty()) {
+            normalized.append(' ')
+            originalOffsets += pendingSpaceOffset!!
+        }
+        pendingSpaceOffset = null
+        normalized.append(char)
+        originalOffsets += index
+    }
+    return normalized.toString().trimEnd() to originalOffsets
+}
+
 private fun highlightTranscriptMatches(source: String, query: String): Pair<AnnotatedString, Int?> {
     if (source.isBlank() || query.isBlank()) return AnnotatedString(source) to null
-    val terms = query.trim().split(Regex("\\s+")).filter { it.isNotBlank() }.distinct().sortedByDescending { it.length }
-    if (terms.isEmpty()) return AnnotatedString(source) to null
-    val ranges = mutableListOf<IntRange>()
-    terms.forEach { term ->
+    val (normalizedSource, offsets) = normalizeTranscriptForSearch(source)
+    val normalizedQuery = normalizeTranscriptForSearch(query).first.trim()
+    if (normalizedQuery.isBlank()) return AnnotatedString(source) to null
+
+    val terms = if (normalizedQuery.contains(' ')) {
+        listOf(normalizedQuery) + normalizedQuery.split(Regex("\\s+")).filter { it.isNotBlank() }
+    } else listOf(normalizedQuery)
+    val normalizedRanges = mutableListOf<IntRange>()
+    terms.distinct().sortedByDescending { it.length }.forEach { term ->
         var from = 0
-        while (from < source.length) {
-            val index = source.indexOf(term, startIndex = from, ignoreCase = true)
+        while (from < normalizedSource.length) {
+            val index = normalizedSource.indexOf(term, startIndex = from)
             if (index < 0) break
-            ranges += index until (index + term.length)
+            normalizedRanges += index until (index + term.length)
             from = index + term.length.coerceAtLeast(1)
         }
     }
-    val merged = ranges.sortedBy { it.first }.fold(mutableListOf<IntRange>()) { acc, range ->
-        val last = acc.lastOrNull()
-        if (last != null && range.first <= last.last + 1) {
-            acc[acc.lastIndex] = last.first..maxOf(last.last, range.last)
+
+    val sourceRanges = normalizedRanges.mapNotNull { range ->
+        val start = offsets.getOrNull(range.first) ?: return@mapNotNull null
+        val end = (offsets.getOrNull(range.last) ?: start) + 1
+        if (start < end) start until end else null
+    }.sortedBy { it.first }.fold(mutableListOf<IntRange>()) { acc, range ->
+        val previous = acc.lastOrNull()
+        if (previous != null && range.first <= previous.last + 1) {
+            acc[acc.lastIndex] = previous.first..maxOf(previous.last, range.last)
         } else acc += range
         acc
     }
+
     val annotated = buildAnnotatedString {
         var cursor = 0
-        merged.forEach { range ->
+        sourceRanges.forEach { range ->
             if (range.first < cursor) return@forEach
             append(source.substring(cursor, range.first))
-            withStyle(SpanStyle(background = Color(0xFFFFD54F), color = Color(0xFF302400), fontWeight = FontWeight.Bold)) {
+            withStyle(SpanStyle(
+                background = Color(0xFFFFD54F),
+                color = Color(0xFF302400),
+                fontWeight = FontWeight.Bold
+            )) {
                 append(source.substring(range.first, range.last + 1))
             }
             cursor = range.last + 1
         }
         if (cursor < source.length) append(source.substring(cursor))
     }
-    val first = source.indexOf(query.trim(), ignoreCase = true).takeIf { it >= 0 }
-        ?: merged.firstOrNull()?.first
-    return annotated to first
+    val firstMatch = sourceRanges.firstOrNull()?.first
+    return annotated to firstMatch
 }
 
 @Composable
