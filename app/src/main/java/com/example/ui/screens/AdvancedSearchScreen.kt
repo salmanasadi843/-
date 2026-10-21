@@ -1,8 +1,12 @@
 package com.example.ui.screens
 
 import androidx.activity.compose.BackHandler
+import android.content.Intent
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.verticalScroll
+import androidx.compose.foundation.text.selection.SelectionContainer
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.lazy.items
@@ -262,11 +266,39 @@ fun AdvancedSearchScreen(
                         if (researchLoading) LinearProgressIndicator(Modifier.fillMaxWidth())
                         if (researchReport.isNotBlank()) {
                             HorizontalDivider()
-                            Text(researchReport, style = MaterialTheme.typography.bodyMedium)
-                            TextButton(onClick = {
-                                val clipboard = context.getSystemService(android.content.Context.CLIPBOARD_SERVICE) as android.content.ClipboardManager
-                                clipboard.setPrimaryClip(android.content.ClipData.newPlainText("گزارش پژوهشی درس‌یار", researchReport))
-                            }) { Text("کپی گزارش") }
+                            // Keep long AI reports inside a bounded, independently scrollable area.
+                            // SelectionContainer allows selecting/copying any part of the generated text.
+                            Box(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .heightIn(max = 320.dp)
+                                    .verticalScroll(rememberScrollState())
+                            ) {
+                                SelectionContainer {
+                                    Text(
+                                        text = researchReport,
+                                        modifier = Modifier.fillMaxWidth(),
+                                        style = MaterialTheme.typography.bodyMedium
+                                    )
+                                }
+                            }
+                            Row(
+                                modifier = Modifier.fillMaxWidth(),
+                                horizontalArrangement = Arrangement.spacedBy(8.dp)
+                            ) {
+                                TextButton(onClick = {
+                                    val clipboard = context.getSystemService(android.content.Context.CLIPBOARD_SERVICE) as android.content.ClipboardManager
+                                    clipboard.setPrimaryClip(android.content.ClipData.newPlainText("گزارش پژوهشی درس‌یار", researchReport))
+                                }) { Text("کپی گزارش") }
+                                TextButton(onClick = {
+                                    val shareIntent = Intent(Intent.ACTION_SEND).apply {
+                                        type = "text/plain"
+                                        putExtra(Intent.EXTRA_SUBJECT, "گزارش پژوهشی درس‌یار")
+                                        putExtra(Intent.EXTRA_TEXT, researchReport)
+                                    }
+                                    context.startActivity(Intent.createChooser(shareIntent, "اشتراک‌گذاری گزارش"))
+                                }) { Text("ارسال / اشتراک‌گذاری") }
+                            }
                         }
                     }
                 }
