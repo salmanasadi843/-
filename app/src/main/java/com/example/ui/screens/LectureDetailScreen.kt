@@ -146,6 +146,7 @@ fun LectureDetailScreen(
     val searchResultIndex by viewModel.currentSearchResultIndex.collectAsState()
     val searchNavigationActive by viewModel.isSearchResultNavigationActive.collectAsState()
     val activeSearchQuery by viewModel.advancedSearchQuery.collectAsState()
+    val activeSearchMatchMode by viewModel.advancedSearchMatchMode.collectAsState()
 
     var showDeleteConfirmDialog by remember { mutableStateOf(false) }
     var showExportDialog by remember { mutableStateOf(false) }
@@ -588,8 +589,14 @@ fun TranscriptTab(
             val normalizedQuery = normalizeTranscriptForSearch(searchQuery).first.trim()
             val normalizedOriginal = normalizeTranscriptForSearch(originalText).first
             val normalizedCorrected = normalizeTranscriptForSearch(correctedText).first
-            val originalContains = normalizedQuery.isNotBlank() && normalizedOriginal.contains(normalizedQuery)
-            val correctedContains = normalizedQuery.isNotBlank() && normalizedCorrected.contains(normalizedQuery)
+            val queryTerms = normalizedQuery.split(Regex("\\s+")).filter { it.isNotBlank() }
+            fun matches(text: String): Boolean = when {
+                normalizedQuery.isBlank() -> false
+                activeSearchMatchMode == "phrase" -> text.contains(normalizedQuery)
+                else -> queryTerms.all { text.contains(it) }
+            }
+            val originalContains = matches(normalizedOriginal)
+            val correctedContains = matches(normalizedCorrected)
             when {
                 correctedContains && !originalContains -> selectedTextTab = 1
                 originalContains -> selectedTextTab = 0
