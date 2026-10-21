@@ -226,9 +226,22 @@ fun AdvancedSearchScreen(
                                 style = MaterialTheme.typography.bodySmall,
                                 color = MaterialTheme.colorScheme.onSurfaceVariant
                             )
-                            if (excerpt.isNotBlank()) {
+                            if (excerpt.text.isNotBlank()) {
                                 Spacer(Modifier.height(8.dp))
-                                Text(highlightSearchExcerpt(excerpt, terms), maxLines = 4, overflow = TextOverflow.Ellipsis, style = MaterialTheme.typography.bodyMedium)
+                                Surface(
+                                    color = MaterialTheme.colorScheme.secondaryContainer,
+                                    shape = RoundedCornerShape(8.dp)
+                                ) {
+                                    Text(
+                                        "منبع: " + excerpt.sourceLabel,
+                                        modifier = Modifier.padding(horizontal = 9.dp, vertical = 4.dp),
+                                        style = MaterialTheme.typography.labelSmall,
+                                        color = MaterialTheme.colorScheme.onSecondaryContainer,
+                                        fontWeight = FontWeight.SemiBold
+                                    )
+                                }
+                                Spacer(Modifier.height(5.dp))
+                                Text(highlightSearchExcerpt(excerpt.text, terms), maxLines = 4, overflow = TextOverflow.Ellipsis, style = MaterialTheme.typography.bodyMedium)
                             }
                             Spacer(Modifier.height(6.dp))
                             Text("برای باز کردن جلسه لمس کنید  ←", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.primary)
@@ -249,18 +262,37 @@ private fun normalizeSearchText(value: String): String =
         .replace(Regex("\\s+"), " ")
         .trim()
 
-private fun makeSearchExcerpt(lecture: LectureEntity, terms: List<String>): String {
-    val source = listOf(
-        lecture.transcript, lecture.originalTranscript, lecture.aiSummary.orEmpty(),
-        lecture.aiKeyPoints.orEmpty(), lecture.tags
-    ).firstOrNull { candidate ->
-        candidate.isNotBlank() && (terms.isEmpty() || terms.any { normalizeSearchText(candidate).contains(it) })
-    }.orEmpty()
-    if (source.length <= 240) return source
-    val index = terms.firstOrNull { it.isNotBlank() }?.let { normalizeSearchText(source).indexOf(it) } ?: -1
+private data class SearchExcerpt(
+    val sourceLabel: String,
+    val text: String
+)
+
+private fun makeSearchExcerpt(lecture: LectureEntity, terms: List<String>): SearchExcerpt {
+    // Keep this order aligned with the requested source labels and show the first
+    // field that actually contains a matching term, not merely the first non-empty field.
+    val sources = listOf(
+        "متن اصلی درس" to lecture.originalTranscript,
+        "متن ویرایش‌شده" to lecture.transcript,
+        "خلاصه هوشمند" to lecture.aiSummary.orEmpty(),
+        "کلیدواژه‌ها" to lecture.aiKeyPoints.orEmpty(),
+        "یادداشت‌ها و پرسش‌ها" to lecture.aiQuizJson.orEmpty(),
+        "برچسب‌ها" to lecture.tags
+    )
+    val match = sources.firstOrNull { (label, candidate) ->
+        candidate.isNotBlank() &&
+            (terms.isEmpty() || terms.any { normalizeSearchText(candidate).contains(it) })
+    } ?: sources.firstOrNull { it.second.isNotBlank() }
+    val label = match?.first.orEmpty()
+    val source = match?.second.orEmpty()
+    if (source.length <= 240) return SearchExcerpt(label, source)
+    val normalizedSource = normalizeSearchText(source)
+    val index = terms.firstOrNull { it.isNotBlank() }?.let { normalizedSource.indexOf(it) } ?: -1
     val start = if (index > 70) index - 70 else 0
-    return (if (start > 0) "… " else "") + source.substring(start, minOf(source.length, start + 240)) +
-        if (start + 240 < source.length) " …" else ""
+    return SearchExcerpt(
+        label,
+        (if (start > 0) "… " else "") + source.substring(start, minOf(source.length, start + 240)) +
+            if (start + 240 < source.length) " …" else ""
+    )
 }
 
 private fun highlightSearchExcerpt(excerpt: String, terms: List<String>): AnnotatedString = buildAnnotatedString {
