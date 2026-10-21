@@ -1100,6 +1100,12 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
     private val _researchError = MutableStateFlow<String?>(null)
     val researchError: StateFlow<String?> = _researchError.asStateFlow()
 
+    fun clearSemanticSearchTerms() {
+        _semanticSearchTerms.value = emptyList()
+        _researchReport.value = ""
+        _researchError.value = null
+    }
+
     fun expandSemanticSearchQuery(query: String) {
         if (query.isBlank()) {
             _researchError.value = "ابتدا موضوع یا پرسش خود را وارد کنید."
