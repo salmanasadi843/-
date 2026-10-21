@@ -30,6 +30,7 @@ import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.text.selection.SelectionContainer
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
@@ -1232,6 +1233,7 @@ fun ChatWithLectureTab(
     onSendMessage: () -> Unit
 ) {
     val listState = rememberLazyListState()
+    val context = LocalContext.current
 
     LaunchedEffect(messages.size) {
         if (messages.isNotEmpty()) {
@@ -1274,11 +1276,45 @@ fun ChatWithLectureTab(
                                 color = if (isUser) MaterialTheme.colorScheme.onPrimary.copy(alpha = 0.8f) else MaterialTheme.colorScheme.primary
                             )
                             Spacer(modifier = Modifier.height(4.dp))
-                            Text(
-                                text = msg.text,
-                                style = MaterialTheme.typography.bodyMedium.copy(lineHeight = 22.sp),
-                                color = if (isUser) MaterialTheme.colorScheme.onPrimary else MaterialTheme.colorScheme.onSurface
-                            )
+                            // Make AI answers selectable so the user can select a paragraph
+                            // or the full response and copy it using Android's text selection menu.
+                            SelectionContainer {
+                                Text(
+                                    text = msg.text,
+                                    modifier = Modifier.fillMaxWidth(),
+                                    style = MaterialTheme.typography.bodyMedium.copy(lineHeight = 22.sp),
+                                    color = if (isUser) MaterialTheme.colorScheme.onPrimary else MaterialTheme.colorScheme.onSurface
+                                )
+                            }
+                            if (!isUser && msg.text.isNotBlank()) {
+                                Row(
+                                    modifier = Modifier.fillMaxWidth(),
+                                    horizontalArrangement = Arrangement.End,
+                                    verticalAlignment = Alignment.CenterVertically
+                                ) {
+                                    IconButton(
+                                        onClick = {
+                                            val clipboard = context.getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager
+                                            clipboard.setPrimaryClip(ClipData.newPlainText("پاسخ دستیار هوش مصنوعی درس‌یار", msg.text))
+                                            Toast.makeText(context, "پاسخ کپی شد", Toast.LENGTH_SHORT).show()
+                                        }
+                                    ) {
+                                        Icon(Icons.Default.ContentCopy, contentDescription = "کپی پاسخ")
+                                    }
+                                    IconButton(
+                                        onClick = {
+                                            val shareIntent = Intent(Intent.ACTION_SEND).apply {
+                                                type = "text/plain"
+                                                putExtra(Intent.EXTRA_SUBJECT, "پاسخ دستیار هوش مصنوعی درس‌یار")
+                                                putExtra(Intent.EXTRA_TEXT, msg.text)
+                                            }
+                                            context.startActivity(Intent.createChooser(shareIntent, "ارسال پاسخ"))
+                                        }
+                                    ) {
+                                        Icon(Icons.Default.Share, contentDescription = "اشتراک‌گذاری پاسخ")
+                                    }
+                                }
+                            }
                         }
                     }
                 }
