@@ -250,7 +250,7 @@ fun AdvancedSearchScreen(
                                         "متن ویرایش‌شده: " + relevantText(lecture.transcript, 1400),
                                         "خلاصه هوشمند: " + relevantText(lecture.aiSummary.orEmpty(), 700),
                                         "کلیدواژه‌ها: " + relevantText(lecture.aiKeyPoints.orEmpty(), 400)
-                                    ).filter { it.substringAfter(": ").isNotBlank() }.joinToString("\\n")
+                                    ).filter { it.substringAfter(": ").isNotBlank() }.joinToString("\n")
                                     "[$id] عنوان جلسه: ${lecture.title}\nاستاد: ${lecture.professorName}\nدرس: ${lecture.courseName}\n$body"
                                 }.joinToString("\n\n")
                                 viewModel.generateResearchReport(query, researchType, sourceText)
