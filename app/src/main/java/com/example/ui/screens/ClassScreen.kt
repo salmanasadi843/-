@@ -36,7 +36,7 @@ fun ClassScreen(
     onBack: () -> Unit
 ) {
     val context = LocalContext.current
-    val ownerUid = AuthPreferences.currentUid(context).orEmpty()
+    val ownerUid = AuthPreferences.currentUid(context).orEmpty()\n    val currentTeacherName = AuthPreferences.currentName(context)
     val canManageClasses = userRole == UserRole.TEACHER || AuthPreferences.isPrimaryTeacher(context)
     val canCreateInSelectedTeacher = canManageClasses && (teacherKey == null || teacherKey == ownerUid)
     val allClasses by viewModel.repository.allClasses.collectAsState(initial = emptyList())
@@ -82,8 +82,8 @@ fun ClassScreen(
     val classes = remember(allVisibleClasses, teacherKey, ownerUid, deletedTeacherKeys) {
         when (teacherKey) {
             null -> allVisibleClasses
-            "__unfiled_teachers__" -> allVisibleClasses.filter { teacherFolderKey(it, ownerUid.ifBlank { "local" }) in deletedTeacherKeys }
-            else -> allVisibleClasses.filter { teacherFolderKey(it, ownerUid.ifBlank { "local" }) == teacherKey }
+            "__unfiled_teachers__" -> allVisibleClasses.filter { teacherFolderKey(it, ownerUid.ifBlank { "local" }, currentTeacherName) in deletedTeacherKeys }
+            else -> allVisibleClasses.filter { teacherFolderKey(it, ownerUid.ifBlank { "local" }, currentTeacherName) == teacherKey }
         }
     }
     // Refresh the published feed whenever a student opens the class list so revoked visibility is applied.
@@ -265,7 +265,7 @@ fun ClassScreen(
                     }
                     item {
                         Text(
-                            classes.count { it.id > 0L && (it.ownerUid == ownerUid || it.ownerUid.isBlank()) && it.folderId == selectedFolderId }.toString() + " کلاس در این پوشه",
+                            classes.count { it.id > 0L && ((ownerUid.isNotBlank() && it.ownerUid == ownerUid) || (it.ownerUid.isBlank() && teacherFolderKey(it, ownerUid, currentTeacherName) == ownerUid)) && it.folderId == selectedFolderId }.toString() + " کلاس در این پوشه",
                             style = MaterialTheme.typography.labelLarge,
                             color = MaterialTheme.colorScheme.onSurfaceVariant
                         )
