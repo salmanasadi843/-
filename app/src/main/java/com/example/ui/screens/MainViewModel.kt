@@ -1042,17 +1042,50 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
     }
 
 
-    // برای استخراج و اصلاح متن: Gemini اول؛ در صورت نبودن کلید یا خطا، Groq.
-    private suspend fun aiTextWithGroqFirst(
+    // تمام عملیات متنی: ابتدا Gemini؛ اگر کلید تنظیم نشده یا درخواست ناموفق بود، Groq.
+    private suspend fun aiTextWithGeminiFirst(
         groqCall: suspend () -> Result<String>,
         geminiCall: suspend () -> Result<String>
     ): Result<String> {
-        if (GeminiApiService.getSavedApiKey(getApplication<Application>()).isNotBlank()) {
-            val geminiResult = geminiCall()
+        val hasGeminiKey = GeminiApiService.getSavedApiKey(getApplication<Application>()).isNotBlank()
+        var geminiFailure: Throwable? = null
+
+        if (hasGeminiKey) {
+            val geminiResult = try {
+                geminiCall()
+            } catch (cancelled: kotlinx.coroutines.CancellationException) {
+                throw cancelled
+            } catch (error: Exception) {
+                Result.failure<String>(error)
+            }
+
             if (geminiResult.isSuccess) return geminiResult
-            Log.w(TAG, "Gemini failed; falling back to Groq", geminiResult.exceptionOrNull())
+            geminiFailure = geminiResult.exceptionOrNull()
+            Log.w(TAG, "Gemini failed; falling back to Groq", geminiFailure)
+        } else {
+            Log.i(TAG, "Gemini API key is not configured; trying Groq fallback")
         }
-        return groqCall()
+
+        val groqResult = try {
+            groqCall()
+        } catch (cancelled: kotlinx.coroutines.CancellationException) {
+            throw cancelled
+        } catch (error: Exception) {
+            Result.failure<String>(error)
+        }
+
+        if (groqResult.isSuccess || geminiFailure == null) return groqResult
+
+        val groqFailure = groqResult.exceptionOrNull()
+        return Result.failure(
+            Exception(
+                "Gemini ناموفق بود (" + (geminiFailure.localizedMessage ?: "خطای نامشخص") +
+                    ") و جایگزین Groq نیز ناموفق بود (" +
+                    (groqFailure?.localizedMessage ?: "خطای نامشخص") +
+                    "). متن اصلی و اطلاعات ذخیره‌شده حفظ شده‌اند.",
+                groqFailure
+            )
+        )
     }
 
     fun testGroqConnection(
@@ -1325,7 +1358,7 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
         // بعد از پیاده‌سازی، متن، خلاصه و نکات کلیدی بلافاصله در همان جلسه ذخیره می‌شوند.
         _aiOperationTitle.value = "در حال تهیه خلاصه و کلیدواژه‌ها..."
 
-        val summary = aiTextWithGroqFirst(
+        val summary = aiTextWithGeminiFirst(
             groqCall = { GroqApiService.summarizeLecture(transcript, current.title) },
             geminiCall = { GeminiApiService.summarizeLecture(transcript, current.title) }
         )
@@ -1334,7 +1367,7 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
         }
 
         val handoutForKeywords = updated.aiSummary?.takeIf { it.isNotBlank() } ?: transcript
-        val keyPoints = aiTextWithGroqFirst(
+        val keyPoints = aiTextWithGeminiFirst(
             groqCall = { GroqApiService.extractKeyPoints(handoutForKeywords) },
             geminiCall = { GeminiApiService.extractKeyPoints(handoutForKeywords) }
         )
@@ -1380,7 +1413,7 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
             _aiError.value = null
 
             val result =
-                aiTextWithGroqFirst(
+                aiTextWithGeminiFirst(
                     groqCall = { GroqApiService.summarizeLecture(current.transcript, current.title) },
                     geminiCall = { GeminiApiService.summarizeLecture(current.transcript, current.title) }
                 )
@@ -1436,7 +1469,7 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
 
             val handoutForKeywords = current.aiSummary?.takeIf { it.isNotBlank() } ?: current.transcript
             val result =
-                aiTextWithGroqFirst(
+                aiTextWithGeminiFirst(
                     groqCall = { GroqApiService.extractKeyPoints(handoutForKeywords) },
                     geminiCall = { GeminiApiService.extractKeyPoints(handoutForKeywords) }
                 )
@@ -1491,7 +1524,7 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
             _aiError.value = null
 
             val result =
-                aiTextWithGroqFirst(
+                aiTextWithGeminiFirst(
                     groqCall = { GroqApiService.generateQuiz(current.transcript) },
                     geminiCall = { GeminiApiService.generateQuiz(current.transcript) }
                 )
@@ -1554,7 +1587,7 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
             _aiError.value = null
 
             val result =
-                aiTextWithGroqFirst(
+                aiTextWithGeminiFirst(
                     groqCall = { GroqApiService.askLectureQuestion(current.transcript, question) },
                     geminiCall = { GeminiApiService.askLectureQuestion(current.transcript, question) }
                 )
@@ -1610,7 +1643,7 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
                     _aiOperationTitle.value =
                         "ویرایش امانت‌دارانه متن؛ بخش ${index + 1} از ${parts.size}"
 
-                    val result = aiTextWithGroqFirst(
+                    val result = aiTextWithGeminiFirst(
                         groqCall = { GroqApiService.polishTranscript(part) },
                         geminiCall = { GeminiApiService.polishTranscript(part) }
                     )
@@ -1633,7 +1666,7 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
                 formTranscript.value = editedTranscript
 
                 _aiOperationTitle.value = "در حال تهیه خلاصه از متن ویرایش‌شده..."
-                val summaryResult = aiTextWithGroqFirst(
+                val summaryResult = aiTextWithGeminiFirst(
                     groqCall = { GroqApiService.summarizeLecture(editedTranscript, formTitle.value) },
                     geminiCall = { GeminiApiService.summarizeLecture(editedTranscript, formTitle.value) }
                 )
@@ -1642,7 +1675,7 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
                 _aiOperationTitle.value = "در حال استخراج کلیدواژه‌ها..."
                 // Extract keywords from the complete edited transcript, not the shorter summary.
                 val keywordSource = editedTranscript
-                val keywordResult = aiTextWithGroqFirst(
+                val keywordResult = aiTextWithGeminiFirst(
                     groqCall = { GroqApiService.extractKeyPoints(keywordSource) },
                     geminiCall = { GeminiApiService.extractKeyPoints(keywordSource) }
                 )
