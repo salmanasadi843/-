@@ -241,7 +241,7 @@ fun AdvancedSearchScreen(
                                                 }
                                         }
                                     }
-                                    return (if (relevant.isNotEmpty()) relevant.joinToString("\\n") else source).take(limit)
+                                    return (if (relevant.isNotEmpty()) relevant.joinToString("\n") else source).take(limit)
                                 }
                                 val sourceText = results.take(12).mapIndexed { index, lecture ->
                                     val id = "S${index + 1}"
@@ -251,8 +251,8 @@ fun AdvancedSearchScreen(
                                         "خلاصه هوشمند: " + relevantText(lecture.aiSummary.orEmpty(), 700),
                                         "کلیدواژه‌ها: " + relevantText(lecture.aiKeyPoints.orEmpty(), 400)
                                     ).filter { it.substringAfter(": ").isNotBlank() }.joinToString("\\n")
-                                    "[$id] عنوان جلسه: ${lecture.title}\\nاستاد: ${lecture.professorName}\\nدرس: ${lecture.courseName}\\n$body"
-                                }.joinToString("\\n\\n")
+                                    "[$id] عنوان جلسه: ${lecture.title}\nاستاد: ${lecture.professorName}\nدرس: ${lecture.courseName}\n$body"
+                                }.joinToString("\n\n")
                                 viewModel.generateResearchReport(query, researchType, sourceText)
                             },
                             enabled = query.isNotBlank() && results.isNotEmpty() && !researchLoading,
