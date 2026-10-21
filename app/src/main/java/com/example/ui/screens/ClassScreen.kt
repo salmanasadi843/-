@@ -36,7 +36,8 @@ fun ClassScreen(
     onBack: () -> Unit
 ) {
     val context = LocalContext.current
-    val ownerUid = AuthPreferences.currentUid(context).orEmpty()\n    val currentTeacherName = AuthPreferences.currentName(context)
+    val ownerUid = AuthPreferences.currentUid(context).orEmpty()
+    val currentTeacherName = AuthPreferences.currentName(context)
     val canManageClasses = userRole == UserRole.TEACHER || AuthPreferences.isPrimaryTeacher(context)
     val canCreateInSelectedTeacher = canManageClasses && (teacherKey == null || teacherKey == ownerUid)
     val allClasses by viewModel.repository.allClasses.collectAsState(initial = emptyList())
