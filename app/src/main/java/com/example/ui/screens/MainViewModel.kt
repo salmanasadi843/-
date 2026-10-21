@@ -256,10 +256,18 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
     val advancedSearchProfessor = MutableStateFlow("همه استادان")
     val advancedSearchCourse = MutableStateFlow("همه درس‌ها")
     val advancedSearchClassId = MutableStateFlow<Long?>(null)
+    // LazyColumn viewport is kept in the ViewModel because Home is recreated after detail navigation.
+    val advancedSearchScrollIndex = MutableStateFlow(0)
+    val advancedSearchScrollOffset = MutableStateFlow(0)
     val searchResultLectureIds = MutableStateFlow<List<Long>>(emptyList())
     val currentSearchResultIndex = MutableStateFlow(0)
     val isSearchResultNavigationActive = MutableStateFlow(false)
     private val reopenAdvancedSearch = MutableStateFlow(false)
+
+    fun saveAdvancedSearchScrollPosition(index: Int, offset: Int) {
+        advancedSearchScrollIndex.value = index.coerceAtLeast(0)
+        advancedSearchScrollOffset.value = offset.coerceAtLeast(0)
+    }
 
     fun beginSearchNavigation(ids: List<Long>, selectedId: Long) {
         searchResultLectureIds.value = ids.distinct()
