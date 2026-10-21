@@ -107,7 +107,8 @@ fun TeacherFoldersScreen(
     }
 
     val rows = remember(visibleClasses, deletedKeys, hiddenKeys, showHidden, uid) {
-        val currentTeacherName = AuthPreferences.currentName(context)\n        val groups = visibleClasses.groupBy { teacherFolderKey(it, uid, currentTeacherName) }
+        val currentTeacherName = AuthPreferences.currentName(context)
+        val groups = visibleClasses.groupBy { teacherFolderKey(it, uid, currentTeacherName) }
         val teacherRows = groups.entries
             .filter { it.key !in deletedKeys }
             .map { (key, classes) ->
