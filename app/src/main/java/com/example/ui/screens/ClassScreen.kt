@@ -55,7 +55,7 @@ fun ClassScreen(
         else emptyList()
     } else {
         val ownedClasses = allClasses.filter {
-            it.id > 0L && (it.ownerUid == ownerUid || it.ownerUid.isBlank())
+            it.id > 0L && ((ownerUid.isNotBlank() && it.ownerUid == ownerUid) || (it.ownerUid.isBlank() && teacherFolderKey(it, ownerUid, currentTeacherName) == ownerUid))
         }
         val foreignPositiveClasses = allClasses.filter {
             it.id > 0L && it.ownerUid.isNotBlank() && it.ownerUid != ownerUid
@@ -76,10 +76,10 @@ fun ClassScreen(
     val folderPrefs = remember(ownerUid) {
         context.getSharedPreferences("teacher_folders_local_${ownerUid.ifBlank { "local" }}", android.content.Context.MODE_PRIVATE)
     }
-    val deletedTeacherKeys = remember(teacherKey, ownerUid) {
+    val deletedTeacherKeys = remember(teacherKey, ownerUid, currentTeacherName) {
         folderPrefs.getStringSet("deleted_keys", emptySet())?.toSet().orEmpty()
     }
-    val classes = remember(allVisibleClasses, teacherKey, ownerUid, deletedTeacherKeys) {
+    val classes = remember(allVisibleClasses, teacherKey, ownerUid, currentTeacherName, deletedTeacherKeys) {
         when (teacherKey) {
             null -> allVisibleClasses
             "__unfiled_teachers__" -> allVisibleClasses.filter { teacherFolderKey(it, ownerUid.ifBlank { "local" }, currentTeacherName) in deletedTeacherKeys }
