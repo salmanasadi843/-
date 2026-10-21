@@ -275,7 +275,7 @@ private fun makeSearchExcerpt(lecture: LectureEntity, terms: List<String>): Sear
         "متن ویرایش‌شده" to lecture.transcript,
         "خلاصه هوشمند" to lecture.aiSummary.orEmpty(),
         "کلیدواژه‌ها" to lecture.aiKeyPoints.orEmpty(),
-        "یادداشت‌ها و پرسش‌ها" to lecture.aiQuizJson.orEmpty(),
+        "پرسش‌های هوشمند" to lecture.aiQuizJson.orEmpty(),
         "برچسب‌ها" to lecture.tags
     )
     val match = sources.firstOrNull { (label, candidate) ->
