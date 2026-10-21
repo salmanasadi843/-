@@ -85,7 +85,8 @@ fun AdvancedSearchScreen(
             val edited = normalizeSearchText(lecture.transcript)
             val summary = normalizeSearchText(lecture.aiSummary.orEmpty())
             val keyPoints = normalizeSearchText(lecture.aiKeyPoints.orEmpty())
-            val content = listOf(title, metadata, original, edited, summary, keyPoints).joinToString(" ")
+            val quizQuestions = normalizeSearchText(lecture.aiQuizJson.orEmpty())
+            val content = listOf(title, metadata, original, edited, summary, keyPoints, quizQuestions).joinToString(" ")
             val textMatches = when {
                 terms.isEmpty() -> true
                 matchMode == "phrase" -> content.contains(normalizeSearchText(query).trim())
@@ -114,6 +115,7 @@ fun AdvancedSearchScreen(
                     if (original.contains(term)) score += 5
                     if (summary.contains(term)) score += 7
                     if (keyPoints.contains(term)) score += 4
+                    if (quizQuestions.contains(term)) score += 4
                     val variants = semanticVariants(term).filter { it != term }
                     if (variants.any { title.contains(it) }) score += 10
                     if (variants.any { content.contains(it) }) score += 3
@@ -220,7 +222,7 @@ fun AdvancedSearchScreen(
             if (userRole == UserRole.STUDENT && !studentFeedReady) {
                 Text("برای جلوگیری از نمایش مطالبی که انتشارشان لغو شده، تا پایان بررسی همگام‌سازی جستجو موقتاً خالی است.", color = MaterialTheme.colorScheme.onSurfaceVariant)
             } else if (query.isBlank()) {
-                Text("عبارت موردنظر را وارد کنید. جستجو در عنوان، استاد و درس، برچسب‌ها، متن اصلی، متن ویرایش‌شده، خلاصه و کلیدواژه‌ها انجام می‌شود.", color = MaterialTheme.colorScheme.onSurfaceVariant)
+                Text("عبارت موردنظر را وارد کنید. جستجو در عنوان، استاد و درس، برچسب‌ها، متن اصلی، متن ویرایش‌شده، خلاصه، کلیدواژه‌ها و پرسش‌های هوشمند انجام می‌شود.", color = MaterialTheme.colorScheme.onSurfaceVariant)
             } else if (results.isEmpty()) {
                 Text("نتیجه‌ای پیدا نشد. عبارت یا فیلترها را تغییر دهید.", color = MaterialTheme.colorScheme.onSurfaceVariant)
             }
