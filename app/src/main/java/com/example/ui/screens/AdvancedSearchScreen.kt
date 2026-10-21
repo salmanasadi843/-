@@ -76,24 +76,54 @@ fun AdvancedSearchScreen(
     val terms = normalizeSearchText(query).split(Regex("\\s+")).filter { it.isNotBlank() }
 
     val results = remember(searchableLectures, query, matchMode, selectedProfessor, selectedCourse, selectedClassId) {
-        searchableLectures.filter { lecture ->
-            val content = normalizeSearchText(
-                listOf(
-                    lecture.title, lecture.courseName, lecture.professorName, lecture.tags,
-                    lecture.transcript, lecture.originalTranscript,
-                    lecture.aiSummary.orEmpty(), lecture.aiKeyPoints.orEmpty()
-                ).joinToString(" ")
+        searchableLectures.mapNotNull { lecture ->
+            val title = normalizeSearchText(lecture.title)
+            val metadata = normalizeSearchText(
+                listOf(lecture.courseName, lecture.professorName, lecture.tags).joinToString(" ")
             )
+            val original = normalizeSearchText(lecture.originalTranscript)
+            val edited = normalizeSearchText(lecture.transcript)
+            val summary = normalizeSearchText(lecture.aiSummary.orEmpty())
+            val keyPoints = normalizeSearchText(lecture.aiKeyPoints.orEmpty())
+            val content = listOf(title, metadata, original, edited, summary, keyPoints).joinToString(" ")
             val textMatches = when {
                 terms.isEmpty() -> true
                 matchMode == "phrase" -> content.contains(normalizeSearchText(query).trim())
-                else -> terms.all { content.contains(it) }
+                else -> terms.all { term ->
+                    semanticVariants(term).any { variant -> content.contains(variant) }
+                }
             }
-            textMatches &&
+            val filtersMatch =
                 (selectedProfessor == "همه استادان" || lecture.professorName.trim() == selectedProfessor) &&
                 (selectedCourse == "همه درس‌ها" || lecture.courseName.trim() == selectedCourse) &&
                 (selectedClassId == null || lecture.classId == selectedClassId)
-        }.sortedByDescending { it.dateMillis }
+            if (!textMatches || !filtersMatch) {
+                null
+            } else {
+                // Hybrid ranking: exact phrase, title, metadata, edited/original text,
+                // summary and key points. Semantic variants broaden recall but exact
+                // matches always receive the strongest score.
+                val normalizedQuery = normalizeSearchText(query).trim()
+                var score = 0
+                if (normalizedQuery.isNotBlank() && title.contains(normalizedQuery)) score += 100
+                if (normalizedQuery.isNotBlank() && content.contains(normalizedQuery)) score += 50
+                terms.forEach { term ->
+                    if (title.contains(term)) score += 18
+                    if (metadata.contains(term)) score += 8
+                    if (edited.contains(term)) score += 6
+                    if (original.contains(term)) score += 5
+                    if (summary.contains(term)) score += 7
+                    if (keyPoints.contains(term)) score += 4
+                    val variants = semanticVariants(term).filter { it != term }
+                    if (variants.any { title.contains(it) }) score += 10
+                    if (variants.any { content.contains(it) }) score += 3
+                }
+                lecture to score
+            }
+        }.sortedWith(
+            compareByDescending<Pair<LectureEntity, Int>> { it.second }
+                .thenByDescending { it.first.dateMillis }
+        ).map { it.first }
     }
 
     Scaffold(
@@ -251,6 +281,32 @@ fun AdvancedSearchScreen(
             }
         }
     }
+}
+
+// Lightweight Persian/Islamic-studies query expansion. This improves recall
+// locally without uploading private lecture text to an external service. It is a
+// first semantic-search layer, not a substitute for embedding-based retrieval.
+private val searchConceptGroups: List<Set<String>> = listOf(
+    setOf("خبر واحد", "خبرواحد", "روایت واحد", "روایت منفرد", "خبر ظنی"),
+    setOf("عقل عملی", "عقلانیت عملی", "حکم عملی"),
+    setOf("حسن و قبح", "حسن وقبح", "خوبی و بدی", "تحسین و تقبیح"),
+    setOf("اجتهاد", "استنباط", "فقاهت"),
+    setOf("قطع", "یقین", "علم قطعی"),
+    setOf("ظن", "گمان", "غیرقطعی"),
+    setOf("متن اصلی", "متن خام", "متن اولیه"),
+    setOf("خلاصه", "چکیده", "جمع‌بندی")
+)
+
+private fun semanticVariants(term: String): Set<String> {
+    val normalized = normalizeSearchText(term)
+    val variants = linkedSetOf(normalized)
+    searchConceptGroups.forEach { group ->
+        val normalizedGroup = group.map(::normalizeSearchText)
+        if (normalizedGroup.any { it == normalized || it.contains(normalized) || normalized.contains(it) }) {
+            variants.addAll(normalizedGroup)
+        }
+    }
+    return variants
 }
 
 private fun normalizeSearchText(value: String): String =
