@@ -24,14 +24,27 @@ import com.example.data.local.AppDatabase
 import kotlinx.coroutines.launch
 
 /** Stable grouping key; a teacher UID is preferred over a display name. */
-internal fun teacherFolderKey(clazz: com.example.data.local.ClassEntity, currentUid: String): String {
-    if (clazz.ownerUid.isNotBlank()) return clazz.ownerUid
-    if (clazz.id > 0L && currentUid.isNotBlank()) return currentUid
-    val normalized = clazz.teacherName.trim().lowercase()
+private fun normalizeTeacherLabel(value: String): String =
+    value.trim().lowercase()
         .replace('ي', 'ی').replace('ك', 'ک')
         .replace(Regex("[\\u200c\\u200d]"), "")
         .replace(Regex("\\s+"), " ")
-    return "name:" + normalized.ifBlank { "بدون-نام" }
+
+internal fun teacherFolderKey(
+    clazz: com.example.data.local.ClassEntity,
+    currentUid: String,
+    currentTeacherName: String = ""
+): String {
+    // Explicit ownership always wins. Legacy rows without ownerUid must be grouped
+    // by their teacher label, not automatically assigned to whichever account is open.
+    if (clazz.ownerUid.isNotBlank()) return clazz.ownerUid
+    val legacyTeacher = normalizeTeacherLabel(clazz.teacherName)
+    val signedInTeacher = normalizeTeacherLabel(currentTeacherName)
+    if (clazz.id > 0L && currentUid.isNotBlank() &&
+        legacyTeacher.isNotBlank() && signedInTeacher.isNotBlank() &&
+        legacyTeacher == signedInTeacher
+    ) return currentUid
+    return "name:" + legacyTeacher.ifBlank { "بدون-نام" }
 }
 
 private const val UNFILED_TEACHERS_KEY = "__unfiled_teachers__"
@@ -94,7 +107,7 @@ fun TeacherFoldersScreen(
     }
 
     val rows = remember(visibleClasses, deletedKeys, hiddenKeys, showHidden, uid) {
-        val groups = visibleClasses.groupBy { teacherFolderKey(it, uid) }
+        val currentTeacherName = AuthPreferences.currentName(context)\n        val groups = visibleClasses.groupBy { teacherFolderKey(it, uid, currentTeacherName) }
         val teacherRows = groups.entries
             .filter { it.key !in deletedKeys }
             .map { (key, classes) ->
@@ -121,7 +134,7 @@ fun TeacherFoldersScreen(
         val visibleTeacherRows = teacherRows
             .filter { showHidden || it.key !in hiddenKeys }
             .sortedBy { it.title.lowercase() }
-        val unfiledClasses = visibleClasses.filter { teacherFolderKey(it, uid) in deletedKeys }
+        val unfiledClasses = visibleClasses.filter { teacherFolderKey(it, uid, currentTeacherName) in deletedKeys }
         val result = visibleTeacherRows.toMutableList()
         if (unfiledClasses.isNotEmpty()) {
             result.add(0, TeacherFolderRow(UNFILED_TEACHERS_KEY, "بدون پوشه", unfiledClasses, true))
