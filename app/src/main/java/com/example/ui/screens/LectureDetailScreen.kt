@@ -583,6 +583,21 @@ fun TranscriptTab(
     val hasText = originalText.isNotBlank() || correctedText.isNotBlank()
     val tags = lecture.tags.split(",").map { it.trim() }.filter { it.isNotBlank() }
 
+    LaunchedEffect(lecture.id, searchQuery, originalText, correctedText) {
+        if (searchQuery.isNotBlank()) {
+            val normalizedQuery = normalizeTranscriptForSearch(searchQuery).first.trim()
+            val normalizedOriginal = normalizeTranscriptForSearch(originalText).first
+            val normalizedCorrected = normalizeTranscriptForSearch(correctedText).first
+            val originalContains = normalizedQuery.isNotBlank() && normalizedOriginal.contains(normalizedQuery)
+            val correctedContains = normalizedQuery.isNotBlank() && normalizedCorrected.contains(normalizedQuery)
+            when {
+                correctedContains && !originalContains -> selectedTextTab = 1
+                originalContains -> selectedTextTab = 0
+                correctedContains -> selectedTextTab = 1
+            }
+        }
+    }
+
     Column(
         modifier = Modifier
             .fillMaxSize()
