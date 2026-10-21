@@ -22,6 +22,7 @@ import androidx.compose.ui.text.withStyle
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.platform.LocalContext
 import com.example.data.local.LectureEntity
 import java.util.Locale
 
@@ -40,6 +41,7 @@ fun AdvancedSearchScreen(
     BackHandler(onBack = exitSearch)
     val allClasses by viewModel.repository.allClasses.collectAsState(initial = emptyList())
     val allLectures by viewModel.repository.allLectures.collectAsState(initial = emptyList())
+    val context = LocalContext.current
     val syncStatus by viewModel.studentMaterialsSyncStatus.collectAsState()
     val studentFeedReady = userRole != UserRole.STUDENT || (
         syncStatus != "مطالب آنلاین هنوز بررسی نشده‌اند." &&
@@ -157,7 +159,11 @@ fun AdvancedSearchScreen(
         ) {
             OutlinedTextField(
                 value = query,
-                onValueChange = { query = it; viewModel.advancedSearchQuery.value = it },
+                onValueChange = {
+                    query = it
+                    viewModel.advancedSearchQuery.value = it
+                    viewModel.clearSemanticSearchTerms()
+                },
                 modifier = Modifier.fillMaxWidth(),
                 singleLine = false,
                 maxLines = 3,
@@ -221,15 +227,15 @@ fun AdvancedSearchScreen(
                         }
                         Button(
                             onClick = {
-                                val sourceText = results.take(20).mapIndexed { index, lecture ->
+                                val sourceText = results.take(12).mapIndexed { index, lecture ->
                                     val id = "S${index + 1}"
                                     val body = listOf(
-                                        "متن اصلی: " + lecture.originalTranscript,
-                                        "متن ویرایش‌شده: " + lecture.transcript,
-                                        "خلاصه: " + lecture.aiSummary.orEmpty(),
-                                        "کلیدواژه‌ها: " + lecture.aiKeyPoints.orEmpty()
+                                        "متن اصلی: " + lecture.originalTranscript.take(1200),
+                                        "متن ویرایش‌شده: " + lecture.transcript.take(1200),
+                                        "خلاصه: " + lecture.aiSummary.orEmpty().take(700),
+                                        "کلیدواژه‌ها: " + lecture.aiKeyPoints.orEmpty().take(500)
                                     ).filter { it.substringAfter(": ").isNotBlank() }.joinToString("\n")
-                                    "[$id] عنوان جلسه: ${lecture.title}\nاستاد: ${lecture.professorName}\nدرس: ${lecture.courseName}\nتاریخ: ${lecture.dateMillis}\n$body"
+                                    "[$id] عنوان جلسه: ${lecture.title}\nاستاد: ${lecture.professorName}\nدرس: ${lecture.courseName}\n$body"
                                 }.joinToString("\n\n")
                                 viewModel.generateResearchReport(query, researchType, sourceText)
                             },
@@ -241,7 +247,10 @@ fun AdvancedSearchScreen(
                         if (researchReport.isNotBlank()) {
                             HorizontalDivider()
                             Text(researchReport, style = MaterialTheme.typography.bodyMedium)
-                            TextButton(onClick = { GenUI.copy(researchReport) }) { Text("کپی گزارش") }
+                            TextButton(onClick = {
+                                val clipboard = context.getSystemService(android.content.Context.CLIPBOARD_SERVICE) as android.content.ClipboardManager
+                                clipboard.setPrimaryClip(android.content.ClipData.newPlainText("گزارش پژوهشی درس‌یار", researchReport))
+                            }) { Text("کپی گزارش") }
                         }
                     }
                 }
