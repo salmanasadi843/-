@@ -227,16 +227,32 @@ fun AdvancedSearchScreen(
                         }
                         Button(
                             onClick = {
+                                val sourceTerms = (if (matchMode == "semantic" && expandedTerms.isNotEmpty()) expandedTerms else terms)
+                                    .filter { it.length >= 2 }.distinct()
+                                fun relevantText(source: String, limit: Int): String {
+                                    if (source.isBlank()) return ""
+                                    val paragraphs = source.split(Regex("\\n\\s*\\n|(?<=[.!؟])\\s+"))
+                                    val relevant = paragraphs.filter { paragraph ->
+                                        val normalizedParagraph = normalizeSearchText(paragraph)
+                                        sourceTerms.any { term ->
+                                            normalizedParagraph.contains(term) ||
+                                                term.split(Regex("\\s+")).filter { it.length >= 3 }.let { words ->
+                                                    words.size >= 2 && words.all { normalizedParagraph.contains(it) }
+                                                }
+                                        }
+                                    }
+                                    return (if (relevant.isNotEmpty()) relevant.joinToString("\\n") else source).take(limit)
+                                }
                                 val sourceText = results.take(12).mapIndexed { index, lecture ->
                                     val id = "S${index + 1}"
                                     val body = listOf(
-                                        "متن اصلی: " + lecture.originalTranscript.take(1200),
-                                        "متن ویرایش‌شده: " + lecture.transcript.take(1200),
-                                        "خلاصه: " + lecture.aiSummary.orEmpty().take(700),
-                                        "کلیدواژه‌ها: " + lecture.aiKeyPoints.orEmpty().take(500)
-                                    ).filter { it.substringAfter(": ").isNotBlank() }.joinToString("\n")
-                                    "[$id] عنوان جلسه: ${lecture.title}\nاستاد: ${lecture.professorName}\nدرس: ${lecture.courseName}\n$body"
-                                }.joinToString("\n\n")
+                                        "متن اصلی درس: " + relevantText(lecture.originalTranscript, 1400),
+                                        "متن ویرایش‌شده: " + relevantText(lecture.transcript, 1400),
+                                        "خلاصه هوشمند: " + relevantText(lecture.aiSummary.orEmpty(), 700),
+                                        "کلیدواژه‌ها: " + relevantText(lecture.aiKeyPoints.orEmpty(), 400)
+                                    ).filter { it.substringAfter(": ").isNotBlank() }.joinToString("\\n")
+                                    "[$id] عنوان جلسه: ${lecture.title}\\nاستاد: ${lecture.professorName}\\nدرس: ${lecture.courseName}\\n$body"
+                                }.joinToString("\\n\\n")
                                 viewModel.generateResearchReport(query, researchType, sourceText)
                             },
                             enabled = query.isNotBlank() && results.isNotEmpty() && !researchLoading,
