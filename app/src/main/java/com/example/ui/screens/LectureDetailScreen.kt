@@ -372,7 +372,7 @@ fun LectureDetailScreen(
             TranscriptTab(
                 lecture = currentLecture,
                 searchQuery = activeSearchQuery.takeIf { searchNavigationActive }.orEmpty(),
-                searchMatchMode = activeSearchMatchMode,
+                transcriptMatchMode = activeSearchMatchMode,
                 onEditClick = { onNavigateToEdit(lectureId) },
                 onCopyClick = { textToCopy ->
                     val clipboard = context.getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager
@@ -569,7 +569,7 @@ fun AudioPlayerCard(
 fun TranscriptTab(
     lecture: LectureEntity,
     searchQuery: String = "",
-    searchMatchMode: String = "all",
+    transcriptMatchMode: String = "all",
     onEditClick: () -> Unit,
     onCopyClick: (String) -> Unit,
     audioContent: (@Composable () -> Unit)? = null,
@@ -586,7 +586,7 @@ fun TranscriptTab(
     val hasText = originalText.isNotBlank() || correctedText.isNotBlank()
     val tags = lecture.tags.split(",").map { it.trim() }.filter { it.isNotBlank() }
 
-    LaunchedEffect(lecture.id, searchQuery, searchMatchMode, originalText, correctedText) {
+    LaunchedEffect(lecture.id, searchQuery, transcriptMatchMode, originalText, correctedText) {
         if (searchQuery.isNotBlank()) {
             val normalizedQuery = normalizeTranscriptForSearch(searchQuery).first.trim()
             val normalizedOriginal = normalizeTranscriptForSearch(originalText).first
@@ -594,7 +594,7 @@ fun TranscriptTab(
             val queryTerms = normalizedQuery.split(Regex("\\s+")).filter { it.isNotBlank() }
             fun matches(text: String): Boolean = when {
                 normalizedQuery.isBlank() -> false
-                searchMatchMode == "phrase" -> text.contains(normalizedQuery)
+                transcriptMatchMode == "phrase" -> text.contains(normalizedQuery)
                 else -> queryTerms.all { text.contains(it) }
             }
             val originalContains = matches(normalizedOriginal)
