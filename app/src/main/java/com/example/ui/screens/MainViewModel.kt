@@ -1088,6 +1088,107 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
         )
     }
 
+    // Research assistant: AI-assisted concept expansion, then local retrieval.
+    private val _semanticSearchTerms = MutableStateFlow<List<String>>(emptyList())
+    val semanticSearchTerms: StateFlow<List<String>> = _semanticSearchTerms.asStateFlow()
+    private val _isSemanticExpansionLoading = MutableStateFlow(false)
+    val isSemanticExpansionLoading: StateFlow<Boolean> = _isSemanticExpansionLoading.asStateFlow()
+    private val _researchReport = MutableStateFlow("")
+    val researchReport: StateFlow<String> = _researchReport.asStateFlow()
+    private val _isResearchLoading = MutableStateFlow(false)
+    val isResearchLoading: StateFlow<Boolean> = _isResearchLoading.asStateFlow()
+    private val _researchError = MutableStateFlow<String?>(null)
+    val researchError: StateFlow<String?> = _researchError.asStateFlow()
+
+    fun expandSemanticSearchQuery(query: String) {
+        if (query.isBlank()) {
+            _researchError.value = "ابتدا موضوع یا پرسش خود را وارد کنید."
+            return
+        }
+        viewModelScope.launch {
+            _isSemanticExpansionLoading.value = true
+            _researchError.value = null
+            val prompt = """
+                موضوع یا پرسش فارسی زیر را برای جست‌وجو در درس‌های دانشگاهی و حوزوی گسترش بده.
+                فقط 8 تا 15 اصطلاح، مفهوم نزدیک، صورت‌بندی پرسشی و عبارت علمی مرتبط را بنویس؛ هر مورد در یک خط.
+                موارد باید برای بازیابی متن مفید باشند، نه توضیح یا پاسخ به موضوع.
+                عبارت اصلی را نیز در فهرست نگه دار. شماره‌گذاری و توضیح اضافی ننویس.
+                موضوع: $query
+            """.trimIndent()
+            val result = aiTextWithGeminiFirst(
+                groqCall = { GroqApiService.generateContent(prompt, "فقط فهرست اصطلاحات جست‌وجو را تولید کن.") },
+                geminiCall = { GeminiApiService.generateContent(prompt, "فقط فهرست اصطلاحات جست‌وجو را تولید کن.") }
+            )
+            result.onSuccess { raw ->
+                val terms = raw.lineSequence()
+                    .map { it.trim().removePrefix("-").removePrefix("•").replace(Regex("^\\d+[.)、]\\s*"), "").trim().trim('"', '«', '»') }
+                    .filter { it.length >= 2 }
+                    .distinctBy { it.lowercase() }
+                    .take(18)
+                    .toList()
+                _semanticSearchTerms.value = (listOf(query.trim()) + terms).distinctBy { it.lowercase() }
+                _researchError.value = null
+            }.onFailure { failure ->
+                _semanticSearchTerms.value = emptyList()
+                _researchError.value = "گسترش معنایی با هوش مصنوعی ناموفق بود؛ جست‌وجوی محلی معمولی همچنان قابل استفاده است. " + (failure.localizedMessage ?: "")
+            }
+            _isSemanticExpansionLoading.value = false
+        }
+    }
+
+    fun generateResearchReport(topic: String, reportType: String, citedSources: String) {
+        if (topic.isBlank()) {
+            _researchError.value = "موضوع پژوهش را وارد کنید."
+            return
+        }
+        if (citedSources.isBlank()) {
+            _researchError.value = "برای تهیه گزارش مستند، ابتدا جست‌وجو کنید تا منابع مرتبط پیدا شوند."
+            return
+        }
+        viewModelScope.launch {
+            _isResearchLoading.value = true
+            _researchError.value = null
+            _researchReport.value = ""
+            val task = when (reportType) {
+                "summary" -> "جمع‌بندی علمی چند جلسه"
+                "categorize" -> "دسته‌بندی علمی مطالب به تعریف‌ها، مبانی، ادله، اشکال‌ها، پاسخ‌ها و نتایج، فقط در صورت وجود در منابع"
+                "compare" -> "مقایسه دیدگاه‌ها و استدلال‌ها، بیان اشتراک‌ها و اختلاف‌ها بدون نسبت‌دادن نظر بی‌منبع"
+                "article" -> "طرح مقاله علمی شامل عنوان پیشنهادی، مسئله، پرسش اصلی، محورهای بحث و نتیجه‌های قابل پشتیبانی"
+                else -> "گزارش پژوهشی ساختارمند"
+            }
+            val systemPrompt = """
+                تو دستیار پژوهش امانت‌دار برای درس‌های دانشگاهی و حوزوی هستی.
+                فقط بر اساس منابع ارائه‌شده بنویس؛ اطلاعات بیرونی، نقل‌قول، دیدگاه، استدلال یا نتیجه ساختگی اضافه نکن.
+                هر ادعای factual و هر نقل دیدگاه را با شناسه منبع داخل کروشه مانند [S1] ارجاع بده.
+                در پایان، فهرست منابع را با شناسه، عنوان جلسه، استاد و تاریخِ موجود در داده‌ها درج کن.
+                میان سخن صریح استاد، دیدگاه نقل‌شده، استنباط تحلیلی و موضوع حل‌نشده تفاوت بگذار.
+                اگر منابع برای بخشی کافی نیستند، صریحاً بنویس «در منابع بازیابی‌شده شاهد کافی یافت نشد».
+                متن اصلی درس را تغییر نده و منبع یا شماره صفحه/پاراگرافی که داده نشده اختراع نکن.
+                فارسی علمی و روشن بنویس.
+            """.trimIndent()
+            val prompt = """
+                موضوع پژوهش: $topic
+                نوع خروجی: $task
+
+                دستور:
+                - مطالب تکراری را فقط در جمع‌بندی فشرده کن، اما اختلاف‌ها و مراحل استدلال را حذف نکن.
+                - ارجاع‌های [S#] را در متن نگه دار تا هر بخش قابل بازبینی باشد.
+                - اگر منابع با یکدیگر اختلاف دارند، اختلاف را آشکار کن و آن را به‌زور حل نکن.
+                - پایان گزارش، بخش «محدودیت منابع و پرسش‌های باز» داشته باشد.
+
+                منابع بازیابی‌شده از محتوای مجاز برنامه:
+                $citedSources
+            """.trimIndent()
+            val result = aiTextWithGeminiFirst(
+                groqCall = { GroqApiService.generateContent(prompt, systemPrompt) },
+                geminiCall = { GeminiApiService.generateContent(prompt, systemPrompt) }
+            )
+            result.onSuccess { _researchReport.value = it }
+                .onFailure { _researchError.value = it.localizedMessage ?: "تولید گزارش پژوهشی ناموفق بود." }
+            _isResearchLoading.value = false
+        }
+    }
+
     fun testGroqConnection(
         onComplete: (String?) -> Unit
     ) {
