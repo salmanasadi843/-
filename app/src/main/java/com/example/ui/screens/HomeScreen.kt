@@ -335,6 +335,7 @@ fun HomeScreen(
                 }
             }
 
+            if (!isTeacher) {
             item {
                 Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.SpaceBetween) {
                     Column(Modifier.weight(1f)) {
@@ -485,6 +486,30 @@ fun HomeScreen(
                                 }
                             } else {
                                 Text("مشاهده جلسات  ›", color = MaterialTheme.colorScheme.primary, fontWeight = FontWeight.SemiBold)
+                            }
+                        }
+                    }
+                }
+            }
+            } else {
+                item {
+                    Card(
+                        Modifier.fillMaxWidth(),
+                        RoundedCornerShape(22.dp),
+                        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface)
+                    ) {
+                        Column(Modifier.fillMaxWidth().padding(22.dp)) {
+                            Text("ساختار مطالب درس‌یار", style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Bold)
+                            Spacer(Modifier.height(6.dp))
+                            Text(
+                                "مطالب را به‌ترتیب پوشهٔ استاد ← کلاس ← جلسات مدیریت کنید. کلاس‌های استادان دیگر جدا و فقط برای مشاهده نمایش داده می‌شوند؛ مدیر اصلی امکان مدیریت آن‌ها را دارد.",
+                                color = MaterialTheme.colorScheme.onSurfaceVariant
+                            )
+                            Spacer(Modifier.height(14.dp))
+                            Button(onClick = viewModel::openClasses, modifier = Modifier.fillMaxWidth()) {
+                                Icon(Icons.Default.Folder, contentDescription = null)
+                                Spacer(Modifier.width(8.dp))
+                                Text("ورود به پوشه‌های استادان")
                             }
                         }
                     }
