@@ -75,7 +75,7 @@ fun ClassScreen(
             }
         ownedClasses + foreignPositiveClasses + sharedClasses
     }
-    val folderOwnerUid = if (isAdmin && !teacherKey.isNullOrBlank() && !teacherKey.startsWith("name:")) teacherKey else ownerUid
+    val folderOwnerUid = if (!teacherKey.isNullOrBlank() && !teacherKey.startsWith("name:")) teacherKey else ownerUid
     val folderPrefs = remember(ownerUid) {
         context.getSharedPreferences("teacher_folders_local_${ownerUid.ifBlank { "local" }}", android.content.Context.MODE_PRIVATE)
     }
@@ -100,7 +100,7 @@ fun ClassScreen(
     val classDao = remember { AppDatabase.getDatabase(context).classDao() }
     val folders by remember(folderOwnerUid) { folderDao.observeFolders(folderOwnerUid) }.collectAsState(initial = emptyList())
     val scope = rememberCoroutineScope()
-    var selectedFolderId by remember { mutableStateOf<Long?>(null) }
+    var selectedFolderId by remember(teacherKey) { mutableStateOf<Long?>(null) }
     var showCreateFolder by remember { mutableStateOf(false) }
     var newFolderName by remember { mutableStateOf("") }
     var classToMove by remember { mutableStateOf<ClassEntity?>(null) }
@@ -140,11 +140,11 @@ fun ClassScreen(
         it.id > 0L &&
             ((folderOwnerUid.isNotBlank() && it.ownerUid == folderOwnerUid) ||
                 (it.ownerUid.isBlank() && teacherFolderKey(it, folderOwnerUid, currentTeacherName) == folderOwnerUid)) &&
-            (teacherKey != null || it.folderId == selectedFolderId)
+            it.folderId == selectedFolderId
     }
     val canManageSelectedTeacher = canManageClasses && (isAdmin || teacherKey == null || teacherKey == ownerUid)
     val classesToDisplay = when {
-        isAdmin && teacherKey != null -> classes.filter { it.id > 0L }
+        teacherKey != null -> classes.filter { it.folderId == selectedFolderId }
         canManageSelectedTeacher -> visibleOwnedClasses
         else -> classes
     }
@@ -221,7 +221,7 @@ fun ClassScreen(
                 contentPadding = PaddingValues(16.dp, 12.dp, 16.dp, 96.dp),
                 verticalArrangement = Arrangement.spacedBy(12.dp)
             ) {
-                if (canManageClasses && teacherKey == null) {
+                if (teacherKey != null || canManageClasses) {
                     item {
                         Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
                             Row(verticalAlignment = Alignment.CenterVertically) {
@@ -232,12 +232,12 @@ fun ClassScreen(
                                     fontWeight = FontWeight.Bold
                                 )
                                 Row(verticalAlignment = Alignment.CenterVertically) {
-                                    if (selectedClassIds.isNotEmpty()) {
+                                    if (canManageSelectedTeacher && selectedClassIds.isNotEmpty()) {
                                         TextButton(onClick = { showBulkMove = true }) {
                                             Text("انتقال ${selectedClassIds.size} کلاس")
                                         }
                                     }
-                                    TextButton(onClick = { showCreateFolder = true }) { Text("پوشهٔ جدید +") }
+                                    if (canManageSelectedTeacher) TextButton(onClick = { showCreateFolder = true }) { Text("پوشهٔ جدید +") }
                                 }
                             }
                             if (selectedFolderId != null) {
@@ -257,14 +257,16 @@ fun ClassScreen(
                                 Text("📁", style = MaterialTheme.typography.titleLarge)
                                 Spacer(Modifier.width(10.dp))
                                 Text(folder.name, modifier = Modifier.weight(1f), fontWeight = FontWeight.SemiBold)
-                                IconButton(onClick = {
-                                    folderToRename = folder
-                                    renamedFolderName = folder.name
-                                }) {
-                                    Icon(Icons.Default.Edit, contentDescription = "ویرایش نام پوشه")
-                                }
-                                IconButton(onClick = { folderToDelete = folder }) {
-                                    Icon(Icons.Default.Delete, contentDescription = "حذف پوشه", tint = MaterialTheme.colorScheme.error)
+                                if (canManageSelectedTeacher) {
+                                    IconButton(onClick = {
+                                        folderToRename = folder
+                                        renamedFolderName = folder.name
+                                    }) {
+                                        Icon(Icons.Default.Edit, contentDescription = "ویرایش نام پوشه")
+                                    }
+                                    IconButton(onClick = { folderToDelete = folder }) {
+                                        Icon(Icons.Default.Delete, contentDescription = "حذف پوشه", tint = MaterialTheme.colorScheme.error)
+                                    }
                                 }
                                 Text("باز کردن  ›", color = MaterialTheme.colorScheme.primary)
                             }
@@ -347,7 +349,7 @@ fun ClassScreen(
                                             }
                                             IconButton(onClick = {
                                                 scope.launch {
-                                                    if (isAdmin || (item.ownerUid == ownerUid && ownerUid.isNotBlank())) {
+                                                    if (isAdmin || (item.ownerUid == folderOwnerUid && folderOwnerUid.isNotBlank())) {
                                                         classDao.update(item.copy(isPublished = !item.isPublished))
                                                     }
                                                 }
@@ -516,10 +518,10 @@ fun ClassScreen(
                                 classToMove = null
                             }
                         }
-                    }, enabled = item.ownerUid == ownerUid && ownerUid.isNotBlank()) { Text("پوشهٔ اصلی استاد") }
+                    }, enabled = isAdmin || (item.ownerUid == folderOwnerUid && folderOwnerUid.isNotBlank())) { Text("پوشهٔ اصلی استاد") }
                     folders.forEach { folder ->
                         TextButton(onClick = {
-                            if (item.ownerUid == ownerUid && ownerUid.isNotBlank()) {
+                            if (isAdmin || (item.ownerUid == folderOwnerUid && folderOwnerUid.isNotBlank())) {
                                 scope.launch {
                                     classDao.update(item.copy(folderId = folder.id))
                                     selectedClassIds = selectedClassIds - item.id
@@ -645,7 +647,7 @@ fun ClassScreen(
                                 description = editingClass?.description.orEmpty(),
                                 classDateMillis = editingClass?.classDateMillis ?: System.currentTimeMillis(),
                                 createdAtMillis = editingClass?.createdAtMillis ?: System.currentTimeMillis(),
-                                ownerUid = editingClass?.ownerUid ?: ownerUid,
+                                ownerUid = editingClass?.ownerUid ?: folderOwnerUid,
                                 folderId = editingClass?.folderId ?: selectedFolderId
                             ),
                             onSaved = {
