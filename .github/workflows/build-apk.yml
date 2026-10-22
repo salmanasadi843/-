@@ -43,7 +43,7 @@ jobs:
           gradle-version: '9.3.1'
 
       - name: Build Debug APK
-        run: gradle assembleDebug --stacktrace
+        run: gradle testDebugUnitTest assembleDebug --stacktrace
 
       - name: Upload APK
         uses: actions/upload-artifact@v6
