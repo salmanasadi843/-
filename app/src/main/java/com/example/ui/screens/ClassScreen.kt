@@ -38,8 +38,9 @@ fun ClassScreen(
     val context = LocalContext.current
     val ownerUid = AuthPreferences.currentUid(context).orEmpty()
     val currentTeacherName = AuthPreferences.currentName(context)
+    val isAdmin = AuthPreferences.isPrimaryTeacher(context)
     val canManageClasses = userRole == UserRole.TEACHER || AuthPreferences.isPrimaryTeacher(context)
-    val canCreateInSelectedTeacher = canManageClasses && (teacherKey == null || teacherKey == ownerUid)
+    val canCreateInSelectedTeacher = canManageClasses && (isAdmin || teacherKey == null || teacherKey == ownerUid)
     val allClasses by viewModel.repository.allClasses.collectAsState(initial = emptyList())
     // Never expose teacher-local or unpublished classes in student mode.
     val studentSyncStatus by viewModel.studentMaterialsSyncStatus.collectAsState()
@@ -59,7 +60,7 @@ fun ClassScreen(
             it.id > 0L && ((ownerUid.isNotBlank() && it.ownerUid == ownerUid) || (it.ownerUid.isBlank() && teacherFolderKey(it, ownerUid, currentTeacherName) == ownerUid))
         }
         val foreignPositiveClasses = allClasses.filter {
-            it.id > 0L && it.ownerUid.isNotBlank() && it.ownerUid != ownerUid
+            it.id > 0L && ((it.ownerUid.isNotBlank() && it.ownerUid != ownerUid) || (it.ownerUid.isBlank() && teacherFolderKey(it, ownerUid, currentTeacherName) != ownerUid))
         }
         val sharedClasses = allClasses.filter { it.id < 0L && it.isPublished }
             .distinctBy {
@@ -74,6 +75,7 @@ fun ClassScreen(
             }
         ownedClasses + foreignPositiveClasses + sharedClasses
     }
+    val folderOwnerUid = if (isAdmin && !teacherKey.isNullOrBlank() && !teacherKey.startsWith("name:")) teacherKey else ownerUid
     val folderPrefs = remember(ownerUid) {
         context.getSharedPreferences("teacher_folders_local_${ownerUid.ifBlank { "local" }}", android.content.Context.MODE_PRIVATE)
     }
@@ -96,7 +98,7 @@ fun ClassScreen(
     }
     val folderDao = remember(ownerUid) { AppDatabase.getDatabase(context).teacherFolderDao() }
     val classDao = remember { AppDatabase.getDatabase(context).classDao() }
-    val folders by remember(ownerUid) { folderDao.observeFolders(ownerUid) }.collectAsState(initial = emptyList())
+    val folders by remember(folderOwnerUid) { folderDao.observeFolders(folderOwnerUid) }.collectAsState(initial = emptyList())
     val scope = rememberCoroutineScope()
     var selectedFolderId by remember { mutableStateOf<Long?>(null) }
     var showCreateFolder by remember { mutableStateOf(false) }
@@ -136,13 +138,16 @@ fun ClassScreen(
     // as read-only, including imported negative-ID classes.
     val visibleOwnedClasses = classes.filter {
         it.id > 0L &&
-            ((ownerUid.isNotBlank() && it.ownerUid == ownerUid) ||
-                (it.ownerUid.isBlank() && teacherFolderKey(it, ownerUid, currentTeacherName) == ownerUid)) &&
+            ((folderOwnerUid.isNotBlank() && it.ownerUid == folderOwnerUid) ||
+                (it.ownerUid.isBlank() && teacherFolderKey(it, folderOwnerUid, currentTeacherName) == folderOwnerUid)) &&
             (teacherKey != null || it.folderId == selectedFolderId)
     }
-    val canManageSelectedTeacher = canManageClasses &&
-        (teacherKey == null || teacherKey == ownerUid)
-    val classesToDisplay = if (canManageSelectedTeacher) visibleOwnedClasses else classes
+    val canManageSelectedTeacher = canManageClasses && (isAdmin || teacherKey == null || teacherKey == ownerUid)
+    val classesToDisplay = when {
+        isAdmin && teacherKey != null -> classes.filter { it.id > 0L }
+        canManageSelectedTeacher -> visibleOwnedClasses
+        else -> classes
+    }
     // Shared/foreign classes are kept in a separate read-only section at the root,
     // never mixed into the teacher's own folders.
     val visibleOtherClasses = if (selectedFolderId == null && canManageClasses) {
@@ -267,7 +272,7 @@ fun ClassScreen(
                     }
                     item {
                         Text(
-                            classes.count { it.id > 0L && ((ownerUid.isNotBlank() && it.ownerUid == ownerUid) || (it.ownerUid.isBlank() && teacherFolderKey(it, ownerUid, currentTeacherName) == ownerUid)) && it.folderId == selectedFolderId }.toString() + " کلاس در این پوشه",
+                            classes.count { it.id > 0L && ((folderOwnerUid.isNotBlank() && it.ownerUid == folderOwnerUid) || (it.ownerUid.isBlank() && teacherFolderKey(it, folderOwnerUid, currentTeacherName) == folderOwnerUid)) && it.folderId == selectedFolderId }.toString() + " کلاس در این پوشه",
                             style = MaterialTheme.typography.labelLarge,
                             color = MaterialTheme.colorScheme.onSurfaceVariant
                         )
@@ -315,7 +320,7 @@ fun ClassScreen(
                                 Spacer(Modifier.height(8.dp))
                                 Text("مشاهده جلسات  ›", style = MaterialTheme.typography.labelLarge, fontWeight = FontWeight.SemiBold, color = MaterialTheme.colorScheme.primary)
                             }
-                            if (canManageClasses && item.id > 0L && item.ownerUid == ownerUid && ownerUid.isNotBlank()) {
+                            if (canManageSelectedTeacher && item.id > 0L && (isAdmin || (item.ownerUid == ownerUid && ownerUid.isNotBlank()))) {
                                 Checkbox(
                                     checked = item.id in selectedClassIds,
                                     onCheckedChange = { checked ->
@@ -324,9 +329,9 @@ fun ClassScreen(
                                     }
                                 )
                             }
-                            if (canManageClasses && item.id > 0L) {
+                            if (canManageSelectedTeacher && item.id > 0L) {
                                 when {
-                                    item.ownerUid == ownerUid && ownerUid.isNotBlank() -> {
+                                    isAdmin || (item.ownerUid == ownerUid && ownerUid.isNotBlank()) -> {
                                         Column(horizontalAlignment = Alignment.CenterHorizontally) {
                                             IconButton(onClick = {
                                                 editingClass = item
@@ -342,7 +347,7 @@ fun ClassScreen(
                                             }
                                             IconButton(onClick = {
                                                 scope.launch {
-                                                    if (item.ownerUid == ownerUid && ownerUid.isNotBlank()) {
+                                                    if (isAdmin || (item.ownerUid == ownerUid && ownerUid.isNotBlank())) {
                                                         classDao.update(item.copy(isPublished = !item.isPublished))
                                                     }
                                                 }
@@ -418,10 +423,10 @@ fun ClassScreen(
             confirmButton = {
                 TextButton(onClick = {
                     val nameToSave = newFolderName.trim()
-                    if (nameToSave.isNotBlank() && ownerUid.isNotBlank()) {
+                    if (nameToSave.isNotBlank() && folderOwnerUid.isNotBlank() && canManageSelectedTeacher) {
                         scope.launch {
                             runCatching {
-                                folderDao.insert(TeacherFolderEntity(ownerUid = ownerUid, name = nameToSave, parentFolderId = selectedFolderId))
+                                folderDao.insert(TeacherFolderEntity(ownerUid = folderOwnerUid, name = nameToSave, parentFolderId = selectedFolderId))
                             }.onSuccess {
                                 newFolderName = ""
                                 showCreateFolder = false
@@ -430,7 +435,7 @@ fun ClassScreen(
                             }
                         }
                     }
-                }, enabled = newFolderName.isNotBlank() && ownerUid.isNotBlank()) { Text("ایجاد") }
+                }, enabled = newFolderName.isNotBlank() && folderOwnerUid.isNotBlank() && canManageSelectedTeacher) { Text("ایجاد") }
             },
             dismissButton = { TextButton(onClick = { showCreateFolder = false }) { Text("انصراف") } }
         )
@@ -452,11 +457,12 @@ fun ClassScreen(
                 TextButton(
                     onClick = {
                         val cleanName = renamedFolderName.trim()
-                        if (cleanName.isNotBlank() && ownerUid.isNotBlank()) {
+                        if (cleanName.isNotBlank() && folderOwnerUid.isNotBlank() && canManageSelectedTeacher) {
                             scope.launch {
                                 runCatching {
-                                    val ownedFolder = folderDao.getOwnedFolder(folder.id, ownerUid)
-                                        ?: error("این پوشه متعلق به حساب فعلی نیست.")
+                                    val ownedFolder = folderDao.getOwnedFolder(folder.id, folder.ownerUid)
+                                        ?: error("پوشه پیدا نشد.")
+                                    if (!isAdmin && ownedFolder.ownerUid != ownerUid) error("این پوشه متعلق به حساب فعلی نیست.")
                                     folderDao.update(ownedFolder.copy(name = cleanName))
                                 }.onSuccess {
                                     folderToRename = null
@@ -466,7 +472,7 @@ fun ClassScreen(
                             }
                         }
                     },
-                    enabled = renamedFolderName.isNotBlank() && renamedFolderName.trim() != folder.name && ownerUid.isNotBlank()
+                    enabled = renamedFolderName.isNotBlank() && renamedFolderName.trim() != folder.name && folderOwnerUid.isNotBlank() && canManageSelectedTeacher
                 ) { Text("ذخیره") }
             },
             dismissButton = {
@@ -504,7 +510,7 @@ fun ClassScreen(
                 Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
                     Text("کلاس «${item.name}» به کدام پوشه منتقل شود؟")
                     TextButton(onClick = {
-                        if (item.ownerUid == ownerUid && ownerUid.isNotBlank()) {
+                        if (isAdmin || (item.ownerUid == ownerUid && ownerUid.isNotBlank())) {
                             scope.launch {
                                 classDao.update(item.copy(folderId = null))
                                 classToMove = null
@@ -541,7 +547,7 @@ fun ClassScreen(
                     TextButton(onClick = {
                         scope.launch {
                             val selected = allClasses.filter {
-                                it.id in selectedClassIds && it.id > 0L && it.ownerUid == ownerUid
+                                it.id in selectedClassIds && it.id > 0L && (isAdmin || it.ownerUid == folderOwnerUid)
                             }
                             selected.forEach { classDao.update(it.copy(folderId = null)) }
                             selectedClassIds = emptySet()
@@ -578,9 +584,9 @@ fun ClassScreen(
                 TextButton(onClick = {
                     folderToDelete = null
                     scope.launch {
-                        val owned = folderDao.getOwnedFolder(folder.id, ownerUid)
-                        if (owned != null && owned.ownerUid == ownerUid && ownerUid.isNotBlank()) {
-                            allClasses.filter { it.folderId == folder.id && it.id > 0L && it.ownerUid == ownerUid }
+                        val owned = folderDao.getOwnedFolder(folder.id, folder.ownerUid)
+                        if (owned != null && (isAdmin || owned.ownerUid == ownerUid) && folderOwnerUid.isNotBlank()) {
+                            allClasses.filter { it.folderId == folder.id && it.id > 0L && (isAdmin || it.ownerUid == folderOwnerUid) }
                                 .forEach { classDao.update(it.copy(folderId = folder.parentFolderId)) }
                             folders.filter { it.parentFolderId == folder.id }
                                 .forEach { folderDao.update(it.copy(parentFolderId = folder.parentFolderId)) }
