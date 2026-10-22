@@ -511,7 +511,7 @@ fun SettingsScreen(
                             viewModel.testGroqConnection {
                                 isTesting = false
                                 if (it == null) {
-                                    status = "✓ اتصال Groq برقرار است؛ اصلاح متن با Groq انجام می‌شود."
+                                    status = "✓ اتصال Groq برقرار است؛ در صورت خطای Gemini به‌عنوان جایگزین استفاده می‌شود."
                                     statusIsError = false
                                 } else {
                                     status = it
@@ -527,7 +527,7 @@ fun SettingsScreen(
                         Text("تست اتصال Groq")
                     }
                     Spacer(Modifier.height(8.dp))
-                    Text("اصلاح متن: ابتدا Gemini ← در صورت خطا → Groq", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.primary)
+                    Text("اولویت عملیات متنی: ۱) Gemini  ۲) Groq در صورت خطا", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.primary)
                 }
             }
             Card(

@@ -250,6 +250,53 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
     private val _currentScreen = MutableStateFlow<Screen>(Screen.Home)
     val currentScreen: StateFlow<Screen> = _currentScreen.asStateFlow()
 
+    // Advanced-search state survives opening a result and returning from its detail page.
+    val advancedSearchQuery = MutableStateFlow("")
+    val advancedSearchMatchMode = MutableStateFlow("all")
+    val advancedSearchProfessor = MutableStateFlow("همه استادان")
+    val advancedSearchCourse = MutableStateFlow("همه درس‌ها")
+    val advancedSearchClassId = MutableStateFlow<Long?>(null)
+    // LazyColumn viewport is kept in the ViewModel because Home is recreated after detail navigation.
+    val advancedSearchScrollIndex = MutableStateFlow(0)
+    val advancedSearchScrollOffset = MutableStateFlow(0)
+    val searchResultLectureIds = MutableStateFlow<List<Long>>(emptyList())
+    val currentSearchResultIndex = MutableStateFlow(0)
+    val isSearchResultNavigationActive = MutableStateFlow(false)
+    private val reopenAdvancedSearch = MutableStateFlow(false)
+
+    fun saveAdvancedSearchScrollPosition(index: Int, offset: Int) {
+        advancedSearchScrollIndex.value = index.coerceAtLeast(0)
+        advancedSearchScrollOffset.value = offset.coerceAtLeast(0)
+    }
+
+    fun beginSearchNavigation(ids: List<Long>, selectedId: Long) {
+        searchResultLectureIds.value = ids.distinct()
+        currentSearchResultIndex.value = searchResultLectureIds.value.indexOf(selectedId).coerceAtLeast(0)
+        isSearchResultNavigationActive.value = searchResultLectureIds.value.isNotEmpty()
+    }
+
+    fun clearSearchNavigation() {
+        isSearchResultNavigationActive.value = false
+        searchResultLectureIds.value = emptyList()
+        currentSearchResultIndex.value = 0
+        reopenAdvancedSearch.value = false
+    }
+
+    fun consumeSearchReopenFlag(): Boolean {
+        val shouldReopen = reopenAdvancedSearch.value
+        reopenAdvancedSearch.value = false
+        return shouldReopen
+    }
+
+    fun navigateSearchResult(direction: Int) {
+        val ids = searchResultLectureIds.value
+        if (!isSearchResultNavigationActive.value || ids.isEmpty()) return
+        val nextIndex = (currentSearchResultIndex.value + direction).coerceIn(0, ids.lastIndex)
+        if (nextIndex == currentSearchResultIndex.value) return
+        currentSearchResultIndex.value = nextIndex
+        navigateTo(Screen.Detail(ids[nextIndex]))
+    }
+
     // Unified Filter Criteria State
     private val _filterCriteria = MutableStateFlow(FilterCriteria())
 
@@ -521,15 +568,20 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
             is Screen.Detail -> {
                 audioPlayer.stop()
                 speechRecognizer.stopListening()
-                viewModelScope.launch {
-                    val lecture = repository.getLecture(screen.lectureId)
-                    val classId = lecture?.classId ?: lecture?.courseId?.let { courseId ->
-                        repository.getCourse(courseId)?.classId
+                if (isSearchResultNavigationActive.value) {
+                    reopenAdvancedSearch.value = true
+                    _currentScreen.value = Screen.Home
+                } else {
+                    viewModelScope.launch {
+                        val lecture = repository.getLecture(screen.lectureId)
+                        val classId = lecture?.classId ?: lecture?.courseId?.let { courseId ->
+                            repository.getCourse(courseId)?.classId
+                        }
+                        _currentScreen.value = classId?.let { id ->
+                            classParentContexts[id]?.let { Screen.ClassDetail(id, it.first, it.second) }
+                                ?: Screen.ClassDetail(id)
+                        } ?: Screen.Home
                     }
-                    _currentScreen.value = classId?.let { id ->
-                        classParentContexts[id]?.let { Screen.ClassDetail(id, it.first, it.second) }
-                            ?: Screen.ClassDetail(id)
-                    } ?: Screen.Home
                 }
             }
             is Screen.AddEdit -> {
@@ -600,9 +652,11 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
                     onFailure("مجوز فعال این حساب به‌عنوان استاد در Firebase تأیید نشد. از حساب مدیر اصلی، درخواست این استاد را بررسی و دوباره تأیید کنید؛ سپس خارج شوید و دوباره وارد شوید.")
                     return@launch
                 }
-                val uid = AuthPreferences.currentUid(getApplication<Application>()).orEmpty()
+                val context = getApplication<Application>()
+                val uid = AuthPreferences.currentUid(context).orEmpty()
+                val isAdmin = AuthPreferences.isPrimaryTeacher(context)
                 if (item.id < 0L) {
-                    onFailure("این کلاس متعلق به استاد دیگری است و فقط برای مطالعه در دسترس است؛ نمی‌توانید آن را ویرایش کنید.")
+                    onFailure("این کلاس منتشرشدهٔ استاد دیگر از این صفحه قابل ویرایش نیست.")
                     return@launch
                 }
                 if (uid.isBlank()) {
@@ -610,14 +664,15 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
                     return@launch
                 }
                 if (item.id == 0L) {
-                    onSaved(repository.saveClass(item.copy(ownerUid = uid)))
+                    val targetOwnerUid = if (isAdmin && item.ownerUid.isNotBlank()) item.ownerUid else uid
+                    onSaved(repository.saveClass(item.copy(ownerUid = targetOwnerUid)))
                 } else {
                     val existing = repository.getClass(item.id)
-                    if (existing == null || existing.ownerUid != uid) {
-                        onFailure("ویرایش فقط برای کلاسی مجاز است که مالکیت آن برای همین حساب تأیید شده باشد.")
+                    if (existing == null || (!isAdmin && existing.ownerUid != uid)) {
+                        onFailure("ویرایش فقط برای کلاس خودتان مجاز است؛ مدیر اصلی می‌تواند کلاس استادان دیگر را نیز مدیریت کند.")
                         return@launch
                     }
-                    onSaved(repository.saveClass(item))
+                    onSaved(repository.saveClass(item.copy(ownerUid = existing.ownerUid)))
                 }
             } catch (e: Exception) {
                 Log.e(TAG, "Saving class failed", e)
@@ -644,13 +699,15 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
                 _cloudSyncStatus.value = "حذف یا پنهان‌کردن کلاس استاد دیگر مجاز نیست."
                 return@launch
             }
-            val uid = AuthPreferences.currentUid(getApplication<Application>()).orEmpty()
+            val context = getApplication<Application>()
+            val uid = AuthPreferences.currentUid(context).orEmpty()
+            val isAdmin = AuthPreferences.isPrimaryTeacher(context)
             val existing = repository.getClass(item.id)
-            if (uid.isBlank() || existing == null || existing.ownerUid != uid) {
-                _cloudSyncStatus.value = "حذف فقط برای کلاسی مجاز است که مالکیت آن برای همین حساب تأیید شده باشد."
+            if (existing == null || (!isAdmin && (uid.isBlank() || existing.ownerUid != uid))) {
+                _cloudSyncStatus.value = "حذف فقط برای کلاس خودتان مجاز است؛ مدیر اصلی می‌تواند کلاس استادان دیگر را نیز مدیریت کند."
                 return@launch
             }
-            repository.deleteClass(item)
+            repository.deleteClass(existing)
             try {
                 withContext(Dispatchers.IO) { CloudMaterialsSync.sync(getApplication<Application>()) }
             } catch (e: Exception) {
@@ -990,17 +1047,157 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
     }
 
 
-    // برای استخراج و اصلاح متن: Gemini اول؛ در صورت نبودن کلید یا خطا، Groq.
-    private suspend fun aiTextWithGroqFirst(
+    // تمام عملیات متنی: ابتدا Gemini؛ اگر کلید تنظیم نشده یا درخواست ناموفق بود، Groq.
+    private suspend fun aiTextWithGeminiFirst(
         groqCall: suspend () -> Result<String>,
         geminiCall: suspend () -> Result<String>
     ): Result<String> {
-        if (GeminiApiService.getSavedApiKey(getApplication<Application>()).isNotBlank()) {
-            val geminiResult = geminiCall()
+        val hasGeminiKey = GeminiApiService.getSavedApiKey(getApplication<Application>()).isNotBlank()
+        var geminiFailure: Throwable? = null
+
+        if (hasGeminiKey) {
+            val geminiResult = try {
+                geminiCall()
+            } catch (cancelled: kotlinx.coroutines.CancellationException) {
+                throw cancelled
+            } catch (error: Exception) {
+                Result.failure<String>(error)
+            }
+
             if (geminiResult.isSuccess) return geminiResult
-            Log.w(TAG, "Gemini failed; falling back to Groq", geminiResult.exceptionOrNull())
+            geminiFailure = geminiResult.exceptionOrNull()
+            Log.w(TAG, "Gemini failed; falling back to Groq", geminiFailure)
+        } else {
+            Log.i(TAG, "Gemini API key is not configured; trying Groq fallback")
         }
-        return groqCall()
+
+        val groqResult = try {
+            groqCall()
+        } catch (cancelled: kotlinx.coroutines.CancellationException) {
+            throw cancelled
+        } catch (error: Exception) {
+            Result.failure<String>(error)
+        }
+
+        if (groqResult.isSuccess || geminiFailure == null) return groqResult
+
+        val groqFailure = groqResult.exceptionOrNull()
+        return Result.failure(
+            Exception(
+                "Gemini ناموفق بود (" + (geminiFailure.localizedMessage ?: "خطای نامشخص") +
+                    ") و جایگزین Groq نیز ناموفق بود (" +
+                    (groqFailure?.localizedMessage ?: "خطای نامشخص") +
+                    "). متن اصلی و اطلاعات ذخیره‌شده حفظ شده‌اند.",
+                groqFailure
+            )
+        )
+    }
+
+    // Research assistant: AI-assisted concept expansion, then local retrieval.
+    private val _semanticSearchTerms = MutableStateFlow<List<String>>(emptyList())
+    val semanticSearchTerms: StateFlow<List<String>> = _semanticSearchTerms.asStateFlow()
+    private val _isSemanticExpansionLoading = MutableStateFlow(false)
+    val isSemanticExpansionLoading: StateFlow<Boolean> = _isSemanticExpansionLoading.asStateFlow()
+    private val _researchReport = MutableStateFlow("")
+    val researchReport: StateFlow<String> = _researchReport.asStateFlow()
+    private val _isResearchLoading = MutableStateFlow(false)
+    val isResearchLoading: StateFlow<Boolean> = _isResearchLoading.asStateFlow()
+    private val _researchError = MutableStateFlow<String?>(null)
+    val researchError: StateFlow<String?> = _researchError.asStateFlow()
+
+    fun clearSemanticSearchTerms() {
+        _semanticSearchTerms.value = emptyList()
+        _researchReport.value = ""
+        _researchError.value = null
+    }
+
+    fun expandSemanticSearchQuery(query: String) {
+        if (query.isBlank()) {
+            _researchError.value = "ابتدا موضوع یا پرسش خود را وارد کنید."
+            return
+        }
+        viewModelScope.launch {
+            _isSemanticExpansionLoading.value = true
+            _researchError.value = null
+            val prompt = """
+                موضوع یا پرسش فارسی زیر را برای جست‌وجو در درس‌های دانشگاهی و حوزوی گسترش بده.
+                فقط 8 تا 15 اصطلاح، مفهوم نزدیک، صورت‌بندی پرسشی و عبارت علمی مرتبط را بنویس؛ هر مورد در یک خط.
+                موارد باید برای بازیابی متن مفید باشند، نه توضیح یا پاسخ به موضوع.
+                عبارت اصلی را نیز در فهرست نگه دار. شماره‌گذاری و توضیح اضافی ننویس.
+                موضوع: $query
+            """.trimIndent()
+            val result = aiTextWithGeminiFirst(
+                groqCall = { GroqApiService.generateContent(prompt, "فقط فهرست اصطلاحات جست‌وجو را تولید کن.") },
+                geminiCall = { GeminiApiService.generateContent(prompt, "فقط فهرست اصطلاحات جست‌وجو را تولید کن.") }
+            )
+            result.onSuccess { raw ->
+                val terms = raw.lineSequence()
+                    .map { it.trim().removePrefix("-").removePrefix("•").replace(Regex("^\\d+[.)、]\\s*"), "").trim().trim('"', '«', '»') }
+                    .filter { it.length >= 2 }
+                    .distinctBy { it.lowercase() }
+                    .take(18)
+                    .toList()
+                _semanticSearchTerms.value = (listOf(query.trim()) + terms).distinctBy { it.lowercase() }
+                _researchError.value = null
+            }.onFailure { failure ->
+                _semanticSearchTerms.value = emptyList()
+                _researchError.value = "گسترش معنایی با هوش مصنوعی ناموفق بود؛ جست‌وجوی محلی معمولی همچنان قابل استفاده است. " + (failure.localizedMessage ?: "")
+            }
+            _isSemanticExpansionLoading.value = false
+        }
+    }
+
+    fun generateResearchReport(topic: String, reportType: String, citedSources: String) {
+        if (topic.isBlank()) {
+            _researchError.value = "موضوع پژوهش را وارد کنید."
+            return
+        }
+        if (citedSources.isBlank()) {
+            _researchError.value = "برای تهیه گزارش مستند، ابتدا جست‌وجو کنید تا منابع مرتبط پیدا شوند."
+            return
+        }
+        viewModelScope.launch {
+            _isResearchLoading.value = true
+            _researchError.value = null
+            _researchReport.value = ""
+            val task = when (reportType) {
+                "summary" -> "جمع‌بندی علمی چند جلسه"
+                "categorize" -> "دسته‌بندی علمی مطالب به تعریف‌ها، مبانی، ادله، اشکال‌ها، پاسخ‌ها و نتایج، فقط در صورت وجود در منابع"
+                "compare" -> "مقایسه دیدگاه‌ها و استدلال‌ها، بیان اشتراک‌ها و اختلاف‌ها بدون نسبت‌دادن نظر بی‌منبع"
+                "article" -> "طرح مقاله علمی شامل عنوان پیشنهادی، مسئله، پرسش اصلی، محورهای بحث و نتیجه‌های قابل پشتیبانی"
+                else -> "گزارش پژوهشی ساختارمند"
+            }
+            val systemPrompt = """
+                تو دستیار پژوهش امانت‌دار برای درس‌های دانشگاهی و حوزوی هستی.
+                فقط بر اساس منابع ارائه‌شده بنویس؛ اطلاعات بیرونی، نقل‌قول، دیدگاه، استدلال یا نتیجه ساختگی اضافه نکن.
+                هر ادعای factual و هر نقل دیدگاه را با شناسه منبع داخل کروشه مانند [S1] ارجاع بده.
+                در پایان، فهرست منابع را با شناسه، عنوان جلسه، استاد و تاریخِ موجود در داده‌ها درج کن.
+                میان سخن صریح استاد، دیدگاه نقل‌شده، استنباط تحلیلی و موضوع حل‌نشده تفاوت بگذار.
+                اگر منابع برای بخشی کافی نیستند، صریحاً بنویس «در منابع بازیابی‌شده شاهد کافی یافت نشد».
+                متن اصلی درس را تغییر نده و منبع یا شماره صفحه/پاراگرافی که داده نشده اختراع نکن.
+                فارسی علمی و روشن بنویس.
+            """.trimIndent()
+            val prompt = """
+                موضوع پژوهش: $topic
+                نوع خروجی: $task
+
+                دستور:
+                - مطالب تکراری را فقط در جمع‌بندی فشرده کن، اما اختلاف‌ها و مراحل استدلال را حذف نکن.
+                - ارجاع‌های [S#] را در متن نگه دار تا هر بخش قابل بازبینی باشد.
+                - اگر منابع با یکدیگر اختلاف دارند، اختلاف را آشکار کن و آن را به‌زور حل نکن.
+                - پایان گزارش، بخش «محدودیت منابع و پرسش‌های باز» داشته باشد.
+
+                منابع بازیابی‌شده از محتوای مجاز برنامه:
+                $citedSources
+            """.trimIndent()
+            val result = aiTextWithGeminiFirst(
+                groqCall = { GroqApiService.generateContent(prompt, systemPrompt) },
+                geminiCall = { GeminiApiService.generateContent(prompt, systemPrompt) }
+            )
+            result.onSuccess { _researchReport.value = it }
+                .onFailure { _researchError.value = it.localizedMessage ?: "تولید گزارش پژوهشی ناموفق بود." }
+            _isResearchLoading.value = false
+        }
     }
 
     fun testGroqConnection(
@@ -1273,7 +1470,7 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
         // بعد از پیاده‌سازی، متن، خلاصه و نکات کلیدی بلافاصله در همان جلسه ذخیره می‌شوند.
         _aiOperationTitle.value = "در حال تهیه خلاصه و کلیدواژه‌ها..."
 
-        val summary = aiTextWithGroqFirst(
+        val summary = aiTextWithGeminiFirst(
             groqCall = { GroqApiService.summarizeLecture(transcript, current.title) },
             geminiCall = { GeminiApiService.summarizeLecture(transcript, current.title) }
         )
@@ -1282,7 +1479,7 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
         }
 
         val handoutForKeywords = updated.aiSummary?.takeIf { it.isNotBlank() } ?: transcript
-        val keyPoints = aiTextWithGroqFirst(
+        val keyPoints = aiTextWithGeminiFirst(
             groqCall = { GroqApiService.extractKeyPoints(handoutForKeywords) },
             geminiCall = { GeminiApiService.extractKeyPoints(handoutForKeywords) }
         )
@@ -1328,7 +1525,7 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
             _aiError.value = null
 
             val result =
-                aiTextWithGroqFirst(
+                aiTextWithGeminiFirst(
                     groqCall = { GroqApiService.summarizeLecture(current.transcript, current.title) },
                     geminiCall = { GeminiApiService.summarizeLecture(current.transcript, current.title) }
                 )
@@ -1384,7 +1581,7 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
 
             val handoutForKeywords = current.aiSummary?.takeIf { it.isNotBlank() } ?: current.transcript
             val result =
-                aiTextWithGroqFirst(
+                aiTextWithGeminiFirst(
                     groqCall = { GroqApiService.extractKeyPoints(handoutForKeywords) },
                     geminiCall = { GeminiApiService.extractKeyPoints(handoutForKeywords) }
                 )
@@ -1439,7 +1636,7 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
             _aiError.value = null
 
             val result =
-                aiTextWithGroqFirst(
+                aiTextWithGeminiFirst(
                     groqCall = { GroqApiService.generateQuiz(current.transcript) },
                     geminiCall = { GeminiApiService.generateQuiz(current.transcript) }
                 )
@@ -1502,7 +1699,7 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
             _aiError.value = null
 
             val result =
-                aiTextWithGroqFirst(
+                aiTextWithGeminiFirst(
                     groqCall = { GroqApiService.askLectureQuestion(current.transcript, question) },
                     geminiCall = { GeminiApiService.askLectureQuestion(current.transcript, question) }
                 )
@@ -1558,7 +1755,7 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
                     _aiOperationTitle.value =
                         "ویرایش امانت‌دارانه متن؛ بخش ${index + 1} از ${parts.size}"
 
-                    val result = aiTextWithGroqFirst(
+                    val result = aiTextWithGeminiFirst(
                         groqCall = { GroqApiService.polishTranscript(part) },
                         geminiCall = { GeminiApiService.polishTranscript(part) }
                     )
@@ -1581,7 +1778,7 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
                 formTranscript.value = editedTranscript
 
                 _aiOperationTitle.value = "در حال تهیه خلاصه از متن ویرایش‌شده..."
-                val summaryResult = aiTextWithGroqFirst(
+                val summaryResult = aiTextWithGeminiFirst(
                     groqCall = { GroqApiService.summarizeLecture(editedTranscript, formTitle.value) },
                     geminiCall = { GeminiApiService.summarizeLecture(editedTranscript, formTitle.value) }
                 )
@@ -1590,7 +1787,7 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
                 _aiOperationTitle.value = "در حال استخراج کلیدواژه‌ها..."
                 // Extract keywords from the complete edited transcript, not the shorter summary.
                 val keywordSource = editedTranscript
-                val keywordResult = aiTextWithGroqFirst(
+                val keywordResult = aiTextWithGeminiFirst(
                     groqCall = { GroqApiService.extractKeyPoints(keywordSource) },
                     geminiCall = { GeminiApiService.extractKeyPoints(keywordSource) }
                 )
