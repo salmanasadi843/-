@@ -652,9 +652,11 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
                     onFailure("مجوز فعال این حساب به‌عنوان استاد در Firebase تأیید نشد. از حساب مدیر اصلی، درخواست این استاد را بررسی و دوباره تأیید کنید؛ سپس خارج شوید و دوباره وارد شوید.")
                     return@launch
                 }
-                val uid = AuthPreferences.currentUid(getApplication<Application>()).orEmpty()
+                val context = getApplication<Application>()
+                val uid = AuthPreferences.currentUid(context).orEmpty()
+                val isAdmin = AuthPreferences.isPrimaryTeacher(context)
                 if (item.id < 0L) {
-                    onFailure("این کلاس متعلق به استاد دیگری است و فقط برای مطالعه در دسترس است؛ نمی‌توانید آن را ویرایش کنید.")
+                    onFailure("این کلاس منتشرشدهٔ استاد دیگر از این صفحه قابل ویرایش نیست.")
                     return@launch
                 }
                 if (uid.isBlank()) {
@@ -662,14 +664,15 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
                     return@launch
                 }
                 if (item.id == 0L) {
-                    onSaved(repository.saveClass(item.copy(ownerUid = uid)))
+                    val targetOwnerUid = if (isAdmin && item.ownerUid.isNotBlank()) item.ownerUid else uid
+                    onSaved(repository.saveClass(item.copy(ownerUid = targetOwnerUid)))
                 } else {
                     val existing = repository.getClass(item.id)
-                    if (existing == null || existing.ownerUid != uid) {
-                        onFailure("ویرایش فقط برای کلاسی مجاز است که مالکیت آن برای همین حساب تأیید شده باشد.")
+                    if (existing == null || (!isAdmin && existing.ownerUid != uid)) {
+                        onFailure("ویرایش فقط برای کلاس خودتان مجاز است؛ مدیر اصلی می‌تواند کلاس استادان دیگر را نیز مدیریت کند.")
                         return@launch
                     }
-                    onSaved(repository.saveClass(item))
+                    onSaved(repository.saveClass(item.copy(ownerUid = existing.ownerUid)))
                 }
             } catch (e: Exception) {
                 Log.e(TAG, "Saving class failed", e)
