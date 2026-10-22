@@ -72,7 +72,9 @@ fun TeacherFoldersScreen(
     val prefs = remember(uid) { teacherFolderPrefs(context, uid) }
     val allClasses by viewModel.repository.allClasses.collectAsState(initial = emptyList())
     val syncStatus by viewModel.studentMaterialsSyncStatus.collectAsState()
-    val canManage = userRole == UserRole.TEACHER || AuthPreferences.isPrimaryTeacher(context)
+    val isAdmin = AuthPreferences.isPrimaryTeacher(context)
+    val canManage = userRole == UserRole.TEACHER || isAdmin
+    val currentTeacherName = AuthPreferences.currentName(context)
     val studentReady = canManage || (
         syncStatus != "مطالب آنلاین هنوز بررسی نشده‌اند." &&
         !syncStatus.contains("در حال دریافت") &&
@@ -89,13 +91,13 @@ fun TeacherFoldersScreen(
     var folderToDelete by remember { mutableStateOf<TeacherFolderRow?>(null) }
     val scope = rememberCoroutineScope()
 
-    val visibleClasses = remember(allClasses, canManage, studentReady, uid) {
+    val visibleClasses = remember(allClasses, canManage, studentReady, uid, currentTeacherName) {
         if (!canManage) {
             if (studentReady) allClasses.filter { it.id < 0L && it.isPublished }
             else emptyList()
         } else {
-            val owned = allClasses.filter { it.id > 0L && (it.ownerUid == uid || it.ownerUid.isBlank()) }
-            val foreignPositive = allClasses.filter { it.id > 0L && it.ownerUid.isNotBlank() && it.ownerUid != uid }
+            val owned = allClasses.filter { it.id > 0L && (it.ownerUid == uid || (it.ownerUid.isBlank() && teacherFolderKey(it, uid, currentTeacherName) == uid)) }
+            val foreignPositive = allClasses.filter { it.id > 0L && ((it.ownerUid.isNotBlank() && it.ownerUid != uid) || (it.ownerUid.isBlank() && teacherFolderKey(it, uid, currentTeacherName) != uid)) }
             val shared = allClasses.filter { it.id < 0L && it.isPublished }.distinctBy {
                 listOf(it.name, it.teacherName, it.term).joinToString("|") { value ->
                     value.trim().lowercase().replace('ي', 'ی').replace('ك', 'ک')
@@ -106,8 +108,7 @@ fun TeacherFoldersScreen(
         }
     }
 
-    val rows = remember(visibleClasses, deletedKeys, hiddenKeys, showHidden, uid) {
-        val currentTeacherName = AuthPreferences.currentName(context)
+    val rows = remember(visibleClasses, deletedKeys, hiddenKeys, showHidden, uid, currentTeacherName, canManage) {
         val groups = visibleClasses.groupBy { teacherFolderKey(it, uid, currentTeacherName) }
         val teacherRows = groups.entries
             .filter { it.key !in deletedKeys }
@@ -209,7 +210,7 @@ fun TeacherFoldersScreen(
                                     color = MaterialTheme.colorScheme.onSurfaceVariant
                                 )
                             }
-                            if (!row.unfiled) {
+                            if (!row.unfiled && (isAdmin || row.key == uid)) {
                                 IconButton(onClick = {
                                     if (row.key in hiddenKeys) {
                                         hiddenKeys = hiddenKeys - row.key
@@ -260,7 +261,7 @@ fun TeacherFoldersScreen(
                     scope.launch {
                         val classDao = AppDatabase.getDatabase(context).classDao()
                         row.classes
-                            .filter { it.id > 0L && (it.ownerUid == uid || it.ownerUid.isBlank()) }
+                            .filter { it.id > 0L && (isAdmin || it.ownerUid == uid || (it.ownerUid.isBlank() && teacherFolderKey(it, uid, currentTeacherName) == uid)) }
                             .forEach { clazz -> classDao.update(clazz.copy(folderId = null)) }
                     }
                     deletedKeys = deletedKeys + row.key
