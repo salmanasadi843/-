@@ -3,6 +3,8 @@ package com.example.ui.screens
 import androidx.activity.compose.BackHandler
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.material.icons.Icons
@@ -129,7 +131,7 @@ fun AiResearchScreen(
                 Text("پاسخ پژوهشی", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
                 Surface(Modifier.weight(1f, fill = false).fillMaxWidth(), shape = MaterialTheme.shapes.large, color = MaterialTheme.colorScheme.surfaceVariant) {
                     androidx.compose.foundation.text.selection.SelectionContainer {
-                        Text(answer, Modifier.padding(14.dp), style = MaterialTheme.typography.bodyMedium)
+                        Text(answer, Modifier.padding(14.dp).heightIn(max = 360.dp).verticalScroll(rememberScrollState()), style = MaterialTheme.typography.bodyMedium)
                     }
                 }
             } else if (!loading && sourceLectures.isEmpty()) {
