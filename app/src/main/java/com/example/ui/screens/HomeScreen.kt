@@ -79,8 +79,11 @@ fun HomeScreen(
     val lectures = if (userRole == UserRole.STUDENT) {
         allLectures.filter { it.id < 0L && it.isPublished && it.classId in visibleClassIds }
     } else allLectures
-    val isTeacher = userRole == UserRole.TEACHER
-    val isPrimaryTeacher = isTeacher && AuthPreferences.isPrimaryTeacher(LocalContext.current)
+    // Keep the primary administrator's management controls available even if a stale
+    // local role has not yet refreshed; other accounts still require the approved TEACHER role.
+    val contextForRole = LocalContext.current
+    val isPrimaryTeacher = AuthPreferences.isPrimaryTeacher(contextForRole)
+    val isTeacher = userRole == UserRole.TEACHER || isPrimaryTeacher
     val context = LocalContext.current
     val isOnline = rememberNetworkConnection()
     var showBulkExportDialog by androidx.compose.runtime.remember { androidx.compose.runtime.mutableStateOf(false) }
