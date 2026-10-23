@@ -592,6 +592,23 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
         _cloudSyncStatus.value = "مجوز فعال استاد تأیید نشد؛ ایجاد و ویرایش مطالب متوقف شد."
     }
 
+    /**
+     * Publish the latest saved state automatically. A sync failure must never roll
+     * back or delete the locally saved class/course/session; it only reports that
+     * online visibility may need a retry.
+     */
+    private suspend fun syncPublishedMaterialsAfterSave(itemLabel: String) {
+        try {
+            withContext(Dispatchers.IO) {
+                CloudMaterialsSync.sync(getApplication<Application>())
+            }
+        } catch (e: Exception) {
+            Log.e(TAG, "Could not auto-publish after saving $itemLabel", e)
+            _cloudSyncStatus.value =
+                "$itemLabel ذخیره شد، اما همگام‌سازی آنلاین ناموفق بود؛ اطلاعات محلی حفظ شده است."
+        }
+    }
+
     fun saveClass(
         item: com.example.data.local.ClassEntity,
         onSaved: (Long) -> Unit = {},
@@ -613,16 +630,18 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
                     onFailure("برای ثبت مالکیت کلاس باید ابتدا وارد حساب کاربری شوید.")
                     return@launch
                 }
-                if (item.id == 0L) {
-                    onSaved(repository.saveClass(item.copy(ownerUid = uid)))
+                val savedId = if (item.id == 0L) {
+                    repository.saveClass(item.copy(ownerUid = uid))
                 } else {
                     val existing = repository.getClass(item.id)
                     if (existing == null || existing.ownerUid != uid) {
                         onFailure("ویرایش فقط برای کلاسی مجاز است که مالکیت آن برای همین حساب تأیید شده باشد.")
                         return@launch
                     }
-                    onSaved(repository.saveClass(item))
+                    repository.saveClass(item)
                 }
+                syncPublishedMaterialsAfterSave("کلاس")
+                onSaved(savedId)
             } catch (e: Exception) {
                 Log.e(TAG, "Saving class failed", e)
                 onFailure("ذخیره کلاس ناموفق بود: ${e.localizedMessage ?: "خطای نامشخص Firebase یا پایگاه داده"}")
@@ -637,7 +656,9 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
                 _cloudSyncStatus.value = "این درس متعلق به مطالب منتشرشده استاد دیگری است؛ برای افزودن مطالب، کلاس خودتان را ایجاد کنید."
                 return@launch
             }
-            onSaved(repository.saveCourse(item))
+            val savedId = repository.saveCourse(item)
+            syncPublishedMaterialsAfterSave("درس")
+            onSaved(savedId)
         }
     }
 
@@ -894,6 +915,7 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
             val newId =
                 repository.saveLecture(updated)
 
+            syncPublishedMaterialsAfterSave("جلسه")
             loadLecture(newId)
 
             onSaved(newId)
