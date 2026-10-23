@@ -91,7 +91,6 @@ fun SettingsScreen(
     var cloudBusy by remember { mutableStateOf(false) }
     var cloudStatus by remember { mutableStateOf<String?>(null) }
     var cloudError by remember { mutableStateOf(false) }
-    var showPublishConfirm by remember { mutableStateOf(false) }
     var teacherName by remember { mutableStateOf(AuthPreferences.currentName(context)) }
     var teacherField by remember { mutableStateOf("") }
     var institutionName by remember { mutableStateOf("") }
@@ -164,23 +163,6 @@ fun SettingsScreen(
     var isTesting by remember { mutableStateOf(false) }
     var status by remember { mutableStateOf<String?>(null) }
     var statusIsError by remember { mutableStateOf(false) }
-
-    if (showPublishConfirm) {
-        androidx.compose.material3.AlertDialog(
-            onDismissRequest = { showPublishConfirm = false },
-            title = { Text("انتشار آنلاین مطالب") },
-            text = { Text("متن، خلاصه، کلیدواژه‌ها، اطلاعات کلاس و لینک صوت همه جلسات این حساب برای کاربران واردشده به درس‌یار قابل مشاهده خواهد شد. فایل صوتی اصلی ارسال نمی‌شود. آیا ادامه می‌دهید؟") },
-            confirmButton = {
-                Button(onClick = {
-                    showPublishConfirm = false
-                    runCloudSync()
-                }) { Text("انتشار و ادامه") }
-            },
-            dismissButton = {
-                OutlinedButton(onClick = { showPublishConfirm = false }) { Text("انصراف") }
-            }
-        )
-    }
 
     Scaffold(
         topBar = {
@@ -735,25 +717,31 @@ fun SettingsScreen(
                     Spacer(Modifier.height(6.dp))
                     Text(
                         if (AuthPreferences.currentRole(context) == UserRole.TEACHER)
-                            "با همگام‌سازی، متن جزوه، خلاصه، کلیدواژه، مشخصات کلاس و لینک صوت جلسات این حساب برای کاربران واردشده به درس‌یار قابل دریافت می‌شود. فایل صوتی اصلی بارگذاری نمی‌شود."
+                            "مطالب کلاس‌های در دسترس دانشجو، هنگام ذخیرهٔ کلاس، درس یا جلسه به‌طور خودکار همگام‌سازی می‌شوند. برای پنهان‌کردن یا نمایش مجدد مطالب، وضعیت نمایش کلاس را در صفحهٔ کلاس‌ها تغییر دهید. فایل صوتی اصلی بارگذاری نمی‌شود."
                         else
                             "با به‌روزرسانی مطالب آنلاین، جزوه‌ها، خلاصه‌ها، کلیدواژه‌ها و لینک‌های صوت منتشرشده توسط استادها روی این دستگاه دریافت می‌شود. برای این کار باید اینترنت متصل باشد.",
                         style = MaterialTheme.typography.bodyMedium,
                         color = MaterialTheme.colorScheme.onSurfaceVariant
                     )
-                    Spacer(Modifier.height(12.dp))
-                    Button(
-                        onClick = {
-                            if (AuthPreferences.currentRole(context) == UserRole.TEACHER) showPublishConfirm = true
-                            else runCloudSync()
-                        },
-                        enabled = !cloudBusy,
-                        modifier = Modifier.fillMaxWidth()
-                    ) {
-                        if (cloudBusy) CircularProgressIndicator(modifier = Modifier.size(18.dp), strokeWidth = 2.dp)
-                        else Icon(Icons.Default.NetworkCheck, contentDescription = null)
-                        Spacer(Modifier.width(8.dp))
-                        Text(if (cloudBusy) "در حال همگام‌سازی..." else if (AuthPreferences.currentRole(context) == UserRole.TEACHER) "انتشار و همگام‌سازی مطالب استاد" else "دریافت مطالب آنلاین")
+                    if (AuthPreferences.currentRole(context) != UserRole.TEACHER) {
+                        Spacer(Modifier.height(12.dp))
+                        Button(
+                            onClick = { runCloudSync() },
+                            enabled = !cloudBusy,
+                            modifier = Modifier.fillMaxWidth()
+                        ) {
+                            if (cloudBusy) CircularProgressIndicator(modifier = Modifier.size(18.dp), strokeWidth = 2.dp)
+                            else Icon(Icons.Default.NetworkCheck, contentDescription = null)
+                            Spacer(Modifier.width(8.dp))
+                            Text(if (cloudBusy) "در حال دریافت..." else "دریافت مطالب آنلاین")
+                        }
+                    } else {
+                        Spacer(Modifier.height(10.dp))
+                        Text(
+                            "انتشار خودکار فعال است؛ نیازی به زدن دکمهٔ انتشار نیست.",
+                            style = MaterialTheme.typography.labelMedium,
+                            color = MaterialTheme.colorScheme.primary
+                        )
                     }
                     if (cloudStatus != null) {
                         Spacer(Modifier.height(10.dp))
