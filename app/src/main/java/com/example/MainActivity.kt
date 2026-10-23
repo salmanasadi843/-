@@ -81,9 +81,14 @@ fun OstadYarApp(
         if (authenticated) {
             AuthPreferences.refreshProfile(context) { result ->
                 result.onSuccess { role ->
-                    userRole = role
-                    viewModel.setUserRole(role)
-                    if (role == UserRole.TEACHER) {
+                    // The primary administrator is always treated as a teacher in the UI.
+                    // This keeps folder, class, session, edit and delete controls consistent
+                    // even if an older local profile still stores STUDENT.
+                    val effectiveRole =
+                        if (AuthPreferences.isPrimaryTeacher(context)) UserRole.TEACHER else role
+                    userRole = effectiveRole
+                    viewModel.setUserRole(effectiveRole)
+                    if (effectiveRole == UserRole.TEACHER) {
                         viewModel.startCloudSync()
                     } else {
                         // دانشجو هنگام ورود، مطالب منتشرشده را خودکار دریافت می‌کند.
@@ -106,8 +111,11 @@ fun OstadYarApp(
         BackHandler(enabled = false) { }
         AuthScreen(
             onAuthenticated = { role ->
-                userRole = role
-                viewModel.setUserRole(role)
+                // Resolve the administrator role immediately after authentication too.
+                val effectiveRole =
+                    if (AuthPreferences.isPrimaryTeacher(context)) UserRole.TEACHER else role
+                userRole = effectiveRole
+                viewModel.setUserRole(effectiveRole)
                 authenticated = true
             }
         )
@@ -175,14 +183,16 @@ fun OstadYarApp(
                 viewModel = viewModel,
                 onNavigateBack = { viewModel.navigateBack() },
                 onNavigateToEdit = { editId ->
-                    if (userRole == UserRole.TEACHER) viewModel.navigateTo(Screen.AddEdit(editId))
+                    if (userRole == UserRole.TEACHER || AuthPreferences.isPrimaryTeacher(context)) {
+                        viewModel.navigateTo(Screen.AddEdit(editId))
+                    }
                 },
-                isTeacher = userRole == UserRole.TEACHER
+                isTeacher = userRole == UserRole.TEACHER || AuthPreferences.isPrimaryTeacher(context)
             )
         }
 
         is Screen.AddEdit -> {
-            if (userRole == UserRole.TEACHER) {
+            if (userRole == UserRole.TEACHER || AuthPreferences.isPrimaryTeacher(context)) {
                 AddEditLectureScreen(
                     lectureId = screen.lectureId,
                     viewModel = viewModel,
@@ -200,8 +210,11 @@ fun OstadYarApp(
                 viewModel = viewModel,
                 onNavigateBack = { viewModel.navigateBack() },
                 onNavigateToEdit = { editId ->
-                    if (userRole == UserRole.TEACHER) viewModel.navigateTo(Screen.AddEdit(editId))
-                }
+                    if (userRole == UserRole.TEACHER || AuthPreferences.isPrimaryTeacher(context)) {
+                        viewModel.navigateTo(Screen.AddEdit(editId))
+                    }
+                },
+                isTeacher = userRole == UserRole.TEACHER || AuthPreferences.isPrimaryTeacher(context)
             )
         }
 
