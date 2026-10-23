@@ -365,6 +365,8 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
     val formAudioUrl = MutableStateFlow("")
     val formAudioDurationMs = MutableStateFlow(0L)
     private var editingLectureId: Long? = null
+    // Prevent rapid repeated taps from creating duplicate sessions.
+    private var isSavingLecture = false
 
     init {
         GeminiApiService.configure(application)
@@ -850,6 +852,10 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
         lectureId: Long?,
         onSaved: (Long) -> Unit
     ) {
+        // Acquire the guard before launching a coroutine so rapid repeated taps
+        // cannot queue multiple inserts.
+        if (isSavingLecture) return
+        isSavingLecture = true
 
         val title =
             formTitle.value.ifBlank {
@@ -857,6 +863,7 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
             }
 
         viewModelScope.launch {
+            try {
             if (!teacherPermissionGranted()) { denyTeacherMutation(); return@launch }
 
             val existing =
@@ -919,6 +926,13 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
             loadLecture(newId)
 
             onSaved(newId)
+            } catch (e: Exception) {
+                Log.e(TAG, "Saving lecture failed", e)
+                _cloudSyncStatus.value =
+                    "ذخیره جلسه ناموفق بود: ${e.localizedMessage ?: "خطای نامشخص"}"
+            } finally {
+                isSavingLecture = false
+            }
         }
     }
 
