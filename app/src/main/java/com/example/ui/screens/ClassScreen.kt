@@ -109,15 +109,15 @@ fun ClassScreen(
     val folders by remember(folderOwnerUid) { folderDao.observeFolders(folderOwnerUid) }.collectAsState(initial = emptyList())
     val scope = rememberCoroutineScope()
     var selectedFolderId by remember { mutableStateOf<Long?>(null) }
+    var showCreateFolder by remember { mutableStateOf(false) }
+    var newFolderName by remember { mutableStateOf("") }
+    var classToMove by remember { mutableStateOf<ClassEntity?>(null) }
+    var selectedClassIds by remember { mutableStateOf<Set<Long>>(emptySet()) }
     LaunchedEffect(teacherKey) {
         // A folder ID from the previous teacher must never be reused in the next teacher's tree.
         selectedFolderId = null
         selectedClassIds = emptySet()
     }
-    var showCreateFolder by remember { mutableStateOf(false) }
-    var newFolderName by remember { mutableStateOf("") }
-    var classToMove by remember { mutableStateOf<ClassEntity?>(null) }
-    var selectedClassIds by remember { mutableStateOf<Set<Long>>(emptySet()) }
     var showBulkMove by remember { mutableStateOf(false) }
     var classToClaim by remember { mutableStateOf<ClassEntity?>(null) }
     var showAdd by remember { mutableStateOf(false) }
