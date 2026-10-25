@@ -37,8 +37,18 @@ fun ClassScreen(
 ) {
     val context = LocalContext.current
     val ownerUid = AuthPreferences.currentUid(context).orEmpty()
-    val canManageClasses = userRole == UserRole.TEACHER || AuthPreferences.isPrimaryTeacher(context)
+    val isPrimaryAdmin = AuthPreferences.isPrimaryTeacher(context)
+    val canManageClasses = userRole == UserRole.TEACHER || isPrimaryAdmin
+    // Folder metadata belongs to a teacher. When the administrator opens another
+    // teacher's root, use that teacher's UID for lookup; do not treat it as admin-owned.
+    val folderOwnerUid = if (
+        isPrimaryAdmin &&
+        !teacherKey.isNullOrBlank() &&
+        !teacherKey.startsWith("name:") &&
+        teacherKey != "__unfiled_teachers__"
+    ) teacherKey else ownerUid
     val canManageSelectedTeacher = canManageClasses && (teacherKey == null || teacherKey == ownerUid)
+    val canViewNestedFolders = canManageSelectedTeacher || (isPrimaryAdmin && !teacherKey.isNullOrBlank())
     val canCreateInSelectedTeacher = canManageSelectedTeacher
     val allClasses by viewModel.repository.allClasses.collectAsState(initial = emptyList())
     // Never expose teacher-local or unpublished classes in student mode.
@@ -96,9 +106,14 @@ fun ClassScreen(
     }
     val folderDao = remember(ownerUid) { AppDatabase.getDatabase(context).teacherFolderDao() }
     val classDao = remember { AppDatabase.getDatabase(context).classDao() }
-    val folders by remember(ownerUid) { folderDao.observeFolders(ownerUid) }.collectAsState(initial = emptyList())
+    val folders by remember(folderOwnerUid) { folderDao.observeFolders(folderOwnerUid) }.collectAsState(initial = emptyList())
     val scope = rememberCoroutineScope()
     var selectedFolderId by remember { mutableStateOf<Long?>(null) }
+    LaunchedEffect(teacherKey) {
+        // A folder ID from the previous teacher must never be reused in the next teacher's tree.
+        selectedFolderId = null
+        selectedClassIds = emptySet()
+    }
     var showCreateFolder by remember { mutableStateOf(false) }
     var newFolderName by remember { mutableStateOf("") }
     var classToMove by remember { mutableStateOf<ClassEntity?>(null) }
@@ -136,13 +151,16 @@ fun ClassScreen(
     // as read-only, including imported negative-ID classes.
     val visibleOwnedClasses = classes.filter {
         it.id > 0L &&
-            (it.ownerUid == ownerUid || it.ownerUid.isBlank()) &&
-            ((teacherKey == null || teacherKey == ownerUid) && it.folderId == selectedFolderId)
+            (it.ownerUid == folderOwnerUid || (folderOwnerUid == ownerUid && it.ownerUid.isBlank())) &&
+            it.folderId == selectedFolderId
     }
-    val classesToDisplay = if (canManageSelectedTeacher) visibleOwnedClasses else classes
-    // Shared/foreign classes are kept in a separate read-only section at the root,
-    // never mixed into the teacher's own folders.
-    val visibleOtherClasses = if (selectedFolderId == null && canManageClasses) {
+    // Administrators can inspect an existing teacher folder tree, but foreign
+    // classes remain read-only. Published negative-ID classes stay at that teacher's root.
+    val classesToDisplay = if (canViewNestedFolders) {
+        visibleOwnedClasses + classes.filter { it.id < 0L && selectedFolderId == null }
+    } else classes
+    // Shared/foreign classes are kept in a separate read-only section only on the global root.
+    val visibleOtherClasses = if (teacherKey == null && selectedFolderId == null && canManageClasses) {
         classes.filter {
             (it.id > 0L && it.ownerUid.isNotBlank() && it.ownerUid != ownerUid) || it.id < 0L
         }
@@ -181,7 +199,7 @@ fun ClassScreen(
             }
         }
     ) { padding ->
-        if (classes.isEmpty() && (!canManageClasses || !canManageSelectedTeacher)) {
+        if (classesToDisplay.isEmpty() && (!canManageClasses || !canViewNestedFolders)) {
             Box(
                 Modifier.fillMaxSize().padding(padding).padding(24.dp),
                 contentAlignment = Alignment.Center
@@ -213,23 +231,26 @@ fun ClassScreen(
                 contentPadding = PaddingValues(16.dp, 12.dp, 16.dp, 96.dp),
                 verticalArrangement = Arrangement.spacedBy(12.dp)
             ) {
-                if (canManageSelectedTeacher) {
+                if (canViewNestedFolders) {
                     item {
                         Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
                             Row(verticalAlignment = Alignment.CenterVertically) {
                                 Text(
-                                    folders.firstOrNull { it.id == selectedFolderId }?.name ?: "پوشهٔ من",
+                                    folders.firstOrNull { it.id == selectedFolderId }?.name
+                                        ?: if (teacherKey != null && teacherKey != ownerUid) (teacherLabel ?: "پوشه‌های استاد") else "پوشهٔ من",
                                     modifier = Modifier.weight(1f),
                                     style = MaterialTheme.typography.titleMedium,
                                     fontWeight = FontWeight.Bold
                                 )
-                                Row(verticalAlignment = Alignment.CenterVertically) {
-                                    if (selectedClassIds.isNotEmpty()) {
-                                        TextButton(onClick = { showBulkMove = true }) {
-                                            Text("انتقال ${selectedClassIds.size} کلاس")
+                                if (canManageSelectedTeacher) {
+                                    Row(verticalAlignment = Alignment.CenterVertically) {
+                                        if (selectedClassIds.isNotEmpty()) {
+                                            TextButton(onClick = { showBulkMove = true }) {
+                                                Text("انتقال ${selectedClassIds.size} کلاس")
+                                            }
                                         }
+                                        TextButton(onClick = { showCreateFolder = true }) { Text("پوشهٔ جدید +") }
                                     }
-                                    TextButton(onClick = { showCreateFolder = true }) { Text("پوشهٔ جدید +") }
                                 }
                             }
                             if (selectedFolderId != null) {
@@ -249,22 +270,28 @@ fun ClassScreen(
                                 Text("📁", style = MaterialTheme.typography.titleLarge)
                                 Spacer(Modifier.width(10.dp))
                                 Text(folder.name, modifier = Modifier.weight(1f), fontWeight = FontWeight.SemiBold)
-                                IconButton(onClick = {
-                                    folderToRename = folder
-                                    renamedFolderName = folder.name
-                                }) {
-                                    Icon(Icons.Default.Edit, contentDescription = "ویرایش نام پوشه")
+                                if (canManageSelectedTeacher) {
+                                    IconButton(onClick = {
+                                        folderToRename = folder
+                                        renamedFolderName = folder.name
+                                    }) {
+                                        Icon(Icons.Default.Edit, contentDescription = "ویرایش نام پوشه")
+                                    }
+                                    IconButton(onClick = { folderToDelete = folder }) {
+                                        Icon(Icons.Default.Delete, contentDescription = "حذف پوشه", tint = MaterialTheme.colorScheme.error)
+                                    }
                                 }
-                                IconButton(onClick = { folderToDelete = folder }) {
-                                    Icon(Icons.Default.Delete, contentDescription = "حذف پوشه", tint = MaterialTheme.colorScheme.error)
-                                }
-                                Text("باز کردن  ›", color = MaterialTheme.colorScheme.primary)
+                                Text(if (canManageSelectedTeacher) "باز کردن  ›" else "مشاهده  ›", color = MaterialTheme.colorScheme.primary)
                             }
                         }
                     }
                     item {
                         Text(
-                            classes.count { it.id > 0L && (it.ownerUid == ownerUid || it.ownerUid.isBlank()) && it.folderId == selectedFolderId }.toString() + " کلاس در این پوشه",
+                            classes.count {
+                                it.id > 0L &&
+                                    (it.ownerUid == folderOwnerUid || (folderOwnerUid == ownerUid && it.ownerUid.isBlank())) &&
+                                    it.folderId == selectedFolderId
+                            }.toString() + " کلاس در این پوشه",
                             style = MaterialTheme.typography.labelLarge,
                             color = MaterialTheme.colorScheme.onSurfaceVariant
                         )
