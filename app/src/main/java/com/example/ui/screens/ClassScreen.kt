@@ -48,7 +48,12 @@ fun ClassScreen(
         teacherKey != "__unfiled_teachers__"
     ) teacherKey else ownerUid
     val canManageSelectedTeacher = canManageClasses && (teacherKey == null || teacherKey == ownerUid)
-    val canViewNestedFolders = canManageSelectedTeacher || (isPrimaryAdmin && !teacherKey.isNullOrBlank())
+    val canViewNestedFolders = canManageSelectedTeacher || (
+        isPrimaryAdmin &&
+            !teacherKey.isNullOrBlank() &&
+            !teacherKey.startsWith("name:") &&
+            teacherKey != "__unfiled_teachers__"
+    )
     val canCreateInSelectedTeacher = canManageSelectedTeacher
     val allClasses by viewModel.repository.allClasses.collectAsState(initial = emptyList())
     // Never expose teacher-local or unpublished classes in student mode.
