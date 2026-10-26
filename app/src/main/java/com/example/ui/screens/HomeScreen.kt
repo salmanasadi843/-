@@ -243,7 +243,7 @@ fun HomeScreen(
                     IconButton(onClick = { showAdvancedSearch = true }) { Icon(Icons.Default.Search, contentDescription = "جستجوی متنی در درس‌ها") }
                     IconButton(onClick = { viewModel.navigateTo(Screen.AiResearch) }) { Icon(Icons.Default.AutoAwesome, contentDescription = "جستجوی هوشمند هوش مصنوعی") }
                     if (isTeacher) IconButton(onClick = { showBulkExportDialog = true }) { Icon(Icons.Default.Share, contentDescription = "ارسال گروهی مطالب") }
-                    IconButton(onClick = viewModel::openClasses) { Icon(Icons.Default.School, "کلاس‌ها") }
+                    IconButton(onClick = { viewModel.navigateTo(Screen.Teachers) }) { Icon(Icons.Default.School, "پوشه‌های استادان") }
                     IconButton(onClick = { viewModel.navigateTo(Screen.Settings) }) { Icon(Icons.Default.Settings, "تنظیمات") }
                 }
             )
@@ -293,7 +293,7 @@ fun HomeScreen(
                             Modifier.weight(1f),
                             Icons.Default.School,
                             "کلاس جدید",
-                            "ایجاد کلاس و افزودن جلسات",
+                            "انتخاب استاد، سپس کلاس و جلسه",
                             onNavigateToAdd
                         )
                     }
@@ -312,10 +312,10 @@ fun HomeScreen(
                                 color = MaterialTheme.colorScheme.onPrimary.copy(alpha = 0.9f)
                             )
                             Spacer(Modifier.height(14.dp))
-                            Button(onClick = viewModel::openClasses, Modifier.fillMaxWidth(), colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.secondary, contentColor = MaterialTheme.colorScheme.onSecondary)) {
+                            Button(onClick = { viewModel.navigateTo(Screen.Teachers) }, Modifier.fillMaxWidth(), colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.secondary, contentColor = MaterialTheme.colorScheme.onSecondary)) {
                                 Icon(Icons.Default.School, null)
                                 Spacer(Modifier.width(7.dp))
-                                Text("مشاهده کلاس‌ها")
+                                Text("مشاهده پوشه‌های استادان و کلاس‌ها")
                             }
                         }
                     }
@@ -325,7 +325,7 @@ fun HomeScreen(
             item {
                 Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.SpaceBetween) {
                     Column {
-                        Text("کلاس‌های من", style = MaterialTheme.typography.headlineSmall, fontWeight = FontWeight.Bold)
+                        Text("دسترسی سریع به کلاس‌ها", style = MaterialTheme.typography.headlineSmall, fontWeight = FontWeight.Bold)
                         Text(
                             if (isTeacher) "کلاس‌ها را مدیریت و جلسات را ثبت کنید." else "کلاس‌ها و جلسات برای مطالعه",
                             style = MaterialTheme.typography.bodySmall,
