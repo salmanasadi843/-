@@ -618,12 +618,14 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
     ) {
         viewModelScope.launch {
             try {
-                if (!teacherPermissionGranted()) {
+                val app = getApplication<Application>()
+                val isPrimaryAdmin = AuthPreferences.isPrimaryTeacher(app)
+                if (!isPrimaryAdmin && !teacherPermissionGranted()) {
                     denyTeacherMutation()
                     onFailure("مجوز فعال این حساب به‌عنوان استاد در Firebase تأیید نشد. از حساب مدیر اصلی، درخواست این استاد را بررسی و دوباره تأیید کنید؛ سپس خارج شوید و دوباره وارد شوید.")
                     return@launch
                 }
-                val uid = AuthPreferences.currentUid(getApplication<Application>()).orEmpty()
+                val uid = AuthPreferences.currentUid(app).orEmpty()
                 if (item.id < 0L) {
                     onFailure("این کلاس متعلق به استاد دیگری است و فقط برای مطالعه در دسترس است؛ نمی‌توانید آن را ویرایش کنید.")
                     return@launch
@@ -632,15 +634,19 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
                     onFailure("برای ثبت مالکیت کلاس باید ابتدا وارد حساب کاربری شوید.")
                     return@launch
                 }
+                val targetOwnerUid = if (isPrimaryAdmin) item.ownerUid.ifBlank { uid } else uid
                 val savedId = if (item.id == 0L) {
-                    repository.saveClass(item.copy(ownerUid = uid))
+                    repository.saveClass(item.copy(ownerUid = targetOwnerUid))
                 } else {
                     val existing = repository.getClass(item.id)
-                    if (existing == null || existing.ownerUid != uid) {
-                        onFailure("ویرایش فقط برای کلاسی مجاز است که مالکیت آن برای همین حساب تأیید شده باشد.")
+                    if (existing == null || existing.ownerUid.isBlank() ||
+                        (!isPrimaryAdmin && existing.ownerUid != uid) ||
+                        (isPrimaryAdmin && item.ownerUid.isNotBlank() && existing.ownerUid != item.ownerUid)
+                    ) {
+                        onFailure("ویرایش فقط برای مالک کلاس یا مدیر اصلی مجاز است.")
                         return@launch
                     }
-                    repository.saveClass(item)
+                    repository.saveClass(item.copy(ownerUid = existing.ownerUid))
                 }
                 syncPublishedMaterialsAfterSave("کلاس")
                 onSaved(savedId)
@@ -666,15 +672,20 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
 
     fun deleteClass(item: com.example.data.local.ClassEntity, onDeleted: () -> Unit = {}) {
         viewModelScope.launch {
-            if (!teacherPermissionGranted()) { denyTeacherMutation(); return@launch }
+            val app = getApplication<Application>()
+            val isPrimaryAdmin = AuthPreferences.isPrimaryTeacher(app)
+            if (!isPrimaryAdmin && !teacherPermissionGranted()) { denyTeacherMutation(); return@launch }
             if (item.id < 0L) {
-                _cloudSyncStatus.value = "حذف یا پنهان‌کردن کلاس استاد دیگر مجاز نیست."
+                _cloudSyncStatus.value = "حذف کلاس واردشده از انتشار عمومی مجاز نیست."
                 return@launch
             }
-            val uid = AuthPreferences.currentUid(getApplication<Application>()).orEmpty()
+            val uid = AuthPreferences.currentUid(app).orEmpty()
             val existing = repository.getClass(item.id)
-            if (uid.isBlank() || existing == null || existing.ownerUid != uid) {
-                _cloudSyncStatus.value = "حذف فقط برای کلاسی مجاز است که مالکیت آن برای همین حساب تأیید شده باشد."
+            if (uid.isBlank() || existing == null || existing.ownerUid.isBlank() ||
+                (!isPrimaryAdmin && existing.ownerUid != uid) ||
+                (isPrimaryAdmin && item.ownerUid.isNotBlank() && existing.ownerUid != item.ownerUid)
+            ) {
+                _cloudSyncStatus.value = "حذف فقط برای مالک کلاس یا مدیر اصلی مجاز است."
                 return@launch
             }
             repository.deleteClass(item)
