@@ -131,7 +131,7 @@ fun OstadYarApp(
             HomeScreen(
                 viewModel = viewModel,
                 userRole = userRole,
-                onNavigateToAdd = { viewModel.openClasses() },
+                onNavigateToAdd = { viewModel.navigateTo(Screen.Teachers) },
                 onNavigateToDetail = { lectureId -> viewModel.navigateTo(Screen.Detail(lectureId)) },
                 onNavigateToAiSummary = { lectureId -> viewModel.navigateTo(Screen.Detail(lectureId)) }
             )
