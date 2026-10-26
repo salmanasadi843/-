@@ -47,7 +47,10 @@ fun ClassScreen(
         !teacherKey.startsWith("name:") &&
         teacherKey != "__unfiled_teachers__"
     ) teacherKey else ownerUid
-    val canManageSelectedTeacher = canManageClasses && (teacherKey == null || teacherKey == ownerUid)
+    val canManageSelectedTeacher = canManageClasses && (
+        teacherKey == null || teacherKey == ownerUid ||
+            (isPrimaryAdmin && !teacherKey.isNullOrBlank() && !teacherKey.startsWith("name:") && teacherKey != "__unfiled_teachers__")
+    )
     val canViewNestedFolders = canManageSelectedTeacher || (
         isPrimaryAdmin &&
             !teacherKey.isNullOrBlank() &&
@@ -109,7 +112,7 @@ fun ClassScreen(
             UserRole.TEACHER -> viewModel.syncPublishedMaterialsForTeacher()
         }
     }
-    val folderDao = remember(ownerUid) { AppDatabase.getDatabase(context).teacherFolderDao() }
+    val folderDao = remember(folderOwnerUid) { AppDatabase.getDatabase(context).teacherFolderDao() }
     val classDao = remember { AppDatabase.getDatabase(context).classDao() }
     val folders by remember(folderOwnerUid) { folderDao.observeFolders(folderOwnerUid) }.collectAsState(initial = emptyList())
     val scope = rememberCoroutineScope()
@@ -344,7 +347,7 @@ fun ClassScreen(
                                 Spacer(Modifier.height(8.dp))
                                 Text("مشاهده جلسات  ›", style = MaterialTheme.typography.labelLarge, fontWeight = FontWeight.SemiBold, color = MaterialTheme.colorScheme.primary)
                             }
-                            if (canManageClasses && item.id > 0L && item.ownerUid == ownerUid && ownerUid.isNotBlank()) {
+                            if (canManageClasses && item.id > 0L && item.ownerUid == folderOwnerUid && folderOwnerUid.isNotBlank()) {
                                 Checkbox(
                                     checked = item.id in selectedClassIds,
                                     onCheckedChange = { checked ->
@@ -450,7 +453,7 @@ fun ClassScreen(
                     if (nameToSave.isNotBlank() && ownerUid.isNotBlank()) {
                         scope.launch {
                             runCatching {
-                                folderDao.insert(TeacherFolderEntity(ownerUid = ownerUid, name = nameToSave, parentFolderId = selectedFolderId))
+                                folderDao.insert(TeacherFolderEntity(ownerUid = folderOwnerUid, name = nameToSave, parentFolderId = selectedFolderId))
                             }.onSuccess {
                                 newFolderName = ""
                                 showCreateFolder = false
@@ -459,7 +462,7 @@ fun ClassScreen(
                             }
                         }
                     }
-                }, enabled = newFolderName.isNotBlank() && ownerUid.isNotBlank()) { Text("ایجاد") }
+                }, enabled = newFolderName.isNotBlank() && folderOwnerUid.isNotBlank()) { Text("ایجاد") }
             },
             dismissButton = { TextButton(onClick = { showCreateFolder = false }) { Text("انصراف") } }
         )
@@ -481,10 +484,10 @@ fun ClassScreen(
                 TextButton(
                     onClick = {
                         val cleanName = renamedFolderName.trim()
-                        if (cleanName.isNotBlank() && ownerUid.isNotBlank()) {
+                        if (cleanName.isNotBlank() && folderOwnerUid.isNotBlank()) {
                             scope.launch {
                                 runCatching {
-                                    val ownedFolder = folderDao.getOwnedFolder(folder.id, ownerUid)
+                                    val ownedFolder = folderDao.getOwnedFolder(folder.id, folderOwnerUid)
                                         ?: error("این پوشه متعلق به حساب فعلی نیست.")
                                     folderDao.update(ownedFolder.copy(name = cleanName))
                                 }.onSuccess {
@@ -495,7 +498,7 @@ fun ClassScreen(
                             }
                         }
                     },
-                    enabled = renamedFolderName.isNotBlank() && renamedFolderName.trim() != folder.name && ownerUid.isNotBlank()
+                    enabled = renamedFolderName.isNotBlank() && renamedFolderName.trim() != folder.name && folderOwnerUid.isNotBlank()
                 ) { Text("ذخیره") }
             },
             dismissButton = {
@@ -570,7 +573,7 @@ fun ClassScreen(
                     TextButton(onClick = {
                         scope.launch {
                             val selected = allClasses.filter {
-                                it.id in selectedClassIds && it.id > 0L && it.ownerUid == ownerUid
+                                it.id in selectedClassIds && it.id > 0L && it.ownerUid == folderOwnerUid
                             }
                             selected.forEach { classDao.update(it.copy(folderId = null)) }
                             selectedClassIds = emptySet()
@@ -608,8 +611,8 @@ fun ClassScreen(
                     folderToDelete = null
                     scope.launch {
                         val owned = folderDao.getOwnedFolder(folder.id, ownerUid)
-                        if (owned != null && owned.ownerUid == ownerUid && ownerUid.isNotBlank()) {
-                            allClasses.filter { it.folderId == folder.id && it.id > 0L && it.ownerUid == ownerUid }
+                        if (owned != null && owned.ownerUid == folderOwnerUid && folderOwnerUid.isNotBlank()) {
+                            allClasses.filter { it.folderId == folder.id && it.id > 0L && it.ownerUid == folderOwnerUid }
                                 .forEach { classDao.update(it.copy(folderId = folder.parentFolderId)) }
                             folders.filter { it.parentFolderId == folder.id }
                                 .forEach { folderDao.update(it.copy(parentFolderId = folder.parentFolderId)) }
@@ -668,7 +671,7 @@ fun ClassScreen(
                                 description = editingClass?.description.orEmpty(),
                                 classDateMillis = editingClass?.classDateMillis ?: System.currentTimeMillis(),
                                 createdAtMillis = editingClass?.createdAtMillis ?: System.currentTimeMillis(),
-                                ownerUid = editingClass?.ownerUid ?: ownerUid,
+                                ownerUid = editingClass?.ownerUid ?: folderOwnerUid,
                                 folderId = editingClass?.folderId ?: selectedFolderId
                             ),
                             onSaved = {
