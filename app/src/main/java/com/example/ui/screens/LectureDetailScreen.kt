@@ -30,6 +30,7 @@ import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.text.selection.SelectionContainer
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
@@ -90,6 +91,13 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.AnnotatedString
+import androidx.compose.ui.text.SpanStyle
+import androidx.compose.ui.text.TextLayoutResult
+import androidx.compose.ui.text.buildAnnotatedString
+import androidx.compose.ui.text.withStyle
+import androidx.compose.ui.layout.onGloballyPositioned
+import androidx.compose.ui.layout.positionInRoot
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
@@ -135,6 +143,13 @@ fun LectureDetailScreen(
     val aiError by viewModel.aiError.collectAsState()
 
     val chatMessages by viewModel.chatMessages.collectAsState()
+    val searchResultIds by viewModel.searchResultLectureIds.collectAsState()
+    val searchResultIndex by viewModel.currentSearchResultIndex.collectAsState()
+    val searchNavigationActive by viewModel.isSearchResultNavigationActive.collectAsState()
+    val activeSearchQuery by viewModel.advancedSearchQuery.collectAsState()
+    val activeSearchMatchMode by viewModel.advancedSearchMatchMode.collectAsState()
+    val activeSemanticTerms by viewModel.semanticSearchTerms.collectAsState()
+    val activeSearchHighlightTerms by viewModel.advancedSearchHighlightTerms.collectAsState()
 
     var showDeleteConfirmDialog by remember { mutableStateOf(false) }
     var showExportDialog by remember { mutableStateOf(false) }
@@ -268,6 +283,42 @@ fun LectureDetailScreen(
                 .padding(innerPadding)
                 .background(MaterialTheme.colorScheme.background)
         ) {
+            if (searchNavigationActive && searchResultIds.size > 1) {
+                Surface(
+                    modifier = Modifier.fillMaxWidth().padding(horizontal = 12.dp, vertical = 6.dp),
+                    color = MaterialTheme.colorScheme.secondaryContainer,
+                    shape = RoundedCornerShape(14.dp)
+                ) {
+                    Column(
+                        modifier = Modifier.fillMaxWidth().padding(horizontal = 10.dp, vertical = 6.dp),
+                        verticalArrangement = Arrangement.spacedBy(4.dp)
+                    ) {
+                        Text(
+                            "نتیجه " + (searchResultIndex + 1) + " از " + searchResultIds.size,
+                            modifier = Modifier.fillMaxWidth(),
+                            textAlign = TextAlign.Center,
+                            style = MaterialTheme.typography.labelMedium,
+                            color = MaterialTheme.colorScheme.onSecondaryContainer
+                        )
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.spacedBy(8.dp),
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            OutlinedButton(
+                                onClick = { viewModel.navigateSearchResult(-1) },
+                                enabled = searchResultIndex > 0,
+                                modifier = Modifier.weight(1f)
+                            ) { Text("نتیجه قبلی") }
+                            Button(
+                                onClick = { viewModel.navigateSearchResult(1) },
+                                enabled = searchResultIndex < searchResultIds.lastIndex,
+                                modifier = Modifier.weight(1f)
+                            ) { Text("نتیجه بعدی") }
+                        }
+                    }
+                }
+            }
             // AI Loading Banner
             AnimatedVisibility(visible = isAiLoading) {
                 Surface(
@@ -323,6 +374,12 @@ fun LectureDetailScreen(
             val playableAudio = currentLecture.audioFilePath?.takeIf { File(it).exists() } ?: currentLecture.audioUrl
             TranscriptTab(
                 lecture = currentLecture,
+                searchQuery = activeSearchQuery.takeIf { searchNavigationActive }.orEmpty(),
+                searchTerms = if (searchNavigationActive) {
+                    if (activeSearchMatchMode == "semantic" && activeSemanticTerms.isNotEmpty()) activeSemanticTerms
+                    else activeSearchHighlightTerms
+                } else emptyList(),
+                transcriptMatchMode = activeSearchMatchMode,
                 onEditClick = { onNavigateToEdit(lectureId) },
                 onCopyClick = { textToCopy ->
                     val clipboard = context.getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager
@@ -518,6 +575,9 @@ fun AudioPlayerCard(
 @Composable
 fun TranscriptTab(
     lecture: LectureEntity,
+    searchQuery: String = "",
+    searchTerms: List<String> = emptyList(),
+    transcriptMatchMode: String = "all",
     onEditClick: () -> Unit,
     onCopyClick: (String) -> Unit,
     audioContent: (@Composable () -> Unit)? = null,
@@ -525,15 +585,46 @@ fun TranscriptTab(
 ) {
     val scrollState = rememberScrollState()
     var selectedTextTab by remember(lecture.id) { mutableStateOf(0) }
+    var transcriptTextLayout by remember(lecture.id) { mutableStateOf<TextLayoutResult?>(null) }
+    var transcriptTextTopInRoot by remember(lecture.id) { mutableStateOf(0f) }
+    var scrollColumnTopInRoot by remember(lecture.id) { mutableStateOf(0f) }
     val originalText = lecture.originalTranscript.ifBlank { lecture.transcript }
     val correctedText = lecture.transcript
     val displayedTranscript = if (selectedTextTab == 0) originalText else correctedText
     val hasText = originalText.isNotBlank() || correctedText.isNotBlank()
     val tags = lecture.tags.split(",").map { it.trim() }.filter { it.isNotBlank() }
 
+    LaunchedEffect(lecture.id, searchQuery, searchTerms, transcriptMatchMode, originalText, correctedText) {
+        if (searchQuery.isNotBlank() || searchTerms.isNotEmpty()) {
+            val normalizedQuery = normalizeTranscriptForSearch(searchQuery).first.trim()
+            val normalizedOriginal = normalizeTranscriptForSearch(originalText).first
+            val normalizedCorrected = normalizeTranscriptForSearch(correctedText).first
+            val normalizedTerms = (if (transcriptMatchMode != "phrase" && searchTerms.isNotEmpty()) {
+                (listOf(searchQuery) + searchTerms)
+            } else listOf(searchQuery)).map { normalizeTranscriptForSearch(it).first.trim() }
+                .filter { it.isNotBlank() }.distinct()
+            val queryTerms = normalizedQuery.split(Regex("\\s+")).filter { it.isNotBlank() }
+            fun matches(text: String): Boolean = when {
+                transcriptMatchMode == "phrase" -> normalizedQuery.isNotBlank() && text.contains(normalizedQuery)
+                transcriptMatchMode == "semantic" -> normalizedTerms.any { text.contains(it) }
+                transcriptMatchMode != "phrase" && searchTerms.isNotEmpty() -> normalizedTerms.any { text.contains(it) }
+                queryTerms.isEmpty() -> false
+                else -> queryTerms.all { text.contains(it) }
+            }
+            val originalContains = matches(normalizedOriginal)
+            val correctedContains = matches(normalizedCorrected)
+            when {
+                correctedContains && !originalContains -> selectedTextTab = 1
+                originalContains -> selectedTextTab = 0
+                correctedContains -> selectedTextTab = 1
+            }
+        }
+    }
+
     Column(
         modifier = Modifier
             .fillMaxSize()
+            .onGloballyPositioned { scrollColumnTopInRoot = it.positionInRoot().y }
             .verticalScroll(scrollState)
             .padding(horizontal = 18.dp, vertical = 16.dp)
     ) {
@@ -637,17 +728,32 @@ fun TranscriptTab(
                 }
             }
         } else {
+            val highlighted = remember(displayedTranscript, searchQuery, searchTerms, transcriptMatchMode) {
+                highlightTranscriptMatches(displayedTranscript, searchQuery, searchTerms, transcriptMatchMode)
+            }
             Surface(
                 modifier = Modifier.fillMaxWidth(),
                 shape = RoundedCornerShape(18.dp),
                 color = MaterialTheme.colorScheme.surface
             ) {
                 Text(
-                    text = displayedTranscript,
-                    modifier = Modifier.padding(horizontal = 18.dp, vertical = 20.dp),
+                    text = highlighted.first,
+                    modifier = Modifier
+                        .padding(horizontal = 18.dp, vertical = 20.dp)
+                        .onGloballyPositioned { transcriptTextTopInRoot = it.positionInRoot().y },
                     style = MaterialTheme.typography.bodyLarge.copy(lineHeight = 32.sp),
-                    textAlign = TextAlign.Start
+                    textAlign = TextAlign.Start,
+                    onTextLayout = { transcriptTextLayout = it }
                 )
+            }
+            LaunchedEffect(lecture.id, selectedTextTab, searchQuery, searchTerms, transcriptMatchMode, highlighted.second, transcriptTextLayout) {
+                val matchStart = highlighted.second
+                val layout = transcriptTextLayout
+                if (searchQuery.isNotBlank() && matchStart != null && layout != null) {
+                    val lineTop = layout.getLineTop(layout.getLineForOffset(matchStart.coerceIn(0, (displayedTranscript.length - 1).coerceAtLeast(0))))
+                    val contentY = transcriptTextTopInRoot - scrollColumnTopInRoot + scrollState.value + lineTop
+                    scrollState.animateScrollTo((contentY - 100f).toInt().coerceAtLeast(0))
+                }
             }
         }
 
@@ -747,6 +853,105 @@ fun TranscriptTab(
 
         Spacer(Modifier.height(36.dp))
     }
+}
+
+
+private fun normalizeTranscriptForSearch(source: String): Pair<String, List<Int>> {
+    val normalized = StringBuilder()
+    val originalOffsets = mutableListOf<Int>()
+    var pendingSpaceOffset: Int? = null
+
+    source.forEachIndexed { index, original ->
+        val char = when (original) {
+            'ي' -> 'ی'
+            'ك' -> 'ک'
+            'ۀ', 'ة' -> 'ه'
+            'ؤ' -> 'و'
+            'إ', 'أ', 'آ' -> 'ا'
+            else -> original.lowercaseChar()
+        }
+        if (char in '\u064B'..'\u065F' || char == '\u0670' ||
+            char == '\u200F' || char in '\u202A'..'\u202E'
+        ) return@forEachIndexed
+
+        if (char == '\u200C' || char.isWhitespace()) {
+            if (normalized.isNotEmpty() && pendingSpaceOffset == null) pendingSpaceOffset = index
+            return@forEachIndexed
+        }
+        if (pendingSpaceOffset != null && normalized.isNotEmpty()) {
+            normalized.append(' ')
+            originalOffsets += pendingSpaceOffset!!
+        }
+        pendingSpaceOffset = null
+        normalized.append(char)
+        originalOffsets += index
+    }
+    return normalized.toString().trimEnd() to originalOffsets
+}
+
+private fun highlightTranscriptMatches(
+    source: String,
+    query: String,
+    additionalTerms: List<String> = emptyList(),
+    matchMode: String = "all"
+): Pair<AnnotatedString, Int?> {
+    if (source.isBlank() || (query.isBlank() && additionalTerms.isEmpty())) {
+        return AnnotatedString(source) to null
+    }
+    val (normalizedSource, offsets) = normalizeTranscriptForSearch(source)
+    val normalizedQuery = normalizeTranscriptForSearch(query).first.trim()
+    val terms = if (matchMode != "phrase" && additionalTerms.isNotEmpty()) {
+        (listOf(normalizedQuery) + normalizedQuery.split(Regex("\\s+")) +
+            additionalTerms.map { normalizeTranscriptForSearch(it).first.trim() })
+            .filter { it.isNotBlank() }.distinct()
+    } else if (normalizedQuery.contains(' ')) {
+        listOf(normalizedQuery) + normalizedQuery.split(Regex("\\s+")).filter { it.isNotBlank() }
+    } else listOf(normalizedQuery).filter { it.isNotBlank() }
+
+    if (terms.isEmpty()) return AnnotatedString(source) to null
+
+    val normalizedRanges = mutableListOf<IntRange>()
+    terms.distinct().sortedByDescending { it.length }.forEach { term ->
+        var from = 0
+        while (from < normalizedSource.length) {
+            val index = normalizedSource.indexOf(term, startIndex = from)
+            if (index < 0) break
+            normalizedRanges += index until (index + term.length)
+            from = index + term.length.coerceAtLeast(1)
+        }
+    }
+
+    val sourceRanges = normalizedRanges.mapNotNull { range ->
+        val start = offsets.getOrNull(range.first) ?: return@mapNotNull null
+        val end = (offsets.getOrNull(range.last) ?: start) + 1
+        if (start < end) start until end else null
+    }.sortedBy { it.first }.fold(mutableListOf<IntRange>()) { acc, range ->
+        val previous = acc.lastOrNull()
+        if (previous != null && range.first <= previous.last + 1) {
+            acc[acc.lastIndex] = previous.first..maxOf(previous.last, range.last)
+        } else acc += range
+        acc
+    }
+
+    val annotated = buildAnnotatedString {
+        var cursor = 0
+        sourceRanges.forEach { range ->
+            if (range.first < cursor) return@forEach
+            append(source.substring(cursor, range.first))
+            withStyle(
+                SpanStyle(
+                    background = Color(0xFFFFD54F),
+                    color = Color(0xFF302400),
+                    fontWeight = FontWeight.Bold
+                )
+            ) {
+                append(source.substring(range.first, range.last + 1))
+            }
+            cursor = range.last + 1
+        }
+        if (cursor < source.length) append(source.substring(cursor))
+    }
+    return annotated to sourceRanges.firstOrNull()?.first
 }
 
 @Composable
@@ -1054,6 +1259,7 @@ fun ChatWithLectureTab(
     onSendMessage: () -> Unit
 ) {
     val listState = rememberLazyListState()
+    val context = LocalContext.current
 
     LaunchedEffect(messages.size) {
         if (messages.isNotEmpty()) {
@@ -1096,11 +1302,45 @@ fun ChatWithLectureTab(
                                 color = if (isUser) MaterialTheme.colorScheme.onPrimary.copy(alpha = 0.8f) else MaterialTheme.colorScheme.primary
                             )
                             Spacer(modifier = Modifier.height(4.dp))
-                            Text(
-                                text = msg.text,
-                                style = MaterialTheme.typography.bodyMedium.copy(lineHeight = 22.sp),
-                                color = if (isUser) MaterialTheme.colorScheme.onPrimary else MaterialTheme.colorScheme.onSurface
-                            )
+                            // Make AI answers selectable so the user can select a paragraph
+                            // or the full response and copy it using Android's text selection menu.
+                            SelectionContainer {
+                                Text(
+                                    text = msg.text,
+                                    modifier = Modifier.fillMaxWidth(),
+                                    style = MaterialTheme.typography.bodyMedium.copy(lineHeight = 22.sp),
+                                    color = if (isUser) MaterialTheme.colorScheme.onPrimary else MaterialTheme.colorScheme.onSurface
+                                )
+                            }
+                            if (!isUser && msg.text.isNotBlank()) {
+                                Row(
+                                    modifier = Modifier.fillMaxWidth(),
+                                    horizontalArrangement = Arrangement.End,
+                                    verticalAlignment = Alignment.CenterVertically
+                                ) {
+                                    IconButton(
+                                        onClick = {
+                                            val clipboard = context.getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager
+                                            clipboard.setPrimaryClip(ClipData.newPlainText("پاسخ دستیار هوش مصنوعی درس‌یار", msg.text))
+                                            Toast.makeText(context, "پاسخ کپی شد", Toast.LENGTH_SHORT).show()
+                                        }
+                                    ) {
+                                        Icon(Icons.Default.ContentCopy, contentDescription = "کپی پاسخ")
+                                    }
+                                    IconButton(
+                                        onClick = {
+                                            val shareIntent = Intent(Intent.ACTION_SEND).apply {
+                                                type = "text/plain"
+                                                putExtra(Intent.EXTRA_SUBJECT, "پاسخ دستیار هوش مصنوعی درس‌یار")
+                                                putExtra(Intent.EXTRA_TEXT, msg.text)
+                                            }
+                                            context.startActivity(Intent.createChooser(shareIntent, "ارسال پاسخ"))
+                                        }
+                                    ) {
+                                        Icon(Icons.Default.Share, contentDescription = "اشتراک‌گذاری پاسخ")
+                                    }
+                                }
+                            }
                         }
                     }
                 }
