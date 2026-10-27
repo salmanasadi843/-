@@ -167,6 +167,7 @@ fun LectureDetailScreen(
             term = currentClass?.term.orEmpty(),
             ownerUid = currentClass?.ownerUid?.ifBlank { if (isTeacher) AuthPreferences.currentUid(context).orEmpty() else "" }
                 ?: if (isTeacher) AuthPreferences.currentUid(context).orEmpty() else "",
+            classCreatedAtMillis = currentClass?.createdAtMillis ?: 0L,
             isPublished = currentLecture.isPublished && (currentClass?.isPublished ?: true),
             userRole = if (isTeacher) UserRole.TEACHER else UserRole.STUDENT,
             sessionTitle = currentLecture.title,
