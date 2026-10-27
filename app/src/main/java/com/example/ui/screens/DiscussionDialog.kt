@@ -49,8 +49,8 @@ private data class DiscussionPost(
     val createdAtMillis: Long
 )
 
-internal fun discussionSpaceKey(ownerUid: String, className: String, teacherName: String, term: String): String {
-    val raw = listOf(ownerUid, className, teacherName, term).joinToString("|") { it.trim() }
+internal fun discussionSpaceKey(ownerUid: String, classCreatedAtMillis: Long, className: String, teacherName: String, term: String): String {
+    val raw = if (classCreatedAtMillis > 0L) ownerUid + "|created:" + classCreatedAtMillis else listOf(ownerUid, className, teacherName, term).joinToString("|") { it.trim() }
     val digest = MessageDigest.getInstance("SHA-256").digest(raw.toByteArray(Charsets.UTF_8))
     return digest.joinToString("") { "%02x".format(it) }
 }
@@ -67,6 +67,7 @@ fun DiscussionDialog(
     teacherName: String,
     term: String,
     ownerUid: String,
+    classCreatedAtMillis: Long = 0L,
     isPublished: Boolean,
     userRole: UserRole,
     sessionTitle: String? = null,
@@ -76,8 +77,8 @@ fun DiscussionDialog(
     val context = LocalContext.current
     val uid = AuthPreferences.currentUid(context).orEmpty()
     val authorName = AuthPreferences.currentName(context).ifBlank { if (userRole == UserRole.TEACHER) "استاد" else "دانشجو" }
-    val spaceKey = remember(ownerUid, className, teacherName, term) {
-        discussionSpaceKey(ownerUid, className, teacherName, term)
+    val spaceKey = remember(ownerUid, classCreatedAtMillis, className, teacherName, term) {
+        discussionSpaceKey(ownerUid, classCreatedAtMillis, className, teacherName, term)
     }
     val activeSessionKey = remember(sessionTitle, sessionDateMillis) {
         if (sessionTitle == null) "__class__" else discussionSessionKey(sessionTitle, sessionDateMillis ?: 0L)
