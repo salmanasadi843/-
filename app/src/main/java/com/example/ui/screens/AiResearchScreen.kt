@@ -46,6 +46,7 @@ fun AiResearchScreen(
     val expandingSemanticTerms by viewModel.isSemanticExpansionLoading.collectAsState()
     val sourceIds by viewModel.aiResearchSourceIds.collectAsState()
     val report by viewModel.researchReport.collectAsState()
+    val researchError by viewModel.researchError.collectAsState()
     val reportLoading by viewModel.isResearchLoading.collectAsState()
     var outputMode by remember { mutableStateOf("question") }
     val displayedAnswer = if (outputMode == "question") answer else report
@@ -218,7 +219,9 @@ fun AiResearchScreen(
                     }
                 )
             }
-            error?.let { Text(it, color = MaterialTheme.colorScheme.error, style = MaterialTheme.typography.bodySmall) }
+            (error ?: researchError)?.let { message ->
+                Text(message, color = MaterialTheme.colorScheme.error, style = MaterialTheme.typography.bodySmall)
+            }
 
             if (displayedAnswer.isNotBlank()) {
                 Row(
