@@ -384,7 +384,7 @@ fun AdvancedSearchScreen(
                                 resultsListState.firstVisibleItemIndex,
                                 resultsListState.firstVisibleItemScrollOffset
                             )
-                            viewModel.beginSearchNavigation(results.map { it.id }, lecture.id)
+                            viewModel.beginSearchNavigation(results.map { it.id }, lecture.id, highlightTerms)
                             onOpenLecture(lecture.id)
                         },
                         shape = RoundedCornerShape(16.dp),
