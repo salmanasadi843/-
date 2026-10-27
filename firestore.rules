@@ -214,7 +214,33 @@ service cloud.firestore {
 
         allow read: if canReadRoom();
 
-        // دانشجوی واردشده می‌تواند پرسش ثبت کند؛ پاسخ به پرسش فقط توسط استاد مالک یا مدیر اصلی.
+        function validDiscussionAuthor() {
+          return (
+                   request.resource.data.authorRole == 'STUDENT'
+                   && exists(/databases/$(database)/documents/users/$(request.auth.uid))
+                   && get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role == 'STUDENT'
+                 )
+                 || (
+                   request.resource.data.authorRole == 'TEACHER'
+                   && activeTeacher(request.auth.uid)
+                 )
+                 || (
+                   request.resource.data.authorRole == 'ADMIN'
+                   && isPrimaryTeacher()
+                 );
+        }
+
+        function repliesToQuestionInSameSession() {
+          return request.resource.data.parentId == ''
+                 || (
+                   exists(/databases/$(database)/documents/discussion_spaces/$(spaceId)/posts/$(request.resource.data.parentId))
+                   && get(/databases/$(database)/documents/discussion_spaces/$(spaceId)/posts/$(request.resource.data.parentId)).data.parentId == ''
+                   && get(/databases/$(database)/documents/discussion_spaces/$(spaceId)/posts/$(request.resource.data.parentId)).data.sessionKey == request.resource.data.sessionKey
+                 );
+        }
+
+        // همه کاربران مجازِ تالار می‌توانند پرسش بگذارند و به پرسش‌های همدیگر پاسخ دهند.
+        // نقش نویسنده از سند کاربر/مجوز استاد کنترل می‌شود؛ پاسخ زنجیره‌ای و پاسخ به جلسه دیگر مجاز نیست.
         allow create: if canReadRoom()
                       && request.resource.data.authorUid == request.auth.uid
                       && request.resource.data.body is string
@@ -222,20 +248,8 @@ service cloud.firestore {
                       && request.resource.data.body.size() <= 8000
                       && request.resource.data.sessionKey is string
                       && request.resource.data.parentId is string
-                      && (
-                        (request.resource.data.authorRole == 'STUDENT'
-                         && exists(/databases/$(database)/documents/users/$(request.auth.uid))
-                         && get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role == 'STUDENT'
-                         && request.resource.data.parentId == '')
-                        || (request.resource.data.authorRole == 'TEACHER'
-                            && activeTeacher(request.auth.uid)
-                            && request.resource.data.parentId == '')
-                        || (request.resource.data.parentId != ''
-                            && (
-                              (request.auth.uid == room().ownerUid && activeTeacher(request.auth.uid))
-                              || isPrimaryTeacher()
-                            ))
-                      );
+                      && validDiscussionAuthor()
+                      && repliesToQuestionInSameSession();
 
         allow update, delete: if canReadRoom()
                               && (
