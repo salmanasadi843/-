@@ -42,6 +42,7 @@ import java.io.FileOutputStream
 sealed class Screen {
     object Home : Screen()
     object Teachers : Screen()
+    object AiResearch : Screen()
     data class TeacherClasses(val teacherKey: String, val teacherName: String) : Screen()
     object Classes : Screen()
     data class ClassDetail(
@@ -263,6 +264,19 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
     val currentSearchResultIndex = MutableStateFlow(0)
     val isSearchResultNavigationActive = MutableStateFlow(false)
     private val reopenAdvancedSearch = MutableStateFlow(false)
+
+    // Keep AI research state when opening a source lecture and returning.
+    val aiResearchQuery = MutableStateFlow("")
+    val aiResearchAnswer = MutableStateFlow("")
+    val aiResearchError = MutableStateFlow<String?>(null)
+    val aiResearchLoading = MutableStateFlow(false)
+    val aiResearchSourceIds = MutableStateFlow<List<Long>>(emptyList())
+    private val returnToAiResearchAfterDetail = MutableStateFlow(false)
+
+    fun openAiResearchSource(lectureId: Long) {
+        returnToAiResearchAfterDetail.value = true
+        navigateTo(Screen.Detail(lectureId))
+    }
 
     fun saveAdvancedSearchScrollPosition(index: Int, offset: Int) {
         advancedSearchScrollIndex.value = index.coerceAtLeast(0)
@@ -549,6 +563,9 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
 
     fun navigateBack() {
         when (val screen = _currentScreen.value) {
+            Screen.AiResearch -> {
+                _currentScreen.value = Screen.Home
+            }
             is Screen.AiStudy -> {
                 _currentScreen.value = Screen.Detail(screen.lectureId)
             }
@@ -568,7 +585,10 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
             is Screen.Detail -> {
                 audioPlayer.stop()
                 speechRecognizer.stopListening()
-                if (isSearchResultNavigationActive.value) {
+                if (returnToAiResearchAfterDetail.value) {
+                    returnToAiResearchAfterDetail.value = false
+                    _currentScreen.value = Screen.AiResearch
+                } else if (isSearchResultNavigationActive.value) {
                     reopenAdvancedSearch.value = true
                     _currentScreen.value = Screen.Home
                 } else {
@@ -2007,5 +2027,49 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
         audioRecorder.stopRecording()
 
         speechRecognizer.stopListening()
+    }
+
+    /**
+     * AI research over locally accessible lecture material.
+     * Source excerpts are supplied by the screen with stable [S1], [S2] labels.
+     */
+    fun runAiResearch(
+        question: String,
+        sourceContext: String,
+        onComplete: (Result<String>) -> Unit
+    ) {
+        viewModelScope.launch {
+            val prompt = """
+                پرسش پژوهشی کاربر:
+                $question
+
+                متن‌های محلیِ در دسترس (هر منبع با شناسه [S1]، [S2] و ...):
+                $sourceContext
+
+                دستور:
+                - پاسخ را فقط بر اساس منابع ارائه‌شده تنظیم کن.
+                - برای هر ادعای اصلی، شناسه منبع مانند [S1] را دقیقاً درج کن.
+                - اگر منابع برای پاسخ کافی نیستند، صریح بگو چه چیزی در آن‌ها پیدا نشد؛ پاسخ را از دانش عمومی جعل نکن.
+                - دیدگاه‌های متفاوت را جدا کن و اختلاف را بی‌دلیل حل نکن.
+                - اگر سؤال به چند جلسه مربوط است، آن‌ها را ترکیب کن و ارتباط هر نتیجه با منبع را نشان بده.
+                - پاسخ فارسی، علمی، روشن و قابل بررسی باشد.
+                - در پایان بخشی با عنوان «منابع مرتبط» بیاور و فقط شناسه‌های واقعاً موجود را فهرست کن.
+            """.trimIndent()
+            val result = aiTextWithGeminiFirst(
+                groqCall = {
+                    GroqApiService.generateContent(
+                        prompt,
+                        "تو دستیار پژوهش علمیِ امانت‌دار هستی."
+                    )
+                },
+                geminiCall = {
+                    GeminiApiService.generateContent(
+                        prompt,
+                        "تو دستیار پژوهش علمیِ امانت‌دار هستی."
+                    )
+                }
+            )
+            onComplete(result)
+        }
     }
 }
