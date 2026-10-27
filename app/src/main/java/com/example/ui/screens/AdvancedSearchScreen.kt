@@ -371,9 +371,11 @@ fun AdvancedSearchScreen(
                 items(results, key = { it.id }) { lecture ->
                     val className = classes.firstOrNull { it.id == lecture.classId }?.name
                     val highlightTerms = when {
-                        matchMode == "semantic" && expandedTerms.isNotEmpty() -> expandedTerms
-                        matchMode == "phrase" -> (listOf(normalizeSearchText(query).trim()) + terms).filter { it.isNotBlank() }.distinct()
-                        else -> terms
+                        matchMode == "semantic" && expandedTerms.isNotEmpty() ->
+                            expandedTerms.flatMap(::semanticVariants).filter { it.isNotBlank() }.distinct()
+                        matchMode == "phrase" ->
+                            (listOf(normalizeSearchText(query).trim()) + terms).filter { it.isNotBlank() }.distinct()
+                        else -> terms.flatMap(::semanticVariants).filter { it.isNotBlank() }.distinct()
                     }
                     val excerpt = makeSearchExcerpt(lecture, highlightTerms, query, matchMode)
                     Card(
@@ -443,6 +445,7 @@ private val searchConceptGroups: List<Set<String>> = listOf(
 
 private fun semanticVariants(term: String): Set<String> {
     val normalized = normalizeSearchText(term)
+    if (normalized.isBlank()) return emptySet()
     val variants = linkedSetOf(normalized)
     searchConceptGroups.forEach { group ->
         val normalizedGroup = group.map(::normalizeSearchText)
