@@ -36,6 +36,7 @@ import androidx.compose.ui.unit.dp
 import com.google.firebase.firestore.FieldValue
 import com.google.firebase.firestore.FirebaseFirestore
 import com.google.firebase.firestore.ListenerRegistration
+import com.google.firebase.firestore.SetOptions
 import java.security.MessageDigest
 
 private data class DiscussionPost(
@@ -101,19 +102,24 @@ fun DiscussionDialog(
         }
         spaceRef.get()
             .addOnSuccessListener { snapshot ->
+                val metadata = mapOf(
+                    "ownerUid" to ownerUid,
+                    "className" to className,
+                    "teacherName" to teacherName,
+                    "term" to term,
+                    "isPublished" to isPublished
+                )
                 if (!snapshot.exists()) {
-                    spaceRef.set(
-                        mapOf(
-                            "ownerUid" to ownerUid,
-                            "className" to className,
-                            "teacherName" to teacherName,
-                            "term" to term,
-                            "isPublished" to isPublished,
-                            "createdAt" to FieldValue.serverTimestamp()
-                        )
-                    ).addOnFailureListener { e ->
-                        error = e.localizedMessage ?: "ساخت تالار گفتگو انجام نشد."
+                    if (isClassOwner || AuthPreferences.isPrimaryTeacher(context)) {
+                        spaceRef.set(metadata + ("createdAt" to FieldValue.serverTimestamp()))
+                            .addOnFailureListener { e -> error = e.localizedMessage ?: "ساخت تالار گفتگو انجام نشد." }
+                    } else {
+                        error = "تالار این کلاس هنوز فعال نشده است؛ استاد باید یک‌بار تالار گفتگو را باز کند."
+                        loading = false
                     }
+                } else if (isClassOwner || AuthPreferences.isPrimaryTeacher(context)) {
+                    spaceRef.set(metadata, SetOptions.merge())
+                        .addOnFailureListener { e -> error = e.localizedMessage ?: "به‌روزرسانی مشخصات تالار انجام نشد." }
                 }
             }
             .addOnFailureListener { e ->
