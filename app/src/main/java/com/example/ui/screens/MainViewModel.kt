@@ -1131,9 +1131,13 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
         _researchError.value = null
     }
 
-    fun expandSemanticSearchQuery(query: String) {
+    fun expandSemanticSearchQuery(
+        query: String,
+        onComplete: ((List<String>) -> Unit)? = null
+    ) {
         if (query.isBlank()) {
             _researchError.value = "ابتدا موضوع یا پرسش خود را وارد کنید."
+            onComplete?.invoke(emptyList())
             return
         }
         viewModelScope.launch {
@@ -1150,20 +1154,26 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
                 groqCall = { GroqApiService.generateContent(prompt, "فقط فهرست اصطلاحات جست‌وجو را تولید کن.") },
                 geminiCall = { GeminiApiService.generateContent(prompt, "فقط فهرست اصطلاحات جست‌وجو را تولید کن.") }
             )
-            result.onSuccess { raw ->
-                val terms = raw.lineSequence()
-                    .map { it.trim().removePrefix("-").removePrefix("•").replace(Regex("^\\d+[.)、]\\s*"), "").trim().trim('"', '«', '»') }
-                    .filter { it.length >= 2 }
-                    .distinctBy { it.lowercase() }
-                    .take(18)
-                    .toList()
-                _semanticSearchTerms.value = (listOf(query.trim()) + terms).distinctBy { it.lowercase() }
-                _researchError.value = null
-            }.onFailure { failure ->
-                _semanticSearchTerms.value = emptyList()
-                _researchError.value = "گسترش معنایی با هوش مصنوعی ناموفق بود؛ جست‌وجوی محلی معمولی همچنان قابل استفاده است. " + (failure.localizedMessage ?: "")
-            }
+            val expandedTerms = result.fold(
+                onSuccess = { raw ->
+                    raw.lineSequence()
+                        .map { it.trim().removePrefix("-").removePrefix("•").replace(Regex("^\\d+[.)、]\\s*"), "").trim().trim('"', '«', '»') }
+                        .filter { it.length >= 2 }
+                        .distinctBy { it.lowercase() }
+                        .take(18)
+                        .toList()
+                        .let { terms -> (listOf(query.trim()) + terms).distinctBy { it.lowercase() } }
+                },
+                onFailure = { failure ->
+                    _researchError.value = "گسترش معنایی با هوش مصنوعی ناموفق بود؛ جست‌وجوی محلی معمولی همچنان قابل استفاده است. " +
+                        (failure.localizedMessage ?: "")
+                    emptyList()
+                }
+            )
+            _semanticSearchTerms.value = expandedTerms
+            if (expandedTerms.isNotEmpty()) _researchError.value = null
             _isSemanticExpansionLoading.value = false
+            onComplete?.invoke(expandedTerms)
         }
     }
 
