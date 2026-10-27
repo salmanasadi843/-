@@ -28,6 +28,7 @@ import com.example.ui.screens.ClassScreen
 import com.example.ui.screens.TeacherFoldersScreen
 import com.example.ui.screens.ClassSessionsScreen
 import com.example.ui.screens.HomeScreen
+import com.example.ui.screens.AiResearchScreen
 import com.example.ui.screens.LectureDetailScreen
 import com.example.ui.screens.MainViewModel
 import com.example.ui.screens.Screen
@@ -124,7 +125,8 @@ fun OstadYarApp(
                 userRole = userRole,
                 onNavigateToAdd = { viewModel.openClasses() },
                 onNavigateToDetail = { lectureId -> viewModel.navigateTo(Screen.Detail(lectureId)) },
-                onNavigateToAiSummary = { lectureId -> viewModel.navigateTo(Screen.Detail(lectureId)) }
+                onNavigateToAiSummary = { lectureId -> viewModel.navigateTo(Screen.Detail(lectureId)) },
+                onNavigateToAiResearch = { viewModel.navigateTo(Screen.AiResearch) }
             )
         }
 
@@ -201,6 +203,15 @@ fun OstadYarApp(
                 onNavigateToEdit = { editId ->
                     if (userRole == UserRole.TEACHER) viewModel.navigateTo(Screen.AddEdit(editId))
                 }
+            )
+        }
+
+        Screen.AiResearch -> {
+            AiResearchScreen(
+                viewModel = viewModel,
+                userRole = userRole,
+                onOpenLecture = { lectureId -> viewModel.openAiResearchSource(lectureId) },
+                onBack = { viewModel.navigateBack() }
             )
         }
 
