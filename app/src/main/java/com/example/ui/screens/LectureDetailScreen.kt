@@ -149,6 +149,7 @@ fun LectureDetailScreen(
     val activeSearchQuery by viewModel.advancedSearchQuery.collectAsState()
     val activeSearchMatchMode by viewModel.advancedSearchMatchMode.collectAsState()
     val activeSemanticTerms by viewModel.semanticSearchTerms.collectAsState()
+    val activeSearchHighlightTerms by viewModel.advancedSearchHighlightTerms.collectAsState()
 
     var showDeleteConfirmDialog by remember { mutableStateOf(false) }
     var showExportDialog by remember { mutableStateOf(false) }
@@ -374,7 +375,10 @@ fun LectureDetailScreen(
             TranscriptTab(
                 lecture = currentLecture,
                 searchQuery = activeSearchQuery.takeIf { searchNavigationActive }.orEmpty(),
-                searchTerms = if (searchNavigationActive && activeSearchMatchMode == "semantic") activeSemanticTerms else emptyList(),
+                searchTerms = if (searchNavigationActive) {
+                    if (activeSearchMatchMode == "semantic" && activeSemanticTerms.isNotEmpty()) activeSemanticTerms
+                    else activeSearchHighlightTerms
+                } else emptyList(),
                 transcriptMatchMode = activeSearchMatchMode,
                 onEditClick = { onNavigateToEdit(lectureId) },
                 onCopyClick = { textToCopy ->
@@ -595,7 +599,7 @@ fun TranscriptTab(
             val normalizedQuery = normalizeTranscriptForSearch(searchQuery).first.trim()
             val normalizedOriginal = normalizeTranscriptForSearch(originalText).first
             val normalizedCorrected = normalizeTranscriptForSearch(correctedText).first
-            val normalizedTerms = (if (transcriptMatchMode == "semantic" && searchTerms.isNotEmpty()) {
+            val normalizedTerms = (if (transcriptMatchMode != "phrase" && searchTerms.isNotEmpty()) {
                 (listOf(searchQuery) + searchTerms)
             } else listOf(searchQuery)).map { normalizeTranscriptForSearch(it).first.trim() }
                 .filter { it.isNotBlank() }.distinct()
@@ -603,6 +607,7 @@ fun TranscriptTab(
             fun matches(text: String): Boolean = when {
                 transcriptMatchMode == "phrase" -> normalizedQuery.isNotBlank() && text.contains(normalizedQuery)
                 transcriptMatchMode == "semantic" -> normalizedTerms.any { text.contains(it) }
+                transcriptMatchMode != "phrase" && searchTerms.isNotEmpty() -> normalizedTerms.any { text.contains(it) }
                 queryTerms.isEmpty() -> false
                 else -> queryTerms.all { text.contains(it) }
             }
@@ -895,8 +900,9 @@ private fun highlightTranscriptMatches(
     }
     val (normalizedSource, offsets) = normalizeTranscriptForSearch(source)
     val normalizedQuery = normalizeTranscriptForSearch(query).first.trim()
-    val terms = if (matchMode == "semantic" && additionalTerms.isNotEmpty()) {
-        (listOf(normalizedQuery) + additionalTerms.map { normalizeTranscriptForSearch(it).first.trim() })
+    val terms = if (matchMode != "phrase" && additionalTerms.isNotEmpty()) {
+        (listOf(normalizedQuery) + normalizedQuery.split(Regex("\\s+")) +
+            additionalTerms.map { normalizeTranscriptForSearch(it).first.trim() })
             .filter { it.isNotBlank() }.distinct()
     } else if (normalizedQuery.contains(' ')) {
         listOf(normalizedQuery) + normalizedQuery.split(Regex("\\s+")).filter { it.isNotBlank() }
