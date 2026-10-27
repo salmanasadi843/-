@@ -38,7 +38,8 @@ fun ClassScreen(
     val context = LocalContext.current
     val ownerUid = AuthPreferences.currentUid(context).orEmpty()
     val canManageClasses = userRole == UserRole.TEACHER || AuthPreferences.isPrimaryTeacher(context)
-    val canCreateInSelectedTeacher = canManageClasses && (teacherKey == null || teacherKey == ownerUid)
+    val canManageSelectedTeacher = canManageClasses && (teacherKey == null || teacherKey == ownerUid)
+    val canCreateInSelectedTeacher = canManageSelectedTeacher
     val allClasses by viewModel.repository.allClasses.collectAsState(initial = emptyList())
     // Never expose teacher-local or unpublished classes in student mode.
     val studentSyncStatus by viewModel.studentMaterialsSyncStatus.collectAsState()
@@ -136,10 +137,8 @@ fun ClassScreen(
     val visibleOwnedClasses = classes.filter {
         it.id > 0L &&
             (it.ownerUid == ownerUid || it.ownerUid.isBlank()) &&
-            (teacherKey != null || it.folderId == selectedFolderId)
+            ((teacherKey == null || teacherKey == ownerUid) && it.folderId == selectedFolderId)
     }
-    val canManageSelectedTeacher = canManageClasses &&
-        (teacherKey == null || teacherKey == ownerUid)
     val classesToDisplay = if (canManageSelectedTeacher) visibleOwnedClasses else classes
     // Shared/foreign classes are kept in a separate read-only section at the root,
     // never mixed into the teacher's own folders.
@@ -182,7 +181,7 @@ fun ClassScreen(
             }
         }
     ) { padding ->
-        if (classes.isEmpty() && (!canManageClasses || teacherKey != null)) {
+        if (classes.isEmpty() && (!canManageClasses || !canManageSelectedTeacher)) {
             Box(
                 Modifier.fillMaxSize().padding(padding).padding(24.dp),
                 contentAlignment = Alignment.Center
@@ -196,13 +195,13 @@ fun ClassScreen(
                         Icon(Icons.Default.School, null, Modifier.size(48.dp), tint = MaterialTheme.colorScheme.primary)
                         Spacer(Modifier.height(14.dp))
                         Text(
-                            if (canManageClasses && teacherKey == null) "هنوز کلاسی ایجاد نشده است" else "کلاسی در این پوشه وجود ندارد",
+                            if (canManageSelectedTeacher) "هنوز کلاسی ایجاد نشده است" else "کلاسی در این پوشه وجود ندارد",
                             style = MaterialTheme.typography.titleMedium,
                             fontWeight = FontWeight.Bold
                         )
                         Spacer(Modifier.height(6.dp))
                         Text(
-                            if (canManageClasses && teacherKey == null) "اولین کلاس خود را ایجاد کنید." else "پس از انتشار یا اضافه‌شدن کلاس، اینجا نمایش داده می‌شود.",
+                            if (canManageSelectedTeacher) "اولین کلاس خود را ایجاد کنید." else "پس از انتشار یا اضافه‌شدن کلاس، اینجا نمایش داده می‌شود.",
                             color = MaterialTheme.colorScheme.onSurfaceVariant
                         )
                     }
@@ -214,7 +213,7 @@ fun ClassScreen(
                 contentPadding = PaddingValues(16.dp, 12.dp, 16.dp, 96.dp),
                 verticalArrangement = Arrangement.spacedBy(12.dp)
             ) {
-                if (canManageClasses && teacherKey == null) {
+                if (canManageSelectedTeacher) {
                     item {
                         Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
                             Row(verticalAlignment = Alignment.CenterVertically) {
