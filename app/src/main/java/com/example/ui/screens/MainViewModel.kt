@@ -42,7 +42,6 @@ import java.io.FileOutputStream
 sealed class Screen {
     object Home : Screen()
     object Teachers : Screen()
-    object AiResearch : Screen()
     data class TeacherClasses(val teacherKey: String, val teacherName: String) : Screen()
     object Classes : Screen()
     data class ClassDetail(
@@ -507,9 +506,6 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
                 _currentScreen.value = Screen.Detail(screen.lectureId)
             }
             Screen.Teachers -> {
-                _currentScreen.value = Screen.Home
-            }
-            Screen.AiResearch -> {
                 _currentScreen.value = Screen.Home
             }
             is Screen.TeacherClasses -> {
@@ -993,40 +989,6 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
         }
     }
 
-
-    /**
-     * AI research over local lecture material. Sources are supplied by the screen
-     * with stable [S1], [S2] labels so answers can be checked against exact sessions.
-     */
-    fun runAiResearch(
-        question: String,
-        sourceContext: String,
-        onComplete: (Result<String>) -> Unit
-    ) {
-        viewModelScope.launch {
-            val prompt = """
-                پرسش پژوهشی کاربر:
-                $question
-
-                متن‌های محلیِ در دسترس (هر منبع با شناسه [S1]، [S2] و ...):
-                $sourceContext
-
-                دستور:
-                - پاسخ را فقط بر اساس منابع ارائه‌شده تنظیم کن.
-                - برای هر ادعای اصلی، شناسه منبع مانند [S1] را دقیقاً درج کن.
-                - اگر منابع برای پاسخ کافی نیستند، صریح بگو چه چیزی در آن‌ها پیدا نشد؛ پاسخ را از دانش عمومی جعل نکن.
-                - دیدگاه‌های متفاوت را جدا کن و اختلاف را بی‌دلیل حل نکن.
-                - اگر سؤال به چند جلسه مربوط است، آن‌ها را ترکیب کن و ارتباط هر نتیجه با منبع را نشان بده.
-                - پاسخ فارسی، علمی، روشن و قابل بررسی باشد.
-                - در پایان بخشی با عنوان «منابع مرتبط» بیاور و فقط شناسه‌های واقعاً موجود را فهرست کن.
-            """.trimIndent()
-            val result = aiTextWithGroqFirst(
-                groqCall = { GroqApiService.generateContent(prompt, "تو دستیار پژوهش علمیِ امانت‌دار هستی.") },
-                geminiCall = { GeminiApiService.generateContent(prompt, "تو دستیار پژوهش علمیِ امانت‌دار هستی.") }
-            )
-            onComplete(result)
-        }
-    }
 
     // برای استخراج و اصلاح متن: Gemini اول؛ در صورت نبودن کلید یا خطا، Groq.
     private suspend fun aiTextWithGroqFirst(
