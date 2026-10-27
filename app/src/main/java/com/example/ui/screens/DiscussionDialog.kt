@@ -1,0 +1,278 @@
+package com.example.ui.screens
+
+import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.heightIn
+import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.items
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.automirrored.filled.Send
+import androidx.compose.material.icons.filled.Forum
+import androidx.compose.material3.AlertDialog
+import androidx.compose.material3.Button
+import androidx.compose.material3.CircularProgressIndicator
+import androidx.compose.material3.HorizontalDivider
+import androidx.compose.material3.Icon
+import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.OutlinedTextField
+import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
+import androidx.compose.runtime.Composable
+import androidx.compose.runtime.DisposableEffect
+import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateListOf
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
+import androidx.compose.ui.Alignment
+import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.unit.dp
+import com.google.firebase.firestore.FieldValue
+import com.google.firebase.firestore.FirebaseFirestore
+import com.google.firebase.firestore.ListenerRegistration
+import java.security.MessageDigest
+
+private data class DiscussionPost(
+    val id: String,
+    val parentId: String,
+    val body: String,
+    val authorUid: String,
+    val authorName: String,
+    val authorRole: String,
+    val createdAtMillis: Long
+)
+
+internal fun discussionSpaceKey(ownerUid: String, className: String, teacherName: String, term: String): String {
+    val raw = listOf(ownerUid, className, teacherName, term).joinToString("|") { it.trim() }
+    val digest = MessageDigest.getInstance("SHA-256").digest(raw.toByteArray(Charsets.UTF_8))
+    return digest.joinToString("") { "%02x".format(it) }
+}
+
+internal fun discussionSessionKey(title: String, dateMillis: Long): String {
+    val raw = title + "|" + dateMillis
+    val digest = MessageDigest.getInstance("SHA-256").digest(raw.toByteArray(Charsets.UTF_8))
+    return "session_" + digest.joinToString("") { "%02x".format(it) }
+}
+
+@Composable
+fun DiscussionDialog(
+    className: String,
+    teacherName: String,
+    term: String,
+    ownerUid: String,
+    isPublished: Boolean,
+    userRole: UserRole,
+    sessionTitle: String? = null,
+    sessionDateMillis: Long? = null,
+    onDismiss: () -> Unit
+) {
+    val context = LocalContext.current
+    val uid = AuthPreferences.currentUid(context).orEmpty()
+    val authorName = AuthPreferences.currentName(context).ifBlank { if (userRole == UserRole.TEACHER) "استاد" else "دانشجو" }
+    val spaceKey = remember(ownerUid, className, teacherName, term) {
+        discussionSpaceKey(ownerUid, className, teacherName, term)
+    }
+    val activeSessionKey = remember(sessionTitle, sessionDateMillis) {
+        if (sessionTitle == null) "__class__" else discussionSessionKey(sessionTitle, sessionDateMillis ?: 0L)
+    }
+    val isClassOwner = uid.isNotBlank() && uid == ownerUid
+    val canAnswer = userRole == UserRole.TEACHER && (isClassOwner || AuthPreferences.isPrimaryTeacher(context))
+    val posts = remember(spaceKey, activeSessionKey) { mutableStateListOf<DiscussionPost>() }
+    var draft by remember { mutableStateOf("") }
+    var replyTo by remember { mutableStateOf<DiscussionPost?>(null) }
+    var loading by remember { mutableStateOf(true) }
+    var error by remember { mutableStateOf<String?>(null) }
+    var sending by remember { mutableStateOf(false) }
+    val firestore = remember { FirebaseFirestore.getInstance() }
+    val spaceRef = remember(spaceKey) { firestore.collection("discussion_spaces").document(spaceKey) }
+    val postsRef = remember(spaceKey) { spaceRef.collection("posts") }
+
+    LaunchedEffect(spaceKey, uid, ownerUid, className, teacherName, term, isPublished) {
+        if (uid.isBlank()) {
+            error = "برای استفاده از تالار گفتگو ابتدا وارد حساب کاربری شوید."
+            loading = false
+            return@LaunchedEffect
+        }
+        spaceRef.get()
+            .addOnSuccessListener { snapshot ->
+                if (!snapshot.exists()) {
+                    spaceRef.set(
+                        mapOf(
+                            "ownerUid" to ownerUid,
+                            "className" to className,
+                            "teacherName" to teacherName,
+                            "term" to term,
+                            "isPublished" to isPublished,
+                            "createdAt" to FieldValue.serverTimestamp()
+                        )
+                    ).addOnFailureListener { e ->
+                        error = e.localizedMessage ?: "ساخت تالار گفتگو انجام نشد."
+                    }
+                }
+            }
+            .addOnFailureListener { e ->
+                error = e.localizedMessage ?: "دسترسی به تالار گفتگو ممکن نیست."
+                loading = false
+            }
+    }
+
+    DisposableEffect(spaceKey, activeSessionKey, uid) {
+        var registration: ListenerRegistration? = null
+        if (uid.isNotBlank()) {
+            registration = postsRef.whereEqualTo("sessionKey", activeSessionKey)
+                .addSnapshotListener { snapshot, e ->
+                    if (e != null) {
+                        error = e.localizedMessage ?: "دریافت گفتگوها ناموفق بود."
+                        loading = false
+                    } else {
+                        posts.clear()
+                        posts.addAll(snapshot?.documents.orEmpty().map { doc ->
+                            DiscussionPost(
+                                id = doc.id,
+                                parentId = doc.getString("parentId").orEmpty(),
+                                body = doc.getString("body").orEmpty(),
+                                authorUid = doc.getString("authorUid").orEmpty(),
+                                authorName = doc.getString("authorName").orEmpty(),
+                                authorRole = doc.getString("authorRole").orEmpty(),
+                                createdAtMillis = doc.getTimestamp("createdAt")?.toDate()?.time ?: 0L
+                            )
+                        }.sortedBy { it.createdAtMillis })
+                        loading = false
+                    }
+                }
+        } else {
+            loading = false
+        }
+        onDispose { registration?.remove() }
+    }
+
+    fun sendPost() {
+        val text = draft.trim()
+        if (text.isBlank() || sending || uid.isBlank()) return
+        if (replyTo != null && !canAnswer) {
+            error = "پاسخ به پرسش‌ها فقط برای استاد مجاز این کلاس و مدیر اصلی فعال است."
+            return
+        }
+        sending = true
+        error = null
+        postsRef.add(
+            mapOf(
+                "sessionKey" to activeSessionKey,
+                "parentId" to (replyTo?.id ?: ""),
+                "body" to text,
+                "authorUid" to uid,
+                "authorName" to authorName,
+                "authorRole" to userRole.name,
+                "createdAt" to FieldValue.serverTimestamp()
+            )
+        ).addOnSuccessListener {
+            draft = ""
+            replyTo = null
+            sending = false
+        }.addOnFailureListener { e ->
+            error = e.localizedMessage ?: "ارسال پیام انجام نشد."
+            sending = false
+        }
+    }
+
+    val questions = posts.filter { it.parentId.isBlank() }
+    val answersByQuestion = posts.filter { it.parentId.isNotBlank() }.groupBy { it.parentId }
+
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        icon = { Icon(Icons.Default.Forum, contentDescription = null) },
+        title = {
+            Column {
+                Text(if (sessionTitle == null) "تالار گفتگوی درس" else "اشکال و پاسخ جلسه")
+                Text(
+                    if (sessionTitle == null) className else sessionTitle,
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                )
+            }
+        },
+        text = {
+            Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                if (loading) {
+                    Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.Center) {
+                        CircularProgressIndicator()
+                    }
+                } else if (questions.isEmpty()) {
+                    Text(if (sessionTitle == null) "هنوز پرسشی برای این درس ثبت نشده است." else "هنوز اشکالی برای این جلسه ثبت نشده است.")
+                } else {
+                    LazyColumn(
+                        modifier = Modifier.fillMaxWidth().heightIn(max = 300.dp),
+                        verticalArrangement = Arrangement.spacedBy(10.dp)
+                    ) {
+                        items(questions, key = { it.id }) { question ->
+                            Column(verticalArrangement = Arrangement.spacedBy(5.dp)) {
+                                Text(question.body, style = MaterialTheme.typography.bodyLarge)
+                                Text(
+                                    question.authorName + " • " + if (question.authorRole == "TEACHER") "استاد" else "دانشجو",
+                                    style = MaterialTheme.typography.labelSmall,
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                                )
+                                (answersByQuestion[question.id] ?: emptyList()).forEach { answer ->
+                                    Column(Modifier.fillMaxWidth().padding(start = 10.dp)) {
+                                        Text("پاسخ", style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.primary)
+                                        Text(answer.body, style = MaterialTheme.typography.bodyMedium)
+                                        Text(
+                                            answer.authorName + " • " + if (answer.authorRole == "TEACHER") "استاد" else "مدیر",
+                                            style = MaterialTheme.typography.labelSmall,
+                                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                                        )
+                                    }
+                                }
+                                Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.End) {
+                                    TextButton(enabled = canAnswer && replyTo?.id != question.id, onClick = { replyTo = question }) {
+                                        Text("پاسخ استاد")
+                                    }
+                                }
+                                HorizontalDivider()
+                            }
+                        }
+                    }
+                }
+
+                if (!isPublished && !isClassOwner && !AuthPreferences.isPrimaryTeacher(context)) {
+                    Text("این کلاس منتشر نشده است.", color = MaterialTheme.colorScheme.error)
+                } else {
+                    if (replyTo != null) {
+                        Text("در حال پاسخ به: " + (replyTo?.authorName ?: ""), style = MaterialTheme.typography.labelMedium)
+                        TextButton(onClick = { replyTo = null }) { Text("لغو پاسخ") }
+                    }
+                    OutlinedTextField(
+                        value = draft,
+                        onValueChange = { draft = it },
+                        modifier = Modifier.fillMaxWidth(),
+                        label = { Text(if (replyTo == null) "ثبت پرسش یا اشکال" else "متن پاسخ استاد") },
+                        minLines = 2,
+                        maxLines = 4,
+                        enabled = uid.isNotBlank() && (replyTo == null || canAnswer)
+                    )
+                    Button(
+                        onClick = { sendPost() },
+                        enabled = draft.isNotBlank() && !sending && (replyTo == null || canAnswer),
+                        modifier = Modifier.fillMaxWidth()
+                    ) {
+                        if (sending) CircularProgressIndicator()
+                        else {
+                            Icon(Icons.AutoMirrored.Filled.Send, contentDescription = null)
+                            Text(if (replyTo == null) "ثبت پرسش" else "ارسال پاسخ")
+                        }
+                    }
+                }
+                if (error != null) {
+                    Text(error!!, color = MaterialTheme.colorScheme.error, style = MaterialTheme.typography.bodySmall)
+                }
+            }
+        },
+        confirmButton = { TextButton(onClick = onDismiss) { Text("بستن") } }
+    )
+}
