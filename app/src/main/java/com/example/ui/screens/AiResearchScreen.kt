@@ -175,7 +175,7 @@ fun AiResearchScreen(
                     viewModel.aiResearchQuery.value = it
                     viewModel.aiResearchError.value = null
                     viewModel.aiResearchAnswer.value = ""
-                    viewModel.researchReport.value // keep state collection active; report is cleared by query execution
+                    viewModel.clearSemanticSearchTerms()
                     viewModel.aiResearchSourceIds.value = emptyList()
                 },
                 modifier = Modifier.fillMaxWidth(),
