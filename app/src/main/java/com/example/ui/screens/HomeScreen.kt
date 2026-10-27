@@ -237,8 +237,7 @@ fun HomeScreen(
                     }
                 },
                 actions = {
-                    IconButton(onClick = { showAdvancedSearch = true }) { Icon(Icons.Default.Search, contentDescription = "جستجوی متنی در درس‌ها") }
-                    IconButton(onClick = { viewModel.navigateTo(Screen.AiResearch) }) { Icon(Icons.Default.AutoAwesome, contentDescription = "جستجوی هوشمند هوش مصنوعی") }
+                    IconButton(onClick = { showAdvancedSearch = true }) { Icon(Icons.Default.Search, contentDescription = "جستجوی پیشرفته در درس‌ها") }
                     if (isTeacher) IconButton(onClick = { showBulkExportDialog = true }) { Icon(Icons.Default.Share, contentDescription = "ارسال گروهی مطالب") }
                     IconButton(onClick = viewModel::openClasses) { Icon(Icons.Default.School, "کلاس‌ها") }
                     IconButton(onClick = { viewModel.navigateTo(Screen.Settings) }) { Icon(Icons.Default.Settings, "تنظیمات") }
