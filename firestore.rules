@@ -171,6 +171,81 @@ service cloud.firestore {
                     && resource.data.ownerUid == teacherUid;
     }
 
+    // تالار گفتگو برای هر کلاس؛ کلید فضا در برنامه به‌صورت پایدار از شناسه استاد و مشخصات کلاس ساخته می‌شود.
+    match /discussion_spaces/{spaceId} {
+      // خواندن یک فضا با شناسه مستقیم برای تشخیص وجود آن مجاز است؛ پیام‌ها قواعد جداگانه دارند.
+      allow get: if request.auth != null;
+      allow list: if false;
+
+      // ایجاد تالار فقط توسط استاد مالک یا مدیر اصلی؛ دانشجو نمی‌تواند تالار جعلی برای استاد دیگر بسازد.
+      allow create: if request.auth != null
+                    && request.resource.data.ownerUid is string
+                    && request.resource.data.isPublished is bool
+                    && request.resource.data.className is string
+                    && (
+                      (request.resource.data.ownerUid == request.auth.uid
+                       && activeTeacher(request.auth.uid))
+                      || isPrimaryTeacher()
+                    );
+
+      allow update: if isPrimaryTeacher()
+                    || (request.auth != null
+                        && resource.data.ownerUid == request.auth.uid
+                        && activeTeacher(request.auth.uid)
+                        && request.resource.data.ownerUid == resource.data.ownerUid);
+      allow delete: if isPrimaryTeacher()
+                    || (request.auth != null
+                        && resource.data.ownerUid == request.auth.uid
+                        && activeTeacher(request.auth.uid));
+
+      match /posts/{postId} {
+        function room() {
+          return get(/databases/$(database)/documents/discussion_spaces/$(spaceId)).data;
+        }
+        function canReadRoom() {
+          return request.auth != null
+                 && (
+                   (room().isPublished == true && activeTeacher(room().ownerUid))
+                   || request.auth.uid == room().ownerUid
+                   || isPrimaryTeacher()
+                 );
+        }
+
+        allow read: if canReadRoom();
+
+        // دانشجوی واردشده می‌تواند پرسش ثبت کند؛ پاسخ به پرسش فقط توسط استاد مالک یا مدیر اصلی.
+        allow create: if canReadRoom()
+                      && request.resource.data.authorUid == request.auth.uid
+                      && request.resource.data.body is string
+                      && request.resource.data.body.size() > 0
+                      && request.resource.data.body.size() <= 8000
+                      && request.resource.data.sessionKey is string
+                      && request.resource.data.parentId is string
+                      && (
+                        (request.resource.data.authorRole == 'STUDENT'
+                         && exists(/databases/$(database)/documents/users/$(request.auth.uid))
+                         && get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role == 'STUDENT'
+                         && request.resource.data.parentId == '')
+                        || (request.resource.data.authorRole == 'TEACHER'
+                            && activeTeacher(request.auth.uid)
+                            && request.resource.data.parentId == '')
+                        || (request.resource.data.parentId != ''
+                            && (
+                              request.auth.uid == room().ownerUid
+                              || isPrimaryTeacher()
+                            )
+                            && activeTeacher(request.auth.uid))
+                      );
+
+        allow update, delete: if canReadRoom()
+                              && (
+                                resource.data.authorUid == request.auth.uid
+                                || request.auth.uid == room().ownerUid
+                                || isPrimaryTeacher()
+                              );
+      }
+    }
+
     // نسخه پشتیبان خصوصی درس‌یار؛ فقط صاحب حساب استاد اجازه دسترسی دارد
     match /teacher_data/{ownerUid} {
       allow read: if request.auth != null
