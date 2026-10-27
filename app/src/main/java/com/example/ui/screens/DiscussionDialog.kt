@@ -89,7 +89,7 @@ fun DiscussionDialog(
     var draft by remember { mutableStateOf("") }
     var replyTo by remember { mutableStateOf<DiscussionPost?>(null) }
     var loading by remember { mutableStateOf(true) }
-    var roomReady by remember { mutableStateOf(false) }
+    var roomReady by remember(spaceKey) { mutableStateOf(false) }
     var error by remember { mutableStateOf<String?>(null) }
     var sending by remember { mutableStateOf(false) }
     val firestore = remember { FirebaseFirestore.getInstance() }
@@ -160,7 +160,7 @@ fun DiscussionDialog(
                         loading = false
                     }
                 }
-        } else {
+        } else if (uid.isBlank()) {
             loading = false
         }
         onDispose { registration?.remove() }
