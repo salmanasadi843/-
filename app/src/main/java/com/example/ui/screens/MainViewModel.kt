@@ -250,6 +250,28 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
     private val _currentScreen = MutableStateFlow<Screen>(Screen.Home)
     val currentScreen: StateFlow<Screen> = _currentScreen.asStateFlow()
 
+    val activeSearchHighlightQuery = MutableStateFlow("")
+    val activeSearchHighlightTerms = MutableStateFlow<List<String>>(emptyList())
+    val activeSearchHighlightMode = MutableStateFlow("all")
+    val activeSearchResultIds = MutableStateFlow<List<Long>>(emptyList())
+    val activeSearchResultId = MutableStateFlow<Long?>(null)
+
+    fun beginSearchHighlight(query: String, terms: List<String>, matchMode: String, resultIds: List<Long>, selectedId: Long) {
+        activeSearchHighlightQuery.value = query
+        activeSearchHighlightTerms.value = terms.filter { it.isNotBlank() }.distinct()
+        activeSearchHighlightMode.value = matchMode
+        activeSearchResultIds.value = resultIds.distinct()
+        activeSearchResultId.value = selectedId
+    }
+
+    private fun clearSearchHighlight() {
+        activeSearchHighlightQuery.value = ""
+        activeSearchHighlightTerms.value = emptyList()
+        activeSearchHighlightMode.value = "all"
+        activeSearchResultIds.value = emptyList()
+        activeSearchResultId.value = null
+    }
+
     // Unified Filter Criteria State
     private val _filterCriteria = MutableStateFlow(FilterCriteria())
 
@@ -519,6 +541,7 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
                 _currentScreen.value = parent?.let { Screen.TeacherClasses(it.first, it.second) } ?: Screen.Classes
             }
             is Screen.Detail -> {
+                clearSearchHighlight()
                 audioPlayer.stop()
                 speechRecognizer.stopListening()
                 viewModelScope.launch {
