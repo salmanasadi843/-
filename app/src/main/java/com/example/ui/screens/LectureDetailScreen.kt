@@ -148,6 +148,7 @@ fun LectureDetailScreen(
     val searchNavigationActive by viewModel.isSearchResultNavigationActive.collectAsState()
     val activeSearchQuery by viewModel.advancedSearchQuery.collectAsState()
     val activeSearchMatchMode by viewModel.advancedSearchMatchMode.collectAsState()
+    val activeSemanticTerms by viewModel.semanticSearchTerms.collectAsState()
 
     var showDeleteConfirmDialog by remember { mutableStateOf(false) }
     var showExportDialog by remember { mutableStateOf(false) }
@@ -373,6 +374,7 @@ fun LectureDetailScreen(
             TranscriptTab(
                 lecture = currentLecture,
                 searchQuery = activeSearchQuery.takeIf { searchNavigationActive }.orEmpty(),
+                searchTerms = if (searchNavigationActive && activeSearchMatchMode == "semantic") activeSemanticTerms else emptyList(),
                 transcriptMatchMode = activeSearchMatchMode,
                 onEditClick = { onNavigateToEdit(lectureId) },
                 onCopyClick = { textToCopy ->
@@ -570,6 +572,7 @@ fun AudioPlayerCard(
 fun TranscriptTab(
     lecture: LectureEntity,
     searchQuery: String = "",
+    searchTerms: List<String> = emptyList(),
     transcriptMatchMode: String = "all",
     onEditClick: () -> Unit,
     onCopyClick: (String) -> Unit,
@@ -587,15 +590,20 @@ fun TranscriptTab(
     val hasText = originalText.isNotBlank() || correctedText.isNotBlank()
     val tags = lecture.tags.split(",").map { it.trim() }.filter { it.isNotBlank() }
 
-    LaunchedEffect(lecture.id, searchQuery, transcriptMatchMode, originalText, correctedText) {
-        if (searchQuery.isNotBlank()) {
+    LaunchedEffect(lecture.id, searchQuery, searchTerms, transcriptMatchMode, originalText, correctedText) {
+        if (searchQuery.isNotBlank() || searchTerms.isNotEmpty()) {
             val normalizedQuery = normalizeTranscriptForSearch(searchQuery).first.trim()
             val normalizedOriginal = normalizeTranscriptForSearch(originalText).first
             val normalizedCorrected = normalizeTranscriptForSearch(correctedText).first
+            val normalizedTerms = (if (transcriptMatchMode == "semantic" && searchTerms.isNotEmpty()) {
+                (listOf(searchQuery) + searchTerms)
+            } else listOf(searchQuery)).map { normalizeTranscriptForSearch(it).first.trim() }
+                .filter { it.isNotBlank() }.distinct()
             val queryTerms = normalizedQuery.split(Regex("\\s+")).filter { it.isNotBlank() }
             fun matches(text: String): Boolean = when {
-                normalizedQuery.isBlank() -> false
-                transcriptMatchMode == "phrase" -> text.contains(normalizedQuery)
+                transcriptMatchMode == "phrase" -> normalizedQuery.isNotBlank() && text.contains(normalizedQuery)
+                transcriptMatchMode == "semantic" -> normalizedTerms.any { text.contains(it) }
+                queryTerms.isEmpty() -> false
                 else -> queryTerms.all { text.contains(it) }
             }
             val originalContains = matches(normalizedOriginal)
@@ -715,8 +723,8 @@ fun TranscriptTab(
                 }
             }
         } else {
-            val highlighted = remember(displayedTranscript, searchQuery) {
-                highlightTranscriptMatches(displayedTranscript, searchQuery)
+            val highlighted = remember(displayedTranscript, searchQuery, searchTerms, transcriptMatchMode) {
+                highlightTranscriptMatches(displayedTranscript, searchQuery, searchTerms, transcriptMatchMode)
             }
             Surface(
                 modifier = Modifier.fillMaxWidth(),
@@ -733,7 +741,7 @@ fun TranscriptTab(
                     onTextLayout = { transcriptTextLayout = it }
                 )
             }
-            LaunchedEffect(lecture.id, selectedTextTab, searchQuery, highlighted.second, transcriptTextLayout) {
+            LaunchedEffect(lecture.id, selectedTextTab, searchQuery, searchTerms, transcriptMatchMode, highlighted.second, transcriptTextLayout) {
                 val matchStart = highlighted.second
                 val layout = transcriptTextLayout
                 if (searchQuery.isNotBlank() && matchStart != null && layout != null) {
@@ -876,15 +884,26 @@ private fun normalizeTranscriptForSearch(source: String): Pair<String, List<Int>
     return normalized.toString().trimEnd() to originalOffsets
 }
 
-private fun highlightTranscriptMatches(source: String, query: String): Pair<AnnotatedString, Int?> {
-    if (source.isBlank() || query.isBlank()) return AnnotatedString(source) to null
+private fun highlightTranscriptMatches(
+    source: String,
+    query: String,
+    additionalTerms: List<String> = emptyList(),
+    matchMode: String = "all"
+): Pair<AnnotatedString, Int?> {
+    if (source.isBlank() || (query.isBlank() && additionalTerms.isEmpty())) {
+        return AnnotatedString(source) to null
+    }
     val (normalizedSource, offsets) = normalizeTranscriptForSearch(source)
     val normalizedQuery = normalizeTranscriptForSearch(query).first.trim()
-    if (normalizedQuery.isBlank()) return AnnotatedString(source) to null
-
-    val terms = if (normalizedQuery.contains(' ')) {
+    val terms = if (matchMode == "semantic" && additionalTerms.isNotEmpty()) {
+        (listOf(normalizedQuery) + additionalTerms.map { normalizeTranscriptForSearch(it).first.trim() })
+            .filter { it.isNotBlank() }.distinct()
+    } else if (normalizedQuery.contains(' ')) {
         listOf(normalizedQuery) + normalizedQuery.split(Regex("\\s+")).filter { it.isNotBlank() }
-    } else listOf(normalizedQuery)
+    } else listOf(normalizedQuery).filter { it.isNotBlank() }
+
+    if (terms.isEmpty()) return AnnotatedString(source) to null
+
     val normalizedRanges = mutableListOf<IntRange>()
     terms.distinct().sortedByDescending { it.length }.forEach { term ->
         var from = 0
@@ -913,19 +932,20 @@ private fun highlightTranscriptMatches(source: String, query: String): Pair<Anno
         sourceRanges.forEach { range ->
             if (range.first < cursor) return@forEach
             append(source.substring(cursor, range.first))
-            withStyle(SpanStyle(
-                background = Color(0xFFFFD54F),
-                color = Color(0xFF302400),
-                fontWeight = FontWeight.Bold
-            )) {
+            withStyle(
+                SpanStyle(
+                    background = Color(0xFFFFD54F),
+                    color = Color(0xFF302400),
+                    fontWeight = FontWeight.Bold
+                )
+            ) {
                 append(source.substring(range.first, range.last + 1))
             }
             cursor = range.last + 1
         }
         if (cursor < source.length) append(source.substring(cursor))
     }
-    val firstMatch = sourceRanges.firstOrNull()?.first
-    return annotated to firstMatch
+    return annotated to sourceRanges.firstOrNull()?.first
 }
 
 @Composable
