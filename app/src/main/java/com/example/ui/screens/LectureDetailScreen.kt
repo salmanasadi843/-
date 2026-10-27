@@ -125,6 +125,7 @@ fun LectureDetailScreen(
     isTeacher: Boolean = true
 ) {
     val lecture by viewModel.selectedLecture.collectAsState()
+    val allClasses by viewModel.repository.allClasses.collectAsState(initial = emptyList())
     val context = LocalContext.current
     val canManageLecture = isTeacher || AuthPreferences.isPrimaryTeacher(context)
 
@@ -147,6 +148,7 @@ fun LectureDetailScreen(
     var showDeleteConfirmDialog by remember { mutableStateOf(false) }
     var showExportDialog by remember { mutableStateOf(false) }
     var exportOriginalTranscript by remember { mutableStateOf(false) }
+    var showDiscussionDialog by remember { mutableStateOf(false) }
     var chatInputText by remember { mutableStateOf("") }
 
     if (lecture == null) {
@@ -157,6 +159,21 @@ fun LectureDetailScreen(
     }
 
     val currentLecture = lecture!!
+    val currentClass = currentLecture.classId?.let { id -> allClasses.firstOrNull { it.id == id } }
+    if (showDiscussionDialog) {
+        DiscussionDialog(
+            className = currentClass?.name ?: currentLecture.courseName,
+            teacherName = currentClass?.teacherName?.ifBlank { currentLecture.professorName } ?: currentLecture.professorName,
+            term = currentClass?.term.orEmpty(),
+            ownerUid = currentClass?.ownerUid?.ifBlank { if (isTeacher) AuthPreferences.currentUid(context).orEmpty() else "" }
+                ?: if (isTeacher) AuthPreferences.currentUid(context).orEmpty() else "",
+            isPublished = currentLecture.isPublished && (currentClass?.isPublished ?: true),
+            userRole = if (isTeacher) UserRole.TEACHER else UserRole.STUDENT,
+            sessionTitle = currentLecture.title,
+            sessionDateMillis = currentLecture.dateMillis,
+            onDismiss = { showDiscussionDialog = false }
+        )
+    }
 
     if (showDeleteConfirmDialog) {
         AlertDialog(
@@ -241,6 +258,9 @@ fun LectureDetailScreen(
                     }
                 },
                 actions = {
+                    IconButton(onClick = { showDiscussionDialog = true }) {
+                        Icon(imageVector = Icons.Default.QuestionAnswer, contentDescription = "اشکال و پاسخ این جلسه")
+                    }
                     IconButton(onClick = { viewModel.toggleFavorite(currentLecture) }) {
                         Icon(
                             imageVector = if (currentLecture.isFavorite) Icons.Filled.Star else Icons.Outlined.StarOutline,
