@@ -674,6 +674,7 @@ fun ClassScreen(
             teacherName = selected.teacherName,
             term = selected.term,
             ownerUid = selected.ownerUid.ifBlank { ownerUid },
+            classCreatedAtMillis = selected.createdAtMillis,
             isPublished = selected.isPublished,
             userRole = userRole,
             onDismiss = { discussionClass = null }
