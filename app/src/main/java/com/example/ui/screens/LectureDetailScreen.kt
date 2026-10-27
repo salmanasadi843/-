@@ -85,6 +85,10 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.text.AnnotatedString
+import androidx.compose.ui.text.SpanStyle
+import androidx.compose.ui.text.buildAnnotatedString
+import androidx.compose.ui.text.withStyle
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
@@ -135,6 +139,10 @@ fun LectureDetailScreen(
     val aiError by viewModel.aiError.collectAsState()
 
     val chatMessages by viewModel.chatMessages.collectAsState()
+    val activeSearchQuery by viewModel.activeSearchHighlightQuery.collectAsState()
+    val activeSearchTerms by viewModel.activeSearchHighlightTerms.collectAsState()
+    val activeSearchMode by viewModel.activeSearchHighlightMode.collectAsState()
+    val activeSearchResultId by viewModel.activeSearchResultId.collectAsState()
 
     var showDeleteConfirmDialog by remember { mutableStateOf(false) }
     var showExportDialog by remember { mutableStateOf(false) }
@@ -323,6 +331,9 @@ fun LectureDetailScreen(
             val playableAudio = currentLecture.audioFilePath?.takeIf { File(it).exists() } ?: currentLecture.audioUrl
             TranscriptTab(
                 lecture = currentLecture,
+                searchQuery = activeSearchQuery.takeIf { activeSearchResultId == currentLecture.id }.orEmpty(),
+                searchTerms = activeSearchTerms,
+                transcriptMatchMode = activeSearchMode,
                 onEditClick = { onNavigateToEdit(lectureId) },
                 onCopyClick = { textToCopy ->
                     val clipboard = context.getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager
@@ -518,6 +529,9 @@ fun AudioPlayerCard(
 @Composable
 fun TranscriptTab(
     lecture: LectureEntity,
+    searchQuery: String = "",
+    searchTerms: List<String> = emptyList(),
+    transcriptMatchMode: String = "all",
     onEditClick: () -> Unit,
     onCopyClick: (String) -> Unit,
     audioContent: (@Composable () -> Unit)? = null,
@@ -643,7 +657,7 @@ fun TranscriptTab(
                 color = MaterialTheme.colorScheme.surface
             ) {
                 Text(
-                    text = displayedTranscript,
+                    text = if (searchQuery.isNotBlank()) highlightTranscriptMatches(displayedTranscript, searchQuery, searchTerms, transcriptMatchMode) else AnnotatedString(displayedTranscript),
                     modifier = Modifier.padding(horizontal = 18.dp, vertical = 20.dp),
                     style = MaterialTheme.typography.bodyLarge.copy(lineHeight = 32.sp),
                     textAlign = TextAlign.Start
@@ -1149,4 +1163,66 @@ fun ChatWithLectureTab(
             }
         }
     }
+}
+
+
+private fun highlightTranscriptMatches(source: String, query: String, additionalTerms: List<String>, matchMode: String): AnnotatedString {
+    val (normalized, offsets) = normalizeTranscriptForSearch(source)
+    val normalizedQuery = normalizeTranscriptForSearch(query).first.trim()
+    val terms = if (matchMode != "phrase" && additionalTerms.isNotEmpty()) {
+        (listOf(normalizedQuery) + normalizedQuery.split(Regex("\\s+")) + additionalTerms.map { normalizeTranscriptForSearch(it).first.trim() }).filter { it.isNotBlank() }.distinct()
+    } else if (normalizedQuery.contains(' ')) {
+        listOf(normalizedQuery) + normalizedQuery.split(Regex("\\s+")).filter { it.isNotBlank() }
+    } else listOf(normalizedQuery).filter { it.isNotBlank() }
+    if (terms.isEmpty() || normalized.isBlank()) return AnnotatedString(source)
+    val ranges = mutableListOf<IntRange>()
+    terms.distinct().sortedByDescending { it.length }.forEach { term ->
+        var from = 0
+        while (from < normalized.length) {
+            val index = normalized.indexOf(term, from)
+            if (index < 0) break
+            ranges += index until (index + term.length)
+            from = index + term.length.coerceAtLeast(1)
+        }
+    }
+    val sourceRanges = ranges.mapNotNull { range ->
+        val start = offsets.getOrNull(range.first) ?: return@mapNotNull null
+        val end = (offsets.getOrNull(range.last) ?: start) + 1
+        if (start < end) start until end else null
+    }.sortedBy { it.first }.fold(mutableListOf<IntRange>()) { acc, range ->
+        val previous = acc.lastOrNull()
+        if (previous != null && range.first <= previous.last + 1) acc[acc.lastIndex] = previous.first..maxOf(previous.last, range.last)
+        else acc += range
+        acc
+    }
+    return buildAnnotatedString {
+        var cursor = 0
+        sourceRanges.forEach { range ->
+            if (range.first < cursor) return@forEach
+            append(source.substring(cursor, range.first))
+            withStyle(SpanStyle(background = Color(0xFFFFD54F), color = Color(0xFF302400), fontWeight = FontWeight.Bold)) { append(source.substring(range.first, range.last + 1)) }
+            cursor = range.last + 1
+        }
+        if (cursor < source.length) append(source.substring(cursor))
+    }
+}
+
+private fun normalizeTranscriptForSearch(source: String): Pair<String, List<Int>> {
+    val normalized = StringBuilder()
+    val offsets = mutableListOf<Int>()
+    var pendingSpaceOffset: Int? = null
+    source.forEachIndexed { index, original ->
+        val char = when (original) {
+            'ي' -> 'ی'; 'ك' -> 'ک'; 'ۀ', 'ة' -> 'ه'; 'ؤ' -> 'و'; 'إ', 'أ', 'آ' -> 'ا'
+            else -> original.lowercaseChar()
+        }
+        if (char in '\u064B'..'\u065F' || char == '\u0670' || char == '\u200F' || char in '\u202A'..'\u202E') return@forEachIndexed
+        if (char == '\u200C' || char.isWhitespace()) {
+            if (normalized.isNotEmpty() && pendingSpaceOffset == null) pendingSpaceOffset = index
+            return@forEachIndexed
+        }
+        if (pendingSpaceOffset != null && normalized.isNotEmpty()) { normalized.append(' '); offsets += pendingSpaceOffset!! }
+        pendingSpaceOffset = null; normalized.append(char); offsets += index
+    }
+    return normalized.toString().trimEnd() to offsets
 }
