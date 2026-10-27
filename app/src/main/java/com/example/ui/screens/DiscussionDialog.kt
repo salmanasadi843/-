@@ -84,7 +84,8 @@ fun DiscussionDialog(
         if (sessionTitle == null) "__class__" else discussionSessionKey(sessionTitle, sessionDateMillis ?: 0L)
     }
     val isClassOwner = uid.isNotBlank() && uid == ownerUid
-    val canAnswer = userRole == UserRole.TEACHER && (isClassOwner || AuthPreferences.isPrimaryTeacher(context))
+    val canParticipate = uid.isNotBlank() && (isPublished || isClassOwner || AuthPreferences.isPrimaryTeacher(context))
+    val canReply = canParticipate && roomReady
     val posts = remember(spaceKey, activeSessionKey) { mutableStateListOf<DiscussionPost>() }
     var draft by remember { mutableStateOf("") }
     var replyTo by remember { mutableStateOf<DiscussionPost?>(null) }
@@ -169,8 +170,8 @@ fun DiscussionDialog(
     fun sendPost() {
         val text = draft.trim()
         if (text.isBlank() || sending || uid.isBlank()) return
-        if (replyTo != null && !canAnswer) {
-            error = "پاسخ به پرسش‌ها فقط برای استاد مجاز این کلاس و مدیر اصلی فعال است."
+        if (replyTo != null && !canReply) {
+            error = "برای پاسخ‌دادن باید به تالار منتشرشده یا تالار کلاس خود دسترسی داشته باشید."
             return
         }
         sending = true
@@ -228,7 +229,7 @@ fun DiscussionDialog(
                             Column(verticalArrangement = Arrangement.spacedBy(5.dp)) {
                                 Text(question.body, style = MaterialTheme.typography.bodyLarge)
                                 Text(
-                                    question.authorName + " • " + if (question.authorRole == "TEACHER") "استاد" else "دانشجو",
+                                    question.authorName + " • " + when (question.authorRole) { "TEACHER" -> "استاد"; "ADMIN" -> "مدیر"; else -> "دانشجو" },
                                     style = MaterialTheme.typography.labelSmall,
                                     color = MaterialTheme.colorScheme.onSurfaceVariant
                                 )
@@ -237,15 +238,15 @@ fun DiscussionDialog(
                                         Text("پاسخ", style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.primary)
                                         Text(answer.body, style = MaterialTheme.typography.bodyMedium)
                                         Text(
-                                            answer.authorName + " • " + if (answer.authorRole == "TEACHER") "استاد" else "مدیر",
+                                            answer.authorName + " • " + when (answer.authorRole) { "TEACHER" -> "استاد"; "ADMIN" -> "مدیر"; else -> "دانشجو" },
                                             style = MaterialTheme.typography.labelSmall,
                                             color = MaterialTheme.colorScheme.onSurfaceVariant
                                         )
                                     }
                                 }
                                 Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.End) {
-                                    TextButton(enabled = canAnswer && replyTo?.id != question.id, onClick = { replyTo = question }) {
-                                        Text("پاسخ استاد")
+                                    TextButton(enabled = canReply && replyTo?.id != question.id, onClick = { replyTo = question }) {
+                                        Text("پاسخ")
                                     }
                                 }
                                 HorizontalDivider()
@@ -265,14 +266,14 @@ fun DiscussionDialog(
                         value = draft,
                         onValueChange = { draft = it },
                         modifier = Modifier.fillMaxWidth(),
-                        label = { Text(if (replyTo == null) "ثبت پرسش یا اشکال" else "متن پاسخ استاد") },
+                        label = { Text(if (replyTo == null) "ثبت پرسش یا اشکال" else "متن پاسخ") },
                         minLines = 2,
                         maxLines = 4,
-                        enabled = uid.isNotBlank() && (replyTo == null || canAnswer)
+                        enabled = canParticipate && roomReady && (replyTo == null || canReply)
                     )
                     Button(
                         onClick = { sendPost() },
-                        enabled = draft.isNotBlank() && !sending && (replyTo == null || canAnswer),
+                        enabled = draft.isNotBlank() && !sending && canParticipate && roomReady && (replyTo == null || canReply),
                         modifier = Modifier.fillMaxWidth()
                     ) {
                         if (sending) CircularProgressIndicator()
