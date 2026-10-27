@@ -415,7 +415,7 @@ fun AdvancedSearchScreen(
                                     )
                                 }
                                 Spacer(Modifier.height(5.dp))
-                                Text(highlightSearchExcerpt(excerpt.text, terms), maxLines = 4, overflow = TextOverflow.Ellipsis, style = MaterialTheme.typography.bodyMedium)
+                                Text(highlightSearchExcerpt(excerpt.text, highlightTerms), maxLines = 4, overflow = TextOverflow.Ellipsis, style = MaterialTheme.typography.bodyMedium)
                             }
                             Spacer(Modifier.height(6.dp))
                             Text("برای باز کردن جلسه لمس کنید  ←", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.primary)
