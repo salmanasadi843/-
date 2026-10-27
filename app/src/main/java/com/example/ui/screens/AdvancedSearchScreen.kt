@@ -529,9 +529,11 @@ private fun makeSearchExcerpt(
 
     val match = sources.firstOrNull { (_, candidate) ->
         candidate.isNotBlank() && matchingTerm(candidate) != null
-    } ?: sources.firstOrNull { it.second.isNotBlank() }
-    val label = match?.first.orEmpty()
-    val source = match?.second.orEmpty()
+    }
+    // If the hit is only in title/metadata, do not show an unrelated transcript excerpt.
+    if (match == null) return SearchExcerpt("اطلاعات جلسه", "")
+    val label = match.first
+    val source = match.second
     if (source.length <= 240) return SearchExcerpt(label, source)
 
     val (normalizedSource, offsets) = normalizeSearchTextWithOffsets(source)
