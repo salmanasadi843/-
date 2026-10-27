@@ -13,7 +13,12 @@ import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.text.AnnotatedString
+import androidx.compose.ui.text.SpanStyle
+import androidx.compose.ui.text.buildAnnotatedString
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.withStyle
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import com.example.data.local.LectureEntity
@@ -182,7 +187,10 @@ fun AdvancedSearchScreen(
                     val className = classes.firstOrNull { it.id == lecture.classId }?.name
                     val excerpt = makeSearchExcerpt(lecture, terms)
                     Card(
-                        modifier = Modifier.fillMaxWidth().clickable { onOpenLecture(lecture.id) },
+                        modifier = Modifier.fillMaxWidth().clickable {
+                            viewModel.beginSearchHighlight(query, terms, matchMode, results.map { it.id }, lecture.id)
+                            onOpenLecture(lecture.id)
+                        },
                         shape = RoundedCornerShape(16.dp),
                         colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface)
                     ) {
@@ -200,7 +208,7 @@ fun AdvancedSearchScreen(
                             )
                             if (excerpt.isNotBlank()) {
                                 Spacer(Modifier.height(8.dp))
-                                Text(excerpt, maxLines = 4, overflow = TextOverflow.Ellipsis, style = MaterialTheme.typography.bodyMedium)
+                                Text(highlightSearchExcerpt(excerpt, terms), maxLines = 4, overflow = TextOverflow.Ellipsis, style = MaterialTheme.typography.bodyMedium)
                             }
                             Spacer(Modifier.height(6.dp))
                             Text("برای باز کردن جلسه لمس کنید  ←", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.primary)
@@ -233,4 +241,63 @@ private fun makeSearchExcerpt(lecture: LectureEntity, terms: List<String>): Stri
     val start = if (index > 70) index - 70 else 0
     return (if (start > 0) "… " else "") + source.substring(start, minOf(source.length, start + 240)) +
         if (start + 240 < source.length) " …" else ""
+}
+
+
+private fun highlightSearchExcerpt(excerpt: String, terms: List<String>): AnnotatedString {
+    val (normalized, offsets) = normalizeSearchTextWithOffsets(excerpt)
+    val patterns = terms.map(::normalizeSearchText).filter { it.isNotBlank() }.distinct().sortedByDescending { it.length }
+    if (excerpt.isBlank() || patterns.isEmpty() || normalized.isBlank()) return AnnotatedString(excerpt)
+    val ranges = mutableListOf<IntRange>()
+    patterns.forEach { term ->
+        var from = 0
+        while (from < normalized.length) {
+            val index = normalized.indexOf(term, from)
+            if (index < 0) break
+            ranges += index until (index + term.length)
+            from = index + term.length.coerceAtLeast(1)
+        }
+    }
+    val sourceRanges = ranges.mapNotNull { range ->
+        val start = offsets.getOrNull(range.first) ?: return@mapNotNull null
+        val end = (offsets.getOrNull(range.last) ?: start) + 1
+        if (start < end) start until end else null
+    }.sortedBy { it.first }.fold(mutableListOf<IntRange>()) { acc, range ->
+        val previous = acc.lastOrNull()
+        if (previous != null && range.first <= previous.last + 1) acc[acc.lastIndex] = previous.first..maxOf(previous.last, range.last)
+        else acc += range
+        acc
+    }
+    return buildAnnotatedString {
+        var cursor = 0
+        sourceRanges.forEach { range ->
+            if (range.first < cursor) return@forEach
+            append(excerpt.substring(cursor, range.first))
+            withStyle(SpanStyle(background = Color(0xFFFFD54F), color = Color(0xFF302400), fontWeight = FontWeight.Bold)) {
+                append(excerpt.substring(range.first, range.last + 1))
+            }
+            cursor = range.last + 1
+        }
+        if (cursor < excerpt.length) append(excerpt.substring(cursor))
+    }
+}
+
+private fun normalizeSearchTextWithOffsets(source: String): Pair<String, List<Int>> {
+    val normalized = StringBuilder()
+    val offsets = mutableListOf<Int>()
+    var pendingSpaceOffset: Int? = null
+    source.forEachIndexed { index, original ->
+        val char = when (original) {
+            'ي' -> 'ی'; 'ك' -> 'ک'; 'ۀ', 'ة' -> 'ه'; 'ؤ' -> 'و'; 'إ', 'أ', 'آ' -> 'ا'
+            else -> original.lowercaseChar()
+        }
+        if (char in '\u064B'..'\u065F' || char == '\u0670' || char == '\u200F' || char in '\u202A'..'\u202E') return@forEachIndexed
+        if (char == '\u200C' || char.isWhitespace()) {
+            if (normalized.isNotEmpty() && pendingSpaceOffset == null) pendingSpaceOffset = index
+            return@forEachIndexed
+        }
+        if (pendingSpaceOffset != null && normalized.isNotEmpty()) { normalized.append(' '); offsets += pendingSpaceOffset!! }
+        pendingSpaceOffset = null; normalized.append(char); offsets += index
+    }
+    return normalized.toString().trimEnd() to offsets
 }
