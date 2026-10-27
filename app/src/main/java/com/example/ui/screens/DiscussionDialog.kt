@@ -89,6 +89,7 @@ fun DiscussionDialog(
     var draft by remember { mutableStateOf("") }
     var replyTo by remember { mutableStateOf<DiscussionPost?>(null) }
     var loading by remember { mutableStateOf(true) }
+    var roomReady by remember { mutableStateOf(false) }
     var error by remember { mutableStateOf<String?>(null) }
     var sending by remember { mutableStateOf(false) }
     val firestore = remember { FirebaseFirestore.getInstance() }
@@ -113,25 +114,31 @@ fun DiscussionDialog(
                 if (!snapshot.exists()) {
                     if (isClassOwner || AuthPreferences.isPrimaryTeacher(context)) {
                         spaceRef.set(metadata + ("createdAt" to FieldValue.serverTimestamp()))
+                            .addOnSuccessListener { roomReady = true }
                             .addOnFailureListener { e -> error = e.localizedMessage ?: "ساخت تالار گفتگو انجام نشد." }
                     } else {
                         error = "تالار این کلاس هنوز فعال نشده است؛ استاد باید یک‌بار تالار گفتگو را باز کند."
+                        roomReady = false
                         loading = false
                     }
-                } else if (isClassOwner || AuthPreferences.isPrimaryTeacher(context)) {
-                    spaceRef.set(metadata, SetOptions.merge())
-                        .addOnFailureListener { e -> error = e.localizedMessage ?: "به‌روزرسانی مشخصات تالار انجام نشد." }
+                } else {
+                    roomReady = true
+                    if (isClassOwner || AuthPreferences.isPrimaryTeacher(context)) {
+                        spaceRef.set(metadata, SetOptions.merge())
+                            .addOnFailureListener { e -> error = e.localizedMessage ?: "به‌روزرسانی مشخصات تالار انجام نشد." }
+                    }
                 }
             }
             .addOnFailureListener { e ->
                 error = e.localizedMessage ?: "دسترسی به تالار گفتگو ممکن نیست."
+                roomReady = false
                 loading = false
             }
     }
 
-    DisposableEffect(spaceKey, activeSessionKey, uid) {
+    DisposableEffect(spaceKey, activeSessionKey, uid, roomReady) {
         var registration: ListenerRegistration? = null
-        if (uid.isNotBlank()) {
+        if (uid.isNotBlank() && roomReady) {
             registration = postsRef.whereEqualTo("sessionKey", activeSessionKey)
                 .addSnapshotListener { snapshot, e ->
                     if (e != null) {
