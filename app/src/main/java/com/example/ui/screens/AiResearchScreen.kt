@@ -43,6 +43,7 @@ fun AiResearchScreen(
     val answer by viewModel.aiResearchAnswer.collectAsState()
     val error by viewModel.aiResearchError.collectAsState()
     val loading by viewModel.aiResearchLoading.collectAsState()
+    val expandingSemanticTerms by viewModel.isSemanticExpansionLoading.collectAsState()
     val sourceIds by viewModel.aiResearchSourceIds.collectAsState()
 
     val studentClassIds = remember(allClasses) {
@@ -63,9 +64,10 @@ fun AiResearchScreen(
         .replace(Regex("[\\u200C\\u200F\\u202A-\\u202E]"), " ")
         .replace(Regex("\\s+"), " ").trim()
 
-    fun runSearch() {
+    fun runSearch(conceptTerms: List<String> = emptyList()) {
         if (query.isBlank() || loading) return
-        val terms = normalize(query).split(Regex("\\s+")).filter { it.length > 1 }.distinct()
+        val queryTerms = normalize(query).split(Regex("\\s+")).filter { it.length > 1 }.distinct()
+        val terms = (queryTerms + conceptTerms.map(::normalize)).filter { it.length > 1 }.distinct()
         if (terms.isEmpty()) {
             viewModel.aiResearchError.value = "لطفاً عبارت دقیق‌تری وارد کنید."
             return
@@ -88,7 +90,7 @@ fun AiResearchScreen(
                     (if (summary.contains(term)) 4 else 0) +
                     (if (keyPoints.contains(term) || quiz.contains(term)) 2 else 0)
             }
-            val allTermsMatch = terms.all { allContent.contains(it) }
+            val allTermsMatch = queryTerms.all { allContent.contains(it) }
             lecture to (score + if (allTermsMatch) 2 else 0)
         }.filter { it.second > 0 }
             .sortedWith(compareByDescending<Pair<LectureEntity, Int>> { it.second }.thenByDescending { it.first.dateMillis })
@@ -163,6 +165,8 @@ fun AiResearchScreen(
                 onValueChange = {
                     viewModel.aiResearchQuery.value = it
                     viewModel.aiResearchError.value = null
+                    viewModel.aiResearchAnswer.value = ""
+                    viewModel.aiResearchSourceIds.value = emptyList()
                 },
                 modifier = Modifier.fillMaxWidth(),
                 minLines = 2,
@@ -172,14 +176,25 @@ fun AiResearchScreen(
                 leadingIcon = { Icon(Icons.Default.Search, contentDescription = null) }
             )
             Button(
-                onClick = ::runSearch,
-                enabled = query.isNotBlank() && !loading,
+                onClick = {
+                    viewModel.aiResearchError.value = null
+                    viewModel.aiResearchAnswer.value = ""
+                    viewModel.aiResearchSourceIds.value = emptyList()
+                    viewModel.expandSemanticSearchQuery(query) { expandedTerms -> runSearch(expandedTerms) }
+                },
+                enabled = query.isNotBlank() && !loading && !expandingSemanticTerms,
                 modifier = Modifier.fillMaxWidth()
             ) {
-                if (loading) CircularProgressIndicator(Modifier.size(18.dp), strokeWidth = 2.dp)
+                if (loading || expandingSemanticTerms) CircularProgressIndicator(Modifier.size(18.dp), strokeWidth = 2.dp)
                 else Icon(Icons.Default.AutoAwesome, contentDescription = null)
                 Spacer(Modifier.width(8.dp))
-                Text(if (loading) "در حال بررسی جلسه‌ها…" else "جست‌وجو و تحلیل با هوش مصنوعی")
+                Text(
+                    when {
+                        expandingSemanticTerms -> "در حال گسترش مفاهیم…"
+                        loading -> "در حال بررسی جلسه‌ها…"
+                        else -> "گسترش معنایی و تحلیل با هوش مصنوعی"
+                    }
+                )
             }
             error?.let { Text(it, color = MaterialTheme.colorScheme.error, style = MaterialTheme.typography.bodySmall) }
 
