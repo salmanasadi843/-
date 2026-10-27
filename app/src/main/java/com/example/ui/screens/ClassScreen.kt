@@ -401,6 +401,9 @@ fun ClassScreen(
                                     if (item.teacherName.isNotBlank()) Text("استاد: " + item.teacherName, style = MaterialTheme.typography.bodySmall)
                                     Text("فقط مشاهده", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.tertiary)
                                 }
+                                IconButton(onClick = { discussionClass = item }) {
+                                    Icon(Icons.Default.Forum, contentDescription = "تالار گفتگوی درس", tint = MaterialTheme.colorScheme.primary)
+                                }
                             }
                         }
                     }
