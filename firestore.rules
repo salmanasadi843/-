@@ -182,6 +182,7 @@ service cloud.firestore {
                     && request.resource.data.ownerUid is string
                     && request.resource.data.isPublished is bool
                     && request.resource.data.className is string
+                    && activeTeacher(request.resource.data.ownerUid)
                     && (
                       (request.resource.data.ownerUid == request.auth.uid
                        && activeTeacher(request.auth.uid))
