@@ -85,12 +85,12 @@ fun DiscussionDialog(
     }
     val isClassOwner = uid.isNotBlank() && uid == ownerUid
     val canParticipate = uid.isNotBlank() && (isPublished || isClassOwner || AuthPreferences.isPrimaryTeacher(context))
-    val canReply = canParticipate && roomReady
     val posts = remember(spaceKey, activeSessionKey) { mutableStateListOf<DiscussionPost>() }
     var draft by remember { mutableStateOf("") }
     var replyTo by remember { mutableStateOf<DiscussionPost?>(null) }
     var loading by remember { mutableStateOf(true) }
     var roomReady by remember(spaceKey) { mutableStateOf(false) }
+    val canReply = canParticipate && roomReady
     var error by remember { mutableStateOf<String?>(null) }
     var sending by remember { mutableStateOf(false) }
     val firestore = remember { FirebaseFirestore.getInstance() }
