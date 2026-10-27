@@ -8,6 +8,7 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.Edit
+import androidx.compose.material.icons.filled.Forum
 import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.Visibility
 import androidx.compose.material.icons.filled.VisibilityOff
@@ -115,6 +116,7 @@ fun ClassScreen(
     var teacher by remember { mutableStateOf("") }
     var term by remember { mutableStateOf("") }
     var editingClass by remember { mutableStateOf<ClassEntity?>(null) }
+    var discussionClass by remember { mutableStateOf<ClassEntity?>(null) }
 
     fun resetForm() {
         name = ""
@@ -321,6 +323,12 @@ fun ClassScreen(
                                             else selectedClassIds - item.id
                                     }
                                 )
+                            }
+                            IconButton(
+                                enabled = item.ownerUid.isNotBlank() || (userRole == UserRole.TEACHER && ownerUid.isNotBlank()),
+                                onClick = { discussionClass = item }
+                            ) {
+                                Icon(Icons.Default.Forum, contentDescription = "تالار گفتگوی درس", tint = MaterialTheme.colorScheme.primary)
                             }
                             if (canManageClasses && item.id > 0L) {
                                 when {
@@ -654,6 +662,18 @@ fun ClassScreen(
                 ) { Text(if (isSaving) "در حال ذخیره..." else if (editingClass == null) "ایجاد" else "ذخیره تغییرات", color = MaterialTheme.colorScheme.secondary) }
             },
             dismissButton = { TextButton(onClick = { showAdd = false }) { Text("انصراف") } }
+        )
+    }
+
+    discussionClass?.let { selected ->
+        DiscussionDialog(
+            className = selected.name,
+            teacherName = selected.teacherName,
+            term = selected.term,
+            ownerUid = selected.ownerUid.ifBlank { ownerUid },
+            isPublished = selected.isPublished,
+            userRole = userRole,
+            onDismiss = { discussionClass = null }
         )
     }
 }
