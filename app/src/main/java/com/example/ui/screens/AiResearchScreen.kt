@@ -45,6 +45,10 @@ fun AiResearchScreen(
     val loading by viewModel.aiResearchLoading.collectAsState()
     val expandingSemanticTerms by viewModel.isSemanticExpansionLoading.collectAsState()
     val sourceIds by viewModel.aiResearchSourceIds.collectAsState()
+    val report by viewModel.researchReport.collectAsState()
+    val reportLoading by viewModel.isResearchLoading.collectAsState()
+    var outputMode by remember { mutableStateOf("question") }
+    val displayedAnswer = if (outputMode == "question") answer else report
 
     val studentClassIds = remember(allClasses) {
         allClasses.filter { it.id < 0L && it.isPublished }.map { it.id }.toSet()
@@ -129,13 +133,18 @@ fun AiResearchScreen(
         viewModel.aiResearchLoading.value = true
         viewModel.aiResearchError.value = null
         viewModel.aiResearchAnswer.value = ""
-        viewModel.runAiResearch(query.trim(), sourceContext) { result ->
+        if (outputMode == "question") {
+            viewModel.runAiResearch(query.trim(), sourceContext) { result ->
+                viewModel.aiResearchLoading.value = false
+                result.onSuccess { viewModel.aiResearchAnswer.value = it }
+                    .onFailure {
+                        viewModel.aiResearchError.value =
+                            it.localizedMessage ?: "جستجوی هوشمند ناموفق بود؛ اتصال و کلید Gemini یا Groq را بررسی کنید."
+                    }
+            }
+        } else {
+            viewModel.generateResearchReport(query.trim(), outputMode, sourceContext)
             viewModel.aiResearchLoading.value = false
-            result.onSuccess { viewModel.aiResearchAnswer.value = it }
-                .onFailure {
-                    viewModel.aiResearchError.value =
-                        it.localizedMessage ?: "جستجوی هوشمند ناموفق بود؛ اتصال و کلید Gemini یا Groq را بررسی کنید."
-                }
         }
     }
 
@@ -166,6 +175,7 @@ fun AiResearchScreen(
                     viewModel.aiResearchQuery.value = it
                     viewModel.aiResearchError.value = null
                     viewModel.aiResearchAnswer.value = ""
+                    viewModel.researchReport.value // keep state collection active; report is cleared by query execution
                     viewModel.aiResearchSourceIds.value = emptyList()
                 },
                 modifier = Modifier.fillMaxWidth(),
@@ -175,6 +185,17 @@ fun AiResearchScreen(
                 placeholder = { Text("مثلاً دیدگاه استادان درباره حجیت خبر واحد چه تفاوتی دارد؟") },
                 leadingIcon = { Icon(Icons.Default.Search, contentDescription = null) }
             )
+            Text("نوع خروجی", style = MaterialTheme.typography.labelLarge)
+            Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                listOf("question" to "پرسش و پاسخ", "summary" to "جمع‌بندی", "categorize" to "دسته‌بندی").forEach { (mode, label) ->
+                    FilterChip(selected = outputMode == mode, onClick = { outputMode = mode }, label = { Text(label) })
+                }
+            }
+            Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                listOf("compare" to "مقایسه دیدگاه‌ها", "article" to "طرح مقاله").forEach { (mode, label) ->
+                    FilterChip(selected = outputMode == mode, onClick = { outputMode = mode }, label = { Text(label) })
+                }
+            }
             Button(
                 onClick = {
                     viewModel.aiResearchError.value = null
@@ -182,39 +203,40 @@ fun AiResearchScreen(
                     viewModel.aiResearchSourceIds.value = emptyList()
                     viewModel.expandSemanticSearchQuery(query) { expandedTerms -> runSearch(expandedTerms) }
                 },
-                enabled = query.isNotBlank() && !loading && !expandingSemanticTerms,
+                enabled = query.isNotBlank() && !loading && !expandingSemanticTerms && !reportLoading,
                 modifier = Modifier.fillMaxWidth()
             ) {
-                if (loading || expandingSemanticTerms) CircularProgressIndicator(Modifier.size(18.dp), strokeWidth = 2.dp)
+                if (loading || expandingSemanticTerms || reportLoading) CircularProgressIndicator(Modifier.size(18.dp), strokeWidth = 2.dp)
                 else Icon(Icons.Default.AutoAwesome, contentDescription = null)
                 Spacer(Modifier.width(8.dp))
                 Text(
                     when {
                         expandingSemanticTerms -> "در حال گسترش مفاهیم…"
-                        loading -> "در حال بررسی جلسه‌ها…"
-                        else -> "گسترش معنایی و تحلیل با هوش مصنوعی"
+                        loading || reportLoading -> "در حال تحلیل جلسه‌ها…"
+                        outputMode == "question" -> "گسترش معنایی و پاسخ‌گویی با هوش مصنوعی"
+                        else -> "یافتن منابع و تولید خروجی"
                     }
                 )
             }
             error?.let { Text(it, color = MaterialTheme.colorScheme.error, style = MaterialTheme.typography.bodySmall) }
 
-            if (answer.isNotBlank()) {
+            if (displayedAnswer.isNotBlank()) {
                 Row(
                     Modifier.fillMaxWidth(),
                     verticalAlignment = Alignment.CenterVertically,
                     horizontalArrangement = Arrangement.SpaceBetween
                 ) {
-                    Text("پاسخ پژوهشی", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
+                    Text(if (outputMode == "question") "پاسخ پژوهشی" else "خروجی پژوهشی", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
                     Row(horizontalArrangement = Arrangement.spacedBy(4.dp)) {
                         IconButton(onClick = {
                             val clipboard = context.getSystemService(ClipboardManager::class.java)
-                            clipboard?.setPrimaryClip(ClipData.newPlainText("پاسخ پژوهشی درس‌یار", answer))
+                            clipboard?.setPrimaryClip(ClipData.newPlainText("پاسخ پژوهشی درس‌یار", displayedAnswer))
                             Toast.makeText(context, "پاسخ کپی شد", Toast.LENGTH_SHORT).show()
                         }) { Icon(Icons.Default.ContentCopy, contentDescription = "کپی پاسخ") }
                         IconButton(onClick = {
                             val send = Intent(Intent.ACTION_SEND).apply {
                                 type = "text/plain"
-                                putExtra(Intent.EXTRA_TEXT, answer)
+                                putExtra(Intent.EXTRA_TEXT, displayedAnswer)
                             }
                             context.startActivity(Intent.createChooser(send, "اشتراک‌گذاری پاسخ پژوهشی"))
                         }) { Icon(Icons.Default.Share, contentDescription = "اشتراک‌گذاری پاسخ") }
@@ -227,7 +249,7 @@ fun AiResearchScreen(
                 ) {
                     androidx.compose.foundation.text.selection.SelectionContainer {
                         Text(
-                            answer,
+                            displayedAnswer,
                             Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(14.dp),
                             style = MaterialTheme.typography.bodyMedium
                         )
