@@ -370,7 +370,12 @@ fun AdvancedSearchScreen(
             ) {
                 items(results, key = { it.id }) { lecture ->
                     val className = classes.firstOrNull { it.id == lecture.classId }?.name
-                    val excerpt = makeSearchExcerpt(lecture, terms)
+                    val highlightTerms = when {
+                        matchMode == "semantic" && expandedTerms.isNotEmpty() -> expandedTerms
+                        matchMode == "phrase" -> (listOf(normalizeSearchText(query).trim()) + terms).filter { it.isNotBlank() }.distinct()
+                        else -> terms
+                    }
+                    val excerpt = makeSearchExcerpt(lecture, highlightTerms, query, matchMode)
                     Card(
                         modifier = Modifier.fillMaxWidth().clickable {
                             viewModel.saveAdvancedSearchScrollPosition(
@@ -457,14 +462,50 @@ private fun normalizeSearchText(value: String): String =
         .replace(Regex("\\s+"), " ")
         .trim()
 
+private fun normalizeSearchTextWithOffsets(source: String): Pair<String, List<Int>> {
+    val normalized = StringBuilder()
+    val offsets = mutableListOf<Int>()
+    var pendingSpaceOffset: Int? = null
+
+    source.forEachIndexed { index, original ->
+        val char = when (original) {
+            'ي' -> 'ی'
+            'ك' -> 'ک'
+            'ۀ', 'ة' -> 'ه'
+            'ؤ' -> 'و'
+            'إ', 'أ', 'آ' -> 'ا'
+            else -> original.lowercaseChar()
+        }
+        if (char in '\u064B'..'\u065F' || char == '\u0670' ||
+            char == '\u200F' || char in '\u202A'..'\u202E'
+        ) return@forEachIndexed
+
+        if (char == '\u200C' || char.isWhitespace()) {
+            if (normalized.isNotEmpty() && pendingSpaceOffset == null) pendingSpaceOffset = index
+            return@forEachIndexed
+        }
+        if (pendingSpaceOffset != null && normalized.isNotEmpty()) {
+            normalized.append(' ')
+            offsets += pendingSpaceOffset!!
+        }
+        pendingSpaceOffset = null
+        normalized.append(char)
+        offsets += index
+    }
+    return normalized.toString().trimEnd() to offsets
+}
+
 private data class SearchExcerpt(
     val sourceLabel: String,
     val text: String
 )
 
-private fun makeSearchExcerpt(lecture: LectureEntity, terms: List<String>): SearchExcerpt {
-    // Keep this order aligned with the requested source labels and show the first
-    // field that actually contains a matching term, not merely the first non-empty field.
+private fun makeSearchExcerpt(
+    lecture: LectureEntity,
+    terms: List<String>,
+    query: String,
+    matchMode: String
+): SearchExcerpt {
     val sources = listOf(
         "متن اصلی درس" to lecture.originalTranscript,
         "متن ویرایش‌شده" to lecture.transcript,
@@ -473,50 +514,87 @@ private fun makeSearchExcerpt(lecture: LectureEntity, terms: List<String>): Sear
         "پرسش‌های هوشمند" to lecture.aiQuizJson.orEmpty(),
         "برچسب‌ها" to lecture.tags
     )
-    val match = sources.firstOrNull { (label, candidate) ->
-        candidate.isNotBlank() &&
-            (terms.isEmpty() || terms.any { normalizeSearchText(candidate).contains(it) })
+    val normalizedQuery = normalizeSearchText(query).trim()
+    val normalizedTerms = terms.map(::normalizeSearchText).filter { it.isNotBlank() }.distinct()
+
+    fun matchingTerm(candidate: String): String? {
+        val normalizedCandidate = normalizeSearchText(candidate)
+        return when {
+            matchMode == "phrase" && normalizedQuery.isNotBlank() &&
+                normalizedCandidate.contains(normalizedQuery) -> normalizedQuery
+            else -> normalizedTerms.sortedByDescending { it.length }
+                .firstOrNull { normalizedCandidate.contains(it) }
+        }
+    }
+
+    val match = sources.firstOrNull { (_, candidate) ->
+        candidate.isNotBlank() && matchingTerm(candidate) != null
     } ?: sources.firstOrNull { it.second.isNotBlank() }
     val label = match?.first.orEmpty()
     val source = match?.second.orEmpty()
     if (source.length <= 240) return SearchExcerpt(label, source)
-    val normalizedSource = normalizeSearchText(source)
-    val index = terms.firstOrNull { it.isNotBlank() }?.let { normalizedSource.indexOf(it) } ?: -1
-    val start = if (index > 70) index - 70 else 0
+
+    val (normalizedSource, offsets) = normalizeSearchTextWithOffsets(source)
+    val matchedTerm = matchingTerm(source)
+    val normalizedIndex = matchedTerm?.let { normalizedSource.indexOf(it) } ?: -1
+    val rawIndex = if (normalizedIndex >= 0) offsets.getOrNull(normalizedIndex) ?: 0 else 0
+    val start = (rawIndex - 70).coerceAtLeast(0)
+    val end = minOf(source.length, start + 240)
     return SearchExcerpt(
         label,
-        (if (start > 0) "… " else "") + source.substring(start, minOf(source.length, start + 240)) +
-            if (start + 240 < source.length) " …" else ""
+        (if (start > 0) "… " else "") + source.substring(start, end) +
+            if (end < source.length) " …" else ""
     )
 }
 
-private fun highlightSearchExcerpt(excerpt: String, terms: List<String>): AnnotatedString = buildAnnotatedString {
-    val patterns = terms.filter { it.isNotBlank() }.distinct().sortedByDescending { it.length }
-    if (excerpt.isBlank() || patterns.isEmpty()) {
-        append(excerpt)
-        return@buildAnnotatedString
+private fun highlightSearchExcerpt(excerpt: String, terms: List<String>): AnnotatedString {
+    val (normalizedExcerpt, offsets) = normalizeSearchTextWithOffsets(excerpt)
+    val patterns = terms.map(::normalizeSearchText)
+        .filter { it.isNotBlank() }.distinct().sortedByDescending { it.length }
+    if (excerpt.isBlank() || patterns.isEmpty() || normalizedExcerpt.isBlank()) {
+        return AnnotatedString(excerpt)
     }
-    val regex = runCatching {
-        Regex(patterns.joinToString("|") { Regex.escape(it) }, RegexOption.IGNORE_CASE)
-    }.getOrNull()
-    if (regex == null) {
-        append(excerpt)
-        return@buildAnnotatedString
-    }
-    var cursor = 0
-    regex.findAll(excerpt).forEach { match ->
-        if (match.range.first < cursor) return@forEach
-        append(excerpt.substring(cursor, match.range.first))
-        withStyle(
-            SpanStyle(
-                background = Color(0xFFFFD54F),
-                color = Color(0xFF302400),
-                fontWeight = FontWeight.Bold
-            )
-        ) {
-            append(match.value)
+
+    val normalizedRanges = mutableListOf<IntRange>()
+    patterns.forEach { term ->
+        var from = 0
+        while (from < normalizedExcerpt.length) {
+            val index = normalizedExcerpt.indexOf(term, startIndex = from)
+            if (index < 0) break
+            normalizedRanges += index until (index + term.length)
+            from = index + term.length.coerceAtLeast(1)
         }
-        cursor = match.range.last + 1
     }
-    if (cursor < excerpt.length) append(excerpt.substring(cursor))
+    val sourceRanges = normalizedRanges.mapNotNull { range ->
+        val start = offsets.getOrNull(range.first) ?: return@mapNotNull null
+        val end = (offsets.getOrNull(range.last) ?: start) + 1
+        if (start < end) start until end else null
+    }.sortedBy { it.first }.fold(mutableListOf<IntRange>()) { acc, range ->
+        val previous = acc.lastOrNull()
+        if (previous != null && range.first <= previous.last + 1) {
+            acc[acc.lastIndex] = previous.first..maxOf(previous.last, range.last)
+        } else {
+            acc += range
+        }
+        acc
+    }
+
+    return buildAnnotatedString {
+        var cursor = 0
+        sourceRanges.forEach { range ->
+            if (range.first < cursor) return@forEach
+            append(excerpt.substring(cursor, range.first))
+            withStyle(
+                SpanStyle(
+                    background = Color(0xFFFFD54F),
+                    color = Color(0xFF302400),
+                    fontWeight = FontWeight.Bold
+                )
+            ) {
+                append(excerpt.substring(range.first, range.last + 1))
+            }
+            cursor = range.last + 1
+        }
+        if (cursor < excerpt.length) append(excerpt.substring(cursor))
+    }
 }
