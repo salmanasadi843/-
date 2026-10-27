@@ -540,6 +540,9 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
             Screen.Teachers -> {
                 _currentScreen.value = Screen.Home
             }
+            Screen.AiResearch -> {
+                _currentScreen.value = Screen.Home
+            }
             is Screen.TeacherClasses -> {
                 _currentScreen.value = Screen.Teachers
             }
@@ -1023,17 +1026,43 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
     }
 
 
-    // برای استخراج و اصلاح متن: Gemini اول؛ در صورت نبودن کلید یا خطا، Groq.
-    private suspend fun aiTextWithGroqFirst(
+    // عملیات متنی: ابتدا Gemini؛ در صورت نبودن کلید یا خطا، Groq.
+    private suspend fun aiTextWithGeminiFirst(
         groqCall: suspend () -> Result<String>,
         geminiCall: suspend () -> Result<String>
     ): Result<String> {
+        var geminiFailure: Throwable? = null
         if (GeminiApiService.getSavedApiKey(getApplication<Application>()).isNotBlank()) {
-            val geminiResult = geminiCall()
+            val geminiResult = try {
+                geminiCall()
+            } catch (cancelled: kotlinx.coroutines.CancellationException) {
+                throw cancelled
+            } catch (error: Exception) {
+                Result.failure<String>(error)
+            }
             if (geminiResult.isSuccess) return geminiResult
-            Log.w(TAG, "Gemini failed; falling back to Groq", geminiResult.exceptionOrNull())
+            geminiFailure = geminiResult.exceptionOrNull()
+            Log.w(TAG, "Gemini failed; falling back to Groq", geminiFailure)
+        } else {
+            Log.i(TAG, "Gemini API key is not configured; trying Groq fallback")
         }
-        return groqCall()
+
+        val groqResult = try {
+            groqCall()
+        } catch (cancelled: kotlinx.coroutines.CancellationException) {
+            throw cancelled
+        } catch (error: Exception) {
+            Result.failure<String>(error)
+        }
+        if (groqResult.isSuccess || geminiFailure == null) return groqResult
+        val groqFailure = groqResult.exceptionOrNull()
+        return Result.failure(
+            Exception(
+                "Gemini ناموفق بود: ${geminiFailure.localizedMessage ?: "خطای نامشخص"}؛ " +
+                    "جایگزین Groq نیز ناموفق بود: ${groqFailure?.localizedMessage ?: "خطای نامشخص"}.",
+                groqFailure
+            )
+        )
     }
 
 // Research assistant: AI-assisted concept expansion, then local retrieval.
