@@ -263,6 +263,7 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
     val searchResultLectureIds = MutableStateFlow<List<Long>>(emptyList())
     val currentSearchResultIndex = MutableStateFlow(0)
     val isSearchResultNavigationActive = MutableStateFlow(false)
+    val advancedSearchHighlightTerms = MutableStateFlow<List<String>>(emptyList())
     private val reopenAdvancedSearch = MutableStateFlow(false)
 
     // Keep AI research state when opening a source lecture and returning.
@@ -283,9 +284,14 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
         advancedSearchScrollOffset.value = offset.coerceAtLeast(0)
     }
 
-    fun beginSearchNavigation(ids: List<Long>, selectedId: Long) {
+    fun beginSearchNavigation(
+        ids: List<Long>,
+        selectedId: Long,
+        highlightTerms: List<String> = emptyList()
+    ) {
         searchResultLectureIds.value = ids.distinct()
         currentSearchResultIndex.value = searchResultLectureIds.value.indexOf(selectedId).coerceAtLeast(0)
+        advancedSearchHighlightTerms.value = highlightTerms.filter { it.isNotBlank() }.distinct()
         isSearchResultNavigationActive.value = searchResultLectureIds.value.isNotEmpty()
     }
 
@@ -293,6 +299,7 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
         isSearchResultNavigationActive.value = false
         searchResultLectureIds.value = emptyList()
         currentSearchResultIndex.value = 0
+        advancedSearchHighlightTerms.value = emptyList()
         reopenAdvancedSearch.value = false
     }
 
