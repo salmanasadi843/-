@@ -232,10 +232,9 @@ service cloud.firestore {
                             && request.resource.data.parentId == '')
                         || (request.resource.data.parentId != ''
                             && (
-                              request.auth.uid == room().ownerUid
+                              (request.auth.uid == room().ownerUid && activeTeacher(request.auth.uid))
                               || isPrimaryTeacher()
-                            )
-                            && activeTeacher(request.auth.uid))
+                            ))
                       );
 
         allow update, delete: if canReadRoom()
