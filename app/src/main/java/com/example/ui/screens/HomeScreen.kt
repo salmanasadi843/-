@@ -59,7 +59,8 @@ fun HomeScreen(
     userRole: UserRole,
     onNavigateToAdd: () -> Unit,
     onNavigateToDetail: (Long) -> Unit,
-    onNavigateToAiSummary: (Long) -> Unit
+    onNavigateToAiSummary: (Long) -> Unit,
+    onNavigateToAiResearch: () -> Unit
 ) {
     val allClasses by viewModel.repository.allClasses.collectAsState(initial = emptyList())
     val allLectures by viewModel.repository.allLectures.collectAsState(initial = emptyList())
@@ -277,6 +278,13 @@ fun HomeScreen(
                 }
                 item {
                     Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+                        HomeActionCard(
+                            Modifier.weight(1f),
+                            Icons.Default.Search,
+                            "جستجوی هوشمند",
+                            "پرسش از درس‌ها و جمع‌بندی مباحث",
+                            onNavigateToAiResearch
+                        )
                         HomeActionCard(
                             Modifier.weight(1f),
                             Icons.Default.AutoAwesome,
