@@ -31,6 +31,8 @@ import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
+import androidx.compose.foundation.text.selection.SelectionContainer
+import androidx.compose.foundation.text.selection.Selection
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.automirrored.filled.FormatListBulleted
@@ -149,6 +151,7 @@ fun LectureDetailScreen(
     var showExportDialog by remember { mutableStateOf(false) }
     var exportOriginalTranscript by remember { mutableStateOf(false) }
     var showDiscussionDialog by remember { mutableStateOf(false) }
+    var selectedQuoteForDiscussion by remember { mutableStateOf("") }
     var chatInputText by remember { mutableStateOf("") }
 
     if (lecture == null) {
@@ -172,7 +175,8 @@ fun LectureDetailScreen(
             userRole = if (isTeacher) UserRole.TEACHER else UserRole.STUDENT,
             sessionTitle = currentLecture.title,
             sessionDateMillis = currentLecture.dateMillis,
-            onDismiss = { showDiscussionDialog = false }
+            initialQuote = selectedQuoteForDiscussion,
+            onDismiss = { showDiscussionDialog = false; selectedQuoteForDiscussion = "" }
         )
     }
 
@@ -356,6 +360,7 @@ fun LectureDetailScreen(
                 searchTerms = activeSearchTerms,
                 transcriptMatchMode = activeSearchMode,
                 onEditClick = { onNavigateToEdit(lectureId) },
+                onAskAboutText = { quote -> selectedQuoteForDiscussion = quote; showDiscussionDialog = true },
                 onCopyClick = { textToCopy ->
                     val clipboard = context.getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager
                     val clip = ClipData.newPlainText("جزوه کلاس", textToCopy)
@@ -555,11 +560,14 @@ fun TranscriptTab(
     transcriptMatchMode: String = "all",
     onEditClick: () -> Unit,
     onCopyClick: (String) -> Unit,
+    onAskAboutText: (String) -> Unit = {},
     audioContent: (@Composable () -> Unit)? = null,
     audioLinkContent: (@Composable () -> Unit)? = null
 ) {
     val scrollState = rememberScrollState()
     var selectedTextTab by remember(lecture.id) { mutableStateOf(0) }
+    var textSelection by remember(lecture.id, selectedTextTab) { mutableStateOf<Selection?>(null) }
+    var selectedQuote by remember(lecture.id, selectedTextTab) { mutableStateOf("") }
     val originalText = lecture.originalTranscript.ifBlank { lecture.transcript }
     val correctedText = lecture.transcript
     val displayedTranscript = if (selectedTextTab == 0) originalText else correctedText
@@ -677,12 +685,38 @@ fun TranscriptTab(
                 shape = RoundedCornerShape(18.dp),
                 color = MaterialTheme.colorScheme.surface
             ) {
-                Text(
-                    text = if (searchQuery.isNotBlank()) highlightTranscriptMatches(displayedTranscript, searchQuery, searchTerms, transcriptMatchMode) else AnnotatedString(displayedTranscript),
-                    modifier = Modifier.padding(horizontal = 18.dp, vertical = 20.dp),
-                    style = MaterialTheme.typography.bodyLarge.copy(lineHeight = 32.sp),
-                    textAlign = TextAlign.Start
-                )
+                Column(modifier = Modifier.fillMaxWidth().padding(horizontal = 18.dp, vertical = 14.dp)) {
+                    SelectionContainer(
+                        selection = textSelection,
+                        onSelectionChange = { selection ->
+                            textSelection = selection
+                            val start = minOf(selection?.start?.offset ?: 0, selection?.end?.offset ?: 0)
+                            val end = maxOf(selection?.start?.offset ?: 0, selection?.end?.offset ?: 0)
+                            selectedQuote = if (selection != null && end > start && start >= 0 && end <= displayedTranscript.length)
+                                displayedTranscript.substring(start, end).trim() else ""
+                        }
+                    ) {
+                        Text(
+                            text = if (searchQuery.isNotBlank()) highlightTranscriptMatches(displayedTranscript, searchQuery, searchTerms, transcriptMatchMode) else AnnotatedString(displayedTranscript),
+                            style = MaterialTheme.typography.bodyLarge.copy(lineHeight = 32.sp),
+                            textAlign = TextAlign.Start
+                        )
+                    }
+                    if (selectedQuote.isNotBlank()) {
+                        Spacer(Modifier.height(8.dp))
+                        Surface(color = MaterialTheme.colorScheme.secondaryContainer, shape = RoundedCornerShape(12.dp)) {
+                            Column(Modifier.fillMaxWidth().padding(10.dp)) {
+                                Text("بخش انتخاب‌شده", style = MaterialTheme.typography.labelMedium)
+                                Text(selectedQuote, style = MaterialTheme.typography.bodyMedium, maxLines = 4)
+                                TextButton(onClick = { onAskAboutText(selectedQuote) }) {
+                                    Icon(Icons.Default.QuestionAnswer, contentDescription = null, modifier = Modifier.size(17.dp))
+                                    Spacer(Modifier.width(6.dp))
+                                    Text("طرح اشکال درباره این متن")
+                                }
+                            }
+                        }
+                    }
+                }
             }
         }
 
