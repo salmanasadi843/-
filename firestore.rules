@@ -252,12 +252,26 @@ service cloud.firestore {
                       && validDiscussionAuthor()
                       && repliesToQuestionInSameSession();
 
-        allow update, delete: if canReadRoom()
-                              && (
-                                resource.data.authorUid == request.auth.uid
-                                || request.auth.uid == room().ownerUid
-                                || isPrimaryTeacher()
-                              );
+        // نویسنده پیام خودش را مدیریت می‌کند؛ استاد مالک و مدیر اصلی نیز اختیار مدیریت دارند.
+        allow update: if canReadRoom()
+                      && (
+                        resource.data.authorUid == request.auth.uid
+                        || (request.auth.uid == room().ownerUid && activeTeacher(request.auth.uid))
+                        || isPrimaryTeacher()
+                      )
+                      && request.resource.data.authorUid == resource.data.authorUid
+                      && request.resource.data.parentId == resource.data.parentId
+                      && request.resource.data.sessionKey == resource.data.sessionKey
+                      && request.resource.data.body is string
+                      && request.resource.data.body.size() > 0
+                      && request.resource.data.body.size() <= 8000;
+
+        allow delete: if canReadRoom()
+                      && (
+                        resource.data.authorUid == request.auth.uid
+                        || (request.auth.uid == room().ownerUid && activeTeacher(request.auth.uid))
+                        || isPrimaryTeacher()
+                      );
       }
     }
 
