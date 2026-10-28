@@ -251,7 +251,27 @@ fun DiscussionDialog(
                 "authorRole" to authorRole,
                 "createdAt" to FieldValue.serverTimestamp()
             )
-        ).addOnSuccessListener {
+        ).addOnSuccessListener { postRef ->
+            // اعلان داخل برنامه؛ شناسه پایدار مانع ساخت اعلان تکراری برای همان پیام می‌شود.
+            val notificationId = "${spaceKey}_${postRef.id}"
+            val notificationTitle = if (replyTo == null) "پرسش تازه در درس" else "پاسخ تازه در گفت‌وگو"
+            val notificationBody = text.take(240)
+            val notification = mapOf(
+                "sourceSpaceId" to spaceKey,
+                "sourcePostId" to postRef.id,
+                "actorUid" to uid,
+                "actorName" to authorName,
+                "title" to notificationTitle,
+                "body" to notificationBody,
+                "className" to className,
+                "sessionTitle" to (sessionTitle ?: className),
+                "createdAt" to FieldValue.serverTimestamp()
+            )
+            firestore.collection("discussion_notifications").document(notificationId)
+                .set(notification)
+                .addOnFailureListener { e ->
+                    android.util.Log.w("DiscussionDialog", "Message sent but in-app notification creation failed", e)
+                }
             draft = ""
             quoteToAttach = ""
             replyTo = null
