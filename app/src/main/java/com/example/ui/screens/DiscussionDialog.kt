@@ -53,7 +53,8 @@ private data class DiscussionPost(
     val authorName: String,
     val authorRole: String,
     val createdAtMillis: Long,
-    val edited: Boolean
+    val edited: Boolean,
+    val quotedText: String
 )
 
 internal fun discussionSpaceKey(ownerUid: String, classCreatedAtMillis: Long, className: String, teacherName: String, term: String): String {
@@ -79,6 +80,7 @@ fun DiscussionDialog(
     userRole: UserRole,
     sessionTitle: String? = null,
     sessionDateMillis: Long? = null,
+    initialQuote: String = "",
     onDismiss: () -> Unit
 ) {
     val context = LocalContext.current
@@ -95,6 +97,7 @@ fun DiscussionDialog(
     val canParticipate = uid.isNotBlank() && (isPublished || isClassOwner || AuthPreferences.isPrimaryTeacher(context))
     val posts = remember(spaceKey, activeSessionKey) { mutableStateListOf<DiscussionPost>() }
     var draft by remember { mutableStateOf("") }
+    var quoteToAttach by remember(spaceKey, activeSessionKey, initialQuote) { mutableStateOf(initialQuote.trim()) }
     var editingPost by remember { mutableStateOf<DiscussionPost?>(null) }
     var pendingDelete by remember { mutableStateOf<DiscussionPost?>(null) }
     var replyTo by remember { mutableStateOf<DiscussionPost?>(null) }
@@ -166,7 +169,8 @@ fun DiscussionDialog(
                                 authorName = doc.getString("authorName").orEmpty(),
                                 authorRole = doc.getString("authorRole").orEmpty(),
                                 createdAtMillis = doc.getTimestamp("createdAt")?.toDate()?.time ?: 0L,
-                                edited = doc.getBoolean("edited") == true
+                                edited = doc.getBoolean("edited") == true,
+                                quotedText = doc.getString("quotedText").orEmpty()
                             )
                         }.sortedBy { it.createdAtMillis })
                         loading = false
@@ -240,6 +244,7 @@ fun DiscussionDialog(
                 "sessionKey" to activeSessionKey,
                 "parentId" to (replyTo?.id ?: ""),
                 "body" to text,
+                "quotedText" to if (replyTo == null) quoteToAttach else "",
                 "authorUid" to uid,
                 "authorName" to authorName,
                 "authorRole" to authorRole,
@@ -247,6 +252,7 @@ fun DiscussionDialog(
             )
         ).addOnSuccessListener {
             draft = ""
+            quoteToAttach = ""
             replyTo = null
             sending = false
         }.addOnFailureListener { e ->
@@ -314,6 +320,14 @@ fun DiscussionDialog(
                                     color = MaterialTheme.colorScheme.surfaceVariant
                                 ) {
                                     Column(modifier = Modifier.padding(12.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                                        if (question.quotedText.isNotBlank()) {
+                                            Surface(color = MaterialTheme.colorScheme.secondaryContainer, shape = MaterialTheme.shapes.medium) {
+                                                Column(Modifier.fillMaxWidth().padding(8.dp)) {
+                                                    Text("متن مورد استناد", style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.primary)
+                                                    Text(question.quotedText, style = MaterialTheme.typography.bodyMedium, maxLines = 6)
+                                                }
+                                            }
+                                        }
                                         Text(question.body, style = MaterialTheme.typography.bodyLarge)
                                         if (question.edited) Text("ویرایش‌شده", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
                                         Text(
@@ -376,6 +390,15 @@ fun DiscussionDialog(
                         } else if (replyTo != null) {
                             Text("در حال پاسخ به: " + (replyTo?.authorName ?: ""), style = MaterialTheme.typography.labelMedium)
                             TextButton(onClick = { replyTo = null }) { Text("لغو پاسخ") }
+                        }
+                        if (quoteToAttach.isNotBlank() && editingPost == null && replyTo == null) {
+                            Surface(color = MaterialTheme.colorScheme.secondaryContainer, shape = MaterialTheme.shapes.medium) {
+                                Column(Modifier.fillMaxWidth().padding(8.dp)) {
+                                    Text("متن انتخاب‌شده برای استناد", style = MaterialTheme.typography.labelMedium)
+                                    Text(quoteToAttach, style = MaterialTheme.typography.bodySmall, maxLines = 4)
+                                    TextButton(onClick = { quoteToAttach = "" }) { Text("حذف استناد") }
+                                }
+                            }
                         }
                         OutlinedTextField(
                             value = draft,
