@@ -76,7 +76,8 @@ fun DiscussionDialog(
 ) {
     val context = LocalContext.current
     val uid = AuthPreferences.currentUid(context).orEmpty()
-    val authorName = AuthPreferences.currentName(context).ifBlank { if (userRole == UserRole.TEACHER) "استاد" else "دانشجو" }
+    val authorRole = if (AuthPreferences.isPrimaryTeacher(context)) "ADMIN" else userRole.name
+    val authorName = AuthPreferences.currentName(context).ifBlank { if (authorRole == "ADMIN") "مدیر" else if (authorRole == "TEACHER") "استاد" else "دانشجو" }
     val spaceKey = remember(ownerUid, classCreatedAtMillis, className, teacherName, term) {
         discussionSpaceKey(ownerUid, classCreatedAtMillis, className, teacherName, term)
     }
@@ -183,7 +184,7 @@ fun DiscussionDialog(
                 "body" to text,
                 "authorUid" to uid,
                 "authorName" to authorName,
-                "authorRole" to userRole.name,
+                "authorRole" to authorRole,
                 "createdAt" to FieldValue.serverTimestamp()
             )
         ).addOnSuccessListener {
