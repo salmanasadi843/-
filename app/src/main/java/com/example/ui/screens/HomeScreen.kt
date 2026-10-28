@@ -201,7 +201,7 @@ fun HomeScreen(
     }
 
     if (showDiscussionNotifications) {
-        DiscussionNotificationsDialog(onDismiss = { showDiscussionNotifications = false })
+        DiscussionNotificationsDialog(userRole = userRole, onDismiss = { showDiscussionNotifications = false })
     }
 
     if (showAdvancedSearch) {
