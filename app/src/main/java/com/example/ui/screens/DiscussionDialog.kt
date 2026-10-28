@@ -400,6 +400,3 @@ fun DiscussionDialog(
         }
     }
 }
-}
-
-}
