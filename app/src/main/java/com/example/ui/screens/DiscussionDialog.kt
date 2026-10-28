@@ -5,6 +5,9 @@ import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.weight
+import androidx.compose.foundation.layout.imePadding
 import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.lazy.LazyColumn
@@ -13,6 +16,9 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.Send
 import androidx.compose.material.icons.filled.Forum
 import androidx.compose.material3.AlertDialog
+import androidx.compose.ui.window.Dialog
+import androidx.compose.ui.window.DialogProperties
+import androidx.compose.foundation.shape.RectangleShape
 import androidx.compose.material3.TextButton
 import androidx.compose.material3.Button
 import androidx.compose.material3.CircularProgressIndicator
@@ -262,112 +268,138 @@ fun DiscussionDialog(
         )
     }
 
-    AlertDialog(
+    Dialog(
         onDismissRequest = onDismiss,
-        icon = { Icon(Icons.Default.Forum, contentDescription = null) },
-        title = {
-            Column {
-                Text(if (sessionTitle == null) "تالار گفتگوی درس" else "اشکال و پاسخ جلسه")
-                Text(
-                    if (sessionTitle == null) className else sessionTitle,
-                    style = MaterialTheme.typography.bodyMedium,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant
-                )
-            }
-        },
-        text = {
-            Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                if (loading) {
-                    Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.Center) {
-                        CircularProgressIndicator()
+        properties = DialogProperties(usePlatformDefaultWidth = false)
+    ) {
+        Surface(
+            modifier = Modifier.fillMaxSize(),
+            shape = RectangleShape,
+            color = MaterialTheme.colorScheme.background
+        ) {
+            Column(modifier = Modifier.fillMaxSize().imePadding()) {
+                Row(
+                    modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 12.dp),
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Column(modifier = Modifier.weight(1f)) {
+                        Text(if (sessionTitle == null) "تالار گفتگوی درس" else "اشکال و پاسخ جلسه", style = MaterialTheme.typography.titleLarge)
+                        Text(
+                            if (sessionTitle == null) className else sessionTitle,
+                            style = MaterialTheme.typography.bodyMedium,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                        )
                     }
-                } else if (questions.isEmpty()) {
-                    Text(if (sessionTitle == null) "هنوز پرسشی برای این درس ثبت نشده است." else "هنوز اشکالی برای این جلسه ثبت نشده است.")
-                } else {
-                    LazyColumn(
-                        modifier = Modifier.fillMaxWidth().heightIn(max = 300.dp),
-                        verticalArrangement = Arrangement.spacedBy(10.dp)
-                    ) {
-                        items(questions, key = { it.id }) { question ->
-                            Column(verticalArrangement = Arrangement.spacedBy(5.dp)) {
-                                Text(question.body, style = MaterialTheme.typography.bodyLarge)
-                                if (question.edited) Text("ویرایش‌شده", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
-                                if (canManagePost(question)) {
-                                    Row(horizontalArrangement = Arrangement.End, modifier = Modifier.fillMaxWidth()) {
-                                        TextButton(onClick = { editingPost = question; replyTo = null; draft = question.body }) { Text("ویرایش") }
-                                        TextButton(onClick = { pendingDelete = question }) { Text("حذف") }
-                                    }
-                                }
-                                Text(
-                                    question.authorName + " • " + when (question.authorRole) { "TEACHER" -> "استاد"; "ADMIN" -> "مدیر"; else -> "دانشجو" },
-                                    style = MaterialTheme.typography.labelSmall,
-                                    color = MaterialTheme.colorScheme.onSurfaceVariant
-                                )
-                                (answersByQuestion[question.id] ?: emptyList()).forEach { answer ->
-                                    Column(Modifier.fillMaxWidth().padding(start = 10.dp)) {
-                                        Text("پاسخ", style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.primary)
-                                        Text(answer.body, style = MaterialTheme.typography.bodyMedium)
-                                        if (answer.edited) Text("ویرایش‌شده", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
-                                        if (canManagePost(answer)) {
-                                            Row(horizontalArrangement = Arrangement.End, modifier = Modifier.fillMaxWidth()) {
-                                                TextButton(onClick = { editingPost = answer; replyTo = null; draft = answer.body }) { Text("ویرایش") }
-                                                TextButton(onClick = { pendingDelete = answer }) { Text("حذف") }
-                                            }
-                                        }
+                    TextButton(onClick = onDismiss) { Text("بستن") }
+                }
+                HorizontalDivider()
+                Box(modifier = Modifier.weight(1f).fillMaxWidth()) {
+                    if (loading) {
+                        CircularProgressIndicator(modifier = Modifier.align(Alignment.Center))
+                    } else if (questions.isEmpty()) {
+                        Text(
+                            if (sessionTitle == null) "هنوز پرسشی برای این درس ثبت نشده است." else "هنوز اشکالی برای این جلسه ثبت نشده است.",
+                            modifier = Modifier.align(Alignment.Center).padding(24.dp)
+                        )
+                    } else {
+                        LazyColumn(
+                            modifier = Modifier.fillMaxSize().padding(horizontal = 16.dp),
+                            contentPadding = androidx.compose.foundation.layout.PaddingValues(vertical = 12.dp),
+                            verticalArrangement = Arrangement.spacedBy(12.dp)
+                        ) {
+                            items(questions, key = { it.id }) { question ->
+                                Surface(
+                                    modifier = Modifier.fillMaxWidth(),
+                                    shape = MaterialTheme.shapes.large,
+                                    color = MaterialTheme.colorScheme.surfaceVariant
+                                ) {
+                                    Column(modifier = Modifier.padding(12.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                                        Text(question.body, style = MaterialTheme.typography.bodyLarge)
+                                        if (question.edited) Text("ویرایش‌شده", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
                                         Text(
-                                            answer.authorName + " • " + when (answer.authorRole) { "TEACHER" -> "استاد"; "ADMIN" -> "مدیر"; else -> "دانشجو" },
+                                            question.authorName + " • " + when (question.authorRole) { "TEACHER" -> "استاد"; "ADMIN" -> "مدیر"; else -> "دانشجو" },
                                             style = MaterialTheme.typography.labelSmall,
                                             color = MaterialTheme.colorScheme.onSurfaceVariant
                                         )
+                                        if (canManagePost(question)) {
+                                            Row(horizontalArrangement = Arrangement.End, modifier = Modifier.fillMaxWidth()) {
+                                                TextButton(onClick = { editingPost = question; replyTo = null; draft = question.body }) { Text("ویرایش") }
+                                                TextButton(onClick = { pendingDelete = question }) { Text("حذف") }
+                                            }
+                                        }
+                                        (answersByQuestion[question.id] ?: emptyList()).forEach { answer ->
+                                            Surface(
+                                                modifier = Modifier.fillMaxWidth().padding(start = 12.dp, top = 4.dp),
+                                                shape = MaterialTheme.shapes.medium,
+                                                color = MaterialTheme.colorScheme.surface
+                                            ) {
+                                                Column(modifier = Modifier.padding(10.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                                                    Text("پاسخ", style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.primary)
+                                                    Text(answer.body, style = MaterialTheme.typography.bodyMedium)
+                                                    if (answer.edited) Text("ویرایش‌شده", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                                                    Text(
+                                                        answer.authorName + " • " + when (answer.authorRole) { "TEACHER" -> "استاد"; "ADMIN" -> "مدیر"; else -> "دانشجو" },
+                                                        style = MaterialTheme.typography.labelSmall,
+                                                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                                                    )
+                                                    if (canManagePost(answer)) {
+                                                        Row(horizontalArrangement = Arrangement.End, modifier = Modifier.fillMaxWidth()) {
+                                                            TextButton(onClick = { editingPost = answer; replyTo = null; draft = answer.body }) { Text("ویرایش") }
+                                                            TextButton(onClick = { pendingDelete = answer }) { Text("حذف") }
+                                                        }
+                                                    }
+                                                }
+                                            }
+                                        }
+                                        Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.End) {
+                                            TextButton(enabled = canReply && replyTo?.id != question.id && editingPost == null, onClick = { replyTo = question }) { Text("پاسخ") }
+                                        }
                                     }
                                 }
-                                Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.End) {
-                                    TextButton(enabled = canReply && replyTo?.id != question.id, onClick = { replyTo = question }) {
-                                        Text("پاسخ")
-                                    }
-                                }
-                                HorizontalDivider()
                             }
                         }
                     }
                 }
-
+                if (error != null) {
+                    Text(error!!, modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 4.dp), color = MaterialTheme.colorScheme.error, style = MaterialTheme.typography.bodySmall)
+                }
                 if (!isPublished && !isClassOwner && !AuthPreferences.isPrimaryTeacher(context)) {
-                    Text("این کلاس منتشر نشده است.", color = MaterialTheme.colorScheme.error)
+                    Text("این کلاس منتشر نشده است.", modifier = Modifier.padding(16.dp), color = MaterialTheme.colorScheme.error)
                 } else {
-                    if (editingPost != null) {
-                        Text("در حال ویرایش پیام", style = MaterialTheme.typography.labelMedium)
-                        TextButton(onClick = { editingPost = null; draft = "" }) { Text("لغو ویرایش") }
-                    } else if (replyTo != null) {
-                        Text("در حال پاسخ به: " + (replyTo?.authorName ?: ""), style = MaterialTheme.typography.labelMedium)
-                        TextButton(onClick = { replyTo = null }) { Text("لغو پاسخ") }
-                    }
-                    OutlinedTextField(
-                        value = draft,
-                        onValueChange = { draft = it },
-                        modifier = Modifier.fillMaxWidth(),
-                        label = { Text(when { editingPost != null -> "ویرایش پیام"; replyTo == null -> "ثبت پرسش یا اشکال"; else -> "متن پاسخ" }) },
-                        minLines = 2,
-                        maxLines = 4,
-                        enabled = canParticipate && roomReady && (replyTo == null || canReply)
-                    )
-                    Button(
-                        onClick = { if (editingPost != null) saveEditedPost() else sendPost() },
-                        enabled = draft.isNotBlank() && !sending && canParticipate && roomReady && (editingPost == null || editingPost?.let { canManagePost(it) } == true) && (replyTo == null || canReply),
-                        modifier = Modifier.fillMaxWidth()
+                    Column(
+                        modifier = Modifier.fillMaxWidth().padding(horizontal = 12.dp, vertical = 8.dp),
+                        verticalArrangement = Arrangement.spacedBy(6.dp)
                     ) {
-                        if (sending) CircularProgressIndicator()
-                        else {
-                            Icon(Icons.AutoMirrored.Filled.Send, contentDescription = null)
-                            Text(when { editingPost != null -> "ذخیرهٔ ویرایش"; replyTo == null -> "ثبت پرسش"; else -> "ارسال پاسخ" })
+                        if (editingPost != null) {
+                            Text("در حال ویرایش پیام", style = MaterialTheme.typography.labelMedium)
+                            TextButton(onClick = { editingPost = null; draft = "" }) { Text("لغو ویرایش") }
+                        } else if (replyTo != null) {
+                            Text("در حال پاسخ به: " + (replyTo?.authorName ?: ""), style = MaterialTheme.typography.labelMedium)
+                            TextButton(onClick = { replyTo = null }) { Text("لغو پاسخ") }
+                        }
+                        OutlinedTextField(
+                            value = draft,
+                            onValueChange = { draft = it },
+                            modifier = Modifier.fillMaxWidth(),
+                            label = { Text(when { editingPost != null -> "ویرایش پیام"; replyTo == null -> "ثبت پرسش یا اشکال"; else -> "متن پاسخ" }) },
+                            minLines = 1,
+                            maxLines = 4,
+                            enabled = canParticipate && roomReady && (editingPost == null || editingPost?.let { canManagePost(it) } == true) && (replyTo == null || canReply)
+                        )
+                        Button(
+                            onClick = { if (editingPost != null) saveEditedPost() else sendPost() },
+                            enabled = draft.isNotBlank() && !sending && canParticipate && roomReady && (editingPost == null || editingPost?.let { canManagePost(it) } == true) && (replyTo == null || canReply),
+                            modifier = Modifier.fillMaxWidth()
+                        ) {
+                            if (sending) CircularProgressIndicator()
+                            else Text(when { editingPost != null -> "ذخیرهٔ ویرایش"; replyTo == null -> "ثبت پرسش"; else -> "ارسال پاسخ" })
                         }
                     }
                 }
-                if (error != null) {
-                    Text(error!!, color = MaterialTheme.colorScheme.error, style = MaterialTheme.typography.bodySmall)
-                }
             }
-        },
-        confirmButton = { TextButton(onClick = onDismiss) { Text("بستن") } }
-    )
+        }
+    }
+}
+}
+
 }
