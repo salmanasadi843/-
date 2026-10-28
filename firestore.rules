@@ -287,6 +287,8 @@ service cloud.firestore {
                     && notificationId == request.resource.data.sourceSpaceId + '_' + request.resource.data.sourcePostId
                     && exists(/databases/$(database)/documents/discussion_spaces/$(request.resource.data.sourceSpaceId)/posts/$(request.resource.data.sourcePostId))
                     && get(/databases/$(database)/documents/discussion_spaces/$(request.resource.data.sourceSpaceId)/posts/$(request.resource.data.sourcePostId)).data.authorUid == request.auth.uid
+                    && get(/databases/$(database)/documents/discussion_spaces/$(request.resource.data.sourceSpaceId)).data.isPublished == true
+                    && activeTeacher(get(/databases/$(database)/documents/discussion_spaces/$(request.resource.data.sourceSpaceId)).data.ownerUid)
                     && request.resource.data.body is string
                     && request.resource.data.body.size() <= 240
                     && request.resource.data.className is string
