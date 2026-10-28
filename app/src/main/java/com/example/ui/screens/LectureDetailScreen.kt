@@ -31,8 +31,10 @@ import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
-import androidx.compose.foundation.text.selection.SelectionContainer
-import androidx.compose.foundation.text.selection.Selection
+import androidx.compose.foundation.text.BasicTextField
+import androidx.compose.ui.text.TextRange
+import androidx.compose.ui.text.input.TextFieldValue
+import androidx.compose.ui.graphics.SolidColor
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.automirrored.filled.FormatListBulleted
@@ -566,7 +568,6 @@ fun TranscriptTab(
 ) {
     val scrollState = rememberScrollState()
     var selectedTextTab by remember(lecture.id) { mutableStateOf(0) }
-    var textSelection by remember(lecture.id, selectedTextTab) { mutableStateOf<Selection?>(null) }
     var selectedQuote by remember(lecture.id, selectedTextTab) { mutableStateOf("") }
     val originalText = lecture.originalTranscript.ifBlank { lecture.transcript }
     val correctedText = lecture.transcript
@@ -686,22 +687,30 @@ fun TranscriptTab(
                 color = MaterialTheme.colorScheme.surface
             ) {
                 Column(modifier = Modifier.fillMaxWidth().padding(horizontal = 18.dp, vertical = 14.dp)) {
-                    SelectionContainer(
-                        selection = textSelection,
-                        onSelectionChange = { selection ->
-                            textSelection = selection
-                            val start = minOf(selection?.start?.offset ?: 0, selection?.end?.offset ?: 0)
-                            val end = maxOf(selection?.start?.offset ?: 0, selection?.end?.offset ?: 0)
-                            selectedQuote = if (selection != null && end > start && start >= 0 && end <= displayedTranscript.length)
-                                displayedTranscript.substring(start, end).trim() else ""
-                        }
-                    ) {
-                        Text(
-                            text = if (searchQuery.isNotBlank()) highlightTranscriptMatches(displayedTranscript, searchQuery, searchTerms, transcriptMatchMode) else AnnotatedString(displayedTranscript),
-                            style = MaterialTheme.typography.bodyLarge.copy(lineHeight = 32.sp),
-                            textAlign = TextAlign.Start
-                        )
+                    val highlightedTranscript = if (searchQuery.isNotBlank())
+                        highlightTranscriptMatches(displayedTranscript, searchQuery, searchTerms, transcriptMatchMode)
+                    else AnnotatedString(displayedTranscript)
+                    var transcriptFieldValue by remember(lecture.id, selectedTextTab, displayedTranscript, searchQuery, transcriptMatchMode) {
+                        mutableStateOf(TextFieldValue(text = highlightedTranscript))
                     }
+                    BasicTextField(
+                        value = transcriptFieldValue,
+                        onValueChange = { value ->
+                            transcriptFieldValue = value
+                            val start = minOf(value.selection.start, value.selection.end)
+                            val end = maxOf(value.selection.start, value.selection.end)
+                            selectedQuote = if (end > start && start >= 0 && end <= displayedTranscript.length)
+                                displayedTranscript.substring(start, end).trim() else ""
+                        },
+                        readOnly = true,
+                        textStyle = MaterialTheme.typography.bodyLarge.copy(
+                            lineHeight = 32.sp,
+                            color = MaterialTheme.colorScheme.onSurface,
+                            textAlign = TextAlign.Start
+                        ),
+                        cursorBrush = SolidColor(MaterialTheme.colorScheme.primary),
+                        modifier = Modifier.fillMaxWidth()
+                    )
                     if (selectedQuote.isNotBlank()) {
                         Spacer(Modifier.height(8.dp))
                         Surface(color = MaterialTheme.colorScheme.secondaryContainer, shape = RoundedCornerShape(12.dp)) {
