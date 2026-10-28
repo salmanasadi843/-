@@ -264,7 +264,15 @@ fun DiscussionDialog(
                 "title" to notificationTitle,
                 "body" to notificationBody,
                 "className" to className,
-                "sessionTitle" to (sessionTitle ?: className),
+                "teacherName" to teacherName,
+                "term" to term,
+                "ownerUid" to ownerUid,
+                "classCreatedAtMillis" to classCreatedAtMillis,
+                "isPublished" to isPublished,
+                "isClassDiscussion" to (sessionTitle == null),
+                "sessionTitle" to sessionTitle.orEmpty(),
+                "sessionDateMillis" to (sessionDateMillis ?: 0L),
+                "sessionKey" to activeSessionKey,
                 "createdAt" to FieldValue.serverTimestamp()
             )
             firestore.collection("discussion_notifications").document(notificationId)
