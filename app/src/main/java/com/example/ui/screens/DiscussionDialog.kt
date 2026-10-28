@@ -401,11 +401,24 @@ fun DiscussionDialog(
                                 }
                             }
                         }
+                        if (quoteToAttach.isNotBlank() && editingPost == null && replyTo == null) {
+                            Text(
+                                "سؤال خود را دربارهٔ عبارت انتخاب‌شده بنویسید؛ متن انتخابی به‌صورت استناد همراه سؤال ارسال می‌شود.",
+                                style = MaterialTheme.typography.bodySmall,
+                                color = MaterialTheme.colorScheme.primary
+                            )
+                        }
                         OutlinedTextField(
                             value = draft,
                             onValueChange = { draft = it },
                             modifier = Modifier.fillMaxWidth(),
-                            label = { Text(when { editingPost != null -> "ویرایش پیام"; replyTo == null -> "ثبت پرسش یا اشکال"; else -> "متن پاسخ" }) },
+                            label = { Text(when {
+                                editingPost != null -> "ویرایش پیام"
+                                replyTo != null -> "متن پاسخ"
+                                quoteToAttach.isNotBlank() -> "سؤال دربارهٔ متن انتخاب‌شده"
+                                else -> "ثبت پرسش یا اشکال"
+                            }) },
+                            placeholder = { Text(if (quoteToAttach.isNotBlank() && editingPost == null && replyTo == null) "مثلاً: منظور از این عبارت چیست؟" else "متن پرسش خود را بنویسید…") },
                             minLines = 1,
                             maxLines = 4,
                             enabled = canParticipate && roomReady && (editingPost == null || editingPost?.let { canManagePost(it) } == true) && (replyTo == null || canReply)
