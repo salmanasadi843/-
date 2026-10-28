@@ -13,6 +13,7 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.Send
 import androidx.compose.material.icons.filled.Forum
 import androidx.compose.material3.AlertDialog
+import androidx.compose.material3.TextButton
 import androidx.compose.material3.Button
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.HorizontalDivider
@@ -46,7 +47,8 @@ private data class DiscussionPost(
     val authorUid: String,
     val authorName: String,
     val authorRole: String,
-    val createdAtMillis: Long
+    val createdAtMillis: Long,
+    val edited: Boolean
 )
 
 internal fun discussionSpaceKey(ownerUid: String, classCreatedAtMillis: Long, className: String, teacherName: String, term: String): String {
@@ -88,6 +90,8 @@ fun DiscussionDialog(
     val canParticipate = uid.isNotBlank() && (isPublished || isClassOwner || AuthPreferences.isPrimaryTeacher(context))
     val posts = remember(spaceKey, activeSessionKey) { mutableStateListOf<DiscussionPost>() }
     var draft by remember { mutableStateOf("") }
+    var editingPost by remember { mutableStateOf<DiscussionPost?>(null) }
+    var pendingDelete by remember { mutableStateOf<DiscussionPost?>(null) }
     var replyTo by remember { mutableStateOf<DiscussionPost?>(null) }
     var loading by remember { mutableStateOf(true) }
     var roomReady by remember(spaceKey) { mutableStateOf(false) }
@@ -156,7 +160,8 @@ fun DiscussionDialog(
                                 authorUid = doc.getString("authorUid").orEmpty(),
                                 authorName = doc.getString("authorName").orEmpty(),
                                 authorRole = doc.getString("authorRole").orEmpty(),
-                                createdAtMillis = doc.getTimestamp("createdAt")?.toDate()?.time ?: 0L
+                                createdAtMillis = doc.getTimestamp("createdAt")?.toDate()?.time ?: 0L,
+                                edited = doc.getBoolean("edited") == true
                             )
                         }.sortedBy { it.createdAtMillis })
                         loading = false
@@ -166,6 +171,54 @@ fun DiscussionDialog(
             loading = false
         }
         onDispose { registration?.remove() }
+    }
+
+
+    fun canManagePost(post: DiscussionPost): Boolean {
+        return uid == post.authorUid || uid == ownerUid || AuthPreferences.isPrimaryTeacher(context)
+    }
+
+    fun saveEditedPost() {
+        val post = editingPost ?: return
+        val text = draft.trim()
+        if (text.isBlank() || sending || !canManagePost(post)) return
+        sending = true
+        error = null
+        postsRef.document(post.id).update(
+            mapOf(
+                "body" to text,
+                "edited" to true,
+                "updatedAt" to FieldValue.serverTimestamp()
+            )
+        ).addOnSuccessListener {
+            draft = ""
+            editingPost = null
+            sending = false
+        }.addOnFailureListener { e ->
+            error = e.localizedMessage ?: "ویرایش پیام انجام نشد."
+            sending = false
+        }
+    }
+
+    fun deletePost(post: DiscussionPost) {
+        if (!canManagePost(post) || sending) return
+        sending = true
+        error = null
+        postsRef.document(post.id).delete()
+            .addOnSuccessListener {
+                if (replyTo?.id == post.id) replyTo = null
+                if (editingPost?.id == post.id) {
+                    editingPost = null
+                    draft = ""
+                }
+                pendingDelete = null
+                sending = false
+            }
+            .addOnFailureListener { e ->
+                error = e.localizedMessage ?: "حذف پیام انجام نشد."
+                pendingDelete = null
+                sending = false
+            }
     }
 
     fun sendPost() {
@@ -200,6 +253,16 @@ fun DiscussionDialog(
     val questions = posts.filter { it.parentId.isBlank() }
     val answersByQuestion = posts.filter { it.parentId.isNotBlank() }.groupBy { it.parentId }
 
+    if (pendingDelete != null) {
+        AlertDialog(
+            onDismissRequest = { if (!sending) pendingDelete = null },
+            title = { Text("حذف پیام؟") },
+            text = { Text("این پیام حذف شود؟ این کار قابل بازگشت نیست.") },
+            confirmButton = { TextButton(enabled = !sending, onClick = { pendingDelete?.let { deletePost(it) } }) { Text("حذف") } },
+            dismissButton = { TextButton(enabled = !sending, onClick = { pendingDelete = null }) { Text("انصراف") } }
+        )
+    }
+
     AlertDialog(
         onDismissRequest = onDismiss,
         icon = { Icon(Icons.Default.Forum, contentDescription = null) },
@@ -229,6 +292,13 @@ fun DiscussionDialog(
                         items(questions, key = { it.id }) { question ->
                             Column(verticalArrangement = Arrangement.spacedBy(5.dp)) {
                                 Text(question.body, style = MaterialTheme.typography.bodyLarge)
+                                if (question.edited) Text("ویرایش‌شده", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                                if (canManagePost(question)) {
+                                    Row(horizontalArrangement = Arrangement.End, modifier = Modifier.fillMaxWidth()) {
+                                        TextButton(onClick = { editingPost = question; replyTo = null; draft = question.body }) { Text("ویرایش") }
+                                        TextButton(onClick = { pendingDelete = question }) { Text("حذف") }
+                                    }
+                                }
                                 Text(
                                     question.authorName + " • " + when (question.authorRole) { "TEACHER" -> "استاد"; "ADMIN" -> "مدیر"; else -> "دانشجو" },
                                     style = MaterialTheme.typography.labelSmall,
@@ -238,6 +308,13 @@ fun DiscussionDialog(
                                     Column(Modifier.fillMaxWidth().padding(start = 10.dp)) {
                                         Text("پاسخ", style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.primary)
                                         Text(answer.body, style = MaterialTheme.typography.bodyMedium)
+                                        if (answer.edited) Text("ویرایش‌شده", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                                        if (canManagePost(answer)) {
+                                            Row(horizontalArrangement = Arrangement.End, modifier = Modifier.fillMaxWidth()) {
+                                                TextButton(onClick = { editingPost = answer; replyTo = null; draft = answer.body }) { Text("ویرایش") }
+                                                TextButton(onClick = { pendingDelete = answer }) { Text("حذف") }
+                                            }
+                                        }
                                         Text(
                                             answer.authorName + " • " + when (answer.authorRole) { "TEACHER" -> "استاد"; "ADMIN" -> "مدیر"; else -> "دانشجو" },
                                             style = MaterialTheme.typography.labelSmall,
@@ -259,7 +336,10 @@ fun DiscussionDialog(
                 if (!isPublished && !isClassOwner && !AuthPreferences.isPrimaryTeacher(context)) {
                     Text("این کلاس منتشر نشده است.", color = MaterialTheme.colorScheme.error)
                 } else {
-                    if (replyTo != null) {
+                    if (editingPost != null) {
+                        Text("در حال ویرایش پیام", style = MaterialTheme.typography.labelMedium)
+                        TextButton(onClick = { editingPost = null; draft = "" }) { Text("لغو ویرایش") }
+                    } else if (replyTo != null) {
                         Text("در حال پاسخ به: " + (replyTo?.authorName ?: ""), style = MaterialTheme.typography.labelMedium)
                         TextButton(onClick = { replyTo = null }) { Text("لغو پاسخ") }
                     }
@@ -267,20 +347,20 @@ fun DiscussionDialog(
                         value = draft,
                         onValueChange = { draft = it },
                         modifier = Modifier.fillMaxWidth(),
-                        label = { Text(if (replyTo == null) "ثبت پرسش یا اشکال" else "متن پاسخ") },
+                        label = { Text(when { editingPost != null -> "ویرایش پیام"; replyTo == null -> "ثبت پرسش یا اشکال"; else -> "متن پاسخ" }) },
                         minLines = 2,
                         maxLines = 4,
                         enabled = canParticipate && roomReady && (replyTo == null || canReply)
                     )
                     Button(
-                        onClick = { sendPost() },
-                        enabled = draft.isNotBlank() && !sending && canParticipate && roomReady && (replyTo == null || canReply),
+                        onClick = { if (editingPost != null) saveEditedPost() else sendPost() },
+                        enabled = draft.isNotBlank() && !sending && canParticipate && roomReady && (editingPost == null || editingPost?.let { canManagePost(it) } == true) && (replyTo == null || canReply),
                         modifier = Modifier.fillMaxWidth()
                     ) {
                         if (sending) CircularProgressIndicator()
                         else {
                             Icon(Icons.AutoMirrored.Filled.Send, contentDescription = null)
-                            Text(if (replyTo == null) "ثبت پرسش" else "ارسال پاسخ")
+                            Text(when { editingPost != null -> "ذخیرهٔ ویرایش"; replyTo == null -> "ثبت پرسش"; else -> "ارسال پاسخ" })
                         }
                     }
                 }
