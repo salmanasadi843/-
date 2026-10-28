@@ -691,7 +691,7 @@ fun TranscriptTab(
                         highlightTranscriptMatches(displayedTranscript, searchQuery, searchTerms, transcriptMatchMode)
                     else AnnotatedString(displayedTranscript)
                     var transcriptFieldValue by remember(lecture.id, selectedTextTab, displayedTranscript, searchQuery, transcriptMatchMode) {
-                        mutableStateOf(TextFieldValue(text = highlightedTranscript))
+                        mutableStateOf(TextFieldValue(annotatedString = highlightedTranscript))
                     }
                     BasicTextField(
                         value = transcriptFieldValue,
