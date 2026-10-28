@@ -275,6 +275,25 @@ service cloud.firestore {
       }
     }
 
+    // اعلان‌های پرسش و پاسخ: همه کاربران واردشده می‌توانند بخوانند؛
+    // فقط نویسنده همان پیام می‌تواند اعلان یکتای مربوط به آن پیام را بسازد.
+    // ویرایش پیام اعلان تازه نمی‌سازد و سند اعلان قابل دست‌کاری نیست.
+    match /discussion_notifications/{notificationId} {
+      allow read: if request.auth != null;
+      allow create: if request.auth != null
+                    && request.resource.data.actorUid == request.auth.uid
+                    && request.resource.data.sourceSpaceId is string
+                    && request.resource.data.sourcePostId is string
+                    && notificationId == request.resource.data.sourceSpaceId + '_' + request.resource.data.sourcePostId
+                    && exists(/databases/$(database)/documents/discussion_spaces/$(request.resource.data.sourceSpaceId)/posts/$(request.resource.data.sourcePostId))
+                    && get(/databases/$(database)/documents/discussion_spaces/$(request.resource.data.sourceSpaceId)/posts/$(request.resource.data.sourcePostId)).data.authorUid == request.auth.uid
+                    && request.resource.data.body is string
+                    && request.resource.data.body.size() <= 240
+                    && request.resource.data.className is string
+                    && request.resource.data.createdAt == request.time;
+      allow update, delete: if false;
+    }
+
     // نسخه پشتیبان خصوصی درس‌یار؛ فقط صاحب حساب استاد اجازه دسترسی دارد
     match /teacher_data/{ownerUid} {
       allow read: if request.auth != null
