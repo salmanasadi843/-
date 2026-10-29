@@ -693,14 +693,24 @@ fun TranscriptTab(
                     var transcriptFieldValue by remember(lecture.id, selectedTextTab, displayedTranscript, searchQuery, transcriptMatchMode) {
                         mutableStateOf(TextFieldValue(annotatedString = highlightedTranscript))
                     }
+                    Text(
+                        text = "برای انتخاب بخشی از متن، روی آن لمس طولانی کنید؛ سپس «طرح اشکال درباره این متن» را بزنید.",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        modifier = Modifier.padding(bottom = 8.dp)
+                    )
                     BasicTextField(
                         value = transcriptFieldValue,
                         onValueChange = { value ->
                             transcriptFieldValue = value
-                            val start = minOf(value.selection.start, value.selection.end)
-                            val end = maxOf(value.selection.start, value.selection.end)
-                            selectedQuote = if (end > start && start >= 0 && end <= displayedTranscript.length)
-                                displayedTranscript.substring(start, end).trim() else ""
+                            val selectedStart = minOf(value.selection.start, value.selection.end)
+                            val selectedEnd = maxOf(value.selection.start, value.selection.end)
+                            val actualText = value.annotatedString.text
+                            selectedQuote = if (
+                                selectedEnd > selectedStart &&
+                                selectedStart >= 0 &&
+                                selectedEnd <= actualText.length
+                            ) actualText.substring(selectedStart, selectedEnd).trim() else ""
                         },
                         readOnly = true,
                         textStyle = MaterialTheme.typography.bodyLarge.copy(
