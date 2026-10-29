@@ -201,7 +201,12 @@ fun HomeScreen(
     }
 
     if (showDiscussionNotifications) {
-        DiscussionNotificationsDialog(userRole = userRole, onDismiss = { showDiscussionNotifications = false })
+        DiscussionNotificationsDialog(
+            userRole = userRole,
+            lectures = lectures,
+            onOpenLecture = onNavigateToDetail,
+            onDismiss = { showDiscussionNotifications = false }
+        )
     }
 
     if (showAdvancedSearch) {
