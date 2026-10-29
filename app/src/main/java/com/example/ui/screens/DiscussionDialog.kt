@@ -214,21 +214,62 @@ fun DiscussionDialog(
         if (!canManagePost(post) || sending) return
         sending = true
         error = null
-        postsRef.document(post.id).delete()
-            .addOnSuccessListener {
-                if (replyTo?.id == post.id) replyTo = null
-                if (editingPost?.id == post.id) {
-                    editingPost = null
-                    draft = ""
+
+        val postIdsToDelete = mutableListOf(post.id)
+
+        fun commitPostAndNotificationDeletion() {
+            val postBatch = firestore.batch()
+            postIdsToDelete.distinct().forEach { id ->
+                postBatch.delete(postsRef.document(id))
+            }
+            postBatch.commit()
+                .addOnSuccessListener {
+                    // اعلان‌ها فقط پس از حذف پیام منبع پاک می‌شوند؛ در نتیجه اعلان نامرتبط حذف نمی‌شود.
+                    val notificationBatch = firestore.batch()
+                    postIdsToDelete.distinct().forEach { id ->
+                        notificationBatch.delete(
+                            firestore.collection("discussion_notifications")
+                                .document("${spaceKey}_${id}")
+                        )
+                    }
+                    notificationBatch.commit()
+                        .addOnSuccessListener {
+                            if (replyTo?.id in postIdsToDelete) replyTo = null
+                            if (editingPost?.id in postIdsToDelete) {
+                                editingPost = null
+                                draft = ""
+                            }
+                            pendingDelete = null
+                            sending = false
+                        }
+                        .addOnFailureListener { e ->
+                            error = "پیام حذف شد، اما پاک‌کردن اعلان آن انجام نشد: ${e.localizedMessage ?: "خطای نامشخص"}"
+                            pendingDelete = null
+                            sending = false
+                        }
                 }
-                pendingDelete = null
-                sending = false
-            }
-            .addOnFailureListener { e ->
-                error = e.localizedMessage ?: "حذف پیام انجام نشد."
-                pendingDelete = null
-                sending = false
-            }
+                .addOnFailureListener { e ->
+                    error = e.localizedMessage ?: "حذف پیام انجام نشد."
+                    pendingDelete = null
+                    sending = false
+                }
+        }
+
+        // با حذف پرسش اصلی، پاسخ‌های وابسته نیز حذف می‌شوند تا پاسخ یتیم و اعلان قدیمی نماند.
+        if (post.parentId.isBlank()) {
+            postsRef.whereEqualTo("parentId", post.id).get()
+                .addOnSuccessListener { snapshot ->
+                    postIdsToDelete.addAll(snapshot.documents.map { it.id })
+                    commitPostAndNotificationDeletion()
+                }
+                .addOnFailureListener { e ->
+                    error = e.localizedMessage ?: "دریافت پاسخ‌های وابسته برای حذف ناموفق بود."
+                    pendingDelete = null
+                    sending = false
+                }
+        } else {
+            commitPostAndNotificationDeletion()
+        }
     }
 
     fun sendPost() {
