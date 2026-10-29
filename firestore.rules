@@ -293,7 +293,12 @@ service cloud.firestore {
                     && request.resource.data.body.size() <= 240
                     && request.resource.data.className is string
                     && request.resource.data.createdAt == request.time;
-      allow update, delete: if false;
+      // اعلان فقط بعد از حذف پیام منبع قابل حذف است؛ ویرایش اعلان همچنان ممنوع است.
+      allow update: if false;
+      allow delete: if request.auth != null
+                    && resource.data.sourceSpaceId is string
+                    && resource.data.sourcePostId is string
+                    && !exists(/databases/$(database)/documents/discussion_spaces/$(resource.data.sourceSpaceId)/posts/$(resource.data.sourcePostId));
     }
 
     // نسخه پشتیبان خصوصی درس‌یار؛ فقط صاحب حساب استاد اجازه دسترسی دارد
