@@ -203,6 +203,7 @@ fun HomeScreen(
     if (showDiscussionNotifications) {
         DiscussionNotificationsDialog(
             userRole = userRole,
+            classes = classes,
             lectures = lectures,
             onOpenLecture = onNavigateToDetail,
             onDismiss = { showDiscussionNotifications = false }
