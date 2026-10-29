@@ -1,5 +1,17 @@
 package com.example.ui.screens
 
+import androidx.compose.foundation.layout.wrapContentHeight
+
+import androidx.compose.ui.viewinterop.AndroidView
+
+import android.widget.TextView
+
+import android.view.View
+
+import android.view.MotionEvent
+
+import android.view.Gravity
+
 import android.view.ActionMode
 
 import android.content.ClipData
@@ -701,27 +713,31 @@ fun TranscriptTab(
                         color = MaterialTheme.colorScheme.onSurfaceVariant,
                         modifier = Modifier.padding(bottom = 8.dp)
                     )
-                    BasicTextField(
-                        value = transcriptFieldValue,
-                        onValueChange = { value ->
-                            transcriptFieldValue = value
-                            val selectedStart = minOf(value.selection.start, value.selection.end)
-                            val selectedEnd = maxOf(value.selection.start, value.selection.end)
-                            val actualText = value.annotatedString.text
-                            selectedQuote = if (
-                                selectedEnd > selectedStart &&
-                                selectedStart >= 0 &&
-                                selectedEnd <= actualText.length
-                            ) actualText.substring(selectedStart, selectedEnd).trim() else ""
+                    AndroidView(
+                        factory = { viewContext ->
+                            TextView(viewContext).apply {
+                                text = displayedTranscript
+                                textSize = 18f
+                                setLineSpacing(0f, 1.5f)
+                                textDirection = View.TEXT_DIRECTION_RTL
+                                gravity = Gravity.START
+                                setTextIsSelectable(true)
+                                setOnTouchListener { view, event ->
+                                    if (event.action == MotionEvent.ACTION_UP) {
+                                        val textView = view as TextView
+                                        val start = textView.selectionStart.coerceAtLeast(0)
+                                        val end = textView.selectionEnd.coerceAtLeast(0)
+                                        val source = textView.text?.toString().orEmpty()
+                                        selectedQuote = if (end > start && end <= source.length) source.substring(start, end).trim() else ""
+                                    }
+                                    false
+                                }
+                            }
                         },
-                        readOnly = true,
-                        textStyle = MaterialTheme.typography.bodyLarge.copy(
-                            lineHeight = 32.sp,
-                            color = MaterialTheme.colorScheme.onSurface,
-                            textAlign = TextAlign.Start
-                        ),
-                        cursorBrush = SolidColor(MaterialTheme.colorScheme.primary),
-                        modifier = Modifier.fillMaxWidth()
+                        update = { textView ->
+                            if (textView.text.toString() != displayedTranscript) textView.text = displayedTranscript
+                        },
+                        modifier = Modifier.fillMaxWidth().wrapContentHeight()
                     )
                     if (selectedQuote.isNotBlank()) {
                         Spacer(Modifier.height(8.dp))
