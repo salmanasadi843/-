@@ -25,6 +25,7 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.dp
+import com.example.data.local.LectureEntity
 import com.google.firebase.firestore.FirebaseFirestore
 import com.google.firebase.firestore.ListenerRegistration
 
@@ -47,7 +48,12 @@ private data class DiscussionNotificationItem(
 )
 
 @Composable
-fun DiscussionNotificationsDialog(userRole: UserRole, onDismiss: () -> Unit) {
+fun DiscussionNotificationsDialog(
+    userRole: UserRole,
+    lectures: List<LectureEntity>,
+    onOpenLecture: (Long) -> Unit,
+    onDismiss: () -> Unit
+) {
     val context = LocalContext.current
     val uid = AuthPreferences.currentUid(context).orEmpty()
     val notifications = remember { mutableStateListOf<DiscussionNotificationItem>() }
@@ -156,7 +162,17 @@ fun DiscussionNotificationsDialog(userRole: UserRole, onDismiss: () -> Unit) {
                                     readIds.add(item.id)
                                     preferences.edit().putStringSet("read_ids", readIds.toSet()).apply()
                                 }
-                                selectedNotification = item
+                                val matchingLecture = lectures.firstOrNull { lecture ->
+                                    lecture.courseName.trim().equals(item.className.trim(), ignoreCase = true) &&
+                                        (item.isClassDiscussion || lecture.title.trim().equals(item.sessionTitle.trim(), ignoreCase = true)) &&
+                                        (item.teacherName.isBlank() || lecture.professorName.trim().equals(item.teacherName.trim(), ignoreCase = true))
+                                }
+                                if (matchingLecture != null) {
+                                    onDismiss()
+                                    onOpenLecture(matchingLecture.id)
+                                } else {
+                                    selectedNotification = item
+                                }
                             },
                             colors = CardDefaults.cardColors(
                                 containerColor = if (isRead) MaterialTheme.colorScheme.surfaceVariant
@@ -173,7 +189,19 @@ fun DiscussionNotificationsDialog(userRole: UserRole, onDismiss: () -> Unit) {
                                 if (item.actorName.isNotBlank()) Text("ثبت‌کننده: " + item.actorName, style = MaterialTheme.typography.bodySmall)
                                 Text(item.body, style = MaterialTheme.typography.bodyMedium)
                                 Text(item.createdAt, style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
-                                Text("برای بازکردن گفت‌وگو لمس کنید", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.primary)
+                                Text(
+                                    if (lectures.any { lecture ->
+                                        lecture.courseName.trim().equals(item.className.trim(), ignoreCase = true) &&
+                                            (item.isClassDiscussion || lecture.title.trim().equals(item.sessionTitle.trim(), ignoreCase = true)) &&
+                                            (item.teacherName.isBlank() || lecture.professorName.trim().equals(item.teacherName.trim(), ignoreCase = true))
+                                    }) "برای مشاهده درس لمس کنید"
+                                    else "برای بازکردن گفت‌وگو لمس کنید",
+                                    style = MaterialTheme.typography.labelSmall,
+                                    color = MaterialTheme.colorScheme.primary
+                                )
+                                TextButton(onClick = { selectedNotification = item }) {
+                                    Text("بازکردن پرسش و پاسخ")
+                                }
                             }
                         }
                     }
