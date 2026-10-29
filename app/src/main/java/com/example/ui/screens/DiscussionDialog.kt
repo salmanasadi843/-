@@ -234,8 +234,8 @@ fun DiscussionDialog(
                     }
                     notificationBatch.commit()
                         .addOnSuccessListener {
-                            if (replyTo?.id in postIdsToDelete) replyTo = null
-                            if (editingPost?.id in postIdsToDelete) {
+                            if (replyTo?.id?.let { it in postIdsToDelete } == true) replyTo = null
+                            if (editingPost?.id?.let { it in postIdsToDelete } == true) {
                                 editingPost = null
                                 draft = ""
                             }
