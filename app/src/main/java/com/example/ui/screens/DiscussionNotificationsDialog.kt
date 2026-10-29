@@ -74,6 +74,37 @@ fun DiscussionNotificationsDialog(userRole: UserRole, onDismiss: () -> Unit) {
                         loadError = error.localizedMessage ?: "دریافت اعلان‌ها ناموفق بود."
                     } else if (snapshot != null) {
                         loadError = null
+                        // پاک‌سازی اعلان‌های قدیمی که پیام اصلی‌شان قبلاً حذف شده است.
+                        snapshot.documents.forEach { doc ->
+                            val sourceSpaceId = doc.getString("sourceSpaceId")
+                            val sourcePostId = doc.getString("sourcePostId")
+                            if (!sourceSpaceId.isNullOrBlank() && !sourcePostId.isNullOrBlank()) {
+                                firestore.collection("discussion_spaces")
+                                    .document(sourceSpaceId)
+                                    .collection("posts")
+                                    .document(sourcePostId)
+                                    .get()
+                                    .addOnSuccessListener { sourcePost ->
+                                        if (!sourcePost.exists()) {
+                                            doc.reference.delete()
+                                                .addOnFailureListener { e ->
+                                                    android.util.Log.w(
+                                                        "DiscussionNotifications",
+                                                        "Could not clean stale notification ${doc.id}",
+                                                        e
+                                                    )
+                                                }
+                                        }
+                                    }
+                                    .addOnFailureListener { e ->
+                                        android.util.Log.w(
+                                            "DiscussionNotifications",
+                                            "Could not verify notification source ${doc.id}",
+                                            e
+                                        )
+                                    }
+                            }
+                        }
                         notifications.clear()
                         notifications.addAll(snapshot.documents
                             .filter { it.getString("actorUid") != uid }
