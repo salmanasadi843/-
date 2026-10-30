@@ -15,6 +15,8 @@ import android.view.Gravity
 import android.view.ActionMode
 import android.view.Menu
 import android.view.MenuItem
+import android.text.Spannable
+import android.text.Selection
 import android.text.SpannableString
 import android.text.style.BackgroundColorSpan
 import org.json.JSONArray
@@ -789,7 +791,7 @@ fun TranscriptTab(
                                                 Toast.makeText(context, "متن علامت‌گذاری شد", Toast.LENGTH_SHORT).show()
                                             }
                                             7105 -> onCopyClick(selected)
-                                            7106 -> selectableTextView.selectAll()
+                                            7106 -> (selectableTextView.text as? Spannable)?.let { Selection.selectAll(it) }
                                             else -> return false
                                         }
                                         mode.finish()
@@ -809,7 +811,7 @@ fun TranscriptTab(
                                 textView.post {
                                     val safeStart = jump.start.coerceIn(0, textView.text.length)
                                     val safeEnd = jump.end.coerceIn(safeStart, textView.text.length)
-                                    textView.setSelection(safeStart, safeEnd)
+                                    (textView.text as? Spannable)?.let { Selection.setSelection(it, safeStart, safeEnd) }
                                     textView.bringPointIntoView(safeStart)
                                 }
                             }
