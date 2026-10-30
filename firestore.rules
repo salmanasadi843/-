@@ -171,6 +171,136 @@ service cloud.firestore {
                     && resource.data.ownerUid == teacherUid;
     }
 
+    // تالار گفتگو برای هر کلاس؛ کلید فضا در برنامه به‌صورت پایدار از شناسه استاد و مشخصات کلاس ساخته می‌شود.
+    match /discussion_spaces/{spaceId} {
+      // خواندن یک فضا با شناسه مستقیم برای تشخیص وجود آن مجاز است؛ پیام‌ها قواعد جداگانه دارند.
+      allow get: if request.auth != null;
+      allow list: if false;
+
+      // ایجاد تالار فقط توسط استاد مالک یا مدیر اصلی؛ دانشجو نمی‌تواند تالار جعلی برای استاد دیگر بسازد.
+      allow create: if request.auth != null
+                    && request.resource.data.ownerUid is string
+                    && request.resource.data.isPublished is bool
+                    && request.resource.data.className is string
+                    && (
+                      isPrimaryTeacher()
+                      || (
+                        activeTeacher(request.resource.data.ownerUid)
+                        && request.resource.data.ownerUid == request.auth.uid
+                        && activeTeacher(request.auth.uid)
+                      )
+                    );
+
+      allow update: if isPrimaryTeacher()
+                    || (request.auth != null
+                        && resource.data.ownerUid == request.auth.uid
+                        && activeTeacher(request.auth.uid)
+                        && request.resource.data.ownerUid == resource.data.ownerUid);
+      allow delete: if isPrimaryTeacher()
+                    || (request.auth != null
+                        && resource.data.ownerUid == request.auth.uid
+                        && activeTeacher(request.auth.uid));
+
+      match /posts/{postId} {
+        function room() {
+          return get(/databases/$(database)/documents/discussion_spaces/$(spaceId)).data;
+        }
+        function canReadRoom() {
+          return request.auth != null
+                 && (
+                   (room().isPublished == true && activeTeacher(room().ownerUid))
+                   || request.auth.uid == room().ownerUid
+                   || isPrimaryTeacher()
+                 );
+        }
+
+        allow read: if canReadRoom();
+
+        function validDiscussionAuthor() {
+          return (
+                   request.resource.data.authorRole == 'STUDENT'
+                   && exists(/databases/$(database)/documents/users/$(request.auth.uid))
+                   && get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role == 'STUDENT'
+                 )
+                 || (
+                   request.resource.data.authorRole == 'TEACHER'
+                   && activeTeacher(request.auth.uid)
+                 )
+                 || (
+                   isPrimaryTeacher()
+                 );
+        }
+
+        function repliesToQuestionInSameSession() {
+          return request.resource.data.parentId == ''
+                 || (
+                   exists(/databases/$(database)/documents/discussion_spaces/$(spaceId)/posts/$(request.resource.data.parentId))
+                   && get(/databases/$(database)/documents/discussion_spaces/$(spaceId)/posts/$(request.resource.data.parentId)).data.parentId == ''
+                   && get(/databases/$(database)/documents/discussion_spaces/$(spaceId)/posts/$(request.resource.data.parentId)).data.sessionKey == request.resource.data.sessionKey
+                 );
+        }
+
+        // همه کاربران مجازِ تالار می‌توانند پرسش بگذارند و به پرسش‌های همدیگر پاسخ دهند.
+        // نقش نویسنده از سند کاربر/مجوز استاد کنترل می‌شود؛ پاسخ زنجیره‌ای و پاسخ به جلسه دیگر مجاز نیست.
+        allow create: if canReadRoom()
+                      && request.resource.data.authorUid == request.auth.uid
+                      && request.resource.data.body is string
+                      && request.resource.data.body.size() > 0
+                      && request.resource.data.body.size() <= 8000
+                      && request.resource.data.sessionKey is string
+                      && request.resource.data.parentId is string
+                      && validDiscussionAuthor()
+                      && repliesToQuestionInSameSession();
+
+        // نویسنده پیام خودش را مدیریت می‌کند؛ استاد مالک و مدیر اصلی نیز اختیار مدیریت دارند.
+        allow update: if canReadRoom()
+                      && (
+                        resource.data.authorUid == request.auth.uid
+                        || (request.auth.uid == room().ownerUid && activeTeacher(request.auth.uid))
+                        || isPrimaryTeacher()
+                      )
+                      && request.resource.data.authorUid == resource.data.authorUid
+                      && request.resource.data.parentId == resource.data.parentId
+                      && request.resource.data.sessionKey == resource.data.sessionKey
+                      && request.resource.data.body is string
+                      && request.resource.data.body.size() > 0
+                      && request.resource.data.body.size() <= 8000;
+
+        allow delete: if canReadRoom()
+                      && (
+                        resource.data.authorUid == request.auth.uid
+                        || (request.auth.uid == room().ownerUid && activeTeacher(request.auth.uid))
+                        || isPrimaryTeacher()
+                      );
+      }
+    }
+
+    // اعلان‌های پرسش و پاسخ: همه کاربران واردشده می‌توانند بخوانند؛
+    // فقط نویسنده همان پیام می‌تواند اعلان یکتای مربوط به آن پیام را بسازد.
+    // ویرایش پیام اعلان تازه نمی‌سازد و سند اعلان قابل دست‌کاری نیست.
+    match /discussion_notifications/{notificationId} {
+      allow read: if request.auth != null;
+      allow create: if request.auth != null
+                    && request.resource.data.actorUid == request.auth.uid
+                    && request.resource.data.sourceSpaceId is string
+                    && request.resource.data.sourcePostId is string
+                    && notificationId == request.resource.data.sourceSpaceId + '_' + request.resource.data.sourcePostId
+                    && exists(/databases/$(database)/documents/discussion_spaces/$(request.resource.data.sourceSpaceId)/posts/$(request.resource.data.sourcePostId))
+                    && get(/databases/$(database)/documents/discussion_spaces/$(request.resource.data.sourceSpaceId)/posts/$(request.resource.data.sourcePostId)).data.authorUid == request.auth.uid
+                    && get(/databases/$(database)/documents/discussion_spaces/$(request.resource.data.sourceSpaceId)).data.isPublished == true
+                    && activeTeacher(get(/databases/$(database)/documents/discussion_spaces/$(request.resource.data.sourceSpaceId)).data.ownerUid)
+                    && request.resource.data.body is string
+                    && request.resource.data.body.size() <= 240
+                    && request.resource.data.className is string
+                    && request.resource.data.createdAt == request.time;
+      // اعلان فقط بعد از حذف پیام منبع قابل حذف است؛ ویرایش اعلان همچنان ممنوع است.
+      allow update: if false;
+      allow delete: if request.auth != null
+                    && resource.data.sourceSpaceId is string
+                    && resource.data.sourcePostId is string
+                    && !exists(/databases/$(database)/documents/discussion_spaces/$(resource.data.sourceSpaceId)/posts/$(resource.data.sourcePostId));
+    }
+
     // نسخه پشتیبان خصوصی درس‌یار؛ فقط صاحب حساب استاد اجازه دسترسی دارد
     match /teacher_data/{ownerUid} {
       allow read: if request.auth != null

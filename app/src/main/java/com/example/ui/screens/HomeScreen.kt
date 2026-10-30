@@ -12,6 +12,7 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.AutoAwesome
 import androidx.compose.material.icons.filled.PlayArrow
 import androidx.compose.material.icons.filled.Settings
+import androidx.compose.material.icons.filled.Notifications
 import androidx.compose.material.icons.filled.Search
 import androidx.compose.material.icons.filled.Share
 import androidx.compose.material.icons.filled.School
@@ -85,6 +86,7 @@ fun HomeScreen(
     val isOnline = rememberNetworkConnection()
     var showBulkExportDialog by androidx.compose.runtime.remember { androidx.compose.runtime.mutableStateOf(false) }
     var showAdvancedSearch by remember { mutableStateOf(false) }
+    var showDiscussionNotifications by remember { mutableStateOf(false) }
     var showTeacherRequests by remember { mutableStateOf(false) }
     var pendingTeacherRequests by remember { mutableStateOf<List<TeacherRequestItem>>(emptyList()) }
     var teacherRequestsLoadError by remember { mutableStateOf<String?>(null) }
@@ -198,6 +200,16 @@ fun HomeScreen(
         )
     }
 
+    if (showDiscussionNotifications) {
+        DiscussionNotificationsDialog(
+            userRole = userRole,
+            classes = classes,
+            lectures = lectures,
+            onOpenLecture = onNavigateToDetail,
+            onDismiss = { showDiscussionNotifications = false }
+        )
+    }
+
     if (showAdvancedSearch) {
         AdvancedSearchScreen(
             viewModel = viewModel,
@@ -237,6 +249,7 @@ fun HomeScreen(
                     }
                 },
                 actions = {
+                    IconButton(onClick = { showDiscussionNotifications = true }) { Icon(Icons.Default.Notifications, contentDescription = "اعلان‌های پرسش و پاسخ") }
                     IconButton(onClick = { showAdvancedSearch = true }) { Icon(Icons.Default.Search, contentDescription = "جستجوی پیشرفته در درس‌ها") }
                     if (isTeacher) IconButton(onClick = { showBulkExportDialog = true }) { Icon(Icons.Default.Share, contentDescription = "ارسال گروهی مطالب") }
                     IconButton(onClick = viewModel::openClasses) { Icon(Icons.Default.School, "کلاس‌ها") }
