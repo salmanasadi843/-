@@ -13,6 +13,13 @@ import android.view.MotionEvent
 import android.view.Gravity
 
 import android.view.ActionMode
+import android.view.Menu
+import android.view.MenuItem
+import android.text.SpannableString
+import android.text.style.BackgroundColorSpan
+import org.json.JSONArray
+import org.json.JSONObject
+import androidx.compose.runtime.rememberUpdatedState
 
 import android.content.ClipData
 import android.content.ClipboardManager
@@ -377,6 +384,8 @@ fun LectureDetailScreen(
                 transcriptMatchMode = activeSearchMode,
                 onEditClick = { onNavigateToEdit(lectureId) },
                 onAskAboutText = { quote -> selectedQuoteForDiscussion = quote; showDiscussionDialog = true },
+                enableStudentHighlights = !isTeacher,
+                highlightOwnerKey = AuthPreferences.currentUid(context).orEmpty(),
                 onCopyClick = { textToCopy ->
                     val clipboard = context.getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager
                     val clip = ClipData.newPlainText("جزوه کلاس", textToCopy)
@@ -577,12 +586,18 @@ fun TranscriptTab(
     onEditClick: () -> Unit,
     onCopyClick: (String) -> Unit,
     onAskAboutText: (String) -> Unit = {},
+    enableStudentHighlights: Boolean = false,
+    highlightOwnerKey: String = "",
     audioContent: (@Composable () -> Unit)? = null,
     audioLinkContent: (@Composable () -> Unit)? = null
 ) {
     val scrollState = rememberScrollState()
     var selectedTextTab by remember(lecture.id) { mutableStateOf(0) }
-    var selectedQuote by remember(lecture.id, selectedTextTab) { mutableStateOf("") }
+    var showHighlightsDialog by remember(lecture.id) { mutableStateOf(false) }
+    var highlightRefresh by remember(lecture.id) { mutableStateOf(0) }
+    val currentAskAboutText by rememberUpdatedState(onAskAboutText)
+    val highlightPrefs = remember(lecture.id, highlightOwnerKey) { StudentHighlightStore.load(LocalContext.current, highlightOwnerKey, lecture.id) }
+    var savedHighlights by remember(lecture.id, highlightOwnerKey) { mutableStateOf(highlightPrefs) }
     val originalText = lecture.originalTranscript.ifBlank { lecture.transcript }
     val correctedText = lecture.transcript
     val displayedTranscript = if (selectedTextTab == 0) originalText else correctedText
@@ -640,6 +655,13 @@ fun TranscriptTab(
                     Icon(Icons.Default.ContentCopy, null, modifier = Modifier.size(17.dp))
                     Spacer(Modifier.width(5.dp))
                     Text("کپی")
+                }
+                if (enableStudentHighlights) {
+                    TextButton(onClick = { showHighlightsDialog = true }) {
+                        Icon(Icons.Default.Star, null, modifier = Modifier.size(17.dp))
+                        Spacer(Modifier.width(4.dp))
+                        Text("هایلایت‌ها")
+                    }
                 }
                 if (!hasText) {
                     TextButton(onClick = onEditClick) { Text("افزودن متن") }
@@ -708,7 +730,7 @@ fun TranscriptTab(
                         mutableStateOf(TextFieldValue(annotatedString = highlightedTranscript))
                     }
                     Text(
-                        text = "برای انتخاب بخشی از متن، روی آن لمس طولانی کنید؛ سپس «طرح اشکال درباره این متن» را بزنید.",
+                        text = if (enableStudentHighlights) "برای انتخاب متن، لمس طولانی کنید؛ سپس پرسش یا یکی از رنگ‌های هایلایت را انتخاب کنید." else "برای طرح پرسش، بخشی از متن را لمس طولانی و انتخاب کنید.", 
                         style = MaterialTheme.typography.bodySmall,
                         color = MaterialTheme.colorScheme.onSurfaceVariant,
                         modifier = Modifier.padding(bottom = 8.dp)
@@ -716,42 +738,84 @@ fun TranscriptTab(
                     AndroidView(
                         factory = { viewContext ->
                             TextView(viewContext).apply {
-                                text = displayedTranscript
+                                text = applyStudentHighlights(displayedTranscript, savedHighlights.filter { it.textTab == selectedTextTab })
                                 textSize = 18f
                                 setLineSpacing(0f, 1.5f)
                                 textDirection = View.TEXT_DIRECTION_RTL
                                 gravity = Gravity.START
                                 setTextIsSelectable(true)
-                                setOnTouchListener { view, event ->
-                                    if (event.action == MotionEvent.ACTION_UP) {
-                                        val textView = view as TextView
-                                        val start = textView.selectionStart.coerceAtLeast(0)
-                                        val end = textView.selectionEnd.coerceAtLeast(0)
-                                        val source = textView.text?.toString().orEmpty()
-                                        selectedQuote = if (end > start && end <= source.length) source.substring(start, end).trim() else ""
+                                customSelectionActionModeCallback = object : ActionMode.Callback {
+                                    override fun onCreateActionMode(mode: ActionMode, menu: Menu): Boolean {
+                                        menu.add(Menu.NONE, 7101, Menu.NONE, "پرسش از متن").setShowAsAction(MenuItem.SHOW_AS_ACTION_IF_ROOM)
+                                        if (enableStudentHighlights) {
+                                            menu.add(Menu.NONE, 7102, Menu.NONE, "هایلایت زرد")
+                                            menu.add(Menu.NONE, 7103, Menu.NONE, "هایلایت سبز")
+                                            menu.add(Menu.NONE, 7104, Menu.NONE, "هایلایت آبی")
+                                        }
+                                        menu.add(Menu.NONE, 7105, Menu.NONE, "کپی")
+                                        menu.add(Menu.NONE, 7106, Menu.NONE, "انتخاب همه")
+                                        return true
                                     }
-                                    false
+                                    override fun onPrepareActionMode(mode: ActionMode, menu: Menu): Boolean = false
+                                    override fun onActionItemClicked(mode: ActionMode, item: MenuItem): Boolean {
+                                        val start = selectionStart.coerceAtLeast(0)
+                                        val end = selectionEnd.coerceAtLeast(0)
+                                        val source = text?.toString().orEmpty()
+                                        if (end <= start || end > source.length) { mode.finish(); return true }
+                                        val selected = source.substring(start, end).trim()
+                                        when (item.itemId) {
+                                            7101 -> currentAskAboutText(selected)
+                                            7102, 7103, 7104 -> {
+                                                val color = when (item.itemId) { 7102 -> "yellow"; 7103 -> "green"; else -> "blue" }
+                                                val record = StudentHighlight(start, end, selected, selectedTextTab, color)
+                                                savedHighlights = (savedHighlights.filterNot { it.start == start && it.end == end && it.textTab == selectedTextTab } + record)
+                                                StudentHighlightStore.save(context, highlightOwnerKey, lecture.id, savedHighlights)
+                                                highlightRefresh++
+                                                setText(applyStudentHighlights(displayedTranscript, savedHighlights.filter { it.textTab == selectedTextTab }))
+                                                Toast.makeText(context, "متن علامت‌گذاری شد", Toast.LENGTH_SHORT).show()
+                                            }
+                                            7105 -> onCopyClick(selected)
+                                            7106 -> selectAll()
+                                            else -> return false
+                                        }
+                                        mode.finish()
+                                        return true
+                                    }
+                                    override fun onDestroyActionMode(mode: ActionMode) = Unit
                                 }
                             }
                         },
                         update = { textView ->
-                            if (textView.text.toString() != displayedTranscript) textView.text = displayedTranscript
+                            val expectedText = applyStudentHighlights(displayedTranscript, savedHighlights.filter { it.textTab == selectedTextTab })
+                            if (textView.text.toString() != expectedText.toString() || highlightRefresh > 0) textView.text = expectedText
                         },
                         modifier = Modifier.fillMaxWidth().wrapContentHeight()
                     )
-                    if (selectedQuote.isNotBlank()) {
-                        Spacer(Modifier.height(8.dp))
-                        Surface(color = MaterialTheme.colorScheme.secondaryContainer, shape = RoundedCornerShape(12.dp)) {
-                            Column(Modifier.fillMaxWidth().padding(10.dp)) {
-                                Text("بخش انتخاب‌شده", style = MaterialTheme.typography.labelMedium)
-                                Text(selectedQuote, style = MaterialTheme.typography.bodyMedium, maxLines = 4)
-                                TextButton(onClick = { onAskAboutText(selectedQuote) }) {
-                                    Icon(Icons.Default.QuestionAnswer, contentDescription = null, modifier = Modifier.size(17.dp))
-                                    Spacer(Modifier.width(6.dp))
-                                    Text("طرح اشکال درباره این متن")
+                    if (showHighlightsDialog) {
+                        AlertDialog(
+                            onDismissRequest = { showHighlightsDialog = false },
+                            title = { Text("هایلایت‌های این جلسه") },
+                            text = {
+                                Column(modifier = Modifier.verticalScroll(rememberScrollState())) {
+                                    val items = savedHighlights.sortedBy { it.start }
+                                    if (items.isEmpty()) Text("هنوز متنی را علامت‌گذاری نکرده‌اید.")
+                                    items.forEach { item ->
+                                        val color = when (item.color) { "green" -> Color(0xFFDDF3DF); "blue" -> Color(0xFFDDEBFA); else -> Color(0xFFFFF1B8) }
+                                        Surface(color = color, shape = RoundedCornerShape(10.dp), modifier = Modifier.fillMaxWidth().padding(vertical = 4.dp)) {
+                                            Row(Modifier.padding(8.dp), verticalAlignment = Alignment.CenterVertically) {
+                                                Text(item.text, modifier = Modifier.weight(1f), style = MaterialTheme.typography.bodySmall)
+                                                TextButton(onClick = {
+                                                    savedHighlights = savedHighlights - item
+                                                    StudentHighlightStore.save(context, highlightOwnerKey, lecture.id, savedHighlights)
+                                                    highlightRefresh++
+                                                }) { Text("حذف") }
+                                            }
+                                        }
+                                    }
                                 }
-                            }
-                        }
+                            },
+                            confirmButton = { TextButton(onClick = { showHighlightsDialog = false }) { Text("بستن") } }
+                        )
                     }
                 }
             }
@@ -1318,3 +1382,52 @@ private fun normalizeTranscriptForSearch(source: String): Pair<String, List<Int>
     }
     return normalized.toString().trimEnd() to offsets
 }
+
+
+private data class StudentHighlight(
+    val start: Int, val end: Int, val text: String, val textTab: Int, val color: String
+)
+
+private object StudentHighlightStore {
+    private const val PREFS = "student_personal_highlights"
+    fun load(context: Context, ownerKey: String, lectureId: Long): List<StudentHighlight> {
+        if (ownerKey.isBlank()) return emptyList()
+        val raw = context.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
+            .getString("${ownerKey}_${lectureId}", null) ?: return emptyList()
+        return runCatching {
+            val array = JSONArray(raw)
+            (0 until array.length()).mapNotNull { index ->
+                val item = array.optJSONObject(index) ?: return@mapNotNull null
+                StudentHighlight(item.optInt("start"), item.optInt("end"), item.optString("text"),
+                    item.optInt("tab"), item.optString("color", "yellow"))
+            }.filter { it.start >= 0 && it.end > it.start && it.text.isNotBlank() }
+        }.getOrDefault(emptyList())
+    }
+    fun save(context: Context, ownerKey: String, lectureId: Long, items: List<StudentHighlight>) {
+        if (ownerKey.isBlank()) return
+        val array = JSONArray()
+        items.forEach { item ->
+            array.put(JSONObject().put("start", item.start).put("end", item.end)
+                .put("text", item.text).put("tab", item.textTab).put("color", item.color))
+        }
+        context.getSharedPreferences(PREFS, Context.MODE_PRIVATE).edit()
+            .putString("${ownerKey}_${lectureId}", array.toString()).apply()
+    }
+}
+
+private fun applyStudentHighlights(source: String, highlights: List<StudentHighlight>): SpannableString {
+    val result = SpannableString(source)
+    highlights.forEach { item ->
+        if (item.start >= 0 && item.end <= source.length && item.end > item.start &&
+            source.substring(item.start, item.end) == item.text) {
+            val color = when (item.color) {
+                "green" -> 0xFFDDF3DF.toInt()
+                "blue" -> 0xFFDDEBFA.toInt()
+                else -> 0xFFFFF1B8.toInt()
+            }
+            result.setSpan(BackgroundColorSpan(color), item.start, item.end, SpannableString.SPAN_EXCLUSIVE_EXCLUSIVE)
+        }
+    }
+    return result
+}
+
