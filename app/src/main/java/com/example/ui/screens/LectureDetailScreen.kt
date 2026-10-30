@@ -591,6 +591,7 @@ fun TranscriptTab(
     audioContent: (@Composable () -> Unit)? = null,
     audioLinkContent: (@Composable () -> Unit)? = null
 ) {
+    val context = LocalContext.current
     val scrollState = rememberScrollState()
     var selectedTextTab by remember(lecture.id) { mutableStateOf(0) }
     var showHighlightsDialog by remember(lecture.id) { mutableStateOf(false) }
@@ -767,8 +768,8 @@ fun TranscriptTab(
                                             7101 -> currentAskAboutText(selected)
                                             7102, 7103, 7104 -> {
                                                 val color = when (item.itemId) { 7102 -> "yellow"; 7103 -> "green"; else -> "blue" }
-                                                val record = StudentHighlight(start, end, selected, selectedTextTab, color)
-                                                savedHighlights = (savedHighlights.filterNot { it.start == start && it.end == end && it.textTab == selectedTextTab } + record)
+                                                val record = StudentHighlight(actualStart, actualEnd, selected, selectedTextTab, color)
+                                                savedHighlights = (savedHighlights.filterNot { it.start == actualStart && it.end == actualEnd && it.textTab == selectedTextTab } + record)
                                                 StudentHighlightStore.save(context, highlightOwnerKey, lecture.id, savedHighlights)
                                                 highlightRefresh++
                                                 setText(applyStudentHighlights(displayedTranscript, savedHighlights.filter { it.textTab == selectedTextTab }))
@@ -787,7 +788,7 @@ fun TranscriptTab(
                         },
                         update = { textView ->
                             val expectedText = applyStudentHighlights(displayedTranscript, savedHighlights.filter { it.textTab == selectedTextTab })
-                            if (textView.text.toString() != expectedText.toString() || highlightRefresh > 0) textView.text = expectedText
+                            if (textView.text.toString() != displayedTranscript) textView.text = expectedText
                         },
                         modifier = Modifier.fillMaxWidth().wrapContentHeight()
                     )
