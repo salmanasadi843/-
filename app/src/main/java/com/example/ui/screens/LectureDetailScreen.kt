@@ -597,6 +597,8 @@ fun TranscriptTab(
     var selectedTextTab by remember(lecture.id) { mutableStateOf(0) }
     var showHighlightsDialog by remember(lecture.id) { mutableStateOf(false) }
     var highlightRefresh by remember(lecture.id) { mutableStateOf(0) }
+    var transcriptTextView by remember(lecture.id) { mutableStateOf<TextView?>(null) }
+    var pendingHighlightJump by remember(lecture.id) { mutableStateOf<StudentHighlight?>(null) }
     val currentAskAboutText by rememberUpdatedState(onAskAboutText)
     val highlightPrefs = remember(lecture.id, highlightOwnerKey) { StudentHighlightStore.load(context, highlightOwnerKey, lecture.id) }
     var savedHighlights by remember(lecture.id, highlightOwnerKey) { mutableStateOf(highlightPrefs) }
@@ -747,6 +749,8 @@ fun TranscriptTab(
                                 textDirection = View.TEXT_DIRECTION_RTL
                                 gravity = Gravity.START
                                 setTextIsSelectable(true)
+                                transcriptTextView = this
+                                val selectableTextView = this
                                 customSelectionActionModeCallback = object : ActionMode.Callback {
                                     override fun onCreateActionMode(mode: ActionMode, menu: Menu): Boolean {
                                         menu.add(Menu.NONE, 7101, Menu.NONE, "پرسش از متن").setShowAsAction(MenuItem.SHOW_AS_ACTION_IF_ROOM)
@@ -761,11 +765,18 @@ fun TranscriptTab(
                                     }
                                     override fun onPrepareActionMode(mode: ActionMode, menu: Menu): Boolean = false
                                     override fun onActionItemClicked(mode: ActionMode, item: MenuItem): Boolean {
-                                        val start = selectionStart.coerceAtLeast(0)
-                                        val end = selectionEnd.coerceAtLeast(0)
-                                        val source = text?.toString().orEmpty()
-                                        if (end <= start || end > source.length) { mode.finish(); return true }
-                                        val selected = source.substring(start, end).trim()
+                                        val rawStart = selectableTextView.selectionStart.coerceAtLeast(0)
+                                        val rawEnd = selectableTextView.selectionEnd.coerceAtLeast(0)
+                                        val source = selectableTextView.text?.toString().orEmpty()
+                                        if (rawEnd <= rawStart || rawEnd > source.length) { mode.finish(); return true }
+                                        val rawSelected = source.substring(rawStart, rawEnd)
+                                        val leadingTrim = rawSelected.indexOfFirst { !it.isWhitespace() }
+                                            .let { if (it < 0) rawSelected.length else it }
+                                        val actualEndInSelection = rawSelected.indexOfLast { !it.isWhitespace() } + 1
+                                        if (actualEndInSelection <= leadingTrim) { mode.finish(); return true }
+                                        val actualStart = rawStart + leadingTrim
+                                        val actualEnd = rawStart + actualEndInSelection
+                                        val selected = source.substring(actualStart, actualEnd)
                                         when (item.itemId) {
                                             7101 -> currentAskAboutText(selected)
                                             7102, 7103, 7104 -> {
@@ -778,7 +789,7 @@ fun TranscriptTab(
                                                 Toast.makeText(context, "متن علامت‌گذاری شد", Toast.LENGTH_SHORT).show()
                                             }
                                             7105 -> onCopyClick(selected)
-                                            7106 -> selectAll()
+                                            7106 -> selectableTextView.selectAll()
                                             else -> return false
                                         }
                                         mode.finish()
@@ -790,7 +801,18 @@ fun TranscriptTab(
                         },
                         update = { textView ->
                             val expectedText = applyStudentHighlights(displayedTranscript, savedHighlights.filter { it.textTab == selectedTextTab })
+                            transcriptTextView = textView
                             if (textView.text.toString() != displayedTranscript) textView.text = expectedText
+                            val jump = pendingHighlightJump
+                            if (jump != null && jump.textTab == selectedTextTab) {
+                                pendingHighlightJump = null
+                                textView.post {
+                                    val safeStart = jump.start.coerceIn(0, textView.text.length)
+                                    val safeEnd = jump.end.coerceIn(safeStart, textView.text.length)
+                                    textView.setSelection(safeStart, safeEnd)
+                                    textView.bringPointIntoView(safeStart)
+                                }
+                            }
                         },
                         modifier = Modifier.fillMaxWidth().wrapContentHeight()
                     )
@@ -807,7 +829,16 @@ fun TranscriptTab(
                                         val color = when (item.color) { "green" -> Color(0xFFDDF3DF); "blue" -> Color(0xFFDDEBFA); else -> Color(0xFFFFF1B8) }
                                         Surface(color = color, shape = RoundedCornerShape(10.dp), modifier = Modifier.fillMaxWidth().padding(vertical = 4.dp)) {
                                             Row(Modifier.padding(8.dp), verticalAlignment = Alignment.CenterVertically) {
-                                                Text(item.text, modifier = Modifier.weight(1f), style = MaterialTheme.typography.bodySmall)
+                                                TextButton(
+                                                    onClick = {
+                                                        selectedTextTab = item.textTab
+                                                        pendingHighlightJump = item
+                                                        showHighlightsDialog = false
+                                                    },
+                                                    modifier = Modifier.weight(1f)
+                                                ) {
+                                                    Text(item.text, style = MaterialTheme.typography.bodySmall, textAlign = TextAlign.Start)
+                                                }
                                                 TextButton(onClick = {
                                                     savedHighlights = savedHighlights - item
                                                     StudentHighlightStore.save(context, highlightOwnerKey, lecture.id, savedHighlights)
