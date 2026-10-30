@@ -598,7 +598,7 @@ fun TranscriptTab(
     var showHighlightsDialog by remember(lecture.id) { mutableStateOf(false) }
     var highlightRefresh by remember(lecture.id) { mutableStateOf(0) }
     val currentAskAboutText by rememberUpdatedState(onAskAboutText)
-    val highlightPrefs = remember(lecture.id, highlightOwnerKey) { StudentHighlightStore.load(LocalContext.current, highlightOwnerKey, lecture.id) }
+    val highlightPrefs = remember(lecture.id, highlightOwnerKey) { StudentHighlightStore.load(context, highlightOwnerKey, lecture.id) }
     var savedHighlights by remember(lecture.id, highlightOwnerKey) { mutableStateOf(highlightPrefs) }
     val originalText = lecture.originalTranscript.ifBlank { lecture.transcript }
     val correctedText = lecture.transcript
