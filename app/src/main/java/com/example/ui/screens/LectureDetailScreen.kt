@@ -105,7 +105,11 @@ import androidx.compose.material3.TextButton
 import androidx.compose.material3.TopAppBar
 import androidx.compose.material3.TopAppBarDefaults
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
+import androidx.lifecycle.Lifecycle
+import androidx.lifecycle.LifecycleEventObserver
+import androidx.lifecycle.compose.LocalLifecycleOwner
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -119,6 +123,7 @@ import androidx.compose.ui.text.buildAnnotatedString
 import androidx.compose.ui.text.withStyle
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.toArgb
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.text.font.FontWeight
@@ -604,6 +609,17 @@ fun TranscriptTab(
     val currentAskAboutText by rememberUpdatedState(onAskAboutText)
     val highlightPrefs = remember(lecture.id, highlightOwnerKey) { StudentHighlightStore.load(context, highlightOwnerKey, lecture.id) }
     var savedHighlights by remember(lecture.id, highlightOwnerKey) { mutableStateOf(highlightPrefs) }
+    val lifecycleOwner = LocalLifecycleOwner.current
+    DisposableEffect(lifecycleOwner, lecture.id, highlightOwnerKey) {
+        val observer = LifecycleEventObserver { _, event ->
+            if (event == Lifecycle.Event.ON_RESUME && enableStudentHighlights) {
+                savedHighlights = StudentHighlightStore.load(context, highlightOwnerKey, lecture.id)
+                highlightRefresh++
+            }
+        }
+        lifecycleOwner.lifecycle.addObserver(observer)
+        onDispose { lifecycleOwner.lifecycle.removeObserver(observer) }
+    }
     val originalText = lecture.originalTranscript.ifBlank { lecture.transcript }
     val correctedText = lecture.transcript
     val displayedTranscript = if (selectedTextTab == 0) originalText else correctedText
@@ -747,6 +763,7 @@ fun TranscriptTab(
                             TextView(viewContext).apply {
                                 text = applyStudentHighlights(displayedTranscript, savedHighlights.filter { it.textTab == selectedTextTab })
                                 textSize = 18f
+                                setTextColor(MaterialTheme.colorScheme.onSurface.toArgb())
                                 setLineSpacing(0f, 1.5f)
                                 textDirection = View.TEXT_DIRECTION_RTL
                                 gravity = Gravity.START
@@ -1429,7 +1446,7 @@ private object StudentHighlightStore {
     private const val PREFS = "student_personal_highlights"
     fun load(context: Context, ownerKey: String, lectureId: Long): List<StudentHighlight> {
         if (ownerKey.isBlank()) return emptyList()
-        val raw = context.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
+        val raw = context.applicationContext.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
             .getString("${ownerKey}_${lectureId}", null) ?: return emptyList()
         return runCatching {
             val array = JSONArray(raw)
@@ -1447,8 +1464,10 @@ private object StudentHighlightStore {
             array.put(JSONObject().put("start", item.start).put("end", item.end)
                 .put("text", item.text).put("tab", item.textTab).put("color", item.color))
         }
-        context.getSharedPreferences(PREFS, Context.MODE_PRIVATE).edit()
-            .putString("${ownerKey}_${lectureId}", array.toString()).apply()
+        // commit() makes the personal mark durable before the user can sign out
+        // or the Android process is reclaimed.
+        context.applicationContext.getSharedPreferences(PREFS, Context.MODE_PRIVATE).edit()
+            .putString("${ownerKey}_${lectureId}", array.toString()).commit()
     }
 }
 
