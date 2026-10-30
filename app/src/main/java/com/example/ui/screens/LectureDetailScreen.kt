@@ -757,13 +757,14 @@ fun TranscriptTab(
                         color = MaterialTheme.colorScheme.onSurfaceVariant,
                         modifier = Modifier.padding(bottom = 8.dp)
                     )
+                    val transcriptTextColor = MaterialTheme.colorScheme.onSurface.toArgb()
                     key(highlightRefresh, selectedTextTab) {
                     AndroidView(
                         factory = { viewContext ->
                             TextView(viewContext).apply {
                                 text = applyStudentHighlights(displayedTranscript, savedHighlights.filter { it.textTab == selectedTextTab })
                                 textSize = 18f
-                                setTextColor(MaterialTheme.colorScheme.onSurface.toArgb())
+                                setTextColor(transcriptTextColor)
                                 setLineSpacing(0f, 1.5f)
                                 textDirection = View.TEXT_DIRECTION_RTL
                                 gravity = Gravity.START
