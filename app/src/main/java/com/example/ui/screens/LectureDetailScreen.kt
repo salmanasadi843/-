@@ -763,6 +763,8 @@ fun TranscriptTab(
                             TextView(viewContext).apply {
                                 text = applyStudentHighlights(displayedTranscript, savedHighlights.filter { it.textTab == selectedTextTab })
                                 textSize = 18f
+                                // Keep lecture transcript as dark and readable as the summary text.
+                                setTextColor(android.graphics.Color.rgb(38, 50, 68))
                                 setLineSpacing(0f, 1.5f)
                                 textDirection = View.TEXT_DIRECTION_RTL
                                 gravity = Gravity.START
