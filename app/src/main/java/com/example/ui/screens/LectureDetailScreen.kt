@@ -20,6 +20,7 @@ import android.text.style.BackgroundColorSpan
 import org.json.JSONArray
 import org.json.JSONObject
 import androidx.compose.runtime.rememberUpdatedState
+import androidx.compose.runtime.key
 
 import android.content.ClipData
 import android.content.ClipboardManager
@@ -736,6 +737,7 @@ fun TranscriptTab(
                         color = MaterialTheme.colorScheme.onSurfaceVariant,
                         modifier = Modifier.padding(bottom = 8.dp)
                     )
+                    key(highlightRefresh, selectedTextTab) {
                     AndroidView(
                         factory = { viewContext ->
                             TextView(viewContext).apply {
@@ -792,6 +794,7 @@ fun TranscriptTab(
                         },
                         modifier = Modifier.fillMaxWidth().wrapContentHeight()
                     )
+                    }
                     if (showHighlightsDialog) {
                         AlertDialog(
                             onDismissRequest = { showHighlightsDialog = false },
