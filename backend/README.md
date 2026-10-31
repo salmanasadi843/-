@@ -13,11 +13,13 @@ Run Gradle with `-p backend`; do not add this as an Android module.
   public publication or active membership.
 - Firebase Admin ID-token verification using Application Default Credentials.
 - Provider-independent internal user identities and server-side PostgreSQL role lookup.
-- Protected `GET /api/v1/me` endpoint; anonymous requests are rejected.
+- Protected `GET /api/v1/me` and class list/create/update endpoints; anonymous requests are rejected.
+- Class visibility and ownership enforcement in PostgreSQL, including admin cross-teacher management.
+- Transactional audit records for class creation and updates.
 - Docker packaging and local PostgreSQL Compose environment.
 - PostgreSQL backup/restore scripts with SHA-256 verification; restore refuses
   non-empty targets and never drops existing tables.
-- CI tests, build, disposable PostgreSQL migration and HTTP health checks.
+- Unit and PostgreSQL integration tests for identity mapping, teacher approval, class visibility, ownership, admin management, and audit writes; build, disposable migrations, backup/restore and HTTP checks.
 
 ## Authentication setup and limits
 
@@ -33,10 +35,11 @@ identity in a supported hosting environment). Never commit service-account keys.
 Create/link application users and grant roles through a separately controlled
 administrative process; this service intentionally does not auto-provision accounts.
 
-Only `GET /api/v1/me` is currently protected and implemented. Domain CRUD endpoints,
-administrative role-management workflows, production secrets, and Firebase-to-user
-linking procedures still require further implementation and review. Do not expose
-this staging service as the production app backend yet.
+The current protected domain API covers class listing, creation, and metadata updates.
+Course/session CRUD, folder management, class deletion, administrative role-management
+workflows, production secrets, and Firebase-to-user linking procedures still require
+further implementation and review. See [the protected class API notes](docs/protected-class-api.md).
+Do not expose this staging service as the production app backend yet.
 
 ## Run locally
 
