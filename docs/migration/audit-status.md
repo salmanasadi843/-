@@ -1,0 +1,3 @@
+# Audit status
+
+The Room model is version 8 and contains ClassEntity, CourseEntity, LectureEntity, and TeacherFolderEntity. ClassEntity has ownerUid and folderId. CourseEntity and LectureEntity derive ownership through class relationships. LectureEntity already has audioUrl. Firestore stores private teacher backups under teacher_data/{uid}, and published material snapshots under shared_materials/{uid}. Firebase UID must be preserved as a legacy identity mapping. The current rules do not explicitly grant the primary administrator read access to other teachers private teacher_data. Room fallbackToDestructiveMigration(true) is enabled, so schema changes require special care. No production data has been moved or changed.
