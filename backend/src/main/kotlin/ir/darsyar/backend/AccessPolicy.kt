@@ -5,7 +5,7 @@ enum class AppRole { SUPER_ADMIN, TEACHER, STUDENT, GUEST }
 data class ClassAccess(
     val ownerUserId: String,
     val published: Boolean,
-    val public: Boolean,
+    val isPublic: Boolean,
     val activeMembership: Boolean = false
 )
 
@@ -16,8 +16,8 @@ object AccessPolicy {
         if (actorUserId != null && actorUserId == resource.ownerUserId) return true
         return when (role) {
             AppRole.TEACHER -> resource.published
-            AppRole.STUDENT -> resource.published && (resource.public || resource.activeMembership)
-            AppRole.GUEST -> resource.published && resource.public
+            AppRole.STUDENT -> resource.published && (resource.isPublic || resource.activeMembership)
+            AppRole.GUEST -> resource.published && resource.isPublic
             AppRole.SUPER_ADMIN -> true
         }
     }
