@@ -33,6 +33,22 @@ CREATE TABLE IF NOT EXISTS app_roles (
   PRIMARY KEY (user_id, role_name)
 );
 
+CREATE TABLE IF NOT EXISTS teacher_requests (
+  id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+  user_id uuid NOT NULL REFERENCES app_users(id) ON DELETE CASCADE,
+  teacher_name text NOT NULL,
+  teaching_field text NOT NULL,
+  institution_name text,
+  status text NOT NULL DEFAULT 'pending'
+    CHECK (status IN ('pending','approved','rejected','revoked')),
+  reviewed_by uuid REFERENCES app_users(id),
+  reviewed_at timestamptz,
+  created_at timestamptz NOT NULL DEFAULT now(),
+  updated_at timestamptz NOT NULL DEFAULT now()
+);
+CREATE INDEX IF NOT EXISTS ix_teacher_requests_status_created
+  ON teacher_requests(status, created_at);
+
 CREATE TABLE IF NOT EXISTS teacher_profiles (
   user_id uuid PRIMARY KEY REFERENCES app_users(id) ON DELETE CASCADE,
   approval_status text NOT NULL DEFAULT 'pending'
@@ -51,6 +67,8 @@ CREATE TABLE IF NOT EXISTS teacher_folders (
   name text NOT NULL,
   sort_order integer NOT NULL DEFAULT 0,
   is_hidden boolean NOT NULL DEFAULT false,
+  version bigint NOT NULL DEFAULT 1,
+  deleted_at timestamptz,
   created_at timestamptz NOT NULL DEFAULT now(),
   updated_at timestamptz NOT NULL DEFAULT now(),
   UNIQUE (id, owner_user_id),
@@ -98,6 +116,8 @@ CREATE TABLE IF NOT EXISTS teaching_courses (
   description text NOT NULL DEFAULT '',
   created_at_ms bigint,
   sort_order integer NOT NULL DEFAULT 0,
+  version bigint NOT NULL DEFAULT 1,
+  deleted_at timestamptz,
   UNIQUE (id, class_id)
 );
 CREATE INDEX IF NOT EXISTS ix_courses_class_order
@@ -124,6 +144,7 @@ CREATE TABLE IF NOT EXISTS teaching_sessions (
   created_at timestamptz NOT NULL DEFAULT now(),
   updated_at timestamptz NOT NULL DEFAULT now(),
   version bigint NOT NULL DEFAULT 1,
+  deleted_at timestamptz,
   FOREIGN KEY (course_id, class_id)
     REFERENCES teaching_courses(id, class_id)
 );
@@ -267,3 +288,5 @@ CREATE TABLE IF NOT EXISTS idempotency_keys (
 -- 6) Convert legacy audioUrl to session_audio_sources; do not migrate local audioFilePath.
 -- 7) Keep isFavorite in user_session_state, not on a shared session row.
 -- 8) Execute all import batches transactionally and verify counts/checksums before marking imported.
+-- 9) Use deleted_at tombstones and version increments for sync; do not hard-delete records
+--    while offline clients may still hold older copies.
