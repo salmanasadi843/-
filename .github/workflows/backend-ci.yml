@@ -120,3 +120,6 @@ jobs:
           curl --fail --silent http://127.0.0.1:8080/health/live
           curl --fail --silent http://127.0.0.1:8080/health/ready
           curl --fail --silent http://127.0.0.1:8080/api/v1
+          AUTH_STATUS="$(curl --silent --output /tmp/auth-response.json --write-out '%{http_code}' http://127.0.0.1:8080/api/v1/me)"
+          test "$AUTH_STATUS" = "401"
+          grep -q '"error":"Unauthorized"' /tmp/auth-response.json || grep -q '"error":"unauthorized"' /tmp/auth-response.json
