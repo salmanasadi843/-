@@ -18,8 +18,9 @@ import kotlin.test.assertNotNull
 class PostgresAuthenticatedUserRepositoryIntegrationTest {
     @Test
     fun `loads database roles and only grants approved teacher role`() {
-        val jdbcUrl = System.getenv("AUTH_REPOSITORY_TEST_DB_URL")
-        assumeTrue(!jdbcUrl.isNullOrBlank(), "PostgreSQL integration database is not configured")
+        val configuredJdbcUrl = System.getenv("AUTH_REPOSITORY_TEST_DB_URL")
+        assumeTrue(!configuredJdbcUrl.isNullOrBlank(), "PostgreSQL integration database is not configured")
+        val jdbcUrl = requireNotNull(configuredJdbcUrl)
 
         val username = System.getenv("AUTH_REPOSITORY_TEST_DB_USER") ?: "postgres"
         val password = System.getenv("AUTH_REPOSITORY_TEST_DB_PASSWORD") ?: ""
@@ -99,23 +100,20 @@ class PostgresAuthenticatedUserRepositoryIntegrationTest {
 
             val repository = PostgresAuthenticatedUserRepository(dataSource)
 
-            val admin = repository.findByIdentity("firebase", findSubject(dataSource, adminId))
-            assertNotNull(admin)
+            val admin = assertNotNull(
+                repository.findByIdentity("firebase", findSubject(dataSource, adminId))
+            )
             assertEquals(adminId, admin.userId)
             assertEquals(setOf(AppRole.SUPER_ADMIN), admin.roles)
 
-            val approvedTeacher = repository.findByIdentity(
-                "firebase",
-                findSubject(dataSource, approvedTeacherId)
+            val approvedTeacher = assertNotNull(
+                repository.findByIdentity("firebase", findSubject(dataSource, approvedTeacherId))
             )
-            assertNotNull(approvedTeacher)
             assertEquals(setOf(AppRole.TEACHER, AppRole.STUDENT), approvedTeacher.roles)
 
-            val pendingTeacher = repository.findByIdentity(
-                "firebase",
-                findSubject(dataSource, pendingTeacherId)
+            val pendingTeacher = assertNotNull(
+                repository.findByIdentity("firebase", findSubject(dataSource, pendingTeacherId))
             )
-            assertNotNull(pendingTeacher)
             assertEquals(setOf(AppRole.STUDENT), pendingTeacher.roles)
 
             assertNull(repository.findByIdentity("firebase", "unlinked-${UUID.randomUUID()}"))
