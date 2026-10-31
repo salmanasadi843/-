@@ -1,0 +1,129 @@
+name: Backend CI
+
+on:
+  push:
+    paths:
+      - "backend/**"
+      - ".github/workflows/backend-ci.yml"
+  pull_request:
+    paths:
+      - "backend/**"
+      - ".github/workflows/backend-ci.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: backend-ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  test-and-migrate:
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:17
+        env:
+          POSTGRES_DB: darsyar_staging
+          POSTGRES_USER: darsyar_ci
+          POSTGRES_PASSWORD: ci_only_password
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U darsyar_ci -d darsyar_staging"
+          --health-interval 5s
+          --health-timeout 3s
+          --health-retries 20
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v6
+      - name: Set up JDK 17
+        uses: actions/setup-java@v5
+        with:
+          distribution: temurin
+          java-version: "17"
+      - name: Set up Gradle
+        uses: gradle/actions/setup-gradle@v6
+        with:
+          gradle-version: "9.3.1"
+      - name: Run backend unit and PostgreSQL integration tests
+        env:
+          AUTH_REPOSITORY_TEST_DB_URL: jdbc:postgresql://localhost:5432/darsyar_staging
+          AUTH_REPOSITORY_TEST_DB_USER: darsyar_ci
+          AUTH_REPOSITORY_TEST_DB_PASSWORD: ci_only_password
+          AUTH_REPOSITORY_TEST_DB_SCHEMA: auth_repository_test
+        run: gradle -p backend test
+      - name: Build backend distribution
+        run: gradle -p backend installDist
+      - name: Start backend against disposable PostgreSQL
+        env:
+          DB_URL: jdbc:postgresql://localhost:5432/darsyar_staging
+          DB_USER: darsyar_ci
+          DB_PASSWORD: ci_only_password
+          HOST: 127.0.0.1
+          PORT: 8080
+        run: |
+          backend/build/install/darsyar-backend/bin/darsyar-backend > /tmp/darsyar-backend.log 2>&1 &
+          echo $! > /tmp/darsyar-backend.pid
+          for attempt in $(seq 1 40); do
+            if curl --fail --silent http://127.0.0.1:8080/health/ready; then
+              exit 0
+            fi
+            sleep 2
+          done
+          cat /tmp/darsyar-backend.log
+          exit 1
+      - name: Install PostgreSQL client tools
+        run: |
+          sudo apt-get update
+          sudo apt-get install --yes postgresql-client
+
+      - name: Verify backup and restore on a second empty database
+        env:
+          PGHOST: localhost
+          PGPORT: 5432
+          PGUSER: darsyar_ci
+          PGPASSWORD: ci_only_password
+          PGDATABASE: darsyar_staging
+          BACKUP_DIR: /tmp/darsyar-backups
+        run: |
+          bash backend/scripts/backup-postgres.sh
+          DUMP_FILE="$(find /tmp/darsyar-backups -name '*.dump' -print -quit)"
+          test -n "$DUMP_FILE"
+          createdb darsyar_restore_test
+          export PGDATABASE=darsyar_restore_test
+          bash backend/scripts/restore-postgres.sh "$DUMP_FILE"
+          RESTORED_TABLES="$(psql -X -Atqc "SELECT count(*) FROM information_schema.tables WHERE table_schema='public' AND table_type='BASE TABLE'")"
+          test "$RESTORED_TABLES" -ge 15
+
+          # A non-empty target must be rejected without changing its data.
+          psql -X -v ON_ERROR_STOP=1 -c "CREATE TABLE restore_safety_sentinel (value text NOT NULL)"
+          psql -X -v ON_ERROR_STOP=1 -c "INSERT INTO restore_safety_sentinel(value) VALUES ('must-survive')"
+          if bash backend/scripts/restore-postgres.sh "$DUMP_FILE"; then
+            echo "Restore unexpectedly accepted a non-empty database" >&2
+            exit 1
+          fi
+          SENTINEL="$(psql -X -Atqc "SELECT value FROM restore_safety_sentinel")"
+          test "$SENTINEL" = "must-survive"
+
+          # A damaged dump must fail checksum validation before touching a target.
+          cp "$DUMP_FILE" /tmp/corrupt-backup.dump
+          cp "$DUMP_FILE.manifest.json" /tmp/corrupt-backup.dump.manifest.json
+          printf 'corruption' >> /tmp/corrupt-backup.dump
+          createdb darsyar_corrupt_restore_test
+          export PGDATABASE=darsyar_corrupt_restore_test
+          if bash backend/scripts/restore-postgres.sh /tmp/corrupt-backup.dump; then
+            echo "Restore unexpectedly accepted a checksum-mismatched backup" >&2
+            exit 1
+          fi
+          CORRUPT_TARGET_TABLES="$(psql -X -Atqc "SELECT count(*) FROM information_schema.tables WHERE table_schema NOT IN ('pg_catalog','information_schema') AND table_type='BASE TABLE'")"
+          test "$CORRUPT_TARGET_TABLES" = "0"
+
+      - name: Verify liveness and API version
+        run: |
+          curl --fail --silent http://127.0.0.1:8080/health/live
+          curl --fail --silent http://127.0.0.1:8080/health/ready
+          curl --fail --silent http://127.0.0.1:8080/api/v1
+          AUTH_STATUS="$(curl --silent --output /tmp/auth-response.json --write-out '%{http_code}' http://127.0.0.1:8080/api/v1/me)"
+          test "$AUTH_STATUS" = "401"
