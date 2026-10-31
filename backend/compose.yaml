@@ -1,0 +1,35 @@
+services:
+  db:
+    image: postgres:17-alpine
+    environment:
+      POSTGRES_DB: darsyar_staging
+      POSTGRES_USER: darsyar_dev
+      POSTGRES_PASSWORD: darsyar_dev_only
+    ports:
+      - "5433:5432"
+    volumes:
+      - darsyar_staging_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U darsyar_dev -d darsyar_staging"]
+      interval: 5s
+      timeout: 3s
+      retries: 20
+
+  api:
+    build:
+      context: ..
+      dockerfile: backend/Dockerfile
+    environment:
+      HOST: 0.0.0.0
+      PORT: 8080
+      DB_URL: jdbc:postgresql://db:5432/darsyar_staging
+      DB_USER: darsyar_dev
+      DB_PASSWORD: darsyar_dev_only
+    ports:
+      - "8080:8080"
+    depends_on:
+      db:
+        condition: service_healthy
+
+volumes:
+  darsyar_staging_data:
