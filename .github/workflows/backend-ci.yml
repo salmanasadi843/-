@@ -47,7 +47,12 @@ jobs:
         uses: gradle/actions/setup-gradle@v6
         with:
           gradle-version: "9.3.1"
-      - name: Run backend unit tests
+      - name: Run backend unit and PostgreSQL integration tests
+        env:
+          AUTH_REPOSITORY_TEST_DB_URL: jdbc:postgresql://localhost:5432/darsyar_staging
+          AUTH_REPOSITORY_TEST_DB_USER: darsyar_ci
+          AUTH_REPOSITORY_TEST_DB_PASSWORD: ci_only_password
+          AUTH_REPOSITORY_TEST_DB_SCHEMA: auth_repository_test
         run: gradle -p backend test
       - name: Build backend distribution
         run: gradle -p backend installDist
