@@ -55,6 +55,9 @@ data class ClassApiRecord(
 @Serializable
 data class ApiError(val error: String)
 
+@Serializable
+data class MeApiResponse(val userId: String, val roles: List<String>)
+
 private fun TeachingClassRecord.toApiRecord() = ClassApiRecord(
     id, ownerUserId, title, description, term, visibility,
     isPublished, isHidden, sortOrder
@@ -134,10 +137,12 @@ fun Application.module(dataSource: DataSource) {
                 if (principal == null) {
                     call.respond(HttpStatusCode.Unauthorized, ApiError("unauthorized"))
                 } else {
-                    call.respond(mapOf(
-                        "userId" to principal.userId,
-                        "roles" to principal.roles.map { it.name.lowercase() }
-                    ))
+                    call.respond(
+                        MeApiResponse(
+                            principal.userId,
+                            principal.roles.map { it.name.lowercase() }
+                        )
+                    )
                 }
             }
 
