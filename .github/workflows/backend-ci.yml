@@ -69,7 +69,31 @@ jobs:
           done
           cat /tmp/darsyar-backend.log
           exit 1
+      - name: Install PostgreSQL client tools
+        run: |
+          sudo apt-get update
+          sudo apt-get install --yes postgresql-client
+
+      - name: Verify backup and restore on a second empty database
+        env:
+          PGHOST: localhost
+          PGPORT: 5432
+          PGUSER: darsyar_ci
+          PGPASSWORD: ci_only_password
+          PGDATABASE: darsyar_staging
+          BACKUP_DIR: /tmp/darsyar-backups
+        run: |
+          bash backend/scripts/backup-postgres.sh
+          DUMP_FILE="$(find /tmp/darsyar-backups -name '*.dump' -print -quit)"
+          test -n "$DUMP_FILE"
+          createdb darsyar_restore_test
+          export PGDATABASE=darsyar_restore_test
+          bash backend/scripts/restore-postgres.sh "$DUMP_FILE"
+          RESTORED_TABLES="$(psql -X -Atqc "SELECT count(*) FROM information_schema.tables WHERE table_schema='public' AND table_type='BASE TABLE'")"
+          test "$RESTORED_TABLES" -ge 15
+
       - name: Verify liveness and API version
         run: |
           curl --fail --silent http://127.0.0.1:8080/health/live
+          curl --fail --silent http://127.0.0.1:8080/health/ready
           curl --fail --silent http://127.0.0.1:8080/api/v1
