@@ -92,6 +92,16 @@ jobs:
           RESTORED_TABLES="$(psql -X -Atqc "SELECT count(*) FROM information_schema.tables WHERE table_schema='public' AND table_type='BASE TABLE'")"
           test "$RESTORED_TABLES" -ge 15
 
+          # A non-empty target must be rejected without changing its data.
+          psql -X -v ON_ERROR_STOP=1 -c "CREATE TABLE restore_safety_sentinel (value text NOT NULL)"
+          psql -X -v ON_ERROR_STOP=1 -c "INSERT INTO restore_safety_sentinel(value) VALUES ('must-survive')"
+          if bash backend/scripts/restore-postgres.sh "$DUMP_FILE"; then
+            echo "Restore unexpectedly accepted a non-empty database" >&2
+            exit 1
+          fi
+          SENTINEL="$(psql -X -Atqc "SELECT value FROM restore_safety_sentinel")"
+          test "$SENTINEL" = "must-survive"
+
       - name: Verify liveness and API version
         run: |
           curl --fail --silent http://127.0.0.1:8080/health/live
