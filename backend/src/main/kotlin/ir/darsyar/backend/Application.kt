@@ -3,6 +3,7 @@ package ir.darsyar.backend
 import io.ktor.http.ContentType
 import io.ktor.http.HttpStatusCode
 import io.ktor.server.application.Application
+import io.ktor.server.application.install
 import io.ktor.server.auth.Authentication
 import io.ktor.server.auth.Principal
 import io.ktor.server.auth.authenticate
