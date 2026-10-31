@@ -1,23 +1,26 @@
-# Darsyar Backend — staging foundation
+# Darsyar Backend — portable staging foundation
 
 This is a standalone Kotlin/Ktor service, isolated from the Android Gradle modules.
 Run Gradle with `-p backend`; do not add this as an Android module.
 
-## Included in this first slice
+## Included
 
-- Ktor/Netty HTTP service.
+- Ktor/Netty HTTP service and liveness/readiness endpoints.
 - PostgreSQL connection pool and Flyway migrations.
-- Liveness and database-readiness endpoints.
-- Initial schema preserving teacher → optional folder → class → optional course → session.
-- Tested role policy: primary admin can manage all teacher classes; a teacher can manage
-  only their own classes and read other teachers' published classes; students need a
+- Schema preserving teacher → optional folder → class → optional course → session.
+- Central role policy: primary admin can manage all teacher classes; a teacher manages
+  only their own classes and can read other teachers' published classes; students need
   public publication or active membership.
+- Docker packaging and local PostgreSQL Compose environment.
+- PostgreSQL backup/restore scripts with SHA-256 verification; restore refuses
+  non-empty targets and never drops existing tables.
+- CI tests, build, disposable PostgreSQL migration and HTTP health checks.
 
-Authentication and protected CRUD endpoints are deliberately not enabled yet. The
-Firebase ID-token verifier and server-side role lookup must be implemented before
-protected routes. Client-supplied role names are never trusted.
+Authentication and protected CRUD endpoints are deliberately not enabled yet. Firebase
+ID-token verification and server-side role lookup must be implemented before protected
+routes. Client-supplied role names are never trusted.
 
-## Run locally with Docker
+## Run locally
 
 From repository root:
 
@@ -27,26 +30,13 @@ docker compose -f backend/compose.yaml up --build
 
 Check `http://localhost:8080/health/live`, `/health/ready`, and `/api/v1`.
 
-Stop with:
+## Backup and restore
 
-```bash
-docker compose -f backend/compose.yaml down
-```
-
-Add `-v` only if you also want to delete the local development database volume.
-It contains test data only.
-
-## Run tests without Docker
-
-```bash
-gradle -p backend test
-gradle -p backend installDist
-```
-
-Set `DB_URL`, `DB_USER`, and `DB_PASSWORD` through environment variables for an
-isolated staging database. Never commit production credentials.
+See [the portability runbook](docs/portability-runbook.md). The scripts require
+PostgreSQL client tools and environment variables. Test only with isolated databases.
+The backup file and its manifest must be stored securely outside the source host.
 
 ## Safety boundary
 
-This service is not connected to Firebase production, the Iranian server, the Android
-app, or real user data. Do not point it at a production database.
+This service is not connected to Firebase production, the Iranian server, Android, or
+real user data. Do not point it at a production database. No migration is being performed.
