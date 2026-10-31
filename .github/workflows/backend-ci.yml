@@ -102,6 +102,19 @@ jobs:
           SENTINEL="$(psql -X -Atqc "SELECT value FROM restore_safety_sentinel")"
           test "$SENTINEL" = "must-survive"
 
+          # A damaged dump must fail checksum validation before touching a target.
+          cp "$DUMP_FILE" /tmp/corrupt-backup.dump
+          cp "$DUMP_FILE.manifest.json" /tmp/corrupt-backup.dump.manifest.json
+          printf 'corruption' >> /tmp/corrupt-backup.dump
+          createdb darsyar_corrupt_restore_test
+          export PGDATABASE=darsyar_corrupt_restore_test
+          if bash backend/scripts/restore-postgres.sh /tmp/corrupt-backup.dump; then
+            echo "Restore unexpectedly accepted a checksum-mismatched backup" >&2
+            exit 1
+          fi
+          CORRUPT_TARGET_TABLES="$(psql -X -Atqc "SELECT count(*) FROM information_schema.tables WHERE table_schema NOT IN ('pg_catalog','information_schema') AND table_type='BASE TABLE'")"
+          test "$CORRUPT_TARGET_TABLES" = "0"
+
       - name: Verify liveness and API version
         run: |
           curl --fail --silent http://127.0.0.1:8080/health/live
