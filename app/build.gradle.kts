@@ -1,5 +1,14 @@
 import com.google.gms.googleservices.GoogleServicesPlugin.MissingGoogleServicesStrategy
 
+// Optional endpoint for the future portable backend. Empty by default so the
+// existing Firebase/Room application remains completely disconnected from it.
+val darsyarApiBaseUrl = providers.gradleProperty("DARSYAR_API_BASE_URL")
+    .orElse(providers.environmentVariable("DARSYAR_API_BASE_URL"))
+    .getOrElse("")
+val escapedDarsyarApiBaseUrl = darsyarApiBaseUrl
+    .replace("\\\\", "\\\\\\\\")
+    .replace("\\"", "\\\\"")
+
 plugins {
     alias(libs.plugins.android.application)
     alias(libs.plugins.kotlin.compose)
@@ -20,6 +29,8 @@ android {
         targetSdk = 36
         versionCode = 1
         versionName = "1.0"
+
+        buildConfigField("String", "DARSYAR_API_BASE_URL", "\\"$escapedDarsyarApiBaseUrl\\"")
 
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
     }
