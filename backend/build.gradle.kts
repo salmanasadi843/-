@@ -16,7 +16,8 @@ dependencies {
     implementation("org.flywaydb:flyway-core:11.14.1")
     implementation("org.flywaydb:flyway-database-postgresql:11.14.1")
     runtimeOnly("org.postgresql:postgresql:42.7.8")
-    testImplementation(kotlin("test"))
+    testImplementation(kotlin("test-junit5"))
+    testRuntimeOnly("org.junit.platform:junit-platform-launcher")
 }
 application { mainClass.set("ir.darsyar.backend.ApplicationKt") }
 kotlin { jvmToolchain(17) }
