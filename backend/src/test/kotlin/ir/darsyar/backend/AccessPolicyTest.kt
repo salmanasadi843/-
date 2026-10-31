@@ -5,7 +5,7 @@ import kotlin.test.assertFalse
 import kotlin.test.assertTrue
 
 class AccessPolicyTest {
-    private val publishedClass = ClassAccess("teacher-a", published = true, public = true)
+    private val publishedClass = ClassAccess("teacher-a", published = true, isPublic = true)
 
     @Test fun adminCanManageAnyTeacherClass() {
         assertTrue(AccessPolicy.canManageClass(AppRole.SUPER_ADMIN, "admin", publishedClass))
@@ -23,12 +23,12 @@ class AccessPolicyTest {
 
     @Test fun studentNeedsPublicPublicationOrActiveMembership() {
         assertTrue(AccessPolicy.canReadClass(AppRole.STUDENT, "student-a", publishedClass))
-        assertFalse(AccessPolicy.canReadClass(AppRole.STUDENT, "student-a", publishedClass.copy(public = false)))
+        assertFalse(AccessPolicy.canReadClass(AppRole.STUDENT, "student-a", publishedClass.copy(isPublic = false)))
         assertTrue(AccessPolicy.canReadClass(AppRole.STUDENT, "student-a",
-            publishedClass.copy(public = false, activeMembership = true)))
+            publishedClass.copy(isPublic = false, activeMembership = true)))
     }
 
     @Test fun guestCannotReadPrivateClass() {
-        assertFalse(AccessPolicy.canReadClass(AppRole.GUEST, null, publishedClass.copy(public = false)))
+        assertFalse(AccessPolicy.canReadClass(AppRole.GUEST, null, publishedClass.copy(isPublic = false)))
     }
 }
