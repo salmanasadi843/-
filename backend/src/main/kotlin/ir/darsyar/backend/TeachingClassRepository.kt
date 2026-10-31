@@ -1,6 +1,7 @@
 package ir.darsyar.backend
 
 import java.sql.Connection
+import kotlinx.serialization.json.JsonPrimitive
 import java.util.UUID
 import javax.sql.DataSource
 
@@ -212,9 +213,7 @@ class TeachingClassRepository(private val dataSource: DataSource) {
     private fun TeachingClassRecord.toAuditJson(): String =
         """{"id":"$id","ownerUserId":"$ownerUserId","title":${jsonString(title)},"visibility":"$visibility","isPublished":$isPublished,"isHidden":$isHidden,"sortOrder":$sortOrder}"""
 
-    private fun jsonString(value: String): String =
-        "\"" + value.replace("\\", "\\\\").replace("\"", "\\\"")
-            .replace("\n", "\\n").replace("\r", "\\r") + "\""
+    private fun jsonString(value: String): String = JsonPrimitive(value).toString()
 }
 
 private fun Connection.writeAudit(
