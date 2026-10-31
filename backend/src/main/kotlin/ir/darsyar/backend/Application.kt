@@ -95,7 +95,7 @@ fun Application.module(dataSource: DataSource) {
                         HttpStatusCode.Unauthorized
                     )
                 } else {
-                    val roles = principal.roles.joinToString(",") { "\"\${it.name.lowercase()}\"" }
+                    val roles = principal.roles.joinToString(",") { "\"" + it.name.lowercase() + "\"" }
                     call.respondText(
                         """{"userId":"${principal.userId}","roles":[$roles]}""",
                         ContentType.Application.Json
