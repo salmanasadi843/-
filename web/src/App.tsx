@@ -159,6 +159,18 @@ export default function App() {
     } catch (e) { setError(message(e)); }
     finally { setBusy(false); }
   }
+  async function renameTeacherFolder(folder: TeacherFolder) {
+    if (!user) return;
+    const nextName = window.prompt("نام جدید پوشه را وارد کنید:", folder.name)?.trim();
+    if (!nextName || nextName === folder.name) return;
+    setBusy(true); setError("");
+    try {
+      const updated = await api.updateTeacherFolder(folder.id, { name: nextName, parentFolderId: folder.parentFolderId, sortOrder: folder.sortOrder, isHidden: folder.isHidden }, await user.getIdToken());
+      setFolders(current => current.map(item => item.id === updated.id ? updated : item));
+      setNotice("نام پوشه تغییر کرد.");
+    } catch (e) { setError(message(e)); }
+    finally { setBusy(false); }
+  }
   async function toggleFolderHidden(folder: TeacherFolder) {
     if (!user) return;
     setBusy(true); setError("");
@@ -321,7 +333,7 @@ export default function App() {
           {showFolderForm && <form onSubmit={createTeacherFolder} className="folder-form"><input value={folderName} onChange={e => setFolderName(e.target.value)} placeholder="نام پوشه جدید" required /><button disabled={busy || !folderName.trim()}>ایجاد</button></form>}
           {visibleFolders.map(folder => <div className="folder-row" key={folder.id}>
             <span>{folder.name}{folder.isHidden ? " · مخفی" : ""}</span>
-            <span><button className="ghost" disabled={busy} onClick={() => void toggleFolderHidden(folder)}>{folder.isHidden ? "نمایش" : "مخفی"}</button><button className="ghost danger-text" disabled={busy} onClick={() => void removeTeacherFolder(folder)}>حذف</button></span>
+            <span><button className="ghost" disabled={busy} onClick={() => void renameTeacherFolder(folder)}>تغییر نام</button><button className="ghost" disabled={busy} onClick={() => void toggleFolderHidden(folder)}>{folder.isHidden ? "نمایش" : "مخفی"}</button><button className="ghost danger-text" disabled={busy} onClick={() => void removeTeacherFolder(folder)}>حذف</button></span>
           </div>)}
           {!visibleFolders.length && <p className="muted">پوشه‌ای برای این استاد ثبت نشده است.</p>}
         </section>}
