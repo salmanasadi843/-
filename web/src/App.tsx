@@ -403,11 +403,26 @@ export default function App() {
         </div>
         {selectedClass && <div className="lower">
           <div className="section-head"><h2>جلسه‌های {selectedClass.title}</h2><span className="muted">{sessions.length} جلسه</span></div>
+          {canManageSelectedClass && <section className="access-manager">
+            <div className="section-head"><h3>دوره‌های کلاس</h3><button className="ghost" onClick={() => {setEditingCourseId(null);setCourseTitle("");setCourseDescription("");setShowCourseForm(v => !v);}}>＋ افزودن دوره</button></div>
+            {showCourseForm && <form className="editor-form" onSubmit={saveCourse}>
+              <h3>{editingCourseId ? "ویرایش دوره" : "دوره جدید"}</h3>
+              <label>عنوان دوره<input value={courseTitle} onChange={e => setCourseTitle(e.target.value)} required /></label>
+              <label>توضیحات<textarea value={courseDescription} onChange={e => setCourseDescription(e.target.value)} rows={2} /></label>
+              <button disabled={busy || !courseTitle.trim()}>ذخیره دوره</button>
+            </form>}
+            {courses.map(course => <div className="code-row" key={course.id}>
+              <span><strong>{course.title}</strong><small>{course.description || "بدون توضیح"}</small></span>
+              <span><button className="ghost" disabled={busy} onClick={() => {setEditingCourseId(course.id);setCourseTitle(course.title);setCourseDescription(course.description);setShowCourseForm(true);}}>ویرایش</button><button className="ghost danger-text" disabled={busy} onClick={() => void removeCourse(course)}>حذف</button></span>
+            </div>)}
+            {!courses.length && <p className="muted">دوره‌ای برای این کلاس ثبت نشده است.</p>}
+          </section>}
           {canManageSelectedClass && <div className="toolbar"><button className="ghost" onClick={() => void editSelectedClass()}>ویرایش کلاس</button><button className="ghost danger-text" disabled={busy} onClick={() => void removeSelectedClass()}>حذف کلاس</button></div>}
           {canManageSelectedClass && <div className="toolbar"><button className="action" onClick={() => {setEditingSession(false);setShowSessionForm(v => !v);}}>{showSessionForm ? "بستن فرم" : "＋ افزودن جلسه"}</button></div>}
           {showSessionForm && canManageSelectedClass && <form className="editor-form" onSubmit={createSession}>
             <h3>{editingSession ? "ویرایش جلسه" : "جلسه جدید"}</h3>
             <label>عنوان جلسه<input value={sessionTitle} onChange={e => setSessionTitle(e.target.value)} required /></label>
+            <label>دوره<select value={sessionCourseId} onChange={e => setSessionCourseId(e.target.value)}><option value="">بدون دوره</option>{courses.map(course => <option key={course.id} value={course.id}>{course.title}</option>)}</select></label>
             <label>متن جلسه<textarea value={sessionTranscript} onChange={e => setSessionTranscript(e.target.value)} rows={5} /></label>
             <label>خلاصه هوشمند (اختیاری)<textarea value={sessionSummary} onChange={e => setSessionSummary(e.target.value)} rows={3} /></label>
             <label>نکات کلیدی (اختیاری)<textarea value={sessionKeyPoints} onChange={e => setSessionKeyPoints(e.target.value)} rows={3} /></label>
