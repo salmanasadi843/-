@@ -11,7 +11,8 @@
 - پوشه استاد: `GET/POST /api/v1/teacher-folders`, `PATCH/DELETE /api/v1/teacher-folders/{folderId}`.
 - کلاس‌ها: `GET/POST /api/v1/classes`, `GET /api/v1/classes/deleted`, `PATCH/DELETE /api/v1/classes/{classId}`, `POST /api/v1/classes/{classId}/restore`.
 - دوره‌ها: `GET/POST /api/v1/classes/{classId}/courses`, `PATCH/DELETE /api/v1/courses/{courseId}`.
-- جلسات: `GET/POST /api/v1/classes/{classId}/sessions`, `PATCH/DELETE /api/v1/sessions/{sessionId}`, `POST /api/v1/sessions/{sessionId}/restore`.
+- جلسات: `GET/POST /api/v1/classes/{classId}/sessions`, `GET /api/v1/classes/{classId}/sessions/{sessionId}`, `PATCH/DELETE /api/v1/sessions/{sessionId}`, `POST /api/v1/sessions/{sessionId}/restore`.
+- فهرست جلسه‌ها فقط metadata خلاصه را برمی‌گرداند؛ transcript، متن اصلی، خلاصه هوشمند و نکات کلیدی فقط از endpoint جزئیات همان جلسه انتخاب‌شده دریافت می‌شود. جزئیات با همان قواعد visibility سمت سرور و query محدود به classId و sessionId کنترل می‌شود.
 - منابع صوتی: `GET/POST /api/v1/sessions/{sessionId}/audio-sources`, `PATCH/DELETE /api/v1/sessions/{sessionId}/audio-sources/{sourceId}`.
 - کد ورود: `GET/POST /api/v1/classes/{classId}/access-codes`, `DELETE /api/v1/access-codes/{codeId}`, `POST /api/v1/class-memberships/redeem`.
 - عضویت: `GET /api/v1/classes/{classId}/memberships`, `DELETE /api/v1/classes/{classId}/memberships/{studentUserId}`.
@@ -97,9 +98,9 @@
 - `POST /api/v1/classes/{classId}/courses`
 - `PATCH /api/v1/courses/{courseId}`
 - `DELETE /api/v1/courses/{courseId}`
-- `GET /api/v1/classes/{classId}/sessions`
+- `GET /api/v1/classes/{classId}/sessions` — فهرست خلاصه بدون متن جلسه.
 - `POST /api/v1/classes/{classId}/sessions`
-- `GET /api/v1/sessions/{sessionId}`
+- `GET /api/v1/classes/{classId}/sessions/{sessionId}` — جزئیات کامل فقط برای جلسه انتخاب‌شده و پس از کنترل مجوز.
 - `PATCH /api/v1/sessions/{sessionId}`
 - `DELETE /api/v1/sessions/{sessionId}`
 
