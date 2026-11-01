@@ -509,6 +509,33 @@ object AuthPreferences {
             }
     }
 
+    /**
+     * Returns a fresh Firebase ID token for authenticated backend requests.
+     * The token is passed to the caller and must never be persisted or logged.
+     */
+    fun getFirebaseIdToken(
+        context: Context,
+        onResult: (Result<String>) -> Unit
+    ) {
+        val user = auth(context).currentUser
+        if (user == null) {
+            onResult(Result.failure(IllegalStateException("برای اتصال به سرویس ابتدا وارد حساب شوید.")))
+            return
+        }
+        user.getIdToken(false).addOnCompleteListener { task ->
+            val token = if (task.isSuccessful) task.result?.token else null
+            if (token.isNullOrBlank()) {
+                onResult(
+                    Result.failure(
+                        task.exception ?: IllegalStateException("دریافت توکن ورود Firebase انجام نشد.")
+                    )
+                )
+            } else {
+                onResult(Result.success(token))
+            }
+        }
+    }
+
     fun logout(context: Context) {
         auth(context).signOut()
         context.getSharedPreferences(PREFS, Context.MODE_PRIVATE).edit().clear().apply()
