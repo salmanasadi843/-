@@ -134,7 +134,7 @@ class ClassAccessRepository(
     fun listMembers(actorUserId: String, roles: Set<AppRole>, classId: String): List<ClassMembershipRecord> {
         val actor = UUID.fromString(actorUserId)
         val classUuid = UUID.fromString(classId)
-        dataSource.connection.use { connection ->
+        return dataSource.connection.use { connection ->
             val owner = connection.prepareStatement(
                 "SELECT owner_user_id FROM teaching_classes WHERE id = ?"
             ).use { st ->
