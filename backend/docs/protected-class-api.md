@@ -172,7 +172,15 @@ The generated code is returned only once. PostgreSQL stores only its SHA-256 has
 
 The API supports owner/admin access-code listing/deactivation and membership listing/revocation. Student-facing membership history and UI integration remain pending.
 
-## First super-admin bootstrap\n\nThe HTTP API intentionally has no public registration, identity-linking, or role-grant endpoint. The first super-admin is created only by the operator-run `backend/scripts/bootstrap-first-super-admin.sh` against an already migrated database. The operator must independently verify the Firebase UID. The script is one-time, refuses to proceed when any super-admin or the supplied Firebase identity already exists, serializes concurrent attempts with a PostgreSQL advisory transaction lock, and atomically inserts the application user, Firebase identity, `super_admin` role, and audit event. Email is optional metadata and is not marked verified by the script. Subsequent identity linking and role administration remain a separate, reviewed operational workflow.\n\n## Audit and transaction guarantees
+## Teacher applications and approval
+
+- `POST /api/v1/teacher-applications`: an authenticated account submits or updates its own pending teacher application. At least one of `teachingField` or `institutionName` is required. The caller cannot choose a user ID or grant a role.
+- `GET /api/v1/admin/teacher-applications`: super-admin only; lists pending applications.
+- `PATCH /api/v1/admin/teacher-applications/{userId}`: super-admin only; accepts `{"decision":"approved"}`, `rejected`, or `revoked`.
+
+Approval updates `teacher_profiles` and grants the database `teacher` role in the same transaction, recording the approving admin and an audit event. Rejection/revocation removes the teacher role; the authentication repository also exposes the teacher role only while the profile is approved. A rejected application may be resubmitted. Approved or revoked profiles cannot be resubmitted through the self-service endpoint. No client can link Firebase identities or grant roles, and no arbitrary role-management endpoint is exposed.
+
+## First super-admin bootstrap\n\nThe HTTP API intentionally has no public registration, identity-linking, or role-grant endpoint. The first super-admin is created only by the operator-run `backend/scripts/bootstrap-first-super-admin.sh` against an already migrated database. The operator must independently verify the Firebase UID. The script is one-time, refuses to proceed when any super-admin or the supplied Firebase identity already exists, serializes concurrent attempts with a PostgreSQL advisory transaction lock, and atomically inserts the application user, Firebase identity, `super_admin` role, and audit event. Email is optional metadata and is not marked verified by the script. Subsequent Firebase identity linking remains a separate, reviewed operator-controlled workflow; teacher applications and approval are handled by the authenticated endpoints below.\n\n## Audit and transaction guarantees
 
 Class and session creation/update, together with their corresponding `audit_log`
 entries, commit in one PostgreSQL transaction. If the audit insert fails, the
@@ -186,7 +194,7 @@ record creation against a disposable PostgreSQL schema.
 ## Deliberate limitations
 
 - Binary audio upload/storage-provider adapters and student-facing membership history/UI integration remain pending.
-- Secure Firebase identity linking and first super-admin bootstrap, administrative role-management workflows, student-facing membership history/UI integration, and binary audio upload/storage-provider adapters remain pending.
+- Secure linking of existing Firebase identities remains an operator-controlled workflow; the teacher application/approval workflow is available through the API but is not yet integrated into Android UI. Student-facing membership history/UI integration and binary audio upload/storage-provider adapters remain pending.
 - This is a backend staging foundation. It is not deployed, does not receive
   production traffic, and is not connected to the Android app or live Firebase
   data.
