@@ -8,6 +8,8 @@ from PostgreSQL. Client-supplied roles are never accepted.
 
 ## Class endpoints
 
+New classes can use only two visibility modes: `public` and `private`. The legacy database value `unlisted` is retained for existing records during compatibility; it is treated as restricted content and cannot be selected for new class creation or updates.
+
 ### `GET /api/v1/classes`
 
 Returns classes the authenticated user may see:
