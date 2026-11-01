@@ -100,6 +100,28 @@ class ClassRoutesAuthorizationTest {
     }
 
     @Test
+    fun `course listing rejects unauthenticated requests`() = testApplication {
+        application {
+            module(unusedDataSource(), verifier(), usersWith(AppRole.STUDENT))
+        }
+        val response = client.get("/api/v1/classes/11111111-1111-4111-8111-111111111111/courses")
+        assertEquals(HttpStatusCode.Unauthorized, response.status)
+    }
+
+    @Test
+    fun `student cannot create a course`() = testApplication {
+        application {
+            module(unusedDataSource(), verifier(), usersWith(AppRole.STUDENT))
+        }
+        val response = client.post("/api/v1/classes/11111111-1111-4111-8111-111111111111/courses") {
+            header(HttpHeaders.Authorization, "Bearer test-token")
+            contentType(ContentType.Application.Json)
+            setBody("""{"title":"Forbidden course"}""")
+        }
+        assertEquals(HttpStatusCode.Forbidden, response.status)
+    }
+
+    @Test
     fun `audio source listing rejects unauthenticated requests`() = testApplication {
         application {
             module(unusedDataSource(), verifier(), usersWith(AppRole.STUDENT))
