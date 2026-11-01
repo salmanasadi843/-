@@ -19,6 +19,7 @@ dependencies {
     implementation("org.flywaydb:flyway-database-postgresql:11.14.1")
     runtimeOnly("org.postgresql:postgresql:42.7.8")
     testImplementation(kotlin("test-junit5"))
+    testImplementation("io.ktor:ktor-server-test-host:$ktorVersion")
     testRuntimeOnly("org.junit.platform:junit-platform-launcher")
 }
 application { mainClass.set("ir.darsyar.backend.ApplicationKt") }
