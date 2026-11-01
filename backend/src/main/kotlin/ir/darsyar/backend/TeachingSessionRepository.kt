@@ -203,6 +203,22 @@ class TeachingSessionRepository(private val dataSource: DataSource) {
                 if (AppRole.SUPER_ADMIN !in roles &&
                     !(AppRole.TEACHER in roles && ownerId == actorUserId)
                 ) throw SecurityException("Session management is not allowed.")
+                if (courseUuid != null) {
+                    val activeCourseBelongsToClass = connection.prepareStatement(
+                        """
+                        SELECT 1 FROM teaching_courses
+                        WHERE id = ? AND class_id = ? AND deleted_at IS NULL
+                        FOR UPDATE
+                        """.trimIndent()
+                    ).use { courseStatement ->
+                        courseStatement.setObject(1, courseUuid)
+                        courseStatement.setObject(2, UUID.fromString(old.classId))
+                        courseStatement.executeQuery().use { rs -> rs.next() }
+                    }
+                    require(activeCourseBelongsToClass) {
+                        "Course does not exist, is deleted, or belongs to another class."
+                    }
+                }
                 val updated = connection.prepareStatement(
                     """
                     UPDATE teaching_sessions SET course_id = ?, title = ?, course_name = ?,
