@@ -172,7 +172,7 @@ The generated code is returned only once. PostgreSQL stores only its SHA-256 has
 
 The API supports owner/admin access-code listing/deactivation and membership listing/revocation. Student-facing membership history and UI integration remain pending.
 
-## Audit and transaction guarantees
+## First super-admin bootstrap\n\nThe HTTP API intentionally has no public registration, identity-linking, or role-grant endpoint. The first super-admin is created only by the operator-run `backend/scripts/bootstrap-first-super-admin.sh` against an already migrated database. The operator must independently verify the Firebase UID. The script is one-time, refuses to proceed when any super-admin or the supplied Firebase identity already exists, serializes concurrent attempts with a PostgreSQL advisory transaction lock, and atomically inserts the application user, Firebase identity, `super_admin` role, and audit event. Email is optional metadata and is not marked verified by the script. Subsequent identity linking and role administration remain a separate, reviewed operational workflow.\n\n## Audit and transaction guarantees
 
 Class and session creation/update, together with their corresponding `audit_log`
 entries, commit in one PostgreSQL transaction. If the audit insert fails, the
