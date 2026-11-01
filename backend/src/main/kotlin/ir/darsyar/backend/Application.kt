@@ -76,6 +76,27 @@ data class FolderApiRecord(
 )
 
 @Serializable
+data class CourseWriteRequest(
+    val title: String,
+    val teacherName: String = "",
+    val description: String = "",
+    val createdAtMs: Long? = null,
+    val sortOrder: Int = 0
+)
+
+@Serializable
+data class CourseApiRecord(
+    val id: String,
+    val classId: String,
+    val title: String,
+    val teacherName: String,
+    val description: String,
+    val createdAtMs: Long?,
+    val sortOrder: Int,
+    val version: Long
+)
+
+@Serializable
 data class SessionWriteRequest(
     val courseId: String? = null,
     val title: String,
@@ -151,6 +172,10 @@ private fun TeachingClassRecord.toApiRecord() = ClassApiRecord(
     isPublished, isHidden, sortOrder, folderId
 )
 
+private fun TeachingCourseRecord.toApiRecord() = CourseApiRecord(
+    id, classId, title, teacherName, description, createdAtMs, sortOrder, version
+)
+
 private fun TeachingAudioSourceRecord.toApiRecord() = AudioSourceApiRecord(
     id, sessionId, sourceKind, sourceUrl, storageKey, title, sortOrder, isActive
 )
@@ -197,6 +222,7 @@ fun Application.module(
     val folderRepository = TeacherFolderRepository(dataSource)
     val sessionRepository = TeachingSessionRepository(dataSource)
     val audioSourceRepository = TeachingAudioSourceRepository(dataSource)
+    val courseRepository = TeachingCourseRepository(dataSource)
 
     install(ContentNegotiation) { json() }
     install(Authentication) {
@@ -447,6 +473,107 @@ fun Application.module(
                     }
                 }
 
+            }
+
+            route("/api/v1/classes/{classId}/courses") {
+                get {
+                    val principal = call.principal<DarsyarPrincipal>()
+                    if (principal == null) {
+                        call.respond(HttpStatusCode.Unauthorized, ApiError("unauthorized"))
+                    } else {
+                        try {
+                            val classId = call.parameters["classId"] ?: ""
+                            call.respond(courseRepository.listVisible(principal.userId, principal.roles, classId).map { it.toApiRecord() })
+                        } catch (_: IllegalArgumentException) {
+                            call.respond(HttpStatusCode.BadRequest, ApiError("invalid_class_id"))
+                        }
+                    }
+                }
+
+                post {
+                    val principal = call.principal<DarsyarPrincipal>()
+                    if (principal == null) {
+                        call.respond(HttpStatusCode.Unauthorized, ApiError("unauthorized"))
+                        return@post
+                    }
+                    if (AppRole.SUPER_ADMIN !in principal.roles && AppRole.TEACHER !in principal.roles) {
+                        call.respond(HttpStatusCode.Forbidden, ApiError("course_creation_forbidden"))
+                        return@post
+                    }
+                    val request = try { call.receive<CourseWriteRequest>() }
+                    catch (_: Exception) {
+                        call.respond(HttpStatusCode.BadRequest, ApiError("invalid_request"))
+                        return@post
+                    }
+                    try {
+                        val created = courseRepository.create(
+                            principal.userId, principal.roles,
+                            CreateTeachingCourse(
+                                classId = call.parameters["classId"] ?: "",
+                                title = request.title,
+                                teacherName = request.teacherName,
+                                description = request.description,
+                                createdAtMs = request.createdAtMs,
+                                sortOrder = request.sortOrder
+                            )
+                        )
+                        call.respond(HttpStatusCode.Created, created.toApiRecord())
+                    } catch (_: SecurityException) {
+                        call.respond(HttpStatusCode.Forbidden, ApiError("course_creation_forbidden"))
+                    } catch (_: IllegalArgumentException) {
+                        call.respond(HttpStatusCode.BadRequest, ApiError("invalid_course_data"))
+                    } catch (_: java.sql.SQLException) {
+                        call.respond(HttpStatusCode.BadRequest, ApiError("invalid_course_class"))
+                    }
+                }
+            }
+
+            route("/api/v1/courses/{courseId}") {
+                patch {
+                    val principal = call.principal<DarsyarPrincipal>()
+                    if (principal == null) {
+                        call.respond(HttpStatusCode.Unauthorized, ApiError("unauthorized"))
+                        return@patch
+                    }
+                    val request = try { call.receive<CourseWriteRequest>() }
+                    catch (_: Exception) {
+                        call.respond(HttpStatusCode.BadRequest, ApiError("invalid_request"))
+                        return@patch
+                    }
+                    try {
+                        val updated = courseRepository.update(
+                            principal.userId, principal.roles, call.parameters["courseId"] ?: "",
+                            UpdateTeachingCourse(request.title, request.teacherName, request.description, request.createdAtMs, request.sortOrder)
+                        )
+                        if (updated == null) call.respond(HttpStatusCode.NotFound, ApiError("course_not_found"))
+                        else call.respond(updated.toApiRecord())
+                    } catch (_: SecurityException) {
+                        call.respond(HttpStatusCode.Forbidden, ApiError("course_management_forbidden"))
+                    } catch (_: IllegalArgumentException) {
+                        call.respond(HttpStatusCode.BadRequest, ApiError("invalid_course_data"))
+                    }
+                }
+
+                delete {
+                    val principal = call.principal<DarsyarPrincipal>()
+                    if (principal == null) {
+                        call.respond(HttpStatusCode.Unauthorized, ApiError("unauthorized"))
+                        return@delete
+                    }
+                    try {
+                        val deleted = courseRepository.delete(
+                            principal.userId, principal.roles, call.parameters["courseId"] ?: ""
+                        )
+                        if (deleted) call.respond(HttpStatusCode.NoContent)
+                        else call.respond(HttpStatusCode.NotFound, ApiError("course_not_found"))
+                    } catch (_: SecurityException) {
+                        call.respond(HttpStatusCode.Forbidden, ApiError("course_deletion_forbidden"))
+                    } catch (_: IllegalStateException) {
+                        call.respond(HttpStatusCode.Conflict, ApiError("course_has_sessions"))
+                    } catch (_: IllegalArgumentException) {
+                        call.respond(HttpStatusCode.BadRequest, ApiError("invalid_course_id"))
+                    }
+                }
             }
 
             route("/api/v1/classes/{classId}/sessions") {
