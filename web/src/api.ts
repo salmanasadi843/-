@@ -25,6 +25,13 @@ export type NewSession = {
 export type Membership = {
   classId: string; studentUserId: string; status: string; joinedAtMs: number | null; alreadyActive: boolean;
 };
+export type AccessCode = {
+  id: string; classId: string; expiresAtMs: number | null; maxUses: number | null;
+  useCount: number; isActive: boolean; createdAtMs: number;
+};
+export type CreatedAccessCode = {
+  id: string; classId: string; code: string; expiresAtMs: number | null; maxUses: number | null;
+};
 const base = (import.meta.env.VITE_DARSYAR_API_BASE_URL || "").replace(/\/+$/, "");
 async function request<T>(path: string, token: string, options: RequestInit = {}): Promise<T> {
   if (!base) throw new Error("نشانی سرور تنظیم نشده است.");
@@ -58,4 +65,10 @@ export const api = {
     request<SessionDetail>(`/api/v1/classes/${encodeURIComponent(classId)}/sessions`, token, { method: "POST", body: JSON.stringify(data) }),
   redeemAccessCode: (code: string, token: string) =>
     request<Membership>("/api/v1/class-memberships/redeem", token, { method: "POST", body: JSON.stringify({ code }) }),
+  accessCodes: (classId: string, token: string) =>
+    request<AccessCode[]>(`/api/v1/classes/${encodeURIComponent(classId)}/access-codes`, token),
+  createAccessCode: (classId: string, data: { expiresAtMs?: number | null; maxUses?: number | null }, token: string) =>
+    request<CreatedAccessCode>(`/api/v1/classes/${encodeURIComponent(classId)}/access-codes`, token, { method: "POST", body: JSON.stringify(data) }),
+  revokeAccessCode: (codeId: string, token: string) =>
+    request<void>(`/api/v1/access-codes/${encodeURIComponent(codeId)}`, token, { method: "DELETE" }),
 };
