@@ -12,6 +12,7 @@ export default function App() {
   const [folders, setFolders] = useState<TeacherFolder[]>([]);
   const [folderName, setFolderName] = useState("");
   const [selectedFolderId, setSelectedFolderId] = useState("");
+  const [browseFolderId, setBrowseFolderId] = useState("all");
   const [showFolderForm, setShowFolderForm] = useState(false);
   const [classes, setClasses] = useState<ClassRecord[]>([]);
   const [selectedTeacher, setSelectedTeacher] = useState("all");
@@ -74,8 +75,8 @@ export default function App() {
   const canCreateClass = isAdmin || (me?.roles.includes("teacher") ?? false);
   const canRedeemCode = me?.roles.includes("student") ?? false;
   const visibleClasses = useMemo(
-    () => classes.filter(c => selectedTeacher === "all" || c.ownerUserId === selectedTeacher),
-    [classes, selectedTeacher],
+    () => classes.filter(c => (selectedTeacher === "all" || c.ownerUserId === selectedTeacher) && (browseFolderId === "all" || (browseFolderId === "none" ? !c.folderId : c.folderId === browseFolderId))),
+    [classes, selectedTeacher, browseFolderId],
   );
   const folderOwnerId = isAdmin ? (selectedTeacher === "all" ? "" : selectedTeacher) : (me?.roles.includes("teacher") ? me.userId : "");
   const visibleFolders = useMemo(() => folders.filter(folder => folder.ownerUserId === folderOwnerId), [folders, folderOwnerId]);
@@ -369,14 +370,14 @@ export default function App() {
           <button disabled={busy || !accessCode.trim()}>{busy ? "در حال بررسی…" : "ورود به کلاس"}</button>
         </form>}
         <h2>استادان</h2>
-        <button className={selectedTeacher === "all" ? "choice active" : "choice"} onClick={() => {setSelectedTeacher("all");setSelectedClass(null);setDetail(null);}}>همه استادان</button>
-        {teachers.map(t => <button key={t.userId} className={selectedTeacher === t.userId ? "choice active" : "choice"} onClick={() => {setSelectedTeacher(t.userId);setSelectedClass(null);setDetail(null);}}>{t.displayName}</button>)}
+        <button className={selectedTeacher === "all" ? "choice active" : "choice"} onClick={() => {setSelectedTeacher("all");setBrowseFolderId("all");setSelectedClass(null);setDetail(null);}}>همه استادان</button>
+        {teachers.map(t => <button key={t.userId} className={selectedTeacher === t.userId ? "choice active" : "choice"} onClick={() => {setSelectedTeacher(t.userId);setBrowseFolderId("all");setSelectedClass(null);setDetail(null);}}>{t.displayName}</button>)}
         {(folderOwnerId || (!isAdmin && me?.roles.includes("teacher"))) && <section className="folder-manager">
           <div className="section-head"><h2>پوشه‌های استاد</h2><button className="ghost" onClick={() => setShowFolderForm(v => !v)}>{showFolderForm ? "بستن" : "＋ پوشه"}</button></div>
           {showFolderForm && <form onSubmit={createTeacherFolder} className="folder-form"><input value={folderName} onChange={e => setFolderName(e.target.value)} placeholder="نام پوشه جدید" required /><button disabled={busy || !folderName.trim()}>ایجاد</button></form>}
           {visibleFolders.map(folder => <div className="folder-row" key={folder.id}>
             <span>{folder.name}{folder.isHidden ? " · مخفی" : ""}</span>
-            <span><button className="ghost" disabled={busy} onClick={() => void renameTeacherFolder(folder)}>تغییر نام</button><button className="ghost" disabled={busy} onClick={() => void toggleFolderHidden(folder)}>{folder.isHidden ? "نمایش" : "مخفی"}</button><button className="ghost danger-text" disabled={busy} onClick={() => void removeTeacherFolder(folder)}>حذف</button></span>
+            <span><button className="ghost" onClick={() => {setBrowseFolderId(folder.id);setSelectedClass(null);setDetail(null);}}>نمایش کلاس‌ها</button><button className="ghost" disabled={busy} onClick={() => void renameTeacherFolder(folder)}>تغییر نام</button><button className="ghost" disabled={busy} onClick={() => void toggleFolderHidden(folder)}>{folder.isHidden ? "نمایش" : "مخفی"}</button><button className="ghost danger-text" disabled={busy} onClick={() => void removeTeacherFolder(folder)}>حذف</button></span>
           </div>)}
           {!visibleFolders.length && <p className="muted">پوشه‌ای برای این استاد ثبت نشده است.</p>}
         </section>}
@@ -395,6 +396,7 @@ export default function App() {
           <label>پوشه استاد<select value={selectedFolderId} onChange={e => setSelectedFolderId(e.target.value)}><option value="">بدون پوشه</option>{visibleFolders.filter(folder => !folder.isHidden || folder.id === selectedFolderId).map(folder => <option key={folder.id} value={folder.id}>{folder.name}{folder.isHidden ? " (مخفی)" : ""}</option>)}</select></label>
           <button disabled={busy || !classTitle.trim() || (isAdmin && selectedTeacher === "all")}>{busy ? "در حال ذخیره…" : editingClass ? "ذخیره تغییرات" : "ذخیره کلاس"}</button>
         </form>}
+<div className="folder-filter"><button className={browseFolderId === "all" ? "choice active" : "choice"} onClick={() => setBrowseFolderId("all")}>همه پوشه‌ها</button><button className={browseFolderId === "none" ? "choice active" : "choice"} onClick={() => setBrowseFolderId("none")}>بدون پوشه</button>{visibleFolders.filter(folder => !folder.isHidden).map(folder => <button key={folder.id} className={browseFolderId === folder.id ? "choice active" : "choice"} onClick={() => setBrowseFolderId(folder.id)}>{folder.name}</button>)}</div>
         <div className="class-grid">
           {visibleClasses.map(c => <button key={c.id} className={selectedClass?.id === c.id ? "class-card selected" : "class-card"} onClick={() => void openClass(c)}>
             <span className="tag">{c.visibility === "public" ? "عمومی" : "خصوصی"}{!c.isPublished ? " · پیش‌نویس" : ""}</span><strong>{c.title}</strong><span className="muted">{teachers.find(t => t.userId === c.ownerUserId)?.displayName ?? "استاد"}</span>
