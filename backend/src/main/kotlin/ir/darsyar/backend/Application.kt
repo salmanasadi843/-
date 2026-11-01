@@ -443,6 +443,10 @@ fun Application.module(
                         call.respond(HttpStatusCode.Unauthorized, ApiError("unauthorized"))
                         return@post
                     }
+                    if (AppRole.SUPER_ADMIN !in principal.roles && AppRole.TEACHER !in principal.roles) {
+                        call.respond(HttpStatusCode.Forbidden, ApiError("session_creation_forbidden"))
+                        return@post
+                    }
                     val request = try { call.receive<SessionWriteRequest>() }
                     catch (_: Exception) {
                         call.respond(HttpStatusCode.BadRequest, ApiError("invalid_request"))
