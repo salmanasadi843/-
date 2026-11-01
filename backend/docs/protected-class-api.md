@@ -14,9 +14,10 @@ Returns classes the authenticated user may see:
 
 - Super admin: all classes, including unpublished and hidden classes.
 - Class owner: all of their own classes, including unpublished and hidden.
-- Approved teacher: published, non-hidden classes from other teachers (read-only).
-- Student: published, non-hidden public classes and classes with an active membership.
-- A user with no application role can only see classes they own (normally none).
+- Any authenticated account, including students and users without a teaching role: published, non-hidden public classes without joining or creating a membership.
+- Student: the same public classes, plus published, non-hidden private classes with an active membership.
+- Another approved teacher: public classes from other teachers are read-only; private classes are not disclosed unless that account also has the student role and an active membership.
+- Class owner and super admin retain their management visibility, including private, hidden, and unpublished classes.
 
 ### `POST /api/v1/classes`
 
@@ -98,10 +99,12 @@ relationship. Optional teacher folders are also only class organization metadata
 ### `GET /api/v1/classes/{classId}/sessions`
 
 Returns sessions visible to the authenticated caller in the specified class.
-Super admins and class owners can see unpublished sessions. Other teachers can
-read published sessions in published, non-hidden classes. Students can read
-published sessions in public classes or classes where they have an active
-membership. Sessions in other teachers' classes remain read-only.
+Super admins and class owners can see unpublished sessions. Any authenticated
+account can read published sessions in published, non-hidden public classes
+without membership. Students can additionally read published sessions in
+private classes where they have an active membership. Other teachers can read
+public classes from other teachers but cannot see their private classes unless
+they also have student role and active membership.
 
 ### `POST /api/v1/classes/{classId}/sessions`
 
