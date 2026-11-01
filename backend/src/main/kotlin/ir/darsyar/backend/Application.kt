@@ -81,10 +81,20 @@ fun Application.module(dataSource: DataSource) {
             ?: throw IllegalStateException("Firebase authentication is not configured.")
         FirebaseAdminTokenVerifier(projectId).verify(idToken)
     }
-    val authenticationService = AuthenticationService(
-        tokenVerifier,
-        PostgresAuthenticatedUserRepository(dataSource)
-    )
+    module(dataSource, tokenVerifier, PostgresAuthenticatedUserRepository(dataSource))
+}
+
+/**
+ * Injectable boundary for isolated HTTP authorization tests.
+ * Production always calls the overload above, which verifies Firebase tokens
+ * and resolves application roles from PostgreSQL.
+ */
+fun Application.module(
+    dataSource: DataSource,
+    tokenVerifier: IdentityTokenVerifier,
+    userRepository: AuthenticatedUserRepository
+) {
+    val authenticationService = AuthenticationService(tokenVerifier, userRepository)
     val classRepository = TeachingClassRepository(dataSource)
 
     install(ContentNegotiation) { json() }
