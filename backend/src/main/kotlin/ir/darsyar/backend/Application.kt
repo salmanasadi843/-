@@ -928,7 +928,26 @@ fun Application.module(
             }
 
             route("/api/v1/classes/{classId}/sessions") {
-async function get(path){return (await tools.mcp__GitHub__fetch_file({repository_full_name:repo,path,ref:branch})).result;}                get {
+                get("/{sessionId}") {
+                    val principal = call.principal<DarsyarPrincipal>()
+                    if (principal == null) {
+                        call.respond(HttpStatusCode.Unauthorized, ApiError("unauthorized"))
+                        return@get
+                    }
+                    try {
+                        val classId = call.parameters["classId"] ?: ""
+                        val sessionId = call.parameters["sessionId"] ?: ""
+                        val session = sessionRepository.findVisible(
+                            principal.userId, principal.roles, classId, sessionId
+                        )
+                        if (session == null) call.respond(HttpStatusCode.NotFound, ApiError("session_not_found"))
+                        else call.respond(session.toApiRecord())
+                    } catch (_: IllegalArgumentException) {
+                        call.respond(HttpStatusCode.BadRequest, ApiError("invalid_session_id"))
+                    }
+                }
+
+                get {
                     val principal = call.principal<DarsyarPrincipal>()
                     if (principal == null) {
                         call.respond(HttpStatusCode.Unauthorized, ApiError("unauthorized"))
