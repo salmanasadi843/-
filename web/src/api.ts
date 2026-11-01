@@ -13,7 +13,7 @@ export type SessionDetail = SessionSummary & {
   transcript: string; originalTranscript: string; aiSummary: string | null; aiKeyPoints: string | null;
   aiQuizJson?: string | null;
 };
-const base = (import.meta.env.DARSYAR_API_BASE_URL || "").replace(/\/+$/, "");
+const base = (import.meta.env.VITE_DARSYAR_API_BASE_URL || "").replace(/\/+$/, "");
 async function request<T>(path: string, token: string): Promise<T> {
   if (!base) throw new Error("نشانی سرور تنظیم نشده است.");
   const response = await fetch(`${base}${path}`, {
