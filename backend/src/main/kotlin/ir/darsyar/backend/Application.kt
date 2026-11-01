@@ -91,6 +91,17 @@ data class AccessCodeApiRecord(
 )
 
 @Serializable
+data class AccessCodeListApiRecord(
+    val id: String,
+    val classId: String,
+    val expiresAtMs: Long?,
+    val maxUses: Int?,
+    val useCount: Int,
+    val isActive: Boolean,
+    val createdAtMs: Long
+)
+
+@Serializable
 data class RedeemAccessCodeRequest(val code: String)
 
 @Serializable
@@ -408,6 +419,30 @@ fun Application.module(
             }
 
             route("/api/v1/classes/{classId}/access-codes") {
+                get {
+                    val principal = call.principal<DarsyarPrincipal>()
+                    if (principal == null) {
+                        call.respond(HttpStatusCode.Unauthorized, ApiError("unauthorized"))
+                        return@get
+                    }
+                    try {
+                        val classId = call.parameters["classId"] ?: ""
+                        call.respond(
+                            classAccessRepository.listCodes(principal.userId, principal.roles, classId)
+                                .map {
+                                    AccessCodeListApiRecord(
+                                        it.id, it.classId, it.expiresAt?.toEpochMilli(), it.maxUses,
+                                        it.useCount, it.isActive, it.createdAt.toEpochMilli()
+                                    )
+                                }
+                        )
+                    } catch (_: SecurityException) {
+                        call.respond(HttpStatusCode.Forbidden, ApiError("access_code_management_forbidden"))
+                    } catch (_: IllegalArgumentException) {
+                        call.respond(HttpStatusCode.BadRequest, ApiError("invalid_class_id"))
+                    }
+                }
+
                 post {
                     val principal = call.principal<DarsyarPrincipal>()
                     if (principal == null) {
