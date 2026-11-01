@@ -131,6 +131,92 @@ class ClassAccessRepository(
         }
     }
 
+    fun listMembers(actorUserId: String, roles: Set<AppRole>, classId: String): List<ClassMembershipRecord> {
+        val actor = UUID.fromString(actorUserId)
+        val classUuid = UUID.fromString(classId)
+        dataSource.connection.use { connection ->
+            val owner = connection.prepareStatement(
+                "SELECT owner_user_id FROM teaching_classes WHERE id = ?"
+            ).use { st ->
+                st.setObject(1, classUuid)
+                st.executeQuery().use { rs ->
+                    if (rs.next()) rs.getObject("owner_user_id", UUID::class.java) else null
+                }
+            } ?: throw IllegalArgumentException("Class not found.")
+            if (AppRole.SUPER_ADMIN !in roles &&
+                !(AppRole.TEACHER in roles && owner == actor)
+            ) throw SecurityException("You cannot manage memberships for this class.")
+            connection.prepareStatement(
+                """
+                SELECT class_id::text, student_user_id::text, status, joined_at
+                FROM class_memberships
+                WHERE class_id = ?
+                ORDER BY joined_at NULLS LAST, student_user_id
+                """.trimIndent()
+            ).use { st ->
+                st.setObject(1, classUuid)
+                st.executeQuery().use { rs ->
+                    buildList {
+                        while (rs.next()) add(
+                            ClassMembershipRecord(
+                                rs.getString("class_id"), rs.getString("student_user_id"),
+                                rs.getString("status"), rs.getTimestamp("joined_at")?.toInstant()
+                            )
+                        )
+                    }
+                }
+            }
+        }
+    }
+
+    fun revokeMembership(
+        actorUserId: String,
+        roles: Set<AppRole>,
+        classId: String,
+        studentUserId: String
+    ): Boolean {
+        val actor = UUID.fromString(actorUserId)
+        val classUuid = UUID.fromString(classId)
+        val student = UUID.fromString(studentUserId)
+        dataSource.connection.use { connection ->
+            connection.autoCommit = false
+            try {
+                val owner = connection.prepareStatement(
+                    "SELECT owner_user_id FROM teaching_classes WHERE id = ? FOR UPDATE"
+                ).use { st ->
+                    st.setObject(1, classUuid)
+                    st.executeQuery().use { rs ->
+                        if (rs.next()) rs.getObject("owner_user_id", UUID::class.java) else null
+                    }
+                } ?: throw IllegalArgumentException("Class not found.")
+                if (AppRole.SUPER_ADMIN !in roles &&
+                    !(AppRole.TEACHER in roles && owner == actor)
+                ) throw SecurityException("You cannot manage memberships for this class.")
+                val changed = connection.prepareStatement(
+                    """
+                    UPDATE class_memberships
+                    SET status = 'revoked', updated_at = now()
+                    WHERE class_id = ? AND student_user_id = ? AND status = 'active'
+                    """.trimIndent()
+                ).use { st ->
+                    st.setObject(1, classUuid)
+                    st.setObject(2, student)
+                    st.executeUpdate()
+                }
+                if (changed == 0) {
+                    connection.commit()
+                    return false
+                }
+                connection.writeAccessAudit(actor, "class_membership.revoked", classUuid.toString(), owner)
+                connection.commit()
+                return true
+            } catch (error: Throwable) {
+                connection.rollback()
+                throw error
+            } finally { connection.autoCommit = true }
+        }
+    }
+
     fun redeem(actorUserId: String, roles: Set<AppRole>, rawCode: String): RedeemClassAccessResult {
         val actor = UUID.fromString(actorUserId)
         if (AppRole.STUDENT !in roles || AppRole.SUPER_ADMIN in roles || AppRole.TEACHER in roles) {
