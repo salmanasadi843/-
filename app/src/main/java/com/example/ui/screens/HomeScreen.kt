@@ -15,6 +15,8 @@ import androidx.compose.material.icons.filled.Settings
 import androidx.compose.material.icons.filled.Search
 import androidx.compose.material.icons.filled.Share
 import androidx.compose.material.icons.filled.School
+import androidx.compose.material.icons.filled.Cloud
+import com.example.data.api.BackendEndpointConfig
 import androidx.compose.material3.*
 import androidx.compose.ui.platform.LocalContext
 import android.content.Context
@@ -59,7 +61,8 @@ fun HomeScreen(
     userRole: UserRole,
     onNavigateToAdd: () -> Unit,
     onNavigateToDetail: (Long) -> Unit,
-    onNavigateToAiSummary: (Long) -> Unit
+    onNavigateToAiSummary: (Long) -> Unit,
+    onNavigateToBackendBrowse: () -> Unit
 ) {
     val allClasses by viewModel.repository.allClasses.collectAsState(initial = emptyList())
     val allLectures by viewModel.repository.allLectures.collectAsState(initial = emptyList())
@@ -240,6 +243,11 @@ fun HomeScreen(
                     IconButton(onClick = { showAdvancedSearch = true }) { Icon(Icons.Default.Search, contentDescription = "جستجوی پیشرفته در درس‌ها") }
                     if (isTeacher) IconButton(onClick = { showBulkExportDialog = true }) { Icon(Icons.Default.Share, contentDescription = "ارسال گروهی مطالب") }
                     IconButton(onClick = viewModel::openClasses) { Icon(Icons.Default.School, "کلاس‌ها") }
+                    if (BackendEndpointConfig.isConfigured) {
+                        IconButton(onClick = onNavigateToBackendBrowse) {
+                            Icon(Icons.Default.Cloud, contentDescription = "مرور ساختار سرور جدید")
+                        }
+                    }
                     IconButton(onClick = { viewModel.navigateTo(Screen.Settings) }) { Icon(Icons.Default.Settings, "تنظیمات") }
                 }
             )
