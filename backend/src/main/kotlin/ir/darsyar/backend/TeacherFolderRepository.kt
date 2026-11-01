@@ -54,7 +54,7 @@ class TeacherFolderRepository(private val dataSource: DataSource) {
                           )
                       )))
                 )
-            )
+            ) AND (? OR f.owner_user_id = ?::uuid OR f.is_hidden = false)
             ORDER BY f.owner_user_id, f.parent_folder_id NULLS FIRST, f.sort_order, f.name
         """.trimIndent()
         dataSource.connection.use { connection ->
@@ -64,6 +64,8 @@ class TeacherFolderRepository(private val dataSource: DataSource) {
                 statement.setBoolean(3, teacher)
                 statement.setBoolean(4, student)
                 statement.setString(5, actorUserId)
+                statement.setBoolean(6, admin)
+                statement.setString(7, actorUserId)
                 statement.executeQuery().use { rows ->
                     val result = mutableListOf<TeacherFolderRecord>()
                     while (rows.next()) result += rows.toFolderRecord()
