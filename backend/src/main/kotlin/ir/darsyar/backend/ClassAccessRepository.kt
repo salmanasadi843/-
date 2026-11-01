@@ -73,7 +73,7 @@ class ClassAccessRepository(
                     st.setObject(1, classUuid)
                     st.setString(2, hashCode(plainCode))
                     if (expiresAt == null) st.setNull(3, java.sql.Types.TIMESTAMP_WITH_TIMEZONE)
-                    else st.setObject(3, expiresAt)
+                    else st.setObject(3, expiresAt?.atOffset(java.time.ZoneOffset.UTC))
                     if (maxUses == null) st.setNull(4, java.sql.Types.INTEGER) else st.setInt(4, maxUses)
                     st.setObject(5, actor)
                     st.executeQuery().use { rs ->
@@ -133,8 +133,8 @@ class ClassAccessRepository(
 
     fun redeem(actorUserId: String, roles: Set<AppRole>, rawCode: String): RedeemClassAccessResult {
         val actor = UUID.fromString(actorUserId)
-        require(AppRole.STUDENT in roles && AppRole.SUPER_ADMIN !in roles && AppRole.TEACHER !in roles) {
-            "Only student accounts can redeem private-class codes."
+        if (AppRole.STUDENT !in roles || AppRole.SUPER_ADMIN in roles || AppRole.TEACHER in roles) {
+            throw SecurityException("Only student accounts can redeem private-class codes.")
         }
         val normalized = rawCode.trim().uppercase()
         require(normalized.matches(Regex("[A-Z2-9]{10}"))) { "Invalid access code." }
