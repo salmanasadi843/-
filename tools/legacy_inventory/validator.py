@@ -16,7 +16,7 @@ from collections import Counter, defaultdict
 from pathlib import Path
 from typing import Any
 
-VERSION = "0.1.0"
+VERSION = "0.2.0"
 CLASS_STATES = ("matched_uid", "blank_owner", "unknown_uid", "conflicting_owner", "invalid_record")
 
 
@@ -90,10 +90,21 @@ def run_inventory(paths: list[Path], key: bytes) -> dict[str, Any]:
             role = str(account.get("role_field") or "absent")
             agg["role_field"][role] = agg["role_field"].get(role, 0) + 1
 
-        folders = {str(x.get("id")): x for x in data.get("folders", []) if x.get("id") is not None}
-        classes = {str(x.get("id")): x for x in data.get("classes", []) if x.get("id") is not None}
-        courses = {str(x.get("id")): x for x in data.get("courses", []) if x.get("id") is not None}
-        sessions = {str(x.get("id")): x for x in data.get("sessions", []) if x.get("id") is not None}
+        def index_rows(rows: list[dict[str, Any]], table: str) -> tuple[dict[str, dict[str, Any]], set[str]]:
+            grouped: dict[str, list[dict[str, Any]]] = defaultdict(list)
+            for item in rows:
+                if item.get("id") is not None:
+                    grouped[str(item["id"])].append(item)
+            duplicates = {row_id for row_id, items in grouped.items() if len(items) > 1}
+            for row_id in duplicates:
+                add_exception("duplicate_" + table + "_id_within_source", row_id)
+            return ({row_id: items[0] for row_id, items in grouped.items() if len(items) == 1}, duplicates)
+
+        # Ambiguous duplicate IDs are excluded from lookup maps, never silently resolved.
+        folders, duplicate_folder_ids = index_rows(data.get("folders", []), "folders")
+        classes, duplicate_class_ids = index_rows(data.get("classes", []), "classes")
+        courses, duplicate_course_ids = index_rows(data.get("courses", []), "courses")
+        sessions, duplicate_session_ids = index_rows(data.get("sessions", []), "sessions")
 
         def add_exception(kind: str, row_id: Any, owner: str | None = None) -> None:
             report["exceptions"].append({
@@ -106,7 +117,9 @@ def run_inventory(paths: list[Path], key: bytes) -> dict[str, Any]:
             owner = row.get("owner_uid")
             if row.get("invalid") or row.get("id") is None:
                 return "invalid_record"
-            if row.get("owner_conflict") or (owner and owner in ambiguous_uids):
+            document_owner = row.get("document_owner_uid")
+            if (row.get("owner_conflict") or (owner and owner in ambiguous_uids)
+                    or (document_owner and owner and str(document_owner) != str(owner))):
                 return "conflicting_owner"
             if owner is None or not str(owner).strip():
                 return "blank_owner"
@@ -121,7 +134,7 @@ def run_inventory(paths: list[Path], key: bytes) -> dict[str, Any]:
             if rid is not None:
                 ids["classes"][str(rid)] += 1
             state = class_state(row)
-            if rid is not None:
+            if rid is not None and str(rid) not in duplicate_class_ids:
                 class_states[str(rid)] = state
             report["aggregates"]["classes_by_ownership"][state] += 1
             visibility = str(row.get("visibility") or ("published" if row.get("published") else "unpublished"))
@@ -179,26 +192,29 @@ def run_inventory(paths: list[Path], key: bytes) -> dict[str, Any]:
                 add_exception("folder_parent_missing_or_owner_mismatch", row.get("id"), owner)
 
         cycle_nodes: set[str] = set()
+        globally_done: set[str] = set()
         for start in folders:
-            seen: set[str] = set()
+            path_nodes: list[str] = []
+            path_index: dict[str, int] = {}
             current: str | None = start
-            while current is not None and current in folders:
-                if current in seen:
-                    cycle_nodes.update(seen)
+            while current is not None and current in folders and current not in globally_done:
+                if current in path_index:
+                    cycle_nodes.update(path_nodes[path_index[current]:])
                     break
-                seen.add(current)
+                path_index[current] = len(path_nodes)
+                path_nodes.append(current)
                 parent = folders[current].get("parent_folder_id")
                 current = str(parent) if parent is not None else None
+            globally_done.update(path_nodes)
         if cycle_nodes:
             report["aggregates"]["folders"]["cycles"] += len(cycle_nodes)
             for folder_id in sorted(cycle_nodes):
                 add_exception("folder_cycle", folder_id, folders[folder_id].get("owner_uid"))
 
-        for table, values in ids.items():
-            for row_id, n in values.items():
-                if n > 1:
-                    report["aggregates"]["duplicate_ids_within_source"] += n - 1
-                    add_exception("duplicate_" + table + "_id_within_source", row_id)
+        report["aggregates"]["duplicate_ids_within_source"] += (
+            len(duplicate_folder_ids) + len(duplicate_class_ids)
+            + len(duplicate_course_ids) + len(duplicate_session_ids)
+        )
 
         pop = report["aggregates"]["records_by_population"]
         for name in pop:
