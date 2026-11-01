@@ -7,15 +7,17 @@ Run Gradle with `-p backend`; do not add this as an Android module.
 
 - Ktor/Netty HTTP service and liveness/readiness endpoints.
 - PostgreSQL connection pool and Flyway migrations.
-- Schema preserving teacher → optional folder → class → optional course → session.
+- Schema preserving the canonical teacher → class → session hierarchy. Optional folders
+  categorize a teacher's classes; optional courses group sessions within a class.
 - Central role policy: primary admin can manage all teacher classes; a teacher manages
   only their own classes and can read other teachers' published classes; students need
   public publication or active membership.
 - Firebase Admin ID-token verification using Application Default Credentials.
 - Provider-independent internal user identities and server-side PostgreSQL role lookup.
-- Protected `GET /api/v1/me`, class list/create/update, and teacher-folder list/create/update/soft-delete endpoints; anonymous requests are rejected.
+- Protected `GET /api/v1/me`, class list/create/update, teacher-folder list/create/update/soft-delete,
+  and class-scoped session list/create plus session update endpoints; anonymous requests are rejected.
 - Class visibility and ownership enforcement in PostgreSQL, including admin cross-teacher management.
-- Transactional audit records for class and folder mutations; folders support safe same-owner nesting, hide/reorder/rename/move, cycle prevention, and empty-folder soft deletion.
+- Transactional audit records for class, session, and folder mutations; folders support safe same-owner nesting, hide/reorder/rename/move, cycle prevention, and empty-folder soft deletion.
 - Docker packaging and local PostgreSQL Compose environment.
 - PostgreSQL backup/restore scripts with SHA-256 verification; restore refuses
   non-empty targets and never drops existing tables.
@@ -35,8 +37,9 @@ identity in a supported hosting environment). Never commit service-account keys.
 Create/link application users and grant roles through a separately controlled
 administrative process; this service intentionally does not auto-provision accounts.
 
-The current protected domain API covers class listing, creation, and metadata updates.
-Course/session CRUD, folder management, class deletion, administrative role-management
+The protected domain API now covers class and folder management plus class-scoped
+session listing, creation, and content updates. Course CRUD, session deletion and audio
+source management, class deletion, access-code redemption, administrative role-management
 workflows, production secrets, and Firebase-to-user linking procedures still require
 further implementation and review. See [the protected class API notes](docs/protected-class-api.md).
 Do not expose this staging service as the production app backend yet.
