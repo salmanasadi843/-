@@ -250,14 +250,17 @@ private fun Connection.folderAudit(
 ) {
     fun json(folder: TeacherFolderRecord): String =
         kotlinx.serialization.json.buildJsonObject {
-            put("id", folder.id)
-            put("ownerUserId", folder.ownerUserId)
-            put("parentFolderId", folder.parentFolderId?.let { kotlinx.serialization.json.JsonPrimitive(it) }
-                ?: kotlinx.serialization.json.JsonNull)
-            put("name", folder.name)
-            put("sortOrder", folder.sortOrder)
-            put("isHidden", folder.isHidden)
-            put("version", folder.version)
+            put("id", kotlinx.serialization.json.JsonPrimitive(folder.id))
+            put("ownerUserId", kotlinx.serialization.json.JsonPrimitive(folder.ownerUserId))
+            put(
+                "parentFolderId",
+                folder.parentFolderId?.let { kotlinx.serialization.json.JsonPrimitive(it) }
+                    ?: kotlinx.serialization.json.JsonNull
+            )
+            put("name", kotlinx.serialization.json.JsonPrimitive(folder.name))
+            put("sortOrder", kotlinx.serialization.json.JsonPrimitive(folder.sortOrder))
+            put("isHidden", kotlinx.serialization.json.JsonPrimitive(folder.isHidden))
+            put("version", kotlinx.serialization.json.JsonPrimitive(folder.version))
         }.toString()
     prepareStatement(
         """
