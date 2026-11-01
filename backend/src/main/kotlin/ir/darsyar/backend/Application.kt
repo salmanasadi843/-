@@ -422,6 +422,8 @@ fun Application.module(
                     }
                 }
 
+            }
+
             route("/api/v1/classes/{classId}/sessions") {
                 get {
                     val principal = call.principal<DarsyarPrincipal>()
@@ -512,7 +514,6 @@ fun Application.module(
                         call.respond(HttpStatusCode.BadRequest, ApiError("invalid_session_relation_or_json"))
                     }
                 }
-            }
             }
         }
     }
