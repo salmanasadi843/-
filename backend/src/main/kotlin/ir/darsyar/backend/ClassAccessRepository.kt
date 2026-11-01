@@ -17,6 +17,16 @@ data class CreatedClassAccessCode(
     val maxUses: Int?
 )
 
+data class ClassAccessCodeRecord(
+    val id: String,
+    val classId: String,
+    val expiresAt: Instant?,
+    val maxUses: Int?,
+    val useCount: Int,
+    val isActive: Boolean,
+    val createdAt: Instant
+)
+
 data class ClassMembershipRecord(
     val classId: String,
     val studentUserId: String,
@@ -92,6 +102,47 @@ class ClassAccessRepository(
                 connection.rollback()
                 throw error
             } finally { connection.autoCommit = true }
+        }
+    }
+
+    fun listCodes(actorUserId: String, roles: Set<AppRole>, classId: String): List<ClassAccessCodeRecord> {
+        val actor = UUID.fromString(actorUserId)
+        val classUuid = UUID.fromString(classId)
+        return dataSource.connection.use { connection ->
+            val owner = connection.prepareStatement(
+                "SELECT owner_user_id FROM teaching_classes WHERE id = ?"
+            ).use { st ->
+                st.setObject(1, classUuid)
+                st.executeQuery().use { rs ->
+                    if (rs.next()) rs.getObject("owner_user_id", UUID::class.java) else null
+                }
+            } ?: throw IllegalArgumentException("Class not found.")
+            if (AppRole.SUPER_ADMIN !in roles &&
+                !(AppRole.TEACHER in roles && owner == actor)
+            ) throw SecurityException("You cannot manage access codes for this class.")
+            connection.prepareStatement(
+                """
+                SELECT id::text, class_id::text, expires_at, max_uses, use_count, is_active, created_at
+                FROM class_access_codes
+                WHERE class_id = ?
+                ORDER BY created_at DESC, id
+                """.trimIndent()
+            ).use { st ->
+                st.setObject(1, classUuid)
+                st.executeQuery().use { rs ->
+                    buildList {
+                        while (rs.next()) add(
+                            ClassAccessCodeRecord(
+                                rs.getString("id"), rs.getString("class_id"),
+                                rs.getTimestamp("expires_at")?.toInstant(),
+                                rs.getObject("max_uses")?.let { (it as Number).toInt() },
+                                rs.getInt("use_count"), rs.getBoolean("is_active"),
+                                rs.getTimestamp("created_at").toInstant()
+                            )
+                        )
+                    }
+                }
+            }
         }
     }
 
