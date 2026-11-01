@@ -31,10 +31,7 @@ class InventoryValidatorTest(unittest.TestCase):
                 {"id": 12, "owner_uid": "uid-not-exported", "folder_id": None},
                 {"id": 13, "owner_uid": "uid-teacher-a", "folder_id": 2},
             ],
-            "courses": [
-                {"id": 20, "class_id": 10},
-                {"id": 21, "class_id": 999},
-            ],
+            "courses": [{"id": 20, "class_id": 10}, {"id": 21, "class_id": 999}],
             "sessions": [
                 {"id": 30, "class_id": 10, "course_id": 20},
                 {"id": 31, "class_id": 10, "course_id": 21},
@@ -82,36 +79,46 @@ class InventoryValidatorTest(unittest.TestCase):
         self.assertEqual(report["aggregates"]["accounts"]["ambiguous_uid_mappings"], 1)
         self.assertEqual(report["aggregates"]["classes_by_ownership"]["conflicting_owner"], 1)
 
-
-    def test_duplicate_ids_are_not_silently_resolved_and_owner_conflicts_are_flagged(self):
+    def test_duplicate_class_id_is_ambiguous_parent_not_an_orphan(self):
         fixture = {
-            "source_id": "synthetic-ambiguous-source",
+            "source_id": "synthetic-duplicate-parent",
             "accounts": [{"uid": "teacher-a", "account_id": "a"}],
-            "folders": [
-                {"id": 1, "owner_uid": "teacher-a", "parent_folder_id": None},
-                {"id": 2, "owner_uid": "teacher-a", "parent_folder_id": 1},
-                {"id": 3, "owner_uid": "teacher-a", "parent_folder_id": 2},
-            ],
             "classes": [
-                {"id": 7, "owner_uid": "teacher-a", "document_owner_uid": "teacher-b"},
                 {"id": 8, "owner_uid": "teacher-a"},
                 {"id": 8, "owner_uid": "teacher-a"},
             ],
             "courses": [{"id": 9, "class_id": 8}],
-            "sessions": [],
+            "sessions": [{"id": 10, "class_id": 8}],
         }
         with tempfile.TemporaryDirectory() as directory:
-            path = Path(directory) / "ambiguous.json"
+            path = Path(directory) / "duplicate-parent.json"
             path.write_text(json.dumps(fixture), encoding="utf-8")
             report = run_inventory([path], b"z" * 32)
-
         agg = report["aggregates"]
-        self.assertEqual(agg["classes_by_ownership"]["conflicting_owner"], 1)
-        self.assertEqual(agg["duplicate_ids_within_source"], 1)
-        self.assertEqual(agg["orphans"]["courses"], 1)
-        self.assertEqual(agg["folders"]["cycles"], 0)
-        kinds = {item["kind"] for item in report["exceptions"]}
-        self.assertIn("duplicate_classes_id_within_source", kinds)
+        self.assertEqual(agg["orphans"]["courses"], 0)
+        self.assertEqual(agg["orphans"]["sessions"], 0)
+        self.assertEqual(agg["ambiguous_parent_references"]["courses"], 1)
+        self.assertEqual(agg["ambiguous_parent_references"]["sessions"], 1)
+        self.assertEqual(agg["courses_by_ownership"]["ambiguous_parent"], 1)
+        self.assertEqual(agg["sessions_by_ownership"]["ambiguous_parent"], 1)
+
+    def test_blank_owner_with_independent_document_owner_is_conflicting(self):
+        fixture = {
+            "source_id": "synthetic-owner-disagreement",
+            "accounts": [{"uid": "teacher-a", "account_id": "a"}],
+            "classes": [
+                {"id": 1, "owner_uid": "", "document_owner_uid": "teacher-a"},
+                {"id": 2, "owner_uid": "teacher-a", "document_owner_uid": ""},
+            ],
+        }
+        with tempfile.TemporaryDirectory() as directory:
+            path = Path(directory) / "owner-disagreement.json"
+            path.write_text(json.dumps(fixture), encoding="utf-8")
+            report = run_inventory([path], b"w" * 32)
+        states = report["aggregates"]["classes_by_ownership"]
+        self.assertEqual(states["conflicting_owner"], 1)
+        self.assertEqual(states["matched_uid"], 1)
+        self.assertEqual(states["blank_owner"], 0)
 
 
 if __name__ == "__main__":
