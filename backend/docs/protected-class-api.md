@@ -125,6 +125,13 @@ update a session. The class relationship and owner cannot be changed through
 this endpoint. Every create/update writes a session audit record in the same
 transaction.
 
+### Session deletion and recovery
+
+- `DELETE /api/v1/sessions/{sessionId}`: soft-deletes a session; only its class owner or super admin may do so.
+- `POST /api/v1/sessions/{sessionId}/restore`: restores a soft-deleted session for the same authorized roles.
+- Deleted sessions are omitted from normal session listings, but their full content, course association, and audio-source metadata remain stored. No related record is cascaded away.
+- Repeating delete or restore is safe and does not create duplicate audit entries. Actual state changes increment the session version and write an audit record in the same transaction.
+
 ### Audio source endpoints
 
 Audio sources are separate records attached to a session; a session may have

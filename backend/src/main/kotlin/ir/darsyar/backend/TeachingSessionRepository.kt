@@ -252,6 +252,73 @@ class TeachingSessionRepository(private val dataSource: DataSource) {
         }
     }
 
+
+    /**
+     * Soft-deletes or restores a session without removing its content or audio metadata.
+     * Returns null when missing, false when already in the requested state.
+     */
+    fun setDeleted(actorUserId: String, roles: Set<AppRole>, sessionId: String, deleted: Boolean): Boolean? {
+        val actor = UUID.fromString(actorUserId)
+        val id = UUID.fromString(sessionId)
+        dataSource.connection.use { connection ->
+            connection.autoCommit = false
+            try {
+                val before = connection.prepareStatement(
+                    """
+                    SELECT s.id::text, s.class_id::text, s.course_id::text, s.title, s.course_name,
+                      s.professor_name, s.date_ms, s.audio_duration_ms, s.transcript,
+                      s.original_transcript, s.ai_summary, s.ai_key_points,
+                      s.ai_quiz_json::text AS ai_quiz_json, s.tags, s.is_published,
+                      s.last_edited_ms, s.sort_order, s.version, c.owner_user_id::text,
+                      s.deleted_at
+                    FROM teaching_sessions s
+                    JOIN teaching_classes c ON c.id = s.class_id
+                    WHERE s.id = ? FOR UPDATE OF s
+                    """.trimIndent()
+                ).use { st ->
+                    st.setObject(1, id)
+                    st.executeQuery().use { rs ->
+                        if (rs.next()) Triple(rs.toSessionRecord(), rs.getString("owner_user_id"), rs.getTimestamp("deleted_at") != null)
+                        else null
+                    }
+                } ?: run { connection.rollback(); return null }
+
+                val (old, ownerId, currentlyDeleted) = before
+                if (AppRole.SUPER_ADMIN !in roles &&
+                    !(AppRole.TEACHER in roles && ownerId == actorUserId)
+                ) throw SecurityException("Session management is not allowed.")
+                if (currentlyDeleted == deleted) {
+                    connection.commit()
+                    return false
+                }
+
+                val updated = connection.prepareStatement(
+                    """
+                    UPDATE teaching_sessions
+                    SET deleted_at = CASE WHEN ? THEN now() ELSE NULL END,
+                        version = version + 1, updated_at = now()
+                    WHERE id = ?
+                    RETURNING id::text, class_id::text, course_id::text, title, course_name,
+                      professor_name, date_ms, audio_duration_ms, transcript, original_transcript,
+                      ai_summary, ai_key_points, ai_quiz_json::text AS ai_quiz_json, tags,
+                      is_published, last_edited_ms, sort_order, version
+                    """.trimIndent()
+                ).use { st ->
+                    st.setBoolean(1, deleted); st.setObject(2, id)
+                    st.executeQuery().use { rs -> check(rs.next()); rs.toSessionRecord() }
+                }
+                connection.writeSessionAudit(actor, if (deleted) "session.deleted" else "session.restored", updated, old)
+                connection.commit()
+                return true
+            } catch (error: Throwable) {
+                connection.rollback()
+                throw error
+            } finally {
+                connection.autoCommit = true
+            }
+        }
+    }
+
     private fun java.sql.ResultSet.toSessionRecord() = TeachingSessionRecord(
         id = getString("id"), classId = getString("class_id"), courseId = getString("course_id"),
         title = getString("title"), courseName = getString("course_name"),

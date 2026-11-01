@@ -122,9 +122,18 @@ class TeachingSessionRepositoryIntegrationTest {
             assertNotNull(updated)
             assertEquals("ویرایش مدیر", updated.title)
             assertEquals(2L, updated.version)
+
+            assertFailsWith<SecurityException> {
+                repository.setDeleted(otherTeacher.toString(), setOf(AppRole.TEACHER), published.id, true)
+            }
+            assertEquals(true, repository.setDeleted(admin.toString(), setOf(AppRole.SUPER_ADMIN), published.id, true))
+            assertTrue(repository.listVisible(admin.toString(), setOf(AppRole.SUPER_ADMIN)).none { it.id == published.id })
+            assertEquals(false, repository.setDeleted(admin.toString(), setOf(AppRole.SUPER_ADMIN), published.id, true))
+            assertEquals(true, repository.setDeleted(admin.toString(), setOf(AppRole.SUPER_ADMIN), published.id, false))
+            assertTrue(repository.listVisible(admin.toString(), setOf(AppRole.SUPER_ADMIN)).any { it.id == published.id })
             ds.connection.use { connection ->
                 connection.prepareStatement("SELECT count(*) FROM audit_log WHERE entity_type = 'session'").use { st ->
-                    st.executeQuery().use { rs -> check(rs.next()); assertEquals(4, rs.getInt(1)) }
+                    st.executeQuery().use { rs -> check(rs.next()); assertEquals(6, rs.getInt(1)) }
                 }
             }
         }

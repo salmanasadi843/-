@@ -963,6 +963,43 @@ fun Application.module(
                         call.respond(HttpStatusCode.BadRequest, ApiError("invalid_session_relation_or_json"))
                     }
                 }
+                
+                delete {
+                    val principal = call.principal<DarsyarPrincipal>()
+                    if (principal == null) {
+                        call.respond(HttpStatusCode.Unauthorized, ApiError("unauthorized"))
+                        return@delete
+                    }
+                    try {
+                        when (sessionRepository.setDeleted(principal.userId, principal.roles, call.parameters["sessionId"] ?: "", true)) {
+                            null -> call.respond(HttpStatusCode.NotFound, ApiError("session_not_found"))
+                            else -> call.respond(HttpStatusCode.NoContent)
+                        }
+                    } catch (_: SecurityException) {
+                        call.respond(HttpStatusCode.Forbidden, ApiError("session_management_forbidden"))
+                    } catch (_: IllegalArgumentException) {
+                        call.respond(HttpStatusCode.BadRequest, ApiError("invalid_session_id"))
+                    }
+                }
+
+                post("/restore") {
+                    val principal = call.principal<DarsyarPrincipal>()
+                    if (principal == null) {
+                        call.respond(HttpStatusCode.Unauthorized, ApiError("unauthorized"))
+                        return@post
+                    }
+                    try {
+                        when (sessionRepository.setDeleted(principal.userId, principal.roles, call.parameters["sessionId"] ?: "", false)) {
+                            null -> call.respond(HttpStatusCode.NotFound, ApiError("session_not_found"))
+                            else -> call.respond(HttpStatusCode.NoContent)
+                        }
+                    } catch (_: SecurityException) {
+                        call.respond(HttpStatusCode.Forbidden, ApiError("session_management_forbidden"))
+                    } catch (_: IllegalArgumentException) {
+                        call.respond(HttpStatusCode.BadRequest, ApiError("invalid_session_id"))
+                    }
+                }
+
             }
         }
     }
