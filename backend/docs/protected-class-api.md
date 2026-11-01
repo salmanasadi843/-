@@ -148,10 +148,12 @@ audio-source write and deactivation is audited transactionally.
 - `POST /api/v1/classes/{classId}/access-codes`: the class owner or super admin creates a code for a private class. Optional `expiresAtMs` and `maxUses` limits can be supplied.
 - `DELETE /api/v1/access-codes/{codeId}`: the class owner or super admin deactivates a code.
 - `POST /api/v1/class-memberships/redeem`: a student redeems a code and receives active membership.
+- `GET /api/v1/classes/{classId}/memberships`: the class owner or super admin lists membership records.
+- `DELETE /api/v1/classes/{classId}/memberships/{studentUserId}`: the class owner or super admin revokes an active membership; the record is retained with `revoked` status.
 
-The generated code is returned only once. PostgreSQL stores only its SHA-256 hash. Codes are checked under a row lock, so concurrent redemptions respect usage limits. Repeating a redemption by a student who already has active membership is idempotent and does not consume another use. Codes work only for published private classes; public/unlisted classes do not need this mechanism. Every code creation/deactivation and membership activation is audited in the same transaction.
+The generated code is returned only once. PostgreSQL stores only its SHA-256 hash. Codes are checked under a row lock, so concurrent redemptions respect usage limits. Repeating a redemption by a student who already has active membership is idempotent and does not consume another use. Codes work only for published private classes; public/unlisted classes do not need this mechanism. Every code creation/deactivation and membership activation/revocation is audited in the same transaction. Revocation does not delete membership history; a later valid code redemption can reactivate the membership.
 
-The API currently supports code redemption and code deactivation; a complete membership administration/listing interface is still pending.
+The API supports owner/admin membership listing and revocation. Student-facing membership history and UI integration remain pending.
 
 ## Audit and transaction guarantees
 
@@ -167,7 +169,7 @@ record creation against a disposable PostgreSQL schema.
 ## Deliberate limitations
 
 - No class deletion endpoint is exposed yet.
-- Session deletion, binary audio upload/storage-provider adapters, and full membership administration/listing are not implemented by this API yet.
+- Session deletion, binary audio upload/storage-provider adapters, and student-facing membership history and UI integration are not implemented yet.
 - This is a backend staging foundation. It is not deployed, does not receive
   production traffic, and is not connected to the Android app or live Firebase
   data.
