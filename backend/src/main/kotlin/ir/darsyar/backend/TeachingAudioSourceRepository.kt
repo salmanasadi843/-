@@ -285,7 +285,7 @@ private fun Connection.findSessionOwner(sessionId: UUID): UUID? =
         SELECT c.owner_user_id
         FROM teaching_sessions s
         JOIN teaching_classes c ON c.id = s.class_id
-        WHERE s.id = ? AND s.deleted_at IS NULL
+        WHERE s.id = ? AND c.deleted_at IS NULL AND s.deleted_at IS NULL
         FOR UPDATE OF s
         """.trimIndent()
     ).use { st ->

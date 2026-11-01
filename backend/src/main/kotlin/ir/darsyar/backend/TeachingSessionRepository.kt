@@ -77,7 +77,7 @@ class TeachingSessionRepository(private val dataSource: DataSource) {
                    s.last_edited_ms, s.sort_order, s.version
             FROM teaching_sessions s
             JOIN teaching_classes c ON c.id = s.class_id
-            WHERE s.deleted_at IS NULL
+            WHERE s.deleted_at IS NULL AND c.deleted_at IS NULL
               AND (?::uuid IS NULL OR s.class_id = ?::uuid)
               AND (
                 ? OR c.owner_user_id = ?::uuid OR (
@@ -118,7 +118,7 @@ class TeachingSessionRepository(private val dataSource: DataSource) {
             connection.autoCommit = false
             try {
                 val ownerId = connection.prepareStatement(
-                    "SELECT owner_user_id FROM teaching_classes WHERE id = ? FOR UPDATE"
+                    "SELECT owner_user_id FROM teaching_classes WHERE id = ? AND deleted_at IS NULL FOR UPDATE"
                 ).use { st ->
                     st.setObject(1, classUuid)
                     st.executeQuery().use { rs -> if (rs.next()) rs.getObject(1, UUID::class.java) else null }
@@ -192,7 +192,7 @@ class TeachingSessionRepository(private val dataSource: DataSource) {
                       s.ai_quiz_json::text AS ai_quiz_json, s.tags, s.is_published,
                       s.last_edited_ms, s.sort_order, s.version, c.owner_user_id::text
                     FROM teaching_sessions s JOIN teaching_classes c ON c.id = s.class_id
-                    WHERE s.id = ? AND s.deleted_at IS NULL FOR UPDATE OF s
+                    WHERE s.id = ? AND s.deleted_at IS NULL AND c.deleted_at IS NULL FOR UPDATE OF s
                     """.trimIndent()
                 ).use { st ->
                     st.setObject(1, id)
@@ -273,7 +273,7 @@ class TeachingSessionRepository(private val dataSource: DataSource) {
                       s.deleted_at
                     FROM teaching_sessions s
                     JOIN teaching_classes c ON c.id = s.class_id
-                    WHERE s.id = ? FOR UPDATE OF s
+                    WHERE s.id = ? AND c.deleted_at IS NULL FOR UPDATE OF s
                     """.trimIndent()
                 ).use { st ->
                     st.setObject(1, id)

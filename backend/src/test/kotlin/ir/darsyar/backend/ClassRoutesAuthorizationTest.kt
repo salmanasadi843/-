@@ -195,6 +195,28 @@ class ClassRoutesAuthorizationTest {
         assertEquals(HttpStatusCode.Forbidden, response.status)
     }
 
+
+    @Test
+    fun `class deletion rejects unauthenticated requests`() = testApplication {
+        application { module(unusedDataSource(), verifier(), usersWith(AppRole.TEACHER)) }
+        val response = client.delete("/api/v1/classes/11111111-1111-4111-8111-111111111111")
+        assertEquals(HttpStatusCode.Unauthorized, response.status)
+    }
+
+    @Test
+    fun `class recovery rejects unauthenticated requests`() = testApplication {
+        application { module(unusedDataSource(), verifier(), usersWith(AppRole.TEACHER)) }
+        val response = client.post("/api/v1/classes/11111111-1111-4111-8111-111111111111/restore")
+        assertEquals(HttpStatusCode.Unauthorized, response.status)
+    }
+
+    @Test
+    fun `deleted class listing rejects unauthenticated requests`() = testApplication {
+        application { module(unusedDataSource(), verifier(), usersWith(AppRole.TEACHER)) }
+        val response = client.get("/api/v1/classes/deleted")
+        assertEquals(HttpStatusCode.Unauthorized, response.status)
+    }
+
     @Test
     fun `student cannot create a session`() = testApplication {
         application {

@@ -50,7 +50,8 @@ class TeachingClassRepository(private val dataSource: DataSource) {
                    c.term, c.visibility, c.is_published, c.is_hidden, c.sort_order,
                    c.folder_id::text
             FROM teaching_classes c
-            WHERE (? OR c.owner_user_id = ?)
+            WHERE c.deleted_at IS NULL
+              AND ((? OR c.owner_user_id = ?)
                OR (c.is_hidden = false AND c.is_published = true AND (
                     c.visibility = 'public' OR (
                         ? = true AND EXISTS (
@@ -60,7 +61,7 @@ class TeachingClassRepository(private val dataSource: DataSource) {
                               AND m.status = 'active'
                         )
                     )
-               ))
+               )))
             ORDER BY c.owner_user_id, c.sort_order, c.title
         """.trimIndent()
 
@@ -144,7 +145,7 @@ class TeachingClassRepository(private val dataSource: DataSource) {
                     """
                     SELECT id::text, owner_user_id::text, title, description, term,
                            visibility, is_published, is_hidden, sort_order, folder_id::text
-                    FROM teaching_classes WHERE id = ? FOR UPDATE
+                    FROM teaching_classes WHERE id = ? AND deleted_at IS NULL FOR UPDATE
                     """.trimIndent()
                 ).use { statement ->
                     statement.setObject(1, id)
@@ -192,6 +193,84 @@ class TeachingClassRepository(private val dataSource: DataSource) {
                 )
                 connection.commit()
                 return updated
+            } catch (error: Throwable) {
+                connection.rollback()
+                throw error
+            } finally {
+                connection.autoCommit = true
+            }
+        }
+    }
+
+
+    /** Deleted classes are visible only in the owner's/admin's recovery area. */
+    fun listDeleted(actorUserId: String, roles: Set<AppRole>): List<TeachingClassRecord> {
+        val actor = UUID.fromString(actorUserId)
+        val admin = AppRole.SUPER_ADMIN in roles
+        return dataSource.connection.use { connection ->
+            connection.prepareStatement(
+                """
+                SELECT id::text, owner_user_id::text, title, description, term,
+                       visibility, is_published, is_hidden, sort_order, folder_id::text
+                FROM teaching_classes
+                WHERE deleted_at IS NOT NULL AND (? OR owner_user_id = ?)
+                ORDER BY deleted_at DESC, owner_user_id, title
+                """.trimIndent()
+            ).use { st ->
+                st.setBoolean(1, admin)
+                st.setObject(2, actor)
+                st.executeQuery().use { rs -> buildList { while (rs.next()) add(rs.toTeachingClassRecord()) } }
+            }
+        }
+    }
+
+    /** Soft-deletes/restores a class without touching any nested records. */
+    fun setDeleted(actorUserId: String, roles: Set<AppRole>, classId: String, deleted: Boolean): Boolean? {
+        val actor = UUID.fromString(actorUserId)
+        val id = UUID.fromString(classId)
+        dataSource.connection.use { connection ->
+            connection.autoCommit = false
+            try {
+                val before = connection.prepareStatement(
+                    """
+                    SELECT id::text, owner_user_id::text, title, description, term,
+                           visibility, is_published, is_hidden, sort_order, folder_id::text,
+                           deleted_at
+                    FROM teaching_classes WHERE id = ? FOR UPDATE
+                    """.trimIndent()
+                ).use { st ->
+                    st.setObject(1, id)
+                    st.executeQuery().use { rs ->
+                        if (rs.next()) rs.toTeachingClassRecord() to
+                            (rs.getTimestamp("deleted_at") != null) else null
+                    }
+                } ?: run { connection.rollback(); return null }
+                val (old, currentlyDeleted) = before
+                if (AppRole.SUPER_ADMIN !in roles &&
+                    !(AppRole.TEACHER in roles && old.ownerUserId == actorUserId)
+                ) throw SecurityException("You cannot manage this class.")
+                if (currentlyDeleted == deleted) {
+                    connection.commit()
+                    return false
+                }
+                connection.prepareStatement(
+                    """
+                    UPDATE teaching_classes
+                    SET deleted_at = CASE WHEN ? THEN now() ELSE NULL END,
+                        version = version + 1, updated_at = now()
+                    WHERE id = ?
+                    """.trimIndent()
+                ).use { st ->
+                    st.setBoolean(1, deleted)
+                    st.setObject(2, id)
+                    check(st.executeUpdate() == 1)
+                }
+                val action = if (deleted) "class.deleted" else "class.restored"
+                val beforeJson = """{"id":" + old.id + ","title":" + jsonString(old.title) + ","deleted":" + currentlyDeleted + "}"""
+                val afterJson = """{"id":" + old.id + ","title":" + jsonString(old.title) + ","deleted":" + deleted + "}"""
+                connection.writeAudit(actor, action, old.id, UUID.fromString(old.ownerUserId), beforeJson, afterJson)
+                connection.commit()
+                return true
             } catch (error: Throwable) {
                 connection.rollback()
                 throw error

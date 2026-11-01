@@ -51,6 +51,15 @@ teacher remains read-only for ordinary teachers.
 The owner ID is immutable through this endpoint. The request's optional
 `ownerUserId` field is ignored for updates; ownership transfer is not exposed.
 
+### Class deletion and recovery
+
+- `DELETE /api/v1/classes/{classId}`: soft-deletes a class; only its owner or super admin may do so.
+- `POST /api/v1/classes/{classId}/restore`: restores the class using the same authorization rule.
+- `GET /api/v1/classes/deleted`: lists deleted classes only for their owner or super admin, so they can be selected for recovery.
+- Deletion does not delete or rewrite courses, sessions, transcripts, AI outputs, audio-source metadata, access codes, memberships, or student state. Those rows remain attached to the same class IDs.
+- A deleted class and its nested content are hidden from normal class/course/session listings and private-code redemption. New course/session/audio-source writes against it are rejected until restored.
+- Repeating delete or restore is idempotent. State changes increment the class version and write an audit record in the same PostgreSQL transaction.
+
 
 ## Teacher folder endpoints
 
@@ -176,7 +185,7 @@ record creation against a disposable PostgreSQL schema.
 
 ## Deliberate limitations
 
-- No class deletion endpoint is exposed yet.
+- Binary audio upload/storage-provider adapters and student-facing membership history/UI integration remain pending.
 - Session deletion, binary audio upload/storage-provider adapters, and student-facing membership history and UI integration are not implemented yet.
 - This is a backend staging foundation. It is not deployed, does not receive
   production traffic, and is not connected to the Android app or live Firebase

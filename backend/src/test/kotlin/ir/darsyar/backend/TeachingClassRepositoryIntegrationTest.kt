@@ -129,6 +129,65 @@ class TeachingClassRepositoryIntegrationTest {
             val ownerView = repository.listVisible(ownerA.toString(), setOf(AppRole.TEACHER))
             assertTrue(setOf(hiddenClass.id, unpublishedClass.id).all { id -> ownerView.any { it.id == id } })
 
+
+            // Nested records remain attached to the class while it is in the recovery area.
+            val nestedCourseId = UUID.randomUUID()
+            val nestedSessionId = UUID.randomUUID()
+            dataSource.connection.use { connection ->
+                connection.prepareStatement(
+                    "INSERT INTO teaching_courses(id, class_id, title) VALUES (?, ?::uuid, 'Nested course')"
+                ).use { st ->
+                    st.setObject(1, nestedCourseId); st.setString(2, privateClass.id); st.executeUpdate()
+                }
+                connection.prepareStatement(
+                    "INSERT INTO teaching_sessions(id, class_id, course_id, title, transcript, original_transcript) VALUES (?, ?::uuid, ?, 'Nested session', 'edited', 'original')"
+                ).use { st ->
+                    st.setObject(1, nestedSessionId); st.setString(2, privateClass.id)
+                    st.setObject(3, nestedCourseId); st.executeUpdate()
+                }
+                connection.prepareStatement(
+                    "INSERT INTO session_audio_sources(session_id, source_kind, source_url) VALUES (?, 'direct_url', 'https://media.example.test/a.mp3')"
+                ).use { st -> st.setObject(1, nestedSessionId); st.executeUpdate() }
+                connection.prepareStatement(
+                    "INSERT INTO class_access_codes(class_id, code_hash, created_by) VALUES (?::uuid, ?, ?)"
+                ).use { st -> st.setString(1, privateClass.id); st.setString(2, "a".repeat(64)); st.setObject(3, ownerA); st.executeUpdate() }
+            }
+
+            assertFailsWith<SecurityException> {
+                repository.setDeleted(ownerB.toString(), setOf(AppRole.TEACHER), privateClass.id, true)
+            }
+            assertEquals(true, repository.setDeleted(ownerA.toString(), setOf(AppRole.TEACHER), privateClass.id, true))
+            assertEquals(false, repository.setDeleted(ownerA.toString(), setOf(AppRole.TEACHER), privateClass.id, true))
+            assertTrue(repository.listVisible(ownerA.toString(), setOf(AppRole.TEACHER)).none { it.id == privateClass.id })
+            assertTrue(repository.listVisible(student.toString(), setOf(AppRole.STUDENT)).none { it.id == privateClass.id })
+            assertTrue(repository.listVisible(admin.toString(), setOf(AppRole.SUPER_ADMIN)).none { it.id == privateClass.id })
+            assertEquals(listOf(privateClass.id), repository.listDeleted(ownerA.toString(), setOf(AppRole.TEACHER)).map { it.id })
+            assertTrue(repository.listDeleted(ownerB.toString(), setOf(AppRole.TEACHER)).isEmpty())
+            assertTrue(TeachingSessionRepository(dataSource).listVisible(admin.toString(), setOf(AppRole.SUPER_ADMIN)).none { it.id == nestedSessionId.toString() })
+            assertTrue(TeachingCourseRepository(dataSource).listVisible(admin.toString(), setOf(AppRole.SUPER_ADMIN)).none { it.id == nestedCourseId.toString() })
+            dataSource.connection.use { connection ->
+                connection.prepareStatement(
+                    """
+                    SELECT
+                      (SELECT count(*) FROM teaching_courses WHERE id = ?) +
+                      (SELECT count(*) FROM teaching_sessions WHERE id = ?) +
+                      (SELECT count(*) FROM session_audio_sources WHERE session_id = ?) +
+                      (SELECT count(*) FROM class_memberships WHERE class_id = ?::uuid) +
+                      (SELECT count(*) FROM class_access_codes WHERE class_id = ?::uuid)
+                    """.trimIndent()
+                ).use { st ->
+                    st.setObject(1, nestedCourseId); st.setObject(2, nestedSessionId)
+                    st.setObject(3, nestedSessionId); st.setString(4, privateClass.id)
+                    st.setString(5, privateClass.id)
+                    st.executeQuery().use { rs -> assertTrue(rs.next()); assertEquals(5, rs.getInt(1)) }
+                }
+            }
+            assertEquals(true, repository.setDeleted(admin.toString(), setOf(AppRole.SUPER_ADMIN), privateClass.id, false))
+            assertEquals(false, repository.setDeleted(admin.toString(), setOf(AppRole.SUPER_ADMIN), privateClass.id, false))
+            assertTrue(repository.listVisible(ownerA.toString(), setOf(AppRole.TEACHER)).any { it.id == privateClass.id })
+            assertTrue(TeachingSessionRepository(dataSource).listVisible(admin.toString(), setOf(AppRole.SUPER_ADMIN)).any { it.id == nestedSessionId.toString() })
+            assertTrue(TeachingCourseRepository(dataSource).listVisible(admin.toString(), setOf(AppRole.SUPER_ADMIN)).any { it.id == nestedCourseId.toString() })
+
             val adminView = repository.listVisible(admin.toString(), setOf(AppRole.SUPER_ADMIN))
             assertEquals(4, adminView.size)
 
@@ -152,7 +211,7 @@ class TeachingClassRepositoryIntegrationTest {
                 ).use { statement ->
                     statement.executeQuery().use { rows ->
                         assertTrue(rows.next())
-                        assertEquals(6, rows.getInt(1))
+                        assertEquals(8, rows.getInt(1))
                     }
                 }
             }

@@ -111,7 +111,7 @@ class TeachingCourseRepository(private val dataSource: DataSource) {
                            co.created_at_ms, co.sort_order, co.version, c.owner_user_id
                     FROM teaching_courses co
                     JOIN teaching_classes c ON c.id = co.class_id
-                    WHERE co.id = ? AND co.deleted_at IS NULL
+                    WHERE co.id = ? AND co.deleted_at IS NULL AND c.deleted_at IS NULL
                     FOR UPDATE OF co
                     """.trimIndent()
                 ).use { st ->
@@ -211,7 +211,7 @@ private fun java.sql.ResultSet.toCourseRecord() = TeachingCourseRecord(
 
 private fun Connection.findCourseClassOwner(classId: UUID): UUID? =
     prepareStatement(
-        "SELECT owner_user_id FROM teaching_classes WHERE id = ? FOR UPDATE"
+        "SELECT owner_user_id FROM teaching_classes WHERE id = ? AND deleted_at IS NULL FOR UPDATE"
     ).use { st ->
         st.setObject(1, classId)
         st.executeQuery().use { rs -> if (rs.next()) rs.getObject(1, UUID::class.java) else null }

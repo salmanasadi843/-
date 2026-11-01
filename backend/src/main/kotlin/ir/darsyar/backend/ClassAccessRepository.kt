@@ -59,7 +59,7 @@ class ClassAccessRepository(
             connection.autoCommit = false
             try {
                 val owner = connection.prepareStatement(
-                    "SELECT owner_user_id, visibility FROM teaching_classes WHERE id = ? FOR UPDATE"
+                    "SELECT owner_user_id, visibility FROM teaching_classes WHERE id = ? AND deleted_at IS NULL FOR UPDATE"
                 ).use { st ->
                     st.setObject(1, classUuid)
                     st.executeQuery().use { rs ->
@@ -284,7 +284,7 @@ class ClassAccessRepository(
                            c.owner_user_id, c.visibility, c.is_published, c.is_hidden
                     FROM class_access_codes ac
                     JOIN teaching_classes c ON c.id = ac.class_id
-                    WHERE ac.code_hash = ? AND ac.is_active = true
+                    WHERE ac.code_hash = ? AND ac.is_active = true AND c.deleted_at IS NULL
                     FOR UPDATE OF ac
                     """.trimIndent()
                 ).use { st ->

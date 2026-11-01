@@ -569,6 +569,58 @@ fun Application.module(
             }
 
             route("/api/v1/classes") {
+
+                get("/deleted") {
+                    val principal = call.principal<DarsyarPrincipal>()
+                    if (principal == null) {
+                        call.respond(HttpStatusCode.Unauthorized, ApiError("unauthorized"))
+                        return@get
+                    }
+                    try {
+                        call.respond(classRepository.listDeleted(principal.userId, principal.roles).map { it.toApiRecord() })
+                    } catch (_: SecurityException) {
+                        call.respond(HttpStatusCode.Forbidden, ApiError("class_recovery_forbidden"))
+                    } catch (_: IllegalArgumentException) {
+                        call.respond(HttpStatusCode.BadRequest, ApiError("invalid_user_id"))
+                    }
+                }
+
+                delete("/{classId}") {
+                    val principal = call.principal<DarsyarPrincipal>()
+                    if (principal == null) {
+                        call.respond(HttpStatusCode.Unauthorized, ApiError("unauthorized"))
+                        return@delete
+                    }
+                    try {
+                        when (classRepository.setDeleted(principal.userId, principal.roles, call.parameters["classId"] ?: "", true)) {
+                            null -> call.respond(HttpStatusCode.NotFound, ApiError("class_not_found"))
+                            else -> call.respond(HttpStatusCode.NoContent)
+                        }
+                    } catch (_: SecurityException) {
+                        call.respond(HttpStatusCode.Forbidden, ApiError("class_deletion_forbidden"))
+                    } catch (_: IllegalArgumentException) {
+                        call.respond(HttpStatusCode.BadRequest, ApiError("invalid_class_id"))
+                    }
+                }
+
+                post("/{classId}/restore") {
+                    val principal = call.principal<DarsyarPrincipal>()
+                    if (principal == null) {
+                        call.respond(HttpStatusCode.Unauthorized, ApiError("unauthorized"))
+                        return@post
+                    }
+                    try {
+                        when (classRepository.setDeleted(principal.userId, principal.roles, call.parameters["classId"] ?: "", false)) {
+                            null -> call.respond(HttpStatusCode.NotFound, ApiError("class_not_found"))
+                            else -> call.respond(HttpStatusCode.NoContent)
+                        }
+                    } catch (_: SecurityException) {
+                        call.respond(HttpStatusCode.Forbidden, ApiError("class_recovery_forbidden"))
+                    } catch (_: IllegalArgumentException) {
+                        call.respond(HttpStatusCode.BadRequest, ApiError("invalid_class_id"))
+                    }
+                }
+
                 get {
                     val principal = call.principal<DarsyarPrincipal>()
                     if (principal == null) {
