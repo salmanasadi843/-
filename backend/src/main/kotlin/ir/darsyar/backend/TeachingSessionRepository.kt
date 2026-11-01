@@ -108,6 +108,61 @@ class TeachingSessionRepository(private val dataSource: DataSource) {
         }
     }
 
+    /**
+     * Fetches one session only after applying the same visibility rules as listVisible.
+     * The SQL predicate includes both the parent class and session IDs, so a caller
+     * cannot use this endpoint to probe another class or a private session.
+     */
+    fun findVisible(
+        actorUserId: String,
+        roles: Set<AppRole>,
+        classId: String,
+        sessionId: String
+    ): TeachingSessionRecord? {
+        val admin = AppRole.SUPER_ADMIN in roles
+        val student = AppRole.STUDENT in roles
+        val actor = UUID.fromString(actorUserId)
+        val classUuid = UUID.fromString(classId)
+        val sessionUuid = UUID.fromString(sessionId)
+        val sql = """
+            SELECT s.id::text, s.class_id::text, s.course_id::text, s.title, s.course_name,
+                   s.professor_name, s.date_ms, s.audio_duration_ms, s.transcript,
+                   s.original_transcript, s.ai_summary, s.ai_key_points,
+                   s.ai_quiz_json::text AS ai_quiz_json, s.tags, s.is_published,
+                   s.last_edited_ms, s.sort_order, s.version
+            FROM teaching_sessions s
+            JOIN teaching_classes c ON c.id = s.class_id
+            WHERE s.id = ? AND s.class_id = ?
+              AND s.deleted_at IS NULL AND c.deleted_at IS NULL
+              AND (
+                ? OR c.owner_user_id = ? OR (
+                  s.is_published = true AND c.is_published = true AND c.is_hidden = false
+                  AND (
+                    c.visibility = 'public' OR (? AND EXISTS (
+                      SELECT 1 FROM class_memberships m
+                      WHERE m.class_id = c.id AND m.student_user_id = ?
+                        AND m.status = 'active'
+                    ))
+                  )
+                )
+              )
+            LIMIT 1
+        """.trimIndent()
+        dataSource.connection.use { connection ->
+            connection.prepareStatement(sql).use { statement ->
+                statement.setObject(1, sessionUuid)
+                statement.setObject(2, classUuid)
+                statement.setBoolean(3, admin)
+                statement.setObject(4, actor)
+                statement.setBoolean(5, student)
+                statement.setObject(6, actor)
+                statement.executeQuery().use { rows ->
+                    return if (rows.next()) rows.toSessionRecord() else null
+                }
+            }
+        }
+    }
+
     fun create(actorUserId: String, roles: Set<AppRole>, command: CreateTeachingSession): TeachingSessionRecord {
         require(command.title.isNotBlank()) { "Session title is required." }
         require(command.audioDurationMs >= 0) { "Audio duration cannot be negative." }
