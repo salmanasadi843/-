@@ -82,6 +82,12 @@ class TeachingCourseRepositoryIntegrationTest {
                 CreateTeachingCourse(classRecord.id, "دوره خالی")
             )
             assertTrue(repository.delete(owner.toString(), setOf(AppRole.TEACHER), emptyCourse.id))
+            assertFailsWith<IllegalArgumentException> {
+                TeachingSessionRepository(ds).create(
+                    owner.toString(), setOf(AppRole.TEACHER),
+                    CreateTeachingSession(classId = classRecord.id, courseId = emptyCourse.id, title = "Invalid session")
+                )
+            }
             assertEquals(listOf(course.id), repository.listVisible(owner.toString(), setOf(AppRole.TEACHER), classRecord.id).map { it.id })
 
             ds.connection.use { connection ->
