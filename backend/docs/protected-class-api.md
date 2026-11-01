@@ -109,8 +109,23 @@ update a session. The class relationship and owner cannot be changed through
 this endpoint. Every create/update writes a session audit record in the same
 transaction.
 
-Audio source records have a schema foundation, but dedicated audio-source
-management endpoints are not exposed yet.
+### Audio source endpoints
+
+Audio sources are separate records attached to a session; a session may have
+multiple ordered sources. The API supports `direct_url`, `hosted_page`,
+`external_link`, and `uploaded_asset` kinds.
+
+- `GET /api/v1/sessions/{sessionId}/audio-sources`: lists active sources when the caller can see the session.
+- `POST /api/v1/sessions/{sessionId}/audio-sources`: creates a source; only the class owner or super admin may write.
+- `PATCH /api/v1/sessions/{sessionId}/audio-sources/{sourceId}`: updates URL/storage key/title/order.
+- `DELETE /api/v1/sessions/{sessionId}/audio-sources/{sourceId}`: deactivates the source; it does not delete the underlying object.
+
+External links must be absolute HTTP(S) URLs without embedded credentials.
+Uploaded assets use an opaque `storageKey` and must not expose a provider URL.
+The backend does not accept local device file paths and does not upload, move,
+or delete binary files. A future storage adapter can resolve storage keys to
+the currently configured provider without changing session records. Every
+audio-source write and deactivation is audited transactionally.
 
 ## Audit and transaction guarantees
 
