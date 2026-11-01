@@ -46,13 +46,13 @@ class TeacherFolderRepository(private val dataSource: DataSource) {
                     SELECT 1 FROM teaching_classes c
                     WHERE c.folder_id = f.id AND c.owner_user_id = f.owner_user_id
                       AND c.is_published = true AND c.is_hidden = false
-                      AND (? OR (? AND (
-                          c.visibility = 'public' OR EXISTS (
+                      AND (
+                          c.visibility = 'public' OR (? AND EXISTS (
                               SELECT 1 FROM class_memberships m
                               WHERE m.class_id = c.id AND m.student_user_id = ?::uuid
                                 AND m.status = 'active'
-                          )
-                      )))
+                          ))
+                      )
                 )
             ) AND (? OR f.owner_user_id = ?::uuid OR f.is_hidden = false)
             ORDER BY f.owner_user_id, f.parent_folder_id NULLS FIRST, f.sort_order, f.name
@@ -61,11 +61,10 @@ class TeacherFolderRepository(private val dataSource: DataSource) {
             connection.prepareStatement(sql).use { statement ->
                 statement.setBoolean(1, admin)
                 statement.setString(2, actorUserId)
-                statement.setBoolean(3, teacher)
-                statement.setBoolean(4, student)
-                statement.setString(5, actorUserId)
-                statement.setBoolean(6, admin)
-                statement.setString(7, actorUserId)
+                statement.setBoolean(3, student)
+                statement.setString(4, actorUserId)
+                statement.setBoolean(5, admin)
+                statement.setString(6, actorUserId)
                 statement.executeQuery().use { rows ->
                     val result = mutableListOf<TeacherFolderRecord>()
                     while (rows.next()) result += rows.toFolderRecord()
