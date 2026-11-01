@@ -24,6 +24,7 @@ export default function App() {
   const [sessionTranscript, setSessionTranscript] = useState("");
   const [sessionSummary, setSessionSummary] = useState("");
   const [sessionKeyPoints, setSessionKeyPoints] = useState("");
+  const [accessCode, setAccessCode] = useState("");
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
   const [notice, setNotice] = useState("");
@@ -53,6 +54,7 @@ export default function App() {
 
   const isAdmin = me?.roles.includes("super_admin") ?? false;
   const canCreateClass = isAdmin || (me?.roles.includes("teacher") ?? false);
+  const canRedeemCode = me?.roles.includes("student") ?? false;
   const visibleClasses = useMemo(
     () => classes.filter(c => selectedTeacher === "all" || c.ownerUserId === selectedTeacher),
     [classes, selectedTeacher],
@@ -80,6 +82,21 @@ export default function App() {
     setBusy(true); setError(""); setDetail(null);
     try { setDetail(await api.session(selectedClass.id, item.id, await user.getIdToken())); }
     catch (e) { setError(message(e)); }
+    finally { setBusy(false); }
+  }
+  async function redeemCode(event: FormEvent) {
+    event.preventDefault();
+    if (!user || !accessCode.trim()) return;
+    setBusy(true); setError(""); setNotice("");
+    try {
+      const token = await user.getIdToken();
+      const membership = await api.redeemAccessCode(accessCode.trim(), token);
+      const refreshed = await api.classes(token);
+      setClasses(refreshed); setAccessCode("");
+      setNotice(membership.alreadyActive ? "عضویت شما از قبل فعال بود." : "با موفقیت به کلاس پیوستید.");
+      const joinedClass = refreshed.find(c => c.id === membership.classId);
+      if (joinedClass) await openClass(joinedClass);
+    } catch (e) { setError(message(e)); }
     finally { setBusy(false); }
   }
   async function createClass(event: FormEvent) {
@@ -146,6 +163,11 @@ export default function App() {
     {notice && <p className="success notice">{notice}</p>}
     <div className="layout">
       <aside className="panel sidebar">
+        {canRedeemCode && <form className="join-form" onSubmit={redeemCode}>
+          <h2>عضویت در کلاس خصوصی</h2>
+          <label>کد ورود کلاس<input value={accessCode} onChange={e => setAccessCode(e.target.value)} placeholder="کد ورود را وارد کنید" required /></label>
+          <button disabled={busy || !accessCode.trim()}>{busy ? "در حال بررسی…" : "ورود به کلاس"}</button>
+        </form>}
         <h2>استادان</h2>
         <button className={selectedTeacher === "all" ? "choice active" : "choice"} onClick={() => {setSelectedTeacher("all");setSelectedClass(null);setDetail(null);}}>همه استادان</button>
         {teachers.map(t => <button key={t.userId} className={selectedTeacher === t.userId ? "choice active" : "choice"} onClick={() => {setSelectedTeacher(t.userId);setSelectedClass(null);setDetail(null);}}>{t.displayName}</button>)}
