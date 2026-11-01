@@ -41,57 +41,60 @@ psql -X -v ON_ERROR_STOP=1 \
 BEGIN;
 SELECT pg_advisory_xact_lock(74190520261102);
 
-SELECT EXISTS (
-    SELECT 1 FROM app_users
-    WHERE id = :'target_user_id'::uuid AND status = 'active'
-) AS target_is_active \gset
-\if :target_is_active
-\else
-  \echo 'Refusing link: target application user does not exist or is not active.'
-  \quit 3
-\endif
+-- psql does not substitute variables inside a dollar-quoted DO block.
+-- Store the safely quoted values as transaction-local settings first.
+SELECT set_config('darsyar.link.firebase_uid', :'firebase_uid', true);
+SELECT set_config('darsyar.link.target_user_id', :'target_user_id', true);
 
-SELECT EXISTS (
-    SELECT 1 FROM auth_identities
-    WHERE provider = 'firebase' AND provider_subject = :'firebase_uid'
-) AS firebase_uid_already_linked \gset
-\if :firebase_uid_already_linked
-  \echo 'Refusing link: this Firebase UID is already linked to an application account.'
-  \quit 3
-\endif
+DO $link$
+DECLARE
+    v_uid text := current_setting('darsyar.link.firebase_uid');
+    v_user_id uuid := current_setting('darsyar.link.target_user_id')::uuid;
+BEGIN
+    IF NOT EXISTS (
+        SELECT 1 FROM app_users
+        WHERE id = v_user_id AND status = 'active'
+    ) THEN
+        RAISE EXCEPTION 'Refusing link: target application user does not exist or is not active.';
+    END IF;
 
-SELECT EXISTS (
-    SELECT 1 FROM auth_identities
-    WHERE provider = 'firebase' AND user_id = :'target_user_id'::uuid
-) AS target_already_has_firebase \gset
-\if :target_already_has_firebase
-  \echo 'Refusing link: target account already has a Firebase identity.'
-  \quit 3
-\endif
+    IF EXISTS (
+        SELECT 1 FROM auth_identities
+        WHERE provider = 'firebase' AND provider_subject = v_uid
+    ) THEN
+        RAISE EXCEPTION 'Refusing link: this Firebase UID is already linked to an application account.';
+    END IF;
 
-INSERT INTO auth_identities(
-    user_id, provider, provider_subject, email, email_verified
-)
-VALUES (
-    :'target_user_id'::uuid, 'firebase', :'firebase_uid', NULL, false
-);
+    IF EXISTS (
+        SELECT 1 FROM auth_identities
+        WHERE provider = 'firebase' AND user_id = v_user_id
+    ) THEN
+        RAISE EXCEPTION 'Refusing link: target account already has a Firebase identity.';
+    END IF;
 
-INSERT INTO audit_log(
-    actor_user_id, action, entity_type, entity_id, owner_user_id, after_data
-)
-VALUES (
-    NULL,
-    'identity.firebase.linked_by_operator',
-    'app_user',
-    :'target_user_id'::uuid,
-    :'target_user_id'::uuid,
-    jsonb_build_object(
-        'provider', 'firebase',
-        'providerSubject', :'firebase_uid',
-        'verification', 'independently_verified_operator',
-        'emailImported', false
-    )
-);
+    INSERT INTO auth_identities(
+        user_id, provider, provider_subject, email, email_verified
+    ) VALUES (
+        v_user_id, 'firebase', v_uid, NULL, false
+    );
+
+    INSERT INTO audit_log(
+        actor_user_id, action, entity_type, entity_id, owner_user_id, after_data
+    ) VALUES (
+        NULL,
+        'identity.firebase.linked_by_operator',
+        'app_user',
+        v_user_id,
+        v_user_id,
+        jsonb_build_object(
+            'provider', 'firebase',
+            'providerSubject', v_uid,
+            'verification', 'independently_verified_operator',
+            'emailImported', false
+        )
+    );
+END
+$link$;
 
 COMMIT;
 \echo 'Firebase identity linked successfully. No roles were created or changed.'
