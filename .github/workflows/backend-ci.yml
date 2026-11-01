@@ -174,7 +174,6 @@ jobs:
 
       - name: Verify liveness and API version
         run: |
-        run: |
           curl --fail --silent http://127.0.0.1:8080/health/live
           curl --fail --silent http://127.0.0.1:8080/health/ready
           curl --fail --silent http://127.0.0.1:8080/api/v1
