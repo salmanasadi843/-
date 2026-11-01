@@ -18,6 +18,11 @@ data class TeachingClassRecord(
     val folderId: String?
 )
 
+data class VisibleTeacherRecord(
+    val userId: String,
+    val displayName: String
+)
+
 data class CreateTeachingClass(
     val ownerUserId: String,
     val title: String,
@@ -75,6 +80,57 @@ class TeachingClassRepository(private val dataSource: DataSource) {
                     val result = mutableListOf<TeachingClassRecord>()
                     while (rows.next()) result += rows.toTeachingClassRecord()
                     return result
+                }
+            }
+        }
+    }
+
+    /**
+     * Returns only teachers who own at least one class visible to the current actor.
+     * No email or other account details are exposed by this directory endpoint.
+     */
+    fun listVisibleTeachers(actorUserId: String, roles: Set<AppRole>): List<VisibleTeacherRecord> {
+        val admin = AppRole.SUPER_ADMIN in roles
+        val student = AppRole.STUDENT in roles
+        val sql = """
+            SELECT c.owner_user_id::text AS user_id,
+                   COALESCE(
+                     NULLIF(MAX(NULLIF(c.teacher_name, '')), ''),
+                     NULLIF(u.display_name, ''),
+                     'استاد'
+                   ) AS display_name
+            FROM teaching_classes c
+            JOIN app_users u ON u.id = c.owner_user_id
+            WHERE c.deleted_at IS NULL
+              AND (
+                ? OR c.owner_user_id = ? OR (
+                  c.is_hidden = false AND c.is_published = true AND (
+                    c.visibility = 'public' OR (
+                      ? AND EXISTS (
+                        SELECT 1 FROM class_memberships m
+                        WHERE m.class_id = c.id
+                          AND m.student_user_id = ?::uuid
+                          AND m.status = 'active'
+                      )
+                    )
+                  )
+                )
+              )
+            GROUP BY c.owner_user_id, u.display_name
+            ORDER BY display_name, c.owner_user_id
+        """.trimIndent()
+        dataSource.connection.use { connection ->
+            connection.prepareStatement(sql).use { statement ->
+                statement.setBoolean(1, admin)
+                statement.setObject(2, UUID.fromString(actorUserId))
+                statement.setBoolean(3, student)
+                statement.setObject(4, UUID.fromString(actorUserId))
+                statement.executeQuery().use { rows ->
+                    return buildList {
+                        while (rows.next()) add(
+                            VisibleTeacherRecord(rows.getString("user_id"), rows.getString("display_name"))
+                        )
+                    }
                 }
             }
         }
