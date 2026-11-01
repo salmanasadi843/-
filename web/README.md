@@ -24,6 +24,7 @@ Build verification: `npm run build`. GitHub Actions runs the same production bui
 - Teacher and super-admin can create classes; super-admin must select the target teacher.
 - Teacher can create sessions in their own classes; super-admin can create sessions in any class returned by the backend.
 - Class visibility can be set to public or private at creation.
+- Signed-in students can redeem a private-class access code and refresh their authorized class list.
 - Admins can browse classes returned by the backend; ordinary users see only what the backend authorizes.
 - Backend remains the authority for all permission checks; UI visibility is not treated as a security boundary.
 
@@ -31,6 +32,7 @@ Build verification: `npm run build`. GitHub Actions runs the same production bui
 
 - Editing, hiding, deleting and restoring classes/sessions from the web UI.
 - Managing teacher folders and course records.
+- Generating and revoking class access codes from the teacher/admin web panel.
 - Anonymous (not signed-in) public class/session browsing. Current protected API requires Firebase sign-in even for public classes.
 - Full sync with Android Room/Firestore, migration, production deployment, account creation and password reset.
 
