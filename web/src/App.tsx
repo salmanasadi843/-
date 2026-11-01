@@ -41,10 +41,7 @@ export default function App() {
   }, [user]);
 
   const isAdmin = me?.roles.includes("super_admin") ?? false;
-  const visibleClasses = useMemo(() => classes.filter(c =>
-    (selectedTeacher === "all" || c.ownerUserId === selectedTeacher) &&
-    !c.isHidden && c.isPublished
-  ), [classes, selectedTeacher]);
+  const visibleClasses = useMemo(() => classes.filter(c => selectedTeacher === "all" || c.ownerUserId === selectedTeacher), [classes, selectedTeacher]);
 
   async function login(event: FormEvent) {
     event.preventDefault(); if (!auth) return;
