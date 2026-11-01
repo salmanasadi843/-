@@ -228,7 +228,7 @@ fun Application.module(
                     }
                 }
 
-                io.ktor.server.routing.patch("/{folderId}") {
+                patch("/{folderId}") {
                     val principal = call.principal<DarsyarPrincipal>()
                     if (principal == null) {
                         call.respond(HttpStatusCode.Unauthorized, ApiError("unauthorized"))
