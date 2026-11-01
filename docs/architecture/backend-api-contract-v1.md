@@ -16,6 +16,8 @@
 - کد ورود: `GET/POST /api/v1/classes/{classId}/access-codes`, `DELETE /api/v1/access-codes/{codeId}`, `POST /api/v1/class-memberships/redeem`.
 - عضویت: `GET /api/v1/classes/{classId}/memberships`, `DELETE /api/v1/classes/{classId}/memberships/{studentUserId}`.
 
+نکته مهم دسترسی عمومی: مسیرهای فعلی زیر `authenticate("firebase")` هستند؛ بنابراین کلاس `public` در Backend فعلی یعنی بدون عضویت کلاس برای حساب واردشده قابل مشاهده است، نه مشاهده ناشناس بدون ورود. همچنین مسیر مستقل `GET /api/v1/classes/{classId}` برای جزئیات یک کلاس و صفحه‌بندی فهرست هنوز پیاده نشده‌اند. تا زمان افزودن و آزمون endpoint عمومی، ستون «مهمان» در ماتریس بالا قابلیت هدف آینده است و نباید در سایت به‌عنوان قابلیت موجود نمایش داده شود.
+
 این فهرست، مسیرهای ثبت‌شده در کد است و به‌معنی تکمیل همه نیازهای محصول یا اتصال کلاینت نیست. مواردی مانند `POST /api/v1/auth/exchange`، فهرست ثبت‌نام‌های کاربر، endpointهای sync، صفحه‌بندی cursor-based، وضعیت شخصی جلسه و OpenAPI کامل هنوز در این فاز به‌عنوان قرارداد هدف/کار باقیمانده‌اند. نام‌های قرارداد اولیه مانند `teacher-requests` و `classes/{classId}/join` با مسیر واقعی فعلی یکسان نیستند؛ مسیرهای بالا مرجع پیاده‌سازی فعلی‌اند.
 
 آزمون‌های CI با PostgreSQL موقت، مجوزهای مسیرهای کلاس، پوشه، دوره، جلسه، صوت، کد ورود و عضویت را بررسی می‌کنند. موفقیت CI staging به‌تنهایی پذیرش امنیتی یا مجوز استقرار عملیاتی نیست.
@@ -87,9 +89,8 @@
 - `POST /api/v1/teacher-folders`
 - `PATCH /api/v1/teacher-folders/{folderId}`
 - `DELETE /api/v1/teacher-folders/{folderId}`
-- `GET /api/v1/classes?ownerId=&visibility=&cursor=&limit=`
+- `GET /api/v1/classes` (فهرست قابل‌مشاهده برای حساب احراز هویت‌شده؛ cursor/limit در نسخه فعلی پیاده نشده است)
 - `POST /api/v1/classes`
-- `GET /api/v1/classes/{classId}`
 - `PATCH /api/v1/classes/{classId}`
 - `DELETE /api/v1/classes/{classId}`
 - `GET /api/v1/classes/{classId}/courses`
@@ -127,7 +128,7 @@
 
 | عملیات | مدیر اصلی | مالک استاد | استاد دیگر | دانشجو | مهمان |
 |---|---|---|---|---|---|
-| مشاهده کلاس عمومی منتشرشده | بله | بله | بله | بله | بله |
+| مشاهده کلاس عمومی منتشرشده | بله | بله | بله | بله | در نسخه فعلی خیر؛ نیازمند endpoint عمومی جداگانه |
 | مشاهده کلاس خصوصی | بله | بله | خیر، مگر مجوز جداگانه | عضو فعال | خیر |
 | ویرایش/حذف محتوای هر استاد | بله | محتوای خود | خیر | خیر | خیر |
 | ویرایش پوشه استاد دیگر | بله | پوشه خود | خیر | خیر | خیر |
