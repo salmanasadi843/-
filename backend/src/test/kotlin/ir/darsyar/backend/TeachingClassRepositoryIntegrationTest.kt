@@ -41,15 +41,17 @@ class TeachingClassRepositoryIntegrationTest {
             val ownerA = UUID.randomUUID()
             val ownerB = UUID.randomUUID()
             val student = UUID.randomUUID()
+            val visitor = UUID.randomUUID()
 
             dataSource.connection.use { connection ->
                 connection.prepareStatement(
-                    "INSERT INTO app_users(id, status) VALUES (?, 'active'), (?, 'active'), (?, 'active'), (?, 'active')"
+                    "INSERT INTO app_users(id, status) VALUES (?, 'active'), (?, 'active'), (?, 'active'), (?, 'active'), (?, 'active')"
                 ).use { statement ->
                     statement.setObject(1, admin)
                     statement.setObject(2, ownerA)
                     statement.setObject(3, ownerB)
                     statement.setObject(4, student)
+                    statement.setObject(5, visitor)
                     statement.executeUpdate()
                 }
             }
@@ -121,6 +123,8 @@ class TeachingClassRepositoryIntegrationTest {
                 setOf(publicClass.id, privateClass.id),
                 studentView.map { it.id }.toSet()
             )
+            val visitorView = repository.listVisible(visitor.toString(), emptySet())
+            assertEquals(setOf(publicClass.id), visitorView.map { it.id }.toSet())
 
             val ownerView = repository.listVisible(ownerA.toString(), setOf(AppRole.TEACHER))
             assertTrue(setOf(hiddenClass.id, unpublishedClass.id).all { id -> ownerView.any { it.id == id } })
