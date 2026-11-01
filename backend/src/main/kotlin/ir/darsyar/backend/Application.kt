@@ -76,6 +76,47 @@ data class FolderApiRecord(
 )
 
 @Serializable
+data class SessionWriteRequest(
+    val courseId: String? = null,
+    val title: String,
+    val courseName: String = "",
+    val professorName: String = "",
+    val dateMs: Long? = null,
+    val audioDurationMs: Long = 0,
+    val transcript: String = "",
+    val originalTranscript: String = "",
+    val aiSummary: String? = null,
+    val aiKeyPoints: String? = null,
+    val aiQuizJson: String? = null,
+    val tags: String = "",
+    val isPublished: Boolean = true,
+    val lastEditedMs: Long? = null,
+    val sortOrder: Int = 0
+)
+
+@Serializable
+data class SessionApiRecord(
+    val id: String,
+    val classId: String,
+    val courseId: String?,
+    val title: String,
+    val courseName: String,
+    val professorName: String,
+    val dateMs: Long?,
+    val audioDurationMs: Long,
+    val transcript: String,
+    val originalTranscript: String,
+    val aiSummary: String?,
+    val aiKeyPoints: String?,
+    val aiQuizJson: String?,
+    val tags: String,
+    val isPublished: Boolean,
+    val lastEditedMs: Long?,
+    val sortOrder: Int,
+    val version: Long
+)
+
+@Serializable
 data class ApiError(val error: String)
 
 @Serializable
@@ -88,6 +129,12 @@ private fun TeacherFolderRecord.toApiRecord() = FolderApiRecord(
 private fun TeachingClassRecord.toApiRecord() = ClassApiRecord(
     id, ownerUserId, title, description, term, visibility,
     isPublished, isHidden, sortOrder, folderId
+)
+
+private fun TeachingSessionRecord.toApiRecord() = SessionApiRecord(
+    id, classId, courseId, title, courseName, professorName, dateMs,
+    audioDurationMs, transcript, originalTranscript, aiSummary, aiKeyPoints,
+    aiQuizJson, tags, isPublished, lastEditedMs, sortOrder, version
 )
 
 fun main() {
@@ -124,6 +171,7 @@ fun Application.module(
     val authenticationService = AuthenticationService(tokenVerifier, userRepository)
     val classRepository = TeachingClassRepository(dataSource)
     val folderRepository = TeacherFolderRepository(dataSource)
+    val sessionRepository = TeachingSessionRepository(dataSource)
 
     install(ContentNegotiation) { json() }
     install(Authentication) {
@@ -373,6 +421,94 @@ fun Application.module(
                         call.respond(HttpStatusCode.BadRequest, ApiError("invalid_class_data"))
                     }
                 }
+
+            route("/api/v1/classes/{classId}/sessions") {
+                get {
+                    val principal = call.principal<DarsyarPrincipal>()
+                    if (principal == null) {
+                        call.respond(HttpStatusCode.Unauthorized, ApiError("unauthorized"))
+                    } else {
+                        try {
+                            val classId = call.parameters["classId"] ?: ""
+                            call.respond(sessionRepository.listVisible(principal.userId, principal.roles, classId).map { it.toApiRecord() })
+                        } catch (_: IllegalArgumentException) {
+                            call.respond(HttpStatusCode.BadRequest, ApiError("invalid_class_id"))
+                        }
+                    }
+                }
+
+                post {
+                    val principal = call.principal<DarsyarPrincipal>()
+                    if (principal == null) {
+                        call.respond(HttpStatusCode.Unauthorized, ApiError("unauthorized"))
+                        return@post
+                    }
+                    val request = try { call.receive<SessionWriteRequest>() }
+                    catch (_: Exception) {
+                        call.respond(HttpStatusCode.BadRequest, ApiError("invalid_request"))
+                        return@post
+                    }
+                    try {
+                        val created = sessionRepository.create(
+                            principal.userId, principal.roles,
+                            CreateTeachingSession(
+                                classId = call.parameters["classId"] ?: "",
+                                courseId = request.courseId, title = request.title,
+                                courseName = request.courseName, professorName = request.professorName,
+                                dateMs = request.dateMs, audioDurationMs = request.audioDurationMs,
+                                transcript = request.transcript, originalTranscript = request.originalTranscript,
+                                aiSummary = request.aiSummary, aiKeyPoints = request.aiKeyPoints,
+                                aiQuizJson = request.aiQuizJson, tags = request.tags,
+                                isPublished = request.isPublished, lastEditedMs = request.lastEditedMs,
+                                sortOrder = request.sortOrder
+                            )
+                        )
+                        call.respond(HttpStatusCode.Created, created.toApiRecord())
+                    } catch (_: SecurityException) {
+                        call.respond(HttpStatusCode.Forbidden, ApiError("session_creation_forbidden"))
+                    } catch (_: IllegalArgumentException) {
+                        call.respond(HttpStatusCode.BadRequest, ApiError("invalid_session_data"))
+                    } catch (_: java.sql.SQLException) {
+                        call.respond(HttpStatusCode.BadRequest, ApiError("invalid_session_relation_or_json"))
+                    }
+                }
+            }
+
+            route("/api/v1/sessions/{sessionId}") {
+                patch {
+                    val principal = call.principal<DarsyarPrincipal>()
+                    if (principal == null) {
+                        call.respond(HttpStatusCode.Unauthorized, ApiError("unauthorized"))
+                        return@patch
+                    }
+                    val request = try { call.receive<SessionWriteRequest>() }
+                    catch (_: Exception) {
+                        call.respond(HttpStatusCode.BadRequest, ApiError("invalid_request"))
+                        return@patch
+                    }
+                    try {
+                        val updated = sessionRepository.update(
+                            principal.userId, principal.roles,
+                            call.parameters["sessionId"] ?: "",
+                            UpdateTeachingSession(
+                                request.courseId, request.title, request.courseName, request.professorName,
+                                request.dateMs, request.audioDurationMs, request.transcript,
+                                request.originalTranscript, request.aiSummary, request.aiKeyPoints,
+                                request.aiQuizJson, request.tags, request.isPublished,
+                                request.lastEditedMs, request.sortOrder
+                            )
+                        )
+                        if (updated == null) call.respond(HttpStatusCode.NotFound, ApiError("session_not_found"))
+                        else call.respond(updated.toApiRecord())
+                    } catch (_: SecurityException) {
+                        call.respond(HttpStatusCode.Forbidden, ApiError("session_management_forbidden"))
+                    } catch (_: IllegalArgumentException) {
+                        call.respond(HttpStatusCode.BadRequest, ApiError("invalid_session_data"))
+                    } catch (_: java.sql.SQLException) {
+                        call.respond(HttpStatusCode.BadRequest, ApiError("invalid_session_relation_or_json"))
+                    }
+                }
+            }
             }
         }
     }
