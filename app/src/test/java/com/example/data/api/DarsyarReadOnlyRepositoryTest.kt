@@ -29,6 +29,15 @@ class DarsyarReadOnlyRepositoryTest {
     }
 
     @Test
+    fun blankTokenForTeacherDirectoryIsRejectedBeforeRequest() = runBlocking {
+        val fake = FakeApi()
+        assertThrows(IllegalArgumentException::class.java) {
+            runBlocking { DarsyarReadOnlyRepository(fake).loadTeachers("  ") }
+        }
+        assertEquals(null, fake.authorizationForTeachers)
+    }
+
+    @Test
     fun coursesAndSessionsUseBearerTokenAndSelectedClassId() = runBlocking {
         val fake = FakeApi()
         val repository = DarsyarReadOnlyRepository(fake)
