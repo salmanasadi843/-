@@ -1,6 +1,6 @@
 import { FormEvent, useEffect, useMemo, useState } from "react";
 import { onAuthStateChanged, signInWithEmailAndPassword, signOut, User } from "firebase/auth";
-import { api, AccessCode, ClassRecord, Me, SessionDetail, SessionSummary, Teacher, TeacherFolder } from "./api";
+import { api, AccessCode, ClassMember, ClassRecord, Me, SessionDetail, SessionSummary, Teacher, TeacherFolder } from "./api";
 import { auth, firebaseConfigured } from "./firebase";
 
 export default function App() {
@@ -34,6 +34,7 @@ export default function App() {
   const [sessionKeyPoints, setSessionKeyPoints] = useState("");
   const [accessCode, setAccessCode] = useState("");
   const [classAccessCodes, setClassAccessCodes] = useState<AccessCode[]>([]);
+  const [classMembers, setClassMembers] = useState<ClassMember[]>([]);
   const [newlyCreatedCode, setNewlyCreatedCode] = useState("");
   const [maxCodeUses, setMaxCodeUses] = useState("20");
   const [busy, setBusy] = useState(false);
@@ -85,15 +86,16 @@ export default function App() {
   }
   async function openClass(item: ClassRecord) {
     if (!user) return;
-    setSelectedClass(item); setDetail(null); setSessions([]); setClassAccessCodes([]); setNewlyCreatedCode(""); setShowSessionForm(false); setBusy(true); setError("");
+    setSelectedClass(item); setDetail(null); setSessions([]); setClassAccessCodes([]); setClassMembers([]); setNewlyCreatedCode(""); setShowSessionForm(false); setBusy(true); setError("");
     try {
       const token = await user.getIdToken();
       const canManage = me?.roles.includes("super_admin") || (me?.roles.includes("teacher") && item.ownerUserId === me.userId);
-      const [sessionList, codes] = await Promise.all([
+      const [sessionList, codes, members] = await Promise.all([
         api.sessions(item.id, token),
         canManage ? api.accessCodes(item.id, token) : Promise.resolve([] as AccessCode[]),
+        canManage ? api.classMembers(item.id, token) : Promise.resolve([] as ClassMember[]),
       ]);
-      setSessions(sessionList); setClassAccessCodes(codes);
+      setSessions(sessionList); setClassAccessCodes(codes); setClassMembers(members);
     }
     catch (e) { setError(message(e)); }
     finally { setBusy(false); }
@@ -117,6 +119,17 @@ export default function App() {
       setNotice(membership.alreadyActive ? "عضویت شما از قبل فعال بود." : "با موفقیت به کلاس پیوستید.");
       const joinedClass = refreshed.find(c => c.id === membership.classId);
       if (joinedClass) await openClass(joinedClass);
+    } catch (e) { setError(message(e)); }
+    finally { setBusy(false); }
+  }
+  async function revokeClassMember(studentUserId: string) {
+    if (!user || !selectedClass || !canManageSelectedClass) return;
+    if (!window.confirm("عضویت این دانشجو در کلاس لغو شود؟")) return;
+    setBusy(true); setError(""); setNotice("");
+    try {
+      await api.revokeMembership(selectedClass.id, studentUserId, await user.getIdToken());
+      setClassMembers(await api.classMembers(selectedClass.id, await user.getIdToken()));
+      setNotice("عضویت دانشجو لغو شد.");
     } catch (e) { setError(message(e)); }
     finally { setBusy(false); }
   }
@@ -370,6 +383,15 @@ export default function App() {
             <label>نکات کلیدی (اختیاری)<textarea value={sessionKeyPoints} onChange={e => setSessionKeyPoints(e.target.value)} rows={3} /></label>
             <button disabled={busy || !sessionTitle.trim()}>{busy ? "در حال ذخیره…" : editingSession ? "ذخیره تغییرات" : "ذخیره جلسه"}</button>
           </form>}
+          {canManageSelectedClass && <section className="access-manager">
+            <div className="section-head"><h3>اعضای کلاس</h3><span className="muted">{classMembers.filter(m => m.status === "active").length} عضو فعال</span></div>
+            {classMembers.map(member => <div className="code-row" key={member.studentUserId}>
+              <span><strong>دانشجو</strong><small dir="ltr">{member.studentUserId}</small></span>
+              <span className="muted">{member.joinedAtMs ? new Date(member.joinedAtMs).toLocaleDateString("fa-IR") : member.status}</span>
+              {member.status === "active" && <button className="ghost danger-text" disabled={busy} onClick={() => void revokeClassMember(member.studentUserId)}>لغو عضویت</button>}
+            </div>)}
+            {!classMembers.length && <p className="muted">هنوز عضوی برای این کلاس ثبت نشده است.</p>}
+          </section>}
           {canManageSelectedClass && selectedClass.visibility === "private" && <section className="access-manager">
             <div className="section-head"><h3>کدهای ورود کلاس خصوصی</h3><span className="muted">{classAccessCodes.filter(code => code.isActive).length} کد فعال</span></div>
             <form className="inline-code-form" onSubmit={createClassAccessCode}>
