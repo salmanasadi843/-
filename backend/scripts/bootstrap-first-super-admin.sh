@@ -45,7 +45,7 @@ SELECT EXISTS (
 
 \if :super_admin_exists
   \echo 'Refusing bootstrap: a super-admin already exists.'
-  DO $ BEGIN RAISE EXCEPTION 'Refusing bootstrap: a super-admin already exists.'; END $;
+  DO $$ BEGIN RAISE EXCEPTION 'Refusing bootstrap: a super-admin already exists.'; END $$;
 \endif
 
 SELECT EXISTS (
@@ -55,7 +55,7 @@ SELECT EXISTS (
 
 \if :identity_exists
   \echo 'Refusing bootstrap: this Firebase UID is already linked. Resolve it through a separately reviewed operator procedure.'
-  DO $ BEGIN RAISE EXCEPTION 'Refusing bootstrap: this Firebase UID is already linked.'; END $;
+  DO $$ BEGIN RAISE EXCEPTION 'Refusing bootstrap: this Firebase UID is already linked.'; END $$;
 \endif
 
 INSERT INTO app_users(display_name, email)
