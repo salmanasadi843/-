@@ -22,6 +22,9 @@ export type NewSession = {
   transcript: string; originalTranscript: string; aiSummary: string | null; aiKeyPoints: string | null;
   isPublished: boolean; lastEditedMs: number; sortOrder: number;
 };
+export type Membership = {
+  classId: string; studentUserId: string; status: string; joinedAtMs: number | null; alreadyActive: boolean;
+};
 const base = (import.meta.env.VITE_DARSYAR_API_BASE_URL || "").replace(/\/+$/, "");
 async function request<T>(path: string, token: string, options: RequestInit = {}): Promise<T> {
   if (!base) throw new Error("نشانی سرور تنظیم نشده است.");
@@ -53,4 +56,6 @@ export const api = {
     request<SessionDetail>(`/api/v1/classes/${encodeURIComponent(classId)}/sessions/${encodeURIComponent(sessionId)}`, token),
   createSession: (classId: string, data: NewSession, token: string) =>
     request<SessionDetail>(`/api/v1/classes/${encodeURIComponent(classId)}/sessions`, token, { method: "POST", body: JSON.stringify(data) }),
+  redeemAccessCode: (code: string, token: string) =>
+    request<Membership>("/api/v1/class-memberships/redeem", token, { method: "POST", body: JSON.stringify({ code }) }),
 };
