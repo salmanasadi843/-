@@ -235,6 +235,13 @@ class TeachingClassRepositoryIntegrationTest {
             assertEquals("Admin updated session", adminSessionUpdate.title)
             assertEquals("admin edited transcript", adminSessionUpdate.transcript)
             assertEquals("original", adminSessionUpdate.originalTranscript)
+            assertFailsWith<SecurityException> {
+                sessionRepository.setDeleted(ownerB.toString(), setOf(AppRole.TEACHER), nestedSessionId.toString(), true)
+            }
+            assertEquals(true, sessionRepository.setDeleted(admin.toString(), setOf(AppRole.SUPER_ADMIN), nestedSessionId.toString(), true))
+            assertTrue(sessionRepository.listVisible(admin.toString(), setOf(AppRole.SUPER_ADMIN)).none { it.id == nestedSessionId.toString() })
+            assertEquals(true, sessionRepository.setDeleted(admin.toString(), setOf(AppRole.SUPER_ADMIN), nestedSessionId.toString(), false))
+            assertTrue(sessionRepository.listVisible(admin.toString(), setOf(AppRole.SUPER_ADMIN)).any { it.id == nestedSessionId.toString() })
 
             val adminView = repository.listVisible(admin.toString(), setOf(AppRole.SUPER_ADMIN))
             assertEquals(4, adminView.size)
