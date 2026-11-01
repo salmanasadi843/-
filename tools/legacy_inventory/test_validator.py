@@ -121,5 +121,42 @@ class InventoryValidatorTest(unittest.TestCase):
         self.assertEqual(states["blank_owner"], 0)
 
 
+    def test_numeric_ids_are_source_scoped_and_duplicate_folder_parent_is_invalid(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            source_a = root / "device-a.json"
+            source_b = root / "device-b.json"
+            source_a.write_text(json.dumps({
+                "source_id": "device-a",
+                "accounts": [{"uid": "teacher-a", "account_id": "a"}],
+                "folders": [
+                    {"id": 1, "owner_uid": "teacher-a", "parent_folder_id": None},
+                    {"id": 1, "owner_uid": "teacher-a", "parent_folder_id": None},
+                    {"id": 2, "owner_uid": "teacher-a", "parent_folder_id": 1},
+                ],
+                "classes": [{"id": 7, "owner_uid": "teacher-a", "folder_id": 1}],
+                "courses": [{"id": 4, "class_id": 7}],
+                "sessions": [],
+            }), encoding="utf-8")
+            source_b.write_text(json.dumps({
+                "source_id": "device-b",
+                "accounts": [{"uid": "teacher-b", "account_id": "b"}],
+                "classes": [{"id": 7, "owner_uid": "teacher-b"}],
+                "courses": [{"id": 4, "class_id": 7}],
+                "sessions": [],
+            }), encoding="utf-8")
+            report = run_inventory([source_a, source_b], b"v" * 32)
+
+        agg = report["aggregates"]
+        # IDs 7 and 4 are repeated across sources, but are not duplicates within either source.
+        self.assertEqual(agg["duplicate_ids_within_source"], 1)
+        self.assertEqual(agg["courses_by_ownership"]["matched_uid"], 2)
+        self.assertEqual(agg["folders"]["invalid_parent"], 2)
+        kinds = [item["kind"] for item in report["exceptions"]]
+        self.assertIn("duplicate_folders_id_within_source", kinds)
+        self.assertIn("folder_parent_missing_or_owner_mismatch", kinds)
+        self.assertIn("class_folder_owner_or_reference_mismatch", kinds)
+
+
 if __name__ == "__main__":
     unittest.main()
