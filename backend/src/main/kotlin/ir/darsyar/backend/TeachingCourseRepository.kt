@@ -164,7 +164,7 @@ class TeachingCourseRepository(private val dataSource: DataSource) {
                            co.created_at_ms, co.sort_order, co.version, c.owner_user_id
                     FROM teaching_courses co
                     JOIN teaching_classes c ON c.id = co.class_id
-                    WHERE co.id = ? AND co.deleted_at IS NULL AND c.deleted_at IS NULL
+                    WHERE co.id = ? AND co.deleted_at IS NULL
                     FOR UPDATE OF co
                     """.trimIndent()
                 ).use { st ->
