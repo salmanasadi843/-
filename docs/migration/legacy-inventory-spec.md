@@ -65,7 +65,7 @@ Produce aggregate JSON and CSV summaries containing:
 - account counts by profile-present/profile-missing and legacy role-field category;
 - class counts by ownership status and publication/visibility state;
 - course/session counts by inherited ownership status;
-- folder counts by exact owner match, blank/unknown owner, and parent/reference validity;
+- folder counts by exact owner match, blank/unknown owner, invalid parent/reference, and duplicate IDs;
 - orphan and ambiguous-parent counts for courses/sessions;
 - duplicate numeric IDs only within each individual source database;
 - counts of shared-feed versus private-backup records;
