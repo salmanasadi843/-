@@ -140,6 +140,13 @@ fun BackendBrowseScreen(onBack: () -> Unit) {
                     }
                 }
             }
+            item {
+                Text(
+                    "کلاس عمومی برای کاربرِ واردشده، بدون عضویت قابل مشاهده است؛ مشاهده بدون ورود هنوز فعال نشده است. کلاس خصوصی به عضویت نیاز دارد.",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                )
+            }
             item { Text("۱. استاد", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold) }
             if (teachers.isEmpty() && !busy) {
                 item { Text("استادی با کلاس قابل مشاهده پیدا نشد.", style = MaterialTheme.typography.bodySmall) }
@@ -193,7 +200,7 @@ fun BackendBrowseScreen(onBack: () -> Unit) {
                             Column(Modifier.weight(1f)) {
                                 Text(clazz.title, fontWeight = FontWeight.SemiBold)
                                 Text(
-                                    "${if (clazz.visibility == "public") "عمومی" else "خصوصی"} · ${if (clazz.isPublished) "منتشرشده" else "منتشرنشده"}",
+                                    "${if (clazz.visibility == "public") "عمومی · بدون عضویت" else "خصوصی · عضویت لازم"} · ${if (clazz.isPublished) "منتشرشده" else "منتشرنشده"}",
                                     style = MaterialTheme.typography.bodySmall
                                 )
                             }
