@@ -316,6 +316,16 @@ export default function App() {
         <h2>استادان</h2>
         <button className={selectedTeacher === "all" ? "choice active" : "choice"} onClick={() => {setSelectedTeacher("all");setSelectedClass(null);setDetail(null);}}>همه استادان</button>
         {teachers.map(t => <button key={t.userId} className={selectedTeacher === t.userId ? "choice active" : "choice"} onClick={() => {setSelectedTeacher(t.userId);setSelectedClass(null);setDetail(null);}}>{t.displayName}</button>)}
+        {(folderOwnerId || (!isAdmin && me?.roles.includes("teacher"))) && <section className="folder-manager">
+          <div className="section-head"><h2>پوشه‌های استاد</h2><button className="ghost" onClick={() => setShowFolderForm(v => !v)}>{showFolderForm ? "بستن" : "＋ پوشه"}</button></div>
+          {showFolderForm && <form onSubmit={createTeacherFolder} className="folder-form"><input value={folderName} onChange={e => setFolderName(e.target.value)} placeholder="نام پوشه جدید" required /><button disabled={busy || !folderName.trim()}>ایجاد</button></form>}
+          {visibleFolders.map(folder => <div className="folder-row" key={folder.id}>
+            <span>{folder.name}{folder.isHidden ? " · مخفی" : ""}</span>
+            <span><button className="ghost" disabled={busy} onClick={() => void toggleFolderHidden(folder)}>{folder.isHidden ? "نمایش" : "مخفی"}</button><button className="ghost danger-text" disabled={busy} onClick={() => void removeTeacherFolder(folder)}>حذف</button></span>
+          </div>)}
+          {!visibleFolders.length && <p className="muted">پوشه‌ای برای این استاد ثبت نشده است.</p>}
+        </section>}
+        {isAdmin && selectedTeacher === "all" && <p className="muted">برای مدیریت پوشه‌ها، یک استاد را انتخاب کنید.</p>}
       </aside>
       <section className="panel content">
         <div className="section-head"><h2>کلاس‌ها</h2><span className="muted">{visibleClasses.length} کلاس</span></div>
@@ -327,6 +337,7 @@ export default function App() {
           <label>توضیحات<textarea value={classDescription} onChange={e => setClassDescription(e.target.value)} rows={2} /></label>
           <label>ترم یا سال تحصیلی<input value={classTerm} onChange={e => setClassTerm(e.target.value)} /></label>
           <label>دسترسی<select value={classVisibility} onChange={e => setClassVisibility(e.target.value as "public" | "private")}><option value="public">عمومی ـ بدون نیاز به عضویت</option><option value="private">خصوصی ـ نیازمند عضویت</option></select></label>
+          <label>پوشه استاد<select value={selectedFolderId} onChange={e => setSelectedFolderId(e.target.value)}><option value="">بدون پوشه</option>{visibleFolders.filter(folder => !folder.isHidden || folder.id === selectedFolderId).map(folder => <option key={folder.id} value={folder.id}>{folder.name}{folder.isHidden ? " (مخفی)" : ""}</option>)}</select></label>
           <button disabled={busy || !classTitle.trim() || (isAdmin && selectedTeacher === "all")}>{busy ? "در حال ذخیره…" : editingClass ? "ذخیره تغییرات" : "ذخیره کلاس"}</button>
         </form>}
         <div className="class-grid">
