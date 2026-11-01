@@ -44,14 +44,15 @@ unique.
 Each class is assigned exactly one inventory status:
 
 - `matched_uid`: class ownerUid exactly matches one Firebase UID from the account export.
-- `blank_owner`: ownerUid is blank. Never assign it to the currently logged-in user.
+- `blank_owner`: ownerUid is blank and no independent source owner is present. Never assign it to the currently logged-in user.
 - `unknown_uid`: nonblank ownerUid has no exact account match.
-- `conflicting_owner`: independent source metadata disagrees about the owner.
+- `conflicting_owner`: independent source metadata disagrees about the owner, including when one source is blank and another supplies an owner.
 - `invalid_record`: required structural fields are malformed.
 
-Courses and sessions inherit the status of their parent class, with separate flags for
-missing or invalid class references. Folder ownership is checked independently; a class
-whose folder belongs to a different owner is a conflict, not an invitation to rewrite IDs.
+Courses and sessions inherit the status of their parent class. A missing parent is an orphan;
+a duplicated/ambiguous parent ID is reported separately and is not silently classified as an orphan.
+Folder ownership is checked independently; a class whose folder belongs to a different owner is
+an exception, not an invitation to rewrite IDs.
 
 Shared-feed imports, private teacher backups, and device-local source rows are separate
 record populations. Do not collapse them into one population merely because titles,
@@ -65,7 +66,7 @@ Produce aggregate JSON and CSV summaries containing:
 - class counts by ownership status and publication/visibility state;
 - course/session counts by inherited ownership status;
 - folder counts by exact owner match, blank/unknown owner, and parent/reference validity;
-- orphan counts for courses/sessions with missing parent classes;
+- orphan and ambiguous-parent counts for courses/sessions;
 - duplicate numeric IDs only within each individual source database;
 - counts of shared-feed versus private-backup records;
 - source checksums, extraction times, validator version, and total rows processed.
@@ -94,11 +95,12 @@ or content. No automatic resolution is performed.
 - identical class metadata/content under different owner UIDs;
 - blank ownerUid and unmatched ownerUid;
 - duplicate numeric IDs in two different source databases;
-- orphan course, orphan session, and session/course class mismatch;
+- orphan course, orphan session, duplicate parent reference, and session/course class mismatch;
 - class pointing to another teacher's folder;
 - folder parent owned by another teacher and folder cycle;
 - private backup records and shared-feed records with overlapping metadata;
-- missing Firebase profile and duplicate UID-to-account mapping.
+- missing Firebase profile and duplicate UID-to-account mapping;
+- disagreement between document-path owner and class owner, including blank-vs-present owner.
 
 The validator passes only if it reports each fixture in the expected bucket and produces no
 write operations. Tests must assert that the input files' checksums remain unchanged.
