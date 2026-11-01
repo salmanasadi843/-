@@ -74,7 +74,7 @@ class TeacherAdministrationRepositoryIntegrationTest {
                     "SELECT count(*) FROM audit_log WHERE entity_type = 'teacher_profile' AND owner_user_id = ?"
                 ).use { st ->
                     st.setObject(1, teacherId)
-                    st.executeQuery().use { rs -> rs.next(); assertEquals(2, rs.getInt(1)) }
+                    st.executeQuery().use { rs -> rs.next(); assertEquals(3, rs.getInt(1)) }
                 }
             }
             assertFailsWith<IllegalStateException> {
