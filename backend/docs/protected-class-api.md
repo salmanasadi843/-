@@ -77,9 +77,44 @@ Soft-deletes an empty folder. Deletion is rejected while it still contains
 child folders or classes; those items must be moved explicitly first.
 Folder mutations write audit records in the same transaction.
 
+## Session endpoints
+
+The canonical content hierarchy is **teacher → class → session**. A session
+always belongs directly to a class. Its optional `courseId` is only a grouping
+inside that same class; it does not replace or sit between the class and session
+relationship. Optional teacher folders are also only class organization metadata.
+
+### `GET /api/v1/classes/{classId}/sessions`
+
+Returns sessions visible to the authenticated caller in the specified class.
+Super admins and class owners can see unpublished sessions. Other teachers can
+read published sessions in published, non-hidden classes. Students can read
+published sessions in public classes or classes where they have an active
+membership. Sessions in other teachers' classes remain read-only.
+
+### `POST /api/v1/classes/{classId}/sessions`
+
+Creates a session directly under the class. Only the class owner (approved
+teacher) or super admin can create it. A supplied `courseId` must refer to a
+course belonging to the same class; the database enforces this relationship.
+
+The request and response preserve the original transcript, edited transcript,
+AI summary, key points, quiz JSON, tags, date, audio duration, publication
+state, and optional course grouping.
+
+### `PATCH /api/v1/sessions/{sessionId}`
+
+Updates session content and metadata. Only the class owner or super admin may
+update a session. The class relationship and owner cannot be changed through
+this endpoint. Every create/update writes a session audit record in the same
+transaction.
+
+Audio source records have a schema foundation, but dedicated audio-source
+management endpoints are not exposed yet.
+
 ## Audit and transaction guarantees
 
-Class creation and update, together with their corresponding `audit_log`
+Class and session creation/update, together with their corresponding `audit_log`
 entries, commit in one PostgreSQL transaction. If the audit insert fails, the
 class write is rolled back. Updates lock the target class row before checking
 ownership and changing it.
@@ -91,8 +126,8 @@ record creation against a disposable PostgreSQL schema.
 ## Deliberate limitations
 
 - No class deletion endpoint is exposed yet.
-- Course/session CRUD, folder management, access-code redemption, and membership
-  administration are not implemented by this API yet.
+- Course CRUD, session deletion, audio-source management, access-code redemption,
+  and membership administration are not implemented by this API yet.
 - This is a backend staging foundation. It is not deployed, does not receive
   production traffic, and is not connected to the Android app or live Firebase
   data.
