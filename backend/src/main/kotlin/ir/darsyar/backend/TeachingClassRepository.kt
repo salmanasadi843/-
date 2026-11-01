@@ -83,7 +83,7 @@ class TeachingClassRepository(private val dataSource: DataSource) {
         val actor = UUID.fromString(actorUserId)
         val owner = UUID.fromString(command.ownerUserId)
         require(command.title.isNotBlank()) { "Class title is required." }
-        require(command.visibility in setOf("public", "private", "unlisted")) {
+        require(command.visibility in setOf("public", "private")) {
             "Invalid class visibility."
         }
 
@@ -133,7 +133,7 @@ class TeachingClassRepository(private val dataSource: DataSource) {
         val actor = UUID.fromString(actorUserId)
         val id = UUID.fromString(classId)
         require(command.title.isNotBlank()) { "Class title is required." }
-        require(command.visibility in setOf("public", "private", "unlisted")) {
+        require(command.visibility in setOf("public", "private")) {
             "Invalid class visibility."
         }
 
