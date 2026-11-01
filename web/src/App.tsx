@@ -1,6 +1,6 @@
 import { FormEvent, useEffect, useMemo, useState } from "react";
 import { onAuthStateChanged, signInWithEmailAndPassword, signOut, User } from "firebase/auth";
-import { api, ClassRecord, Me, SessionDetail, SessionSummary, Teacher } from "./api";
+import { api, AccessCode, ClassRecord, Me, SessionDetail, SessionSummary, Teacher } from "./api";
 import { auth, firebaseConfigured } from "./firebase";
 
 export default function App() {
@@ -25,6 +25,9 @@ export default function App() {
   const [sessionSummary, setSessionSummary] = useState("");
   const [sessionKeyPoints, setSessionKeyPoints] = useState("");
   const [accessCode, setAccessCode] = useState("");
+  const [classAccessCodes, setClassAccessCodes] = useState<AccessCode[]>([]);
+  const [newlyCreatedCode, setNewlyCreatedCode] = useState("");
+  const [maxCodeUses, setMaxCodeUses] = useState("20");
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
   const [notice, setNotice] = useState("");
@@ -72,8 +75,16 @@ export default function App() {
   }
   async function openClass(item: ClassRecord) {
     if (!user) return;
-    setSelectedClass(item); setDetail(null); setSessions([]); setShowSessionForm(false); setBusy(true); setError("");
-    try { setSessions(await api.sessions(item.id, await user.getIdToken())); }
+    setSelectedClass(item); setDetail(null); setSessions([]); setClassAccessCodes([]); setNewlyCreatedCode(""); setShowSessionForm(false); setBusy(true); setError("");
+    try {
+      const token = await user.getIdToken();
+      const canManage = me?.roles.includes("super_admin") || (me?.roles.includes("teacher") && item.ownerUserId === me.userId);
+      const [sessionList, codes] = await Promise.all([
+        api.sessions(item.id, token),
+        canManage ? api.accessCodes(item.id, token) : Promise.resolve([] as AccessCode[]),
+      ]);
+      setSessions(sessionList); setClassAccessCodes(codes);
+    }
     catch (e) { setError(message(e)); }
     finally { setBusy(false); }
   }
@@ -99,6 +110,35 @@ export default function App() {
     } catch (e) { setError(message(e)); }
     finally { setBusy(false); }
   }
+  async function createClassAccessCode(event: FormEvent) {
+    event.preventDefault();
+    if (!user || !selectedClass || !canManageSelectedClass) return;
+    const uses = Number(maxCodeUses);
+    if (!Number.isInteger(uses) || uses < 1 || uses > 10000) {
+      setError("تعداد دفعات استفاده باید عددی بین ۱ تا ۱۰۰۰۰ باشد.");
+      return;
+    }
+    setBusy(true); setError(""); setNotice(""); setNewlyCreatedCode("");
+    try {
+      const created = await api.createAccessCode(selectedClass.id, { maxUses: uses }, await user.getIdToken());
+      setNewlyCreatedCode(created.code);
+      setClassAccessCodes(await api.accessCodes(selectedClass.id, await user.getIdToken()));
+      setNotice("کد ورود ساخته شد؛ آن را اکنون در اختیار دانشجویان قرار دهید.");
+    } catch (e) { setError(message(e)); }
+    finally { setBusy(false); }
+  }
+  async function revokeClassAccessCode(codeId: string) {
+    if (!user || !selectedClass || !canManageSelectedClass) return;
+    if (!window.confirm("این کد غیرفعال شود؟ دانشجویان دیگر نمی‌توانند با آن عضو شوند.")) return;
+    setBusy(true); setError(""); setNotice("");
+    try {
+      await api.revokeAccessCode(codeId, await user.getIdToken());
+      setClassAccessCodes(await api.accessCodes(selectedClass.id, await user.getIdToken()));
+      setNotice("کد ورود غیرفعال شد.");
+    } catch (e) { setError(message(e)); }
+    finally { setBusy(false); }
+  }
+
   async function createClass(event: FormEvent) {
     event.preventDefault();
     if (!user || !me) return;
