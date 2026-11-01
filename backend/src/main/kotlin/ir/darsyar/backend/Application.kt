@@ -37,6 +37,7 @@ data class ClassWriteRequest(
     val visibility: String = "private",
     val isPublished: Boolean = false,
     val isHidden: Boolean = false,
+    val folderId: String? = null,
     val sortOrder: Int = 0
 )
 
@@ -50,7 +51,8 @@ data class ClassApiRecord(
     val visibility: String,
     val isPublished: Boolean,
     val isHidden: Boolean,
-    val sortOrder: Int
+    val sortOrder: Int,
+    val folderId: String?
 )
 
 @Serializable
@@ -85,7 +87,7 @@ private fun TeacherFolderRecord.toApiRecord() = FolderApiRecord(
 
 private fun TeachingClassRecord.toApiRecord() = ClassApiRecord(
     id, ownerUserId, title, description, term, visibility,
-    isPublished, isHidden, sortOrder
+    isPublished, isHidden, sortOrder, folderId
 )
 
 fun main() {
@@ -357,7 +359,7 @@ fun Application.module(
                             UpdateTeachingClass(
                                 request.title, request.description, request.term,
                                 request.visibility, request.isPublished,
-                                request.isHidden, request.sortOrder
+                                request.isHidden, request.sortOrder, request.folderId
                             )
                         )
                         if (updated == null) {
