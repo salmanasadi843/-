@@ -433,7 +433,7 @@ export default function App() {
           {canManageSelectedClass && <section className="access-manager">
             <div className="section-head"><h3>اعضای کلاس</h3><span className="muted">{classMembers.filter(m => m.status === "active").length} عضو فعال</span></div>
             {classMembers.map(member => <div className="code-row" key={member.studentUserId}>
-              <span><strong>دانشجو</strong><small dir="ltr">{member.studentUserId}</small></span>
+              <span><strong>دانشجو</strong><small dir="ltr">{member.studentUserId.length > 14 ? `${member.studentUserId.slice(0, 8)}…${member.studentUserId.slice(-4)}` : member.studentUserId}</small></span>
               <span className="muted">{member.joinedAtMs ? new Date(member.joinedAtMs).toLocaleDateString("fa-IR") : member.status}</span>
               {member.status === "active" && <button className="ghost danger-text" disabled={busy} onClick={() => void revokeClassMember(member.studentUserId)}>لغو عضویت</button>}
             </div>)}
