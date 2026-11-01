@@ -14,8 +14,19 @@ export default function App() {
   const [selectedClass, setSelectedClass] = useState<ClassRecord | null>(null);
   const [sessions, setSessions] = useState<SessionSummary[]>([]);
   const [detail, setDetail] = useState<SessionDetail | null>(null);
+  const [showClassForm, setShowClassForm] = useState(false);
+  const [showSessionForm, setShowSessionForm] = useState(false);
+  const [classTitle, setClassTitle] = useState("");
+  const [classDescription, setClassDescription] = useState("");
+  const [classTerm, setClassTerm] = useState("");
+  const [classVisibility, setClassVisibility] = useState<"public" | "private">("private");
+  const [sessionTitle, setSessionTitle] = useState("");
+  const [sessionTranscript, setSessionTranscript] = useState("");
+  const [sessionSummary, setSessionSummary] = useState("");
+  const [sessionKeyPoints, setSessionKeyPoints] = useState("");
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
+  const [notice, setNotice] = useState("");
 
   useEffect(() => {
     if (!auth) return;
@@ -41,7 +52,14 @@ export default function App() {
   }, [user]);
 
   const isAdmin = me?.roles.includes("super_admin") ?? false;
-  const visibleClasses = useMemo(() => classes.filter(c => selectedTeacher === "all" || c.ownerUserId === selectedTeacher), [classes, selectedTeacher]);
+  const canCreateClass = isAdmin || (me?.roles.includes("teacher") ?? false);
+  const visibleClasses = useMemo(
+    () => classes.filter(c => selectedTeacher === "all" || c.ownerUserId === selectedTeacher),
+    [classes, selectedTeacher],
+  );
+  const canManageSelectedClass = !!selectedClass &&
+    (isAdmin || selectedClass.ownerUserId === me?.userId) &&
+    (isAdmin || (me?.roles.includes("teacher") ?? false));
 
   async function login(event: FormEvent) {
     event.preventDefault(); if (!auth) return;
@@ -52,16 +70,58 @@ export default function App() {
   }
   async function openClass(item: ClassRecord) {
     if (!user) return;
-    setSelectedClass(item); setDetail(null); setSessions([]); setBusy(true); setError("");
+    setSelectedClass(item); setDetail(null); setSessions([]); setShowSessionForm(false); setBusy(true); setError("");
     try { setSessions(await api.sessions(item.id, await user.getIdToken())); }
     catch (e) { setError(message(e)); }
     finally { setBusy(false); }
   }
   async function openSession(item: SessionSummary) {
     if (!user || !selectedClass) return;
-    setBusy(true); setError("");
+    setBusy(true); setError(""); setDetail(null);
     try { setDetail(await api.session(selectedClass.id, item.id, await user.getIdToken())); }
     catch (e) { setError(message(e)); }
+    finally { setBusy(false); }
+  }
+  async function createClass(event: FormEvent) {
+    event.preventDefault();
+    if (!user || !me) return;
+    if (isAdmin && selectedTeacher === "all") {
+      setError("برای ساخت کلاس توسط مدیر، ابتدا یک استاد را انتخاب کنید.");
+      return;
+    }
+    setBusy(true); setError(""); setNotice("");
+    try {
+      const data = {
+        ...(isAdmin ? { ownerUserId: selectedTeacher } : {}),
+        title: classTitle.trim(), description: classDescription.trim(), term: classTerm.trim(),
+        visibility: classVisibility, isPublished: true, isHidden: false, sortOrder: 0,
+      };
+      const created = await api.createClass(data, await user.getIdToken());
+      setClasses(current => [...current, created]);
+      setClassTitle(""); setClassDescription(""); setClassTerm(""); setClassVisibility("private");
+      setShowClassForm(false); setNotice("کلاس با موفقیت ایجاد شد.");
+      setSelectedTeacher(created.ownerUserId);
+      await openClass(created);
+    } catch (e) { setError(message(e)); }
+    finally { setBusy(false); }
+  }
+  async function createSession(event: FormEvent) {
+    event.preventDefault();
+    if (!user || !selectedClass || !canManageSelectedClass) return;
+    setBusy(true); setError(""); setNotice("");
+    try {
+      const now = Date.now();
+      const teacherName = teachers.find(t => t.userId === selectedClass.ownerUserId)?.displayName ?? user.displayName ?? "استاد";
+      await api.createSession(selectedClass.id, {
+        title: sessionTitle.trim(), courseName: "", professorName: teacherName, dateMs: now,
+        transcript: sessionTranscript, originalTranscript: sessionTranscript,
+        aiSummary: sessionSummary.trim() || null, aiKeyPoints: sessionKeyPoints.trim() || null,
+        isPublished: true, lastEditedMs: now, sortOrder: sessions.length,
+      }, await user.getIdToken());
+      setSessionTitle(""); setSessionTranscript(""); setSessionSummary(""); setSessionKeyPoints("");
+      setShowSessionForm(false); setNotice("جلسه با موفقیت ایجاد شد.");
+      setSessions(await api.sessions(selectedClass.id, await user.getIdToken()));
+    } catch (e) { setError(message(e)); }
     finally { setBusy(false); }
   }
 
@@ -83,6 +143,7 @@ export default function App() {
     <header className="topbar"><Brand /><div className="account"><span>{user.email}</span><button className="ghost" onClick={() => void signOut(auth!)}>خروج</button></div></header>
     <section className="welcome"><div><p className="eyebrow">محیط آموزشی درس‌یار</p><h1>{isAdmin ? "مدیریت و مرور محتوا" : "کلاس‌های آموزشی"}</h1><p>ساختار استاد ← کلاس ← جلسه</p></div><span className="role">{roleLabel(me?.roles ?? [])}</span></section>
     {error && <p className="error notice">{error}</p>}
+    {notice && <p className="success notice">{notice}</p>}
     <div className="layout">
       <aside className="panel sidebar">
         <h2>استادان</h2>
@@ -91,14 +152,32 @@ export default function App() {
       </aside>
       <section className="panel content">
         <div className="section-head"><h2>کلاس‌ها</h2><span className="muted">{visibleClasses.length} کلاس</span></div>
+        {canCreateClass && <div className="toolbar"><button className="action" onClick={() => {setShowClassForm(v => !v);setError("");}}>{showClassForm ? "بستن فرم" : "＋ ایجاد کلاس"}</button>{isAdmin && selectedTeacher === "all" && <span className="muted">برای ساخت کلاس، ابتدا استاد موردنظر را انتخاب کنید.</span>}</div>}
+        {showClassForm && <form className="editor-form" onSubmit={createClass}>
+          <h3>کلاس جدید</h3>
+          <label>عنوان کلاس<input value={classTitle} onChange={e => setClassTitle(e.target.value)} required /></label>
+          <label>توضیحات<textarea value={classDescription} onChange={e => setClassDescription(e.target.value)} rows={2} /></label>
+          <label>ترم یا سال تحصیلی<input value={classTerm} onChange={e => setClassTerm(e.target.value)} /></label>
+          <label>دسترسی<select value={classVisibility} onChange={e => setClassVisibility(e.target.value as "public" | "private")}><option value="public">عمومی ـ بدون نیاز به عضویت</option><option value="private">خصوصی ـ نیازمند عضویت</option></select></label>
+          <button disabled={busy || !classTitle.trim() || (isAdmin && selectedTeacher === "all")}>{busy ? "در حال ذخیره…" : "ذخیره کلاس"}</button>
+        </form>}
         <div className="class-grid">
           {visibleClasses.map(c => <button key={c.id} className={selectedClass?.id === c.id ? "class-card selected" : "class-card"} onClick={() => void openClass(c)}>
-            <span className="tag">{c.visibility === "public" ? "عمومی" : "خصوصی"}</span><strong>{c.title}</strong><span className="muted">{teachers.find(t => t.userId === c.ownerUserId)?.displayName ?? "استاد"}</span>
+            <span className="tag">{c.visibility === "public" ? "عمومی" : "خصوصی"}{!c.isPublished ? " · پیش‌نویس" : ""}</span><strong>{c.title}</strong><span className="muted">{teachers.find(t => t.userId === c.ownerUserId)?.displayName ?? "استاد"}</span>
           </button>)}
           {!visibleClasses.length && <p className="muted empty">کلاسی برای نمایش وجود ندارد.</p>}
         </div>
         {selectedClass && <div className="lower">
           <div className="section-head"><h2>جلسه‌های {selectedClass.title}</h2><span className="muted">{sessions.length} جلسه</span></div>
+          {canManageSelectedClass && <div className="toolbar"><button className="action" onClick={() => setShowSessionForm(v => !v)}>{showSessionForm ? "بستن فرم" : "＋ افزودن جلسه"}</button></div>}
+          {showSessionForm && canManageSelectedClass && <form className="editor-form" onSubmit={createSession}>
+            <h3>جلسه جدید</h3>
+            <label>عنوان جلسه<input value={sessionTitle} onChange={e => setSessionTitle(e.target.value)} required /></label>
+            <label>متن جلسه<textarea value={sessionTranscript} onChange={e => setSessionTranscript(e.target.value)} rows={5} /></label>
+            <label>خلاصه هوشمند (اختیاری)<textarea value={sessionSummary} onChange={e => setSessionSummary(e.target.value)} rows={3} /></label>
+            <label>نکات کلیدی (اختیاری)<textarea value={sessionKeyPoints} onChange={e => setSessionKeyPoints(e.target.value)} rows={3} /></label>
+            <button disabled={busy || !sessionTitle.trim()}>{busy ? "در حال ذخیره…" : "ذخیره جلسه"}</button>
+          </form>}
           {sessions.map(s => <button key={s.id} className="session-row" onClick={() => void openSession(s)}><span>{s.title}</span><span className="muted">{s.courseName}</span></button>)}
           {!sessions.length && !busy && <p className="muted">جلسه‌ای ثبت نشده است.</p>}
         </div>}
@@ -111,7 +190,7 @@ export default function App() {
         </article>}
       </section>
     </div>
-    <footer>نسخه آزمایشی سایت · مرور محتوا فقط خواندنی است · مشاهده عمومی بدون ورود هنوز فعال نشده است</footer>
+    <footer>نسخه آزمایشی سایت · ایجاد کلاس و جلسه فعال است · ویرایش و حذف محتوا در مرحله بعد اضافه می‌شود</footer>
   </main>;
 }
 function Brand() { return <div className="brand"><span className="brand-mark">د</span><span>درس‌یار</span></div>; }
