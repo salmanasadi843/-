@@ -60,6 +60,8 @@ import androidx.compose.ui.text.input.VisualTransformation
 import androidx.compose.ui.unit.dp
 import com.example.data.local.DatabaseBackup
 import com.example.data.local.CloudMaterialsSync
+import com.example.data.api.BackendEndpointConfig
+import com.example.data.api.DarsyarReadOnlyApiFactory
 import com.example.data.api.GeminiApiService
 import com.example.data.api.GroqApiService
 import com.example.data.api.SpeechmaticsApiService
@@ -85,6 +87,9 @@ fun SettingsScreen(
 ) {
     val context = LocalContext.current
     val backupScope = rememberCoroutineScope()
+    var backendCheckBusy by remember { mutableStateOf(false) }
+    var backendCheckStatus by remember { mutableStateOf<String?>(null) }
+    var backendCheckError by remember { mutableStateOf(false) }
     var backupBusy by remember { mutableStateOf(false) }
     var backupStatus by remember { mutableStateOf<String?>(null) }
     var backupError by remember { mutableStateOf(false) }
@@ -233,6 +238,80 @@ fun SettingsScreen(
                         style = MaterialTheme.typography.bodySmall,
                         color = MaterialTheme.colorScheme.onSurfaceVariant
                     )
+                }
+            }
+            Card(
+                colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
+                elevation = CardDefaults.cardElevation(2.dp),
+                modifier = Modifier.fillMaxWidth()
+            ) {
+                Column(modifier = Modifier.padding(18.dp)) {
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        Icon(Icons.Filled.NetworkCheck, contentDescription = null)
+                        Spacer(Modifier.width(8.dp))
+                        Text("آزمایش اتصال سرور جدید", style = MaterialTheme.typography.titleLarge)
+                    }
+                    Spacer(Modifier.height(8.dp))
+                    Text(
+                        if (BackendEndpointConfig.isConfigured)
+                            "این بخش فقط اتصال آزمایشیِ خواندنی را بررسی می‌کند؛ اطلاعاتی در سرور، Room یا فایربیس تغییر نمی‌دهد."
+                        else
+                            "نشانی سرور هنوز هنگام ساخت برنامه تنظیم نشده است. تا زمان استقرار و تأیید سرور، این بخش غیرفعال می‌ماند.",
+                        style = MaterialTheme.typography.bodyMedium,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                    Spacer(Modifier.height(12.dp))
+                    OutlinedButton(
+                        onClick = {
+                            backendCheckBusy = true
+                            backendCheckStatus = null
+                            backendCheckError = false
+                            AuthPreferences.getFirebaseIdToken(context) { tokenResult ->
+                                tokenResult.fold(
+                                    onSuccess = { token ->
+                                        backupScope.launch {
+                                            val result = withContext(Dispatchers.IO) {
+                                                runCatching {
+                                                    DarsyarReadOnlyApiFactory.create().loadSnapshot(token)
+                                                }
+                                            }
+                                            backendCheckBusy = false
+                                            backendCheckError = result.isFailure
+                                            backendCheckStatus = result.fold(
+                                                onSuccess = { snapshot ->
+                                                    "اتصال موفق بود؛ نقش‌های حساب: ${snapshot.account.roles.joinToString()}؛ تعداد کلاس‌های قابل مشاهده: ${snapshot.classes.size}."
+                                                },
+                                                onFailure = { error ->
+                                                    "اتصال ناموفق بود: ${error.localizedMessage ?: "خطای نامشخص"}"
+                                                }
+                                            )
+                                        }
+                                    },
+                                    onFailure = { error ->
+                                        backendCheckBusy = false
+                                        backendCheckError = true
+                                        backendCheckStatus = error.localizedMessage ?: "دریافت توکن ورود ناموفق بود."
+                                    }
+                                )
+                            }
+                        },
+                        enabled = BackendEndpointConfig.isConfigured && !backendCheckBusy
+                    ) {
+                        if (backendCheckBusy) {
+                            CircularProgressIndicator(modifier = Modifier.size(18.dp), strokeWidth = 2.dp)
+                            Spacer(Modifier.width(8.dp))
+                        }
+                        Text("بررسی اتصال (فقط خواندن)")
+                    }
+                    backendCheckStatus?.let { message ->
+                        Spacer(Modifier.height(8.dp))
+                        Text(
+                            message,
+                            style = MaterialTheme.typography.bodyMedium,
+                            color = if (backendCheckError) MaterialTheme.colorScheme.error
+                            else MaterialTheme.colorScheme.primary
+                        )
+                    }
                 }
             }
             Card(
