@@ -32,6 +32,9 @@ python tools/legacy_inventory/validator.py \
   --out /secure/offline-report
 ```
 
+Folder summaries distinguish exact owner references, unresolved owners, invalid parent references,
+and duplicate folder IDs; duplicate IDs are never counted as valid folder references.
+
 Outputs: aggregate `inventory.json`, aggregate `inventory.csv`, and a restricted
 `exceptions.restricted.json` containing only source pseudonyms and scoped row IDs.
 Protect the restricted exception file as sensitive operational metadata.
