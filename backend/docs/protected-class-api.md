@@ -138,6 +138,16 @@ or delete binary files. A future storage adapter can resolve storage keys to
 the currently configured provider without changing session records. Every
 audio-source write and deactivation is audited transactionally.
 
+## Private class access and membership
+
+- `POST /api/v1/classes/{classId}/access-codes`: the class owner or super admin creates a code for a private class. Optional `expiresAtMs` and `maxUses` limits can be supplied.
+- `DELETE /api/v1/access-codes/{codeId}`: the class owner or super admin deactivates a code.
+- `POST /api/v1/class-memberships/redeem`: a student redeems a code and receives active membership.
+
+The generated code is returned only once. PostgreSQL stores only its SHA-256 hash. Codes are checked under a row lock, so concurrent redemptions respect usage limits. Repeating a redemption by a student who already has active membership is idempotent and does not consume another use. Codes work only for published private classes; public/unlisted classes do not need this mechanism. Every code creation/deactivation and membership activation is audited in the same transaction.
+
+The API currently supports code redemption and code deactivation; a complete membership administration/listing interface is still pending.
+
 ## Audit and transaction guarantees
 
 Class and session creation/update, together with their corresponding `audit_log`
@@ -152,8 +162,7 @@ record creation against a disposable PostgreSQL schema.
 ## Deliberate limitations
 
 - No class deletion endpoint is exposed yet.
-- Session deletion, binary audio upload/storage-provider adapters, access-code redemption,
-  and membership administration are not implemented by this API yet.
+- Session deletion, binary audio upload/storage-provider adapters, and full membership administration/listing are not implemented by this API yet.
 - This is a backend staging foundation. It is not deployed, does not receive
   production traffic, and is not connected to the Android app or live Firebase
   data.
