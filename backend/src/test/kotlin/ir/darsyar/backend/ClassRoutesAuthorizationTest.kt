@@ -144,6 +144,24 @@ class ClassRoutesAuthorizationTest {
     }
 
     @Test
+    fun `membership listing rejects unauthenticated requests`() = testApplication {
+        application {
+            module(unusedDataSource(), verifier(), usersWith(AppRole.STUDENT))
+        }
+        val response = client.get("/api/v1/classes/11111111-1111-4111-8111-111111111111/memberships")
+        assertEquals(HttpStatusCode.Unauthorized, response.status)
+    }
+
+    @Test
+    fun `membership revocation rejects unauthenticated requests`() = testApplication {
+        application {
+            module(unusedDataSource(), verifier(), usersWith(AppRole.STUDENT))
+        }
+        val response = client.delete("/api/v1/classes/11111111-1111-4111-8111-111111111111/memberships/22222222-2222-4222-8222-222222222222")
+        assertEquals(HttpStatusCode.Unauthorized, response.status)
+    }
+
+    @Test
     fun `audio source listing rejects unauthenticated requests`() = testApplication {
         application {
             module(unusedDataSource(), verifier(), usersWith(AppRole.STUDENT))
