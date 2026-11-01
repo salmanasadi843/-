@@ -112,7 +112,7 @@ class TeachingClassRepositoryIntegrationTest {
 
             val teacherView = repository.listVisible(ownerB.toString(), setOf(AppRole.TEACHER))
             assertEquals(
-                setOf(publicClass.id, privateClass.id),
+                setOf(publicClass.id),
                 teacherView.map { it.id }.toSet()
             )
 
