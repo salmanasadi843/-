@@ -30,7 +30,12 @@ if [[ "${CONFIRM_SUPER_ADMIN_BOOTSTRAP:-}" != "I_HAVE_VERIFIED_THE_FIREBASE_UID"
   exit 2
 fi
 
-psql "${DATABASE_URL:-}" \
+PSQL_ARGS=()
+if [[ -n "${DATABASE_URL:-}" ]]; then
+  PSQL_ARGS+=("${DATABASE_URL}")
+fi
+
+psql "${PSQL_ARGS[@]}" \
   -X -v ON_ERROR_STOP=1 \
   -v firebase_uid="${BOOTSTRAP_FIREBASE_UID}" \
   -v admin_email="${BOOTSTRAP_ADMIN_EMAIL}" \
