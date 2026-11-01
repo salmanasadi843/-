@@ -151,7 +151,8 @@ class InventoryValidatorTest(unittest.TestCase):
         # IDs 7 and 4 are repeated across sources, but are not duplicates within either source.
         self.assertEqual(agg["duplicate_ids_within_source"], 1)
         self.assertEqual(agg["courses_by_ownership"]["matched_uid"], 2)
-        self.assertEqual(agg["folders"]["invalid_parent"], 2)
+        self.assertEqual(agg["folders"]["invalid_parent"], 1)
+        self.assertEqual(agg["folders"]["exact_owner_reference"], 2)
         kinds = [item["kind"] for item in report["exceptions"]]
         self.assertIn("duplicate_folders_id_within_source", kinds)
         self.assertIn("folder_parent_missing_or_owner_mismatch", kinds)
