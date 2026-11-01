@@ -1,6 +1,24 @@
 # قرارداد اولیه Backend API درس‌یار — نسخه 1
 
-وضعیت: قرارداد طراحی برای staging؛ endpointها هنوز پیاده‌سازی نشده‌اند و هیچ کلاینتی به آن‌ها متصل نیست.
+وضعیت: قرارداد هدف نسخه 1 برای staging. بخشی از endpointهای دامنه‌ای در Backend آزمایشی پیاده‌سازی و با PostgreSQL موقت آزموده شده‌اند؛ این سند در بخش «وضعیت پیاده‌سازی فعلی» تفاوت قرارداد هدف و مسیرهای موجود را مشخص می‌کند. هیچ کلاینتی هنوز به Backend آزمایشی متصل نیست و این API در محیط عملیاتی مستقر نشده است.
+
+## وضعیت پیاده‌سازی فعلی (بازبینی کد در 2026-11-01)
+
+مسیرهای زیر در `backend/src/main/kotlin/ir/darsyar/backend/Application.kt` ثبت شده‌اند و پشت احراز هویت Firebase قرار دارند، مگر health/readiness و معرفی API:
+
+- `GET /health/live`, `GET /health/ready`, `GET /api/v1`, `GET /api/v1/me`.
+- درخواست استادی: `POST /api/v1/teacher-applications`; مدیریت مدیر: `GET /api/v1/admin/teacher-applications` و `PATCH /api/v1/admin/teacher-applications/{userId}`.
+- پوشه استاد: `GET/POST /api/v1/teacher-folders`, `PATCH/DELETE /api/v1/teacher-folders/{folderId}`.
+- کلاس‌ها: `GET/POST /api/v1/classes`, `GET /api/v1/classes/deleted`, `PATCH/DELETE /api/v1/classes/{classId}`, `POST /api/v1/classes/{classId}/restore`.
+- دوره‌ها: `GET/POST /api/v1/classes/{classId}/courses`, `PATCH/DELETE /api/v1/courses/{courseId}`.
+- جلسات: `GET/POST /api/v1/classes/{classId}/sessions`, `PATCH/DELETE /api/v1/sessions/{sessionId}`, `POST /api/v1/sessions/{sessionId}/restore`.
+- منابع صوتی: `GET/POST /api/v1/sessions/{sessionId}/audio-sources`, `PATCH/DELETE /api/v1/sessions/{sessionId}/audio-sources/{sourceId}`.
+- کد ورود: `GET/POST /api/v1/classes/{classId}/access-codes`, `DELETE /api/v1/access-codes/{codeId}`, `POST /api/v1/class-memberships/redeem`.
+- عضویت: `GET /api/v1/classes/{classId}/memberships`, `DELETE /api/v1/classes/{classId}/memberships/{studentUserId}`.
+
+این فهرست، مسیرهای ثبت‌شده در کد است و به‌معنی تکمیل همه نیازهای محصول یا اتصال کلاینت نیست. مواردی مانند `POST /api/v1/auth/exchange`، فهرست ثبت‌نام‌های کاربر، endpointهای sync، صفحه‌بندی cursor-based، وضعیت شخصی جلسه و OpenAPI کامل هنوز در این فاز به‌عنوان قرارداد هدف/کار باقیمانده‌اند. نام‌های قرارداد اولیه مانند `teacher-requests` و `classes/{classId}/join` با مسیر واقعی فعلی یکسان نیستند؛ مسیرهای بالا مرجع پیاده‌سازی فعلی‌اند.
+
+آزمون‌های CI با PostgreSQL موقت، مجوزهای مسیرهای کلاس، پوشه، دوره، جلسه، صوت، کد ورود و عضویت را بررسی می‌کنند. موفقیت CI staging به‌تنهایی پذیرش امنیتی یا مجوز استقرار عملیاتی نیست.
 
 ## 1. اصول قرارداد
 
