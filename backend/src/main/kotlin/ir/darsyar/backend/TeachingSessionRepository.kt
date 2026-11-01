@@ -82,13 +82,13 @@ class TeachingSessionRepository(private val dataSource: DataSource) {
               AND (
                 ? OR c.owner_user_id = ?::uuid OR (
                   s.is_published = true AND c.is_published = true AND c.is_hidden = false
-                  AND (? OR (? AND (
-                    c.visibility = 'public' OR EXISTS (
+                  AND (
+                    c.visibility = 'public' OR (? AND EXISTS (
                       SELECT 1 FROM class_memberships m
                       WHERE m.class_id = c.id AND m.student_user_id = ?::uuid
                         AND m.status = 'active'
-                    )
-                  )))
+                    ))
+                  )
                 )
               )
             ORDER BY s.class_id, s.sort_order, s.date_ms NULLS LAST, s.title
@@ -99,9 +99,8 @@ class TeachingSessionRepository(private val dataSource: DataSource) {
                 statement.setObject(2, classId?.let(UUID::fromString))
                 statement.setBoolean(3, admin)
                 statement.setObject(4, UUID.fromString(actorUserId))
-                statement.setBoolean(5, teacher)
-                statement.setBoolean(6, student)
-                statement.setObject(7, UUID.fromString(actorUserId))
+                statement.setBoolean(5, student)
+                statement.setObject(6, UUID.fromString(actorUserId))
                 statement.executeQuery().use { rows ->
                     return buildList { while (rows.next()) add(rows.toSessionRecord()) }
                 }
