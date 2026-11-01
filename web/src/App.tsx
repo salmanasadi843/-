@@ -208,7 +208,10 @@ export default function App() {
       const data = {
         ...(isAdmin ? { ownerUserId: selectedTeacher } : {}),
         title: classTitle.trim(), description: classDescription.trim(), term: classTerm.trim(),
-        visibility: classVisibility, isPublished: true, isHidden: false, sortOrder: 0,
+        visibility: classVisibility, isPublished: editingClass ? selectedClass?.isPublished ?? true : true,
+        isHidden: editingClass ? selectedClass?.isHidden ?? false : false,
+        sortOrder: editingClass ? selectedClass?.sortOrder ?? 0 : 0,
+        folderId: editingClass ? selectedClass?.folderId ?? null : null,
       };
       const saved = editingClass && selectedClass
         ? await api.updateClass(selectedClass.id, data, await user.getIdToken())
