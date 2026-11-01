@@ -120,6 +120,29 @@ jobs:
           CORRUPT_TARGET_TABLES="$(psql -X -Atqc "SELECT count(*) FROM information_schema.tables WHERE table_schema NOT IN ('pg_catalog','information_schema') AND table_type='BASE TABLE'")"
           test "$CORRUPT_TARGET_TABLES" = "0"
 
+      - name: Verify one-time first super-admin bootstrap
+        env:
+          PGHOST: localhost
+          PGPORT: 5432
+          PGUSER: darsyar_ci
+          PGPASSWORD: ci_only_password
+          PGDATABASE: darsyar_staging
+          BOOTSTRAP_FIREBASE_UID: ci-bootstrap-firebase-uid
+          BOOTSTRAP_ADMIN_EMAIL: bootstrap-ci@example.invalid
+          BOOTSTRAP_ADMIN_NAME: CI Bootstrap Administrator
+          CONFIRM_SUPER_ADMIN_BOOTSTRAP: I_HAVE_VERIFIED_THE_FIREBASE_UID
+        run: |
+          bash -n backend/scripts/bootstrap-first-super-admin.sh
+          bash backend/scripts/bootstrap-first-super-admin.sh
+          ROLE_COUNT="$(psql -X -Atqc "SELECT count(*) FROM app_roles r JOIN auth_identities i ON i.user_id = r.user_id WHERE r.role_name='super_admin' AND i.provider='firebase' AND i.provider_subject='ci-bootstrap-firebase-uid'")"
+          test "$ROLE_COUNT" = "1"
+          if bash backend/scripts/bootstrap-first-super-admin.sh; then
+            echo "Bootstrap unexpectedly allowed a second first-admin creation" >&2
+            exit 1
+          fi
+          ROLE_COUNT_AFTER_RETRY="$(psql -X -Atqc "SELECT count(*) FROM app_roles r JOIN auth_identities i ON i.user_id = r.user_id WHERE r.role_name='super_admin' AND i.provider='firebase' AND i.provider_subject='ci-bootstrap-firebase-uid'")"
+          test "$ROLE_COUNT_AFTER_RETRY" = "1"
+
       - name: Verify liveness and API version
         run: |
           curl --fail --silent http://127.0.0.1:8080/health/live
