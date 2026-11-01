@@ -132,6 +132,15 @@ class ClassRoutesAuthorizationTest {
     }
 
     @Test
+    fun `access code listing rejects unauthenticated requests`() = testApplication {
+        application {
+            module(unusedDataSource(), verifier(), usersWith(AppRole.TEACHER))
+        }
+        val response = client.get("/api/v1/classes/11111111-1111-4111-8111-111111111111/access-codes")
+        assertEquals(HttpStatusCode.Unauthorized, response.status)
+    }
+
+    @Test
     fun `teacher cannot redeem a student access code`() = testApplication {
         application {
             module(unusedDataSource(), verifier(), usersWith(AppRole.TEACHER))
