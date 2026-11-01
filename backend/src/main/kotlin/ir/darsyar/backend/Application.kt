@@ -76,6 +76,33 @@ data class FolderApiRecord(
 )
 
 @Serializable
+data class AccessCodeCreateRequest(
+    val expiresAtMs: Long? = null,
+    val maxUses: Int? = null
+)
+
+@Serializable
+data class AccessCodeApiRecord(
+    val id: String,
+    val classId: String,
+    val code: String,
+    val expiresAtMs: Long?,
+    val maxUses: Int?
+)
+
+@Serializable
+data class RedeemAccessCodeRequest(val code: String)
+
+@Serializable
+data class MembershipApiRecord(
+    val classId: String,
+    val studentUserId: String,
+    val status: String,
+    val joinedAtMs: Long?,
+    val alreadyActive: Boolean
+)
+
+@Serializable
 data class CourseWriteRequest(
     val title: String,
     val teacherName: String = "",
@@ -223,6 +250,7 @@ fun Application.module(
     val sessionRepository = TeachingSessionRepository(dataSource)
     val audioSourceRepository = TeachingAudioSourceRepository(dataSource)
     val courseRepository = TeachingCourseRepository(dataSource)
+    val classAccessRepository = ClassAccessRepository(dataSource)
 
     install(ContentNegotiation) { json() }
     install(Authentication) {
@@ -376,6 +404,90 @@ fun Application.module(
                     } catch (_: IllegalStateException) {
                         call.respond(HttpStatusCode.Conflict, ApiError("folder_not_empty"))
                     }
+                }
+            }
+
+            route("/api/v1/classes/{classId}/access-codes") {
+                post {
+                    val principal = call.principal<DarsyarPrincipal>()
+                    if (principal == null) {
+                        call.respond(HttpStatusCode.Unauthorized, ApiError("unauthorized"))
+                        return@post
+                    }
+                    val request = try { call.receive<AccessCodeCreateRequest>() }
+                    catch (_: Exception) {
+                        call.respond(HttpStatusCode.BadRequest, ApiError("invalid_request"))
+                        return@post
+                    }
+                    try {
+                        val created = classAccessRepository.createCode(
+                            principal.userId, principal.roles,
+                            call.parameters["classId"] ?: "",
+                            request.expiresAtMs?.let(java.time.Instant::ofEpochMilli),
+                            request.maxUses
+                        )
+                        call.respond(
+                            HttpStatusCode.Created,
+                            AccessCodeApiRecord(
+                                created.id, created.classId, created.code,
+                                created.expiresAt?.toEpochMilli(), created.maxUses
+                            )
+                        )
+                    } catch (_: SecurityException) {
+                        call.respond(HttpStatusCode.Forbidden, ApiError("access_code_creation_forbidden"))
+                    } catch (_: IllegalArgumentException) {
+                        call.respond(HttpStatusCode.BadRequest, ApiError("invalid_access_code_request"))
+                    }
+                }
+            }
+
+            route("/api/v1/access-codes/{codeId}") {
+                delete {
+                    val principal = call.principal<DarsyarPrincipal>()
+                    if (principal == null) {
+                        call.respond(HttpStatusCode.Unauthorized, ApiError("unauthorized"))
+                        return@delete
+                    }
+                    try {
+                        if (classAccessRepository.deactivateCode(
+                            principal.userId, principal.roles, call.parameters["codeId"] ?: ""
+                        )) call.respond(HttpStatusCode.NoContent)
+                        else call.respond(HttpStatusCode.NotFound, ApiError("access_code_not_found"))
+                    } catch (_: SecurityException) {
+                        call.respond(HttpStatusCode.Forbidden, ApiError("access_code_management_forbidden"))
+                    } catch (_: IllegalArgumentException) {
+                        call.respond(HttpStatusCode.BadRequest, ApiError("invalid_access_code_id"))
+                    }
+                }
+            }
+
+            post("/api/v1/class-memberships/redeem") {
+                val principal = call.principal<DarsyarPrincipal>()
+                if (principal == null) {
+                    call.respond(HttpStatusCode.Unauthorized, ApiError("unauthorized"))
+                    return@post
+                }
+                val request = try { call.receive<RedeemAccessCodeRequest>() }
+                catch (_: Exception) {
+                    call.respond(HttpStatusCode.BadRequest, ApiError("invalid_request"))
+                    return@post
+                }
+                try {
+                    val result = classAccessRepository.redeem(principal.userId, principal.roles, request.code)
+                    call.respond(
+                        HttpStatusCode.OK,
+                        MembershipApiRecord(
+                            result.membership.classId,
+                            result.membership.studentUserId,
+                            result.membership.status,
+                            result.membership.joinedAt?.toEpochMilli(),
+                            result.alreadyActive
+                        )
+                    )
+                } catch (_: SecurityException) {
+                    call.respond(HttpStatusCode.Forbidden, ApiError("student_account_required"))
+                } catch (_: IllegalArgumentException) {
+                    call.respond(HttpStatusCode.BadRequest, ApiError("invalid_or_expired_access_code"))
                 }
             }
 
