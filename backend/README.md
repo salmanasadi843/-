@@ -13,13 +13,13 @@ Run Gradle with `-p backend`; do not add this as an Android module.
   public publication or active membership.
 - Firebase Admin ID-token verification using Application Default Credentials.
 - Provider-independent internal user identities and server-side PostgreSQL role lookup.
-- Protected `GET /api/v1/me` and class list/create/update endpoints; anonymous requests are rejected.
+- Protected `GET /api/v1/me`, class list/create/update, and teacher-folder list/create/update/soft-delete endpoints; anonymous requests are rejected.
 - Class visibility and ownership enforcement in PostgreSQL, including admin cross-teacher management.
-- Transactional audit records for class creation and updates.
+- Transactional audit records for class and folder mutations; folders support safe same-owner nesting, hide/reorder/rename/move, cycle prevention, and empty-folder soft deletion.
 - Docker packaging and local PostgreSQL Compose environment.
 - PostgreSQL backup/restore scripts with SHA-256 verification; restore refuses
   non-empty targets and never drops existing tables.
-- Unit and PostgreSQL integration tests for identity mapping, teacher approval, class visibility, ownership, admin management, and audit writes; build, disposable migrations, backup/restore and HTTP checks.
+- Unit and PostgreSQL integration tests for identity mapping, teacher approval, class visibility, class and folder ownership, admin management, hierarchy safety, and audit writes; build, disposable migrations, backup/restore and HTTP checks.
 
 ## Authentication setup and limits
 
