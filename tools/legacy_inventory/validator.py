@@ -90,6 +90,13 @@ def run_inventory(paths: list[Path], key: bytes) -> dict[str, Any]:
             role = str(account.get("role_field") or "absent")
             agg["role_field"][role] = agg["role_field"].get(role, 0) + 1
 
+        def add_exception(kind: str, row_id: Any, owner: str | None = None) -> None:
+            report["exceptions"].append({
+                "kind": kind, "source_ref": source_ref,
+                "row_id": str(row_id) if row_id is not None else None,
+                "owner_ref": pseudonym(owner, key),
+            })
+
         def index_rows(rows: list[dict[str, Any]], table: str) -> tuple[dict[str, dict[str, Any]], set[str]]:
             grouped: dict[str, list[dict[str, Any]]] = defaultdict(list)
             for item in rows:
@@ -105,13 +112,6 @@ def run_inventory(paths: list[Path], key: bytes) -> dict[str, Any]:
         classes, duplicate_class_ids = index_rows(data.get("classes", []), "classes")
         courses, duplicate_course_ids = index_rows(data.get("courses", []), "courses")
         sessions, duplicate_session_ids = index_rows(data.get("sessions", []), "sessions")
-
-        def add_exception(kind: str, row_id: Any, owner: str | None = None) -> None:
-            report["exceptions"].append({
-                "kind": kind, "source_ref": source_ref,
-                "row_id": str(row_id) if row_id is not None else None,
-                "owner_ref": pseudonym(owner, key),
-            })
 
         def class_state(row: dict[str, Any]) -> str:
             owner = row.get("owner_uid")
