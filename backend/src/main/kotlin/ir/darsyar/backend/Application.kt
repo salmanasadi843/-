@@ -461,6 +461,48 @@ fun Application.module(
                 }
             }
 
+            route("/api/v1/classes/{classId}/memberships") {
+                get {
+                    val principal = call.principal<DarsyarPrincipal>()
+                    if (principal == null) {
+                        call.respond(HttpStatusCode.Unauthorized, ApiError("unauthorized"))
+                        return@get
+                    }
+                    try {
+                        val classId = call.parameters["classId"] ?: ""
+                        call.respond(
+                            classAccessRepository.listMembers(principal.userId, principal.roles, classId)
+                                .map { MembershipApiRecord(it.classId, it.studentUserId, it.status, it.joinedAt?.toEpochMilli(), false) }
+                        )
+                    } catch (_: SecurityException) {
+                        call.respond(HttpStatusCode.Forbidden, ApiError("membership_management_forbidden"))
+                    } catch (_: IllegalArgumentException) {
+                        call.respond(HttpStatusCode.BadRequest, ApiError("invalid_class_id"))
+                    }
+                }
+
+                delete("/{studentUserId}") {
+                    val principal = call.principal<DarsyarPrincipal>()
+                    if (principal == null) {
+                        call.respond(HttpStatusCode.Unauthorized, ApiError("unauthorized"))
+                        return@delete
+                    }
+                    try {
+                        val classId = call.parameters["classId"] ?: ""
+                        val studentId = call.parameters["studentUserId"] ?: ""
+                        if (classAccessRepository.revokeMembership(principal.userId, principal.roles, classId, studentId)) {
+                            call.respond(HttpStatusCode.NoContent)
+                        } else {
+                            call.respond(HttpStatusCode.NotFound, ApiError("active_membership_not_found"))
+                        }
+                    } catch (_: SecurityException) {
+                        call.respond(HttpStatusCode.Forbidden, ApiError("membership_management_forbidden"))
+                    } catch (_: IllegalArgumentException) {
+                        call.respond(HttpStatusCode.BadRequest, ApiError("invalid_membership_target"))
+                    }
+                }
+            }
+
             post("/api/v1/class-memberships/redeem") {
                 val principal = call.principal<DarsyarPrincipal>()
                 if (principal == null) {
