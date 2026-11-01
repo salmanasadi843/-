@@ -399,7 +399,7 @@ export default function App() {
         </article>}
       </section>
     </div>
-    <footer>نسخه آزمایشی سایت · ایجاد کلاس و جلسه فعال است · ویرایش و حذف محتوا در مرحله بعد اضافه می‌شود</footer>
+    <footer>نسخه آزمایشی سایت · مدیریت کلاس‌ها، جلسه‌ها و پوشه‌های استاد در حال تکمیل است</footer>
   </main>;
 }
 function Brand() { return <div className="brand"><span className="brand-mark">د</span><span>درس‌یار</span></div>; }
