@@ -24,6 +24,11 @@ interface DarsyarReadOnlyApi {
         @Header("Authorization") authorization: String
     ): Response<List<BackendClassDto>>
 
+    @GET("api/v1/teachers")
+    suspend fun getTeachers(
+        @Header("Authorization") authorization: String
+    ): Response<List<BackendTeacherDto>>
+
     @GET("api/v1/classes/{classId}/courses")
     suspend fun getCourses(
         @retrofit2.http.Path("classId") classId: String,
@@ -48,6 +53,12 @@ interface DarsyarReadOnlyApi {
 data class BackendMeDto(
     val userId: String,
     val roles: List<String>
+)
+
+@JsonClass(generateAdapter = true)
+data class BackendTeacherDto(
+    val userId: String,
+    val displayName: String
 )
 
 @JsonClass(generateAdapter = true)
@@ -146,6 +157,13 @@ class DarsyarReadOnlyRepository(
         val response = api.getSessions(classId, "Bearer $firebaseIdToken")
         if (!response.isSuccessful) throw BackendHttpException(response.code(), "/api/v1/classes/{classId}/sessions")
         return response.body() ?: throw IllegalStateException("Backend returned an empty sessions response.")
+    }
+
+    suspend fun loadTeachers(firebaseIdToken: String): List<BackendTeacherDto> {
+        require(firebaseIdToken.isNotBlank()) { "Firebase ID token is required." }
+        val response = api.getTeachers("Bearer $firebaseIdToken")
+        if (!response.isSuccessful) throw BackendHttpException(response.code(), "/api/v1/teachers")
+        return response.body() ?: throw IllegalStateException("Backend returned an empty teachers response.")
     }
 
     /** Loads full transcript/summary data only for the session the user opened. */
