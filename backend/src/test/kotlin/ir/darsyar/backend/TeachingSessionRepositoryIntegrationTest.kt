@@ -33,12 +33,13 @@ class TeachingSessionRepositoryIntegrationTest {
             val owner = UUID.randomUUID()
             val otherTeacher = UUID.randomUUID()
             val student = UUID.randomUUID()
+            val visitor = UUID.randomUUID()
             ds.connection.use { connection ->
                 connection.prepareStatement(
-                    "INSERT INTO app_users(id) VALUES (?), (?), (?), (?)"
+                    "INSERT INTO app_users(id) VALUES (?), (?), (?), (?), (?)"
                 ).use { st ->
                     st.setObject(1, admin); st.setObject(2, owner)
-                    st.setObject(3, otherTeacher); st.setObject(4, student)
+                    st.setObject(3, otherTeacher); st.setObject(4, student); st.setObject(5, visitor)
                     st.executeUpdate()
                 }
             }
@@ -100,6 +101,8 @@ class TeachingSessionRepositoryIntegrationTest {
             assertEquals(setOf(published.id), teacherView.map { it.id }.toSet())
             val studentView = repository.listVisible(student.toString(), setOf(AppRole.STUDENT))
             assertEquals(setOf(published.id, privatePublished.id), studentView.map { it.id }.toSet())
+            val visitorView = repository.listVisible(visitor.toString(), emptySet())
+            assertEquals(setOf(published.id), visitorView.map { it.id }.toSet())
             val ownerView = repository.listVisible(owner.toString(), setOf(AppRole.TEACHER))
             assertTrue(ownerView.any { it.id == unpublished.id })
             assertEquals(3, repository.listVisible(admin.toString(), setOf(AppRole.SUPER_ADMIN)).size)
