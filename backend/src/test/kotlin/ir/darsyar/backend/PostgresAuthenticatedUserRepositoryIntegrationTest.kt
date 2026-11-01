@@ -5,8 +5,10 @@ import com.zaxxer.hikari.HikariDataSource
 import org.flywaydb.core.Flyway
 import org.junit.jupiter.api.Assumptions.assumeTrue
 import org.junit.jupiter.api.Test
+import java.sql.SQLException
 import java.util.UUID
 import kotlin.test.assertEquals
+import kotlin.test.assertFailsWith
 import kotlin.test.assertNull
 import kotlin.test.assertNotNull
 
@@ -95,6 +97,20 @@ class PostgresAuthenticatedUserRepositoryIntegrationTest {
                     statement.setObject(1, UUID.fromString(approvedTeacherId))
                     statement.setObject(2, UUID.fromString(pendingTeacherId))
                     statement.executeUpdate()
+                }
+            }
+
+            // A single internal account must not be bound to two Firebase UIDs.
+            // The database constraint protects every writer, not only the operator script.
+            assertFailsWith<SQLException> {
+                dataSource.connection.use { connection ->
+                    connection.prepareStatement(
+                        "INSERT INTO auth_identities(user_id, provider, provider_subject) VALUES (?, 'firebase', ?)"
+                    ).use { statement ->
+                        statement.setObject(1, UUID.fromString(adminId))
+                        statement.setString(2, "second-admin-identity")
+                        statement.executeUpdate()
+                    }
                 }
             }
 
