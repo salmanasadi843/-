@@ -15,7 +15,7 @@ Run Gradle with `-p backend`; do not add this as an Android module.
 - Firebase Admin ID-token verification using Application Default Credentials.
 - Provider-independent internal user identities and server-side PostgreSQL role lookup.
 - Protected `GET /api/v1/me`, class list/create/update, teacher-folder list/create/update/soft-delete,
-  and class-scoped session list/create plus session update endpoints; anonymous requests are rejected.
+  and class-scoped session list/create/update plus protected audio-source list/create/update/deactivate endpoints; anonymous requests are rejected.
 - Class visibility and ownership enforcement in PostgreSQL, including admin cross-teacher management.
 - Transactional audit records for class, session, and folder mutations; folders support safe same-owner nesting, hide/reorder/rename/move, cycle prevention, and empty-folder soft deletion.
 - Docker packaging and local PostgreSQL Compose environment.
@@ -38,8 +38,7 @@ Create/link application users and grant roles through a separately controlled
 administrative process; this service intentionally does not auto-provision accounts.
 
 The protected domain API now covers class and folder management plus class-scoped
-session listing, creation, and content updates. Course CRUD, session deletion and audio
-source management, class deletion, access-code redemption, administrative role-management
+session listing, creation, and content updates. Course CRUD, session deletion, binary audio upload/storage-provider adapters, class deletion, access-code redemption, administrative role-management
 workflows, production secrets, and Firebase-to-user linking procedures still require
 further implementation and review. See [the protected class API notes](docs/protected-class-api.md).
 Do not expose this staging service as the production app backend yet.
