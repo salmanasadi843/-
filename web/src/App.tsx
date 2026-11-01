@@ -1,6 +1,6 @@
 import { FormEvent, useEffect, useMemo, useState } from "react";
 import { onAuthStateChanged, signInWithEmailAndPassword, signOut, User } from "firebase/auth";
-import { api, AccessCode, ClassMember, ClassRecord, Me, SessionDetail, SessionSummary, Teacher, TeacherFolder } from "./api";
+import { api, AccessCode, ClassMember, ClassRecord, CourseRecord, Me, SessionDetail, SessionSummary, Teacher, TeacherFolder } from "./api";
 import { auth, firebaseConfigured } from "./firebase";
 
 export default function App() {
@@ -17,6 +17,12 @@ export default function App() {
   const [selectedTeacher, setSelectedTeacher] = useState("all");
   const [selectedClass, setSelectedClass] = useState<ClassRecord | null>(null);
   const [sessions, setSessions] = useState<SessionSummary[]>([]);
+  const [courses, setCourses] = useState<CourseRecord[]>([]);
+  const [courseTitle, setCourseTitle] = useState("");
+  const [courseDescription, setCourseDescription] = useState("");
+  const [editingCourseId, setEditingCourseId] = useState<string | null>(null);
+  const [showCourseForm, setShowCourseForm] = useState(false);
+  const [sessionCourseId, setSessionCourseId] = useState("");
   const [detail, setDetail] = useState<SessionDetail | null>(null);
   const [showClassForm, setShowClassForm] = useState(false);
   const [showSessionForm, setShowSessionForm] = useState(false);
@@ -86,16 +92,17 @@ export default function App() {
   }
   async function openClass(item: ClassRecord) {
     if (!user) return;
-    setSelectedClass(item); setDetail(null); setSessions([]); setClassAccessCodes([]); setClassMembers([]); setNewlyCreatedCode(""); setShowSessionForm(false); setBusy(true); setError("");
+    setSelectedClass(item); setDetail(null); setSessions([]); setCourses([]); setClassAccessCodes([]); setClassMembers([]); setNewlyCreatedCode(""); setShowSessionForm(false); setBusy(true); setError("");
     try {
       const token = await user.getIdToken();
       const canManage = me?.roles.includes("super_admin") || (me?.roles.includes("teacher") && item.ownerUserId === me.userId);
-      const [sessionList, codes, members] = await Promise.all([
+      const [sessionList, courseList, codes, members] = await Promise.all([
         api.sessions(item.id, token),
+        api.courses(item.id, token),
         canManage ? api.accessCodes(item.id, token) : Promise.resolve([] as AccessCode[]),
         canManage ? api.classMembers(item.id, token) : Promise.resolve([] as ClassMember[]),
       ]);
-      setSessions(sessionList); setClassAccessCodes(codes); setClassMembers(members);
+      setSessions(sessionList); setCourses(courseList); setClassAccessCodes(codes); setClassMembers(members);
     }
     catch (e) { setError(message(e)); }
     finally { setBusy(false); }
@@ -204,6 +211,29 @@ export default function App() {
     } catch (e) { setError(message(e)); }
     finally { setBusy(false); }
   }
+  async function saveCourse(event: FormEvent) {
+    event.preventDefault();
+    if (!user || !selectedClass || !canManageSelectedClass || !courseTitle.trim()) return;
+    setBusy(true); setError("");
+    try {
+      const data = { title: courseTitle.trim(), teacherName: teachers.find(t => t.userId === selectedClass.ownerUserId)?.displayName ?? "استاد", description: courseDescription.trim(), createdAtMs: Date.now(), sortOrder: editingCourseId ? courses.find(c => c.id === editingCourseId)?.sortOrder ?? 0 : courses.length };
+      if (editingCourseId) await api.updateCourse(editingCourseId, data, await user.getIdToken());
+      else await api.createCourse(selectedClass.id, data, await user.getIdToken());
+      setCourses(await api.courses(selectedClass.id, await user.getIdToken()));
+      setCourseTitle(""); setCourseDescription(""); setEditingCourseId(null); setShowCourseForm(false); setNotice("دوره ذخیره شد.");
+    } catch (e) { setError(message(e)); }
+    finally { setBusy(false); }
+  }
+  async function removeCourse(course: CourseRecord) {
+    if (!user || !window.confirm("این دوره حذف شود؟ دوره دارای جلسه قابل حذف نیست.")) return;
+    setBusy(true); setError("");
+    try {
+      await api.deleteCourse(course.id, await user.getIdToken());
+      setCourses(await api.courses(selectedClass!.id, await user.getIdToken()));
+      setNotice("دوره حذف شد.");
+    } catch (e) { setError(message(e)); }
+    finally { setBusy(false); }
+  }
   async function editSelectedClass() {
     if (!selectedClass || !canManageSelectedClass) return;
     setClassTitle(selectedClass.title); setClassDescription(selectedClass.description);
@@ -241,7 +271,7 @@ export default function App() {
   }
   async function editSelectedSession() {
     if (!detail || !canManageSelectedClass) return;
-    setSessionTitle(detail.title); setSessionTranscript(detail.transcript);
+    setSessionTitle(detail.title); setSessionTranscript(detail.transcript); setSessionCourseId(detail.courseId ?? "");
     setSessionSummary(detail.aiSummary ?? ""); setSessionKeyPoints(detail.aiKeyPoints ?? "");
     setEditingSession(true); setShowSessionForm(true); setError("");
   }
@@ -293,7 +323,7 @@ export default function App() {
       const now = Date.now();
       const teacherName = teachers.find(t => t.userId === selectedClass.ownerUserId)?.displayName ?? user.displayName ?? "استاد";
       const payload = {
-        title: sessionTitle.trim(), courseName: detail?.courseName ?? "", professorName: detail?.professorName ?? teacherName,
+        title: sessionTitle.trim(), courseId: sessionCourseId || null, courseName: courses.find(c => c.id === sessionCourseId)?.title ?? "", professorName: detail?.professorName ?? teacherName,
         dateMs: detail?.dateMs ?? now, transcript: sessionTranscript,
         originalTranscript: detail?.originalTranscript ?? sessionTranscript,
         aiSummary: sessionSummary.trim() || null, aiKeyPoints: sessionKeyPoints.trim() || null,
@@ -303,7 +333,7 @@ export default function App() {
       };
       if (editingSession && detail) await api.updateSession(detail.id, payload, await user.getIdToken());
       else await api.createSession(selectedClass.id, payload, await user.getIdToken());
-      setSessionTitle(""); setSessionTranscript(""); setSessionSummary(""); setSessionKeyPoints("");
+      setSessionTitle(""); setSessionTranscript(""); setSessionSummary(""); setSessionKeyPoints(""); setSessionCourseId("");
       setShowSessionForm(false); setEditingSession(false); setNotice(editingSession ? "تغییرات جلسه ذخیره شد." : "جلسه با موفقیت ایجاد شد.");
       const token = await user.getIdToken();
       setSessions(await api.sessions(selectedClass.id, token));
