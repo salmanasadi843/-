@@ -207,6 +207,7 @@ class TeachingClassRepository(private val dataSource: DataSource) {
     fun listDeleted(actorUserId: String, roles: Set<AppRole>): List<TeachingClassRecord> {
         val actor = UUID.fromString(actorUserId)
         val admin = AppRole.SUPER_ADMIN in roles
+        if (!admin && AppRole.TEACHER !in roles) throw SecurityException("Class recovery is not allowed.")
         return dataSource.connection.use { connection ->
             connection.prepareStatement(
                 """
@@ -266,8 +267,8 @@ class TeachingClassRepository(private val dataSource: DataSource) {
                     check(st.executeUpdate() == 1)
                 }
                 val action = if (deleted) "class.deleted" else "class.restored"
-                val beforeJson = """{"id":" + old.id + ","title":" + jsonString(old.title) + ","deleted":" + currentlyDeleted + "}"""
-                val afterJson = """{"id":" + old.id + ","title":" + jsonString(old.title) + ","deleted":" + deleted + "}"""
+                val beforeJson = """{"id":""" + jsonString(old.id) + ""","title":""" + jsonString(old.title) + ""","deleted":$currentlyDeleted}"""
+                val afterJson = """{"id":""" + jsonString(old.id) + ""","title":""" + jsonString(old.title) + ""","deleted":$deleted}"""
                 connection.writeAudit(actor, action, old.id, UUID.fromString(old.ownerUserId), beforeJson, afterJson)
                 connection.commit()
                 return true

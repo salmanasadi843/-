@@ -45,7 +45,7 @@ class TeacherFolderRepository(private val dataSource: DataSource) {
                 ? OR f.owner_user_id = ?::uuid OR EXISTS (
                     SELECT 1 FROM teaching_classes c
                     WHERE c.folder_id = f.id AND c.owner_user_id = f.owner_user_id
-                      AND c.is_published = true AND c.is_hidden = false
+                      AND c.deleted_at IS NULL AND c.is_published = true AND c.is_hidden = false
                       AND (
                           c.visibility = 'public' OR (? AND EXISTS (
                               SELECT 1 FROM class_memberships m
