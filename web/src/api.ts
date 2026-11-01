@@ -15,7 +15,7 @@ export type SessionDetail = SessionSummary & {
 };
 export type NewClass = {
   ownerUserId?: string; title: string; description: string; term: string;
-  visibility: "public" | "private"; isPublished: boolean; isHidden: boolean; sortOrder: number;
+  visibility: "public" | "private"; isPublished: boolean; isHidden: boolean; sortOrder: number; folderId?: string | null;
 };
 export type NewSession = {
   title: string; courseName: string; professorName: string; dateMs: number;
