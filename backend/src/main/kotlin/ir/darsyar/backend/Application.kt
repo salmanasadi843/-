@@ -15,6 +15,7 @@ import io.ktor.server.request.receive
 import io.ktor.server.response.respond
 import io.ktor.server.response.respondText
 import io.ktor.server.routing.get
+import io.ktor.server.routing.delete
 import io.ktor.server.routing.patch
 import io.ktor.server.routing.post
 import io.ktor.server.routing.routing
@@ -53,10 +54,34 @@ data class ClassApiRecord(
 )
 
 @Serializable
+data class FolderWriteRequest(
+    val ownerUserId: String? = null,
+    val parentFolderId: String? = null,
+    val name: String,
+    val sortOrder: Int = 0,
+    val isHidden: Boolean = false
+)
+
+@Serializable
+data class FolderApiRecord(
+    val id: String,
+    val ownerUserId: String,
+    val parentFolderId: String?,
+    val name: String,
+    val sortOrder: Int,
+    val isHidden: Boolean,
+    val version: Long
+)
+
+@Serializable
 data class ApiError(val error: String)
 
 @Serializable
 data class MeApiResponse(val userId: String, val roles: List<String>)
+
+private fun TeacherFolderRecord.toApiRecord() = FolderApiRecord(
+    id, ownerUserId, parentFolderId, name, sortOrder, isHidden, version
+)
 
 private fun TeachingClassRecord.toApiRecord() = ClassApiRecord(
     id, ownerUserId, title, description, term, visibility,
@@ -96,6 +121,7 @@ fun Application.module(
 ) {
     val authenticationService = AuthenticationService(tokenVerifier, userRepository)
     val classRepository = TeachingClassRepository(dataSource)
+    val folderRepository = TeacherFolderRepository(dataSource)
 
     install(ContentNegotiation) { json() }
     install(Authentication) {
@@ -153,6 +179,102 @@ fun Application.module(
                             principal.roles.map { it.name.lowercase() }
                         )
                     )
+                }
+            }
+
+            route("/api/v1/teacher-folders") {
+                get {
+                    val principal = call.principal<DarsyarPrincipal>()
+                    if (principal == null) {
+                        call.respond(HttpStatusCode.Unauthorized, ApiError("unauthorized"))
+                    } else {
+                        call.respond(folderRepository.listVisible(principal.userId, principal.roles).map { it.toApiRecord() })
+                    }
+                }
+
+                post {
+                    val principal = call.principal<DarsyarPrincipal>()
+                    if (principal == null) {
+                        call.respond(HttpStatusCode.Unauthorized, ApiError("unauthorized"))
+                        return@post
+                    }
+                    val request = try {
+                        call.receive<FolderWriteRequest>()
+                    } catch (_: Exception) {
+                        call.respond(HttpStatusCode.BadRequest, ApiError("invalid_request"))
+                        return@post
+                    }
+                    val isAdmin = AppRole.SUPER_ADMIN in principal.roles
+                    val ownerId = if (isAdmin) request.ownerUserId ?: run {
+                        call.respond(HttpStatusCode.BadRequest, ApiError("owner_user_id_required"))
+                        return@post
+                    } else principal.userId
+                    if (!isAdmin && request.ownerUserId != null && request.ownerUserId != principal.userId) {
+                        call.respond(HttpStatusCode.Forbidden, ApiError("cannot_create_for_another_owner"))
+                        return@post
+                    }
+                    try {
+                        val created = folderRepository.create(
+                            principal.userId, principal.roles,
+                            CreateTeacherFolder(ownerId, request.parentFolderId, request.name, request.sortOrder)
+                        )
+                        call.respond(HttpStatusCode.Created, created.toApiRecord())
+                    } catch (_: SecurityException) {
+                        call.respond(HttpStatusCode.Forbidden, ApiError("folder_creation_forbidden"))
+                    } catch (_: IllegalArgumentException) {
+                        call.respond(HttpStatusCode.BadRequest, ApiError("invalid_folder_data"))
+                    } catch (_: java.sql.SQLException) {
+                        call.respond(HttpStatusCode.BadRequest, ApiError("invalid_folder_parent"))
+                    }
+                }
+
+                io.ktor.server.routing.patch("/{folderId}") {
+                    val principal = call.principal<DarsyarPrincipal>()
+                    if (principal == null) {
+                        call.respond(HttpStatusCode.Unauthorized, ApiError("unauthorized"))
+                        return@patch
+                    }
+                    val request = try {
+                        call.receive<FolderWriteRequest>()
+                    } catch (_: Exception) {
+                        call.respond(HttpStatusCode.BadRequest, ApiError("invalid_request"))
+                        return@patch
+                    }
+                    try {
+                        val updated = folderRepository.update(
+                            principal.userId, principal.roles,
+                            call.parameters["folderId"] ?: "",
+                            UpdateTeacherFolder(request.parentFolderId, request.name, request.sortOrder, request.isHidden)
+                        )
+                        if (updated == null) call.respond(HttpStatusCode.NotFound, ApiError("folder_not_found"))
+                        else call.respond(updated.toApiRecord())
+                    } catch (_: SecurityException) {
+                        call.respond(HttpStatusCode.Forbidden, ApiError("folder_management_forbidden"))
+                    } catch (_: IllegalArgumentException) {
+                        call.respond(HttpStatusCode.BadRequest, ApiError("invalid_folder_data"))
+                    } catch (_: java.sql.SQLException) {
+                        call.respond(HttpStatusCode.BadRequest, ApiError("invalid_folder_parent"))
+                    }
+                }
+
+                delete("/{folderId}") {
+                    val principal = call.principal<DarsyarPrincipal>()
+                    if (principal == null) {
+                        call.respond(HttpStatusCode.Unauthorized, ApiError("unauthorized"))
+                        return@delete
+                    }
+                    try {
+                        val deleted = folderRepository.delete(
+                            principal.userId, principal.roles,
+                            call.parameters["folderId"] ?: ""
+                        )
+                        if (deleted) call.respond(HttpStatusCode.NoContent)
+                        else call.respond(HttpStatusCode.NotFound, ApiError("folder_not_found"))
+                    } catch (_: SecurityException) {
+                        call.respond(HttpStatusCode.Forbidden, ApiError("folder_management_forbidden"))
+                    } catch (_: IllegalStateException) {
+                        call.respond(HttpStatusCode.Conflict, ApiError("folder_not_empty"))
+                    }
                 }
             }
 
