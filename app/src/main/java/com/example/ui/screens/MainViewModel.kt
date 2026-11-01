@@ -53,6 +53,7 @@ sealed class Screen {
     data class AddEdit(val lectureId: Long? = null, val classId: Long? = null) : Screen()
     data class AiStudy(val lectureId: Long) : Screen()
     object Settings : Screen()
+    object BackendBrowse : Screen()
 }
 
 data class ChatMessage(
@@ -552,6 +553,9 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
                 }
             }
             Screen.Settings -> {
+                _currentScreen.value = Screen.Home
+            }
+            Screen.BackendBrowse -> {
                 _currentScreen.value = Screen.Home
             }
             Screen.Home -> {
