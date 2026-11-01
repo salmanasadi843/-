@@ -83,5 +83,36 @@ class InventoryValidatorTest(unittest.TestCase):
         self.assertEqual(report["aggregates"]["classes_by_ownership"]["conflicting_owner"], 1)
 
 
+    def test_duplicate_ids_are_not_silently_resolved_and_owner_conflicts_are_flagged(self):
+        fixture = {
+            "source_id": "synthetic-ambiguous-source",
+            "accounts": [{"uid": "teacher-a", "account_id": "a"}],
+            "folders": [
+                {"id": 1, "owner_uid": "teacher-a", "parent_folder_id": None},
+                {"id": 2, "owner_uid": "teacher-a", "parent_folder_id": 1},
+                {"id": 3, "owner_uid": "teacher-a", "parent_folder_id": 2},
+            ],
+            "classes": [
+                {"id": 7, "owner_uid": "teacher-a", "document_owner_uid": "teacher-b"},
+                {"id": 8, "owner_uid": "teacher-a"},
+                {"id": 8, "owner_uid": "teacher-a"},
+            ],
+            "courses": [{"id": 9, "class_id": 8}],
+            "sessions": [],
+        }
+        with tempfile.TemporaryDirectory() as directory:
+            path = Path(directory) / "ambiguous.json"
+            path.write_text(json.dumps(fixture), encoding="utf-8")
+            report = run_inventory([path], b"z" * 32)
+
+        agg = report["aggregates"]
+        self.assertEqual(agg["classes_by_ownership"]["conflicting_owner"], 1)
+        self.assertEqual(agg["duplicate_ids_within_source"], 1)
+        self.assertEqual(agg["orphans"]["courses"], 1)
+        self.assertEqual(agg["folders"]["cycles"], 0)
+        kinds = {item["kind"] for item in report["exceptions"]}
+        self.assertIn("duplicate_classes_id_within_source", kinds)
+
+
 if __name__ == "__main__":
     unittest.main()
