@@ -1,5 +1,6 @@
 export type Me = { userId: string; roles: string[] };
 export type Teacher = { userId: string; displayName: string };
+export type TeacherFolder = { id: string; ownerUserId: string; parentFolderId: string | null; name: string; sortOrder: number; isHidden: boolean; version: number };
 export type ClassRecord = {
   id: string; ownerUserId: string; title: string; description: string; term: string;
   visibility: "public" | "private"; isPublished: boolean; isHidden: boolean; sortOrder: number; folderId: string | null;
@@ -56,6 +57,13 @@ export const api = {
   me: (token: string) => request<Me>("/api/v1/me", token),
   teachers: (token: string) => request<Teacher[]>("/api/v1/teachers", token),
   classes: (token: string) => request<ClassRecord[]>("/api/v1/classes", token),
+  teacherFolders: (token: string) => request<TeacherFolder[]>("/api/v1/teacher-folders", token),
+  createTeacherFolder: (data: { ownerUserId?: string; parentFolderId?: string | null; name: string; sortOrder?: number; isHidden?: boolean }, token: string) =>
+    request<TeacherFolder>("/api/v1/teacher-folders", token, { method: "POST", body: JSON.stringify(data) }),
+  updateTeacherFolder: (folderId: string, data: { parentFolderId?: string | null; name: string; sortOrder?: number; isHidden?: boolean }, token: string) =>
+    request<TeacherFolder>(`/api/v1/teacher-folders/${encodeURIComponent(folderId)}`, token, { method: "PATCH", body: JSON.stringify(data) }),
+  deleteTeacherFolder: (folderId: string, token: string) =>
+    request<void>(`/api/v1/teacher-folders/${encodeURIComponent(folderId)}`, token, { method: "DELETE" }),
   createClass: (data: NewClass, token: string) =>
     request<ClassRecord>("/api/v1/classes", token, { method: "POST", body: JSON.stringify(data) }),
   updateClass: (classId: string, data: NewClass, token: string) =>
