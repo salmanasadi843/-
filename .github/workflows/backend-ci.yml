@@ -97,7 +97,6 @@ jobs:
           RESTORED_TABLES="$(psql -X -Atqc "SELECT count(*) FROM information_schema.tables WHERE table_schema='public' AND table_type='BASE TABLE'")"
           test "$RESTORED_TABLES" -ge 15
 
-          # A non-empty target must be rejected without changing its data.
           psql -X -v ON_ERROR_STOP=1 -c "CREATE TABLE restore_safety_sentinel (value text NOT NULL)"
           psql -X -v ON_ERROR_STOP=1 -c "INSERT INTO restore_safety_sentinel(value) VALUES ('must-survive')"
           if bash backend/scripts/restore-postgres.sh "$DUMP_FILE"; then
@@ -107,7 +106,6 @@ jobs:
           SENTINEL="$(psql -X -Atqc "SELECT value FROM restore_safety_sentinel")"
           test "$SENTINEL" = "must-survive"
 
-          # A damaged dump must fail checksum validation before touching a target.
           cp "$DUMP_FILE" /tmp/corrupt-backup.dump
           cp "$DUMP_FILE.manifest.json" /tmp/corrupt-backup.dump.manifest.json
           printf 'corruption' >> /tmp/corrupt-backup.dump
@@ -144,7 +142,38 @@ jobs:
           ROLE_COUNT_AFTER_RETRY="$(psql -X -Atqc "SELECT count(*) FROM app_roles r JOIN auth_identities i ON i.user_id = r.user_id WHERE r.role_name='super_admin' AND i.provider='firebase' AND i.provider_subject='ci-bootstrap-firebase-uid'")"
           test "$ROLE_COUNT_AFTER_RETRY" = "1"
 
+      - name: Verify guarded legacy Firebase identity linking
+        env:
+          PGHOST: localhost
+          PGPORT: 5432
+          PGUSER: darsyar_ci
+          PGPASSWORD: ci_only_password
+          PGDATABASE: darsyar_staging
+          LINK_FIREBASE_UID: ci-legacy-firebase-uid
+          LINK_TARGET_USER_ID: 22222222-2222-4222-8222-222222222222
+          CONFIRM_FIREBASE_IDENTITY_LINK: I_VERIFIED_UID_AND_TARGET_ACCOUNT
+        run: |
+          bash -n backend/scripts/link-existing-firebase-identity.sh
+          psql -X -v ON_ERROR_STOP=1 -c "INSERT INTO app_users(id, display_name, status) VALUES ('22222222-2222-4222-8222-222222222222', 'CI legacy account', 'active')"
+          bash backend/scripts/link-existing-firebase-identity.sh
+          LINK_COUNT="$(psql -X -Atqc "SELECT count(*) FROM auth_identities WHERE provider='firebase' AND provider_subject='ci-legacy-firebase-uid' AND user_id='22222222-2222-4222-8222-222222222222'")"
+          test "$LINK_COUNT" = "1"
+          ROLE_COUNT="$(psql -X -Atqc "SELECT count(*) FROM app_roles WHERE user_id='22222222-2222-4222-8222-222222222222'")"
+          test "$ROLE_COUNT" = "0"
+          AUDIT_COUNT="$(psql -X -Atqc "SELECT count(*) FROM audit_log WHERE action='identity.firebase.linked_by_operator' AND entity_id='22222222-2222-4222-8222-222222222222'")"
+          test "$AUDIT_COUNT" = "1"
+          if bash backend/scripts/link-existing-firebase-identity.sh > /tmp/identity-link-retry.log 2>&1; then
+            echo "Identity link unexpectedly allowed a duplicate Firebase UID" >&2
+            exit 1
+          fi
+          grep -F "Refusing link: this Firebase UID is already linked" /tmp/identity-link-retry.log
+          LINK_COUNT_AFTER_RETRY="$(psql -X -Atqc "SELECT count(*) FROM auth_identities WHERE provider='firebase' AND provider_subject='ci-legacy-firebase-uid'")"
+          test "$LINK_COUNT_AFTER_RETRY" = "1"
+          ROLE_COUNT_AFTER_RETRY="$(psql -X -Atqc "SELECT count(*) FROM app_roles WHERE user_id='22222222-2222-4222-8222-222222222222'")"
+          test "$ROLE_COUNT_AFTER_RETRY" = "0"
+
       - name: Verify liveness and API version
+        run: |
         run: |
           curl --fail --silent http://127.0.0.1:8080/health/live
           curl --fail --silent http://127.0.0.1:8080/health/ready
