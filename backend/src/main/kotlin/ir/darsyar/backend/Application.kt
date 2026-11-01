@@ -201,6 +201,29 @@ data class ApiError(val error: String)
 @Serializable
 data class MeApiResponse(val userId: String, val roles: List<String>)
 
+@Serializable
+data class TeacherApplicationWriteRequest(
+    val teachingField: String? = null,
+    val institutionName: String? = null
+)
+
+@Serializable
+data class TeacherApplicationDecisionRequest(val decision: String)
+
+@Serializable
+data class TeacherApplicationApiRecord(
+    val userId: String,
+    val displayName: String,
+    val email: String?,
+    val teachingField: String?,
+    val institutionName: String?,
+    val approvalStatus: String
+)
+
+private fun TeacherApplicationRecord.toApiRecord() = TeacherApplicationApiRecord(
+    userId, displayName, email, teachingField, institutionName, approvalStatus
+)
+
 private fun TeacherFolderRecord.toApiRecord() = FolderApiRecord(
     id, ownerUserId, parentFolderId, name, sortOrder, isHidden, version
 )
@@ -262,6 +285,7 @@ fun Application.module(
     val audioSourceRepository = TeachingAudioSourceRepository(dataSource)
     val courseRepository = TeachingCourseRepository(dataSource)
     val classAccessRepository = ClassAccessRepository(dataSource)
+    val teacherAdministrationRepository = TeacherAdministrationRepository(dataSource)
 
     install(ContentNegotiation) { json() }
     install(Authentication) {
@@ -319,6 +343,70 @@ fun Application.module(
                             principal.roles.map { it.name.lowercase() }
                         )
                     )
+                }
+            }
+
+            post("/api/v1/teacher-applications") {
+                val principal = call.principal<DarsyarPrincipal>()
+                if (principal == null) {
+                    call.respond(HttpStatusCode.Unauthorized, ApiError("unauthorized"))
+                    return@post
+                }
+                val request = try { call.receive<TeacherApplicationWriteRequest>() }
+                catch (_: Exception) {
+                    call.respond(HttpStatusCode.BadRequest, ApiError("invalid_request"))
+                    return@post
+                }
+                try {
+                    val result = teacherAdministrationRepository.submitApplication(
+                        principal.userId, request.teachingField, request.institutionName
+                    )
+                    call.respond(HttpStatusCode.Created, result.toApiRecord())
+                } catch (_: IllegalArgumentException) {
+                    call.respond(HttpStatusCode.BadRequest, ApiError("invalid_teacher_application"))
+                } catch (_: IllegalStateException) {
+                    call.respond(HttpStatusCode.Conflict, ApiError("teacher_application_not_allowed"))
+                }
+            }
+
+            route("/api/v1/admin/teacher-applications") {
+                get {
+                    val principal = call.principal<DarsyarPrincipal>()
+                    if (principal == null) {
+                        call.respond(HttpStatusCode.Unauthorized, ApiError("unauthorized"))
+                        return@get
+                    }
+                    if (AppRole.SUPER_ADMIN !in principal.roles) {
+                        call.respond(HttpStatusCode.Forbidden, ApiError("admin_required"))
+                        return@get
+                    }
+                    call.respond(teacherAdministrationRepository.listPendingApplications().map { it.toApiRecord() })
+                }
+
+                patch("/{userId}") {
+                    val principal = call.principal<DarsyarPrincipal>()
+                    if (principal == null) {
+                        call.respond(HttpStatusCode.Unauthorized, ApiError("unauthorized"))
+                        return@patch
+                    }
+                    if (AppRole.SUPER_ADMIN !in principal.roles) {
+                        call.respond(HttpStatusCode.Forbidden, ApiError("admin_required"))
+                        return@patch
+                    }
+                    val request = try { call.receive<TeacherApplicationDecisionRequest>() }
+                    catch (_: Exception) {
+                        call.respond(HttpStatusCode.BadRequest, ApiError("invalid_request"))
+                        return@patch
+                    }
+                    try {
+                        val result = teacherAdministrationRepository.decideApplication(
+                            principal.userId, call.parameters["userId"] ?: "", request.decision
+                        )
+                        if (result == null) call.respond(HttpStatusCode.NotFound, ApiError("teacher_application_not_found"))
+                        else call.respond(result.toApiRecord())
+                    } catch (_: IllegalArgumentException) {
+                        call.respond(HttpStatusCode.BadRequest, ApiError("invalid_teacher_application_decision"))
+                    }
                 }
             }
 
