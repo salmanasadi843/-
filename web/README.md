@@ -1,6 +1,6 @@
-# Darsyar Web (staging scaffold)
+# Darsyar Web (staging MVP in progress)
 
-The first web increment is a responsive, Persian RTL, read-only browser for the existing Darsyar backend.
+Responsive Persian RTL web client for the Darsyar staging backend.
 
 ## Local setup
 
@@ -14,18 +14,26 @@ The first web increment is a responsive, Persian RTL, read-only browser for the 
 4. Set `VITE_DARSYAR_API_BASE_URL` to the HTTPS staging API URL. For local backend development, `http://localhost:8080` is acceptable.
 5. Run `npm install`, then `npm run dev`.
 
-Build verification: `npm run build`.
+Build verification: `npm run build`. GitHub Actions runs the same production build on web changes.
 
-## Current scope
+## Implemented in this increment
 
 - Firebase email/password sign-in using the existing identity provider.
-- Reads `/api/v1/me`, teachers, visible classes, session summaries and selected session detail.
+- Reads the signed-in user's role, teacher directory, visible classes, session summaries and selected session detail.
 - Displays the hierarchy teacher → class → session.
-- Admins can browse all classes returned by the backend; ordinary users see only what the backend authorizes.
-- No write operations, anonymous public browsing, account creation, password reset, migration or production deployment are enabled.
+- Teacher and super-admin can create classes; super-admin must select the target teacher.
+- Teacher can create sessions in their own classes; super-admin can create sessions in any class returned by the backend.
+- Class visibility can be set to public or private at creation.
+- Admins can browse classes returned by the backend; ordinary users see only what the backend authorizes.
+- Backend remains the authority for all permission checks; UI visibility is not treated as a security boundary.
 
-The backend remains the authority for all permissions. Never add Firebase Admin credentials or other private secrets to `.env.local` or any `VITE_*` variable; Vite variables are bundled into browser code.
+## Not implemented yet
 
-## Configuration note
+- Editing, hiding, deleting and restoring classes/sessions from the web UI.
+- Managing teacher folders and course records.
+- Anonymous (not signed-in) public class/session browsing. Current protected API requires Firebase sign-in even for public classes.
+- Full sync with Android Room/Firestore, migration, production deployment, account creation and password reset.
 
-The Firebase values above are the browser app's public configuration, not a service-account credential. The backend URL is centralized in `src/api.ts`; do not hardcode hostnames in UI components.
+Never add Firebase Admin credentials or other private secrets to `.env.local` or any `VITE_*` variable; Vite variables are bundled into browser code. The Firebase values above are browser app public configuration, not a service-account credential. The backend URL is centralized in `src/api.ts`; do not hardcode hostnames in UI components.
+
+This is a staging client only. It is not connected to production data and does not authorize server deployment or migration.
