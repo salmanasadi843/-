@@ -1,0 +1,92 @@
+package ir.darsyar.backend
+
+import io.ktor.client.request.header
+import io.ktor.client.request.post
+import io.ktor.client.request.get
+import io.ktor.client.request.setBody
+import io.ktor.http.ContentType
+import io.ktor.http.HttpHeaders
+import io.ktor.http.HttpStatusCode
+import io.ktor.http.contentType
+import io.ktor.server.testing.testApplication
+import java.lang.reflect.Proxy
+import javax.sql.DataSource
+import kotlin.test.Test
+import kotlin.test.assertEquals
+
+class ClassRoutesAuthorizationTest {
+    private fun unusedDataSource(): DataSource =
+        Proxy.newProxyInstance(
+            DataSource::class.java.classLoader,
+            arrayOf(DataSource::class.java)
+        ) { _, method, _ ->
+            throw UnsupportedOperationException("Database must not be accessed by this authorization test: ${method.name}")
+        } as DataSource
+
+    private fun verifier() = IdentityTokenVerifier { token ->
+        check(token == "test-token")
+        VerifiedIdentity(provider = "firebase", subject = "firebase-test-subject")
+    }
+
+    private fun usersWith(vararg roles: AppRole) = AuthenticatedUserRepository { provider, subject ->
+        check(provider == "firebase")
+        check(subject == "firebase-test-subject")
+        AuthenticatedUserRecord(
+            userId = "11111111-1111-4111-8111-111111111111",
+            status = "active",
+            roles = roles.toSet()
+        )
+    }
+
+    @Test
+    fun `class listing rejects unauthenticated requests`() = testApplication {
+        application {
+            module(unusedDataSource(), verifier(), usersWith(AppRole.STUDENT))
+        }
+
+        val response = client.get("/api/v1/classes")
+        assertEquals(HttpStatusCode.Unauthorized, response.status)
+    }
+
+    @Test
+    fun `student cannot create a class`() = testApplication {
+        application {
+            module(unusedDataSource(), verifier(), usersWith(AppRole.STUDENT))
+        }
+
+        val response = client.post("/api/v1/classes") {
+            header(HttpHeaders.Authorization, "Bearer test-token")
+            contentType(ContentType.Application.Json)
+            setBody("""{"title":"Forbidden class"}""")
+        }
+        assertEquals(HttpStatusCode.Forbidden, response.status)
+    }
+
+    @Test
+    fun `teacher cannot create a class for another owner`() = testApplication {
+        application {
+            module(unusedDataSource(), verifier(), usersWith(AppRole.TEACHER))
+        }
+
+        val response = client.post("/api/v1/classes") {
+            header(HttpHeaders.Authorization, "Bearer test-token")
+            contentType(ContentType.Application.Json)
+            setBody("""{"ownerUserId":"22222222-2222-4222-8222-222222222222","title":"Forbidden class"}""")
+        }
+        assertEquals(HttpStatusCode.Forbidden, response.status)
+    }
+
+    @Test
+    fun `super admin must explicitly identify the class owner`() = testApplication {
+        application {
+            module(unusedDataSource(), verifier(), usersWith(AppRole.SUPER_ADMIN))
+        }
+
+        val response = client.post("/api/v1/classes") {
+            header(HttpHeaders.Authorization, "Bearer test-token")
+            contentType(ContentType.Application.Json)
+            setBody("""{"title":"Owner is missing"}""")
+        }
+        assertEquals(HttpStatusCode.BadRequest, response.status)
+    }
+}
