@@ -209,7 +209,7 @@ class TeacherFolderRepository(private val dataSource: DataSource) {
                     """
                     SELECT
                       EXISTS(SELECT 1 FROM teacher_folders WHERE parent_folder_id = ? AND deleted_at IS NULL)
-                      OR EXISTS(SELECT 1 FROM teaching_classes WHERE folder_id = ? AND deleted_at IS NULL)
+                      OR EXISTS(SELECT 1 FROM teaching_classes WHERE folder_id = ?)
                     """.trimIndent()
                 ).use { statement ->
                     statement.setObject(1, id)
