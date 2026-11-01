@@ -136,10 +136,11 @@ jobs:
           bash backend/scripts/bootstrap-first-super-admin.sh
           ROLE_COUNT="$(psql -X -Atqc "SELECT count(*) FROM app_roles r JOIN auth_identities i ON i.user_id = r.user_id WHERE r.role_name='super_admin' AND i.provider='firebase' AND i.provider_subject='ci-bootstrap-firebase-uid'")"
           test "$ROLE_COUNT" = "1"
-          if bash backend/scripts/bootstrap-first-super-admin.sh; then
+          if bash backend/scripts/bootstrap-first-super-admin.sh > /tmp/bootstrap-retry.log 2>&1; then
             echo "Bootstrap unexpectedly allowed a second first-admin creation" >&2
             exit 1
           fi
+          grep -F "Refusing bootstrap: a super-admin already exists." /tmp/bootstrap-retry.log
           ROLE_COUNT_AFTER_RETRY="$(psql -X -Atqc "SELECT count(*) FROM app_roles r JOIN auth_identities i ON i.user_id = r.user_id WHERE r.role_name='super_admin' AND i.provider='firebase' AND i.provider_subject='ci-bootstrap-firebase-uid'")"
           test "$ROLE_COUNT_AFTER_RETRY" = "1"
 
