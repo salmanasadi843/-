@@ -56,6 +56,12 @@ data class ClassApiRecord(
 )
 
 @Serializable
+data class TeacherDirectoryApiRecord(
+    val userId: String,
+    val displayName: String
+)
+
+@Serializable
 data class FolderWriteRequest(
     val ownerUserId: String? = null,
     val parentFolderId: String? = null,
@@ -675,6 +681,22 @@ fun Application.module(
                     call.respond(HttpStatusCode.Forbidden, ApiError("student_account_required"))
                 } catch (_: IllegalArgumentException) {
                     call.respond(HttpStatusCode.BadRequest, ApiError("invalid_or_expired_access_code"))
+                }
+            }
+
+            get("/api/v1/teachers") {
+                val principal = call.principal<DarsyarPrincipal>()
+                if (principal == null) {
+                    call.respond(HttpStatusCode.Unauthorized, ApiError("unauthorized"))
+                } else {
+                    try {
+                        call.respond(
+                            classRepository.listVisibleTeachers(principal.userId, principal.roles)
+                                .map { TeacherDirectoryApiRecord(it.userId, it.displayName) }
+                        )
+                    } catch (_: IllegalArgumentException) {
+                        call.respond(HttpStatusCode.BadRequest, ApiError("invalid_user_id"))
+                    }
                 }
             }
 
