@@ -45,7 +45,7 @@ class TeacherFolderRepository(private val dataSource: DataSource) {
                 ? OR f.owner_user_id = ?::uuid OR EXISTS (
                     SELECT 1 FROM teaching_classes c
                     WHERE c.folder_id = f.id AND c.owner_user_id = f.owner_user_id
-                      AND c.deleted_at IS NULL AND c.is_published = true AND c.is_hidden = false
+                      AND c.is_published = true AND c.is_hidden = false
                       AND (? OR (? AND (
                           c.visibility = 'public' OR EXISTS (
                               SELECT 1 FROM class_memberships m
@@ -252,7 +252,7 @@ private fun Connection.folderAudit(
         kotlinx.serialization.json.buildJsonObject {
             put("id", folder.id)
             put("ownerUserId", folder.ownerUserId)
-            put("parentFolderId", folder.parentFolderId?.let(::kotlinx.serialization.json.JsonPrimitive)
+            put("parentFolderId", folder.parentFolderId?.let { kotlinx.serialization.json.JsonPrimitive(it) }
                 ?: kotlinx.serialization.json.JsonNull)
             put("name", folder.name)
             put("sortOrder", folder.sortOrder)
