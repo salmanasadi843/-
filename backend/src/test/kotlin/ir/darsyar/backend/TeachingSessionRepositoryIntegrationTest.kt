@@ -97,7 +97,7 @@ class TeachingSessionRepositoryIntegrationTest {
             assertEquals(courseId, published.courseId)
 
             val teacherView = repository.listVisible(otherTeacher.toString(), setOf(AppRole.TEACHER))
-            assertEquals(setOf(published.id, privatePublished.id), teacherView.map { it.id }.toSet())
+            assertEquals(setOf(published.id), teacherView.map { it.id }.toSet())
             val studentView = repository.listVisible(student.toString(), setOf(AppRole.STUDENT))
             assertEquals(setOf(published.id, privatePublished.id), studentView.map { it.id }.toSet())
             val ownerView = repository.listVisible(owner.toString(), setOf(AppRole.TEACHER))
