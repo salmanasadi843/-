@@ -22,6 +22,7 @@ import androidx.compose.ui.platform.LocalLayoutDirection
 import androidx.compose.ui.unit.LayoutDirection
 import androidx.lifecycle.viewmodel.compose.viewModel
 import com.example.ui.screens.AddEditLectureScreen
+import com.example.ui.screens.BackendBrowseScreen
 import com.example.ui.screens.AuthPreferences
 import com.example.ui.screens.AuthScreen
 import com.example.ui.screens.ClassScreen
@@ -124,7 +125,8 @@ fun OstadYarApp(
                 userRole = userRole,
                 onNavigateToAdd = { viewModel.openClasses() },
                 onNavigateToDetail = { lectureId -> viewModel.navigateTo(Screen.Detail(lectureId)) },
-                onNavigateToAiSummary = { lectureId -> viewModel.navigateTo(Screen.Detail(lectureId)) }
+                onNavigateToAiSummary = { lectureId -> viewModel.navigateTo(Screen.Detail(lectureId)) },
+                onNavigateToBackendBrowse = { viewModel.navigateTo(Screen.BackendBrowse) }
             )
         }
 
@@ -202,6 +204,10 @@ fun OstadYarApp(
                     if (userRole == UserRole.TEACHER) viewModel.navigateTo(Screen.AddEdit(editId))
                 }
             )
+        }
+
+        Screen.BackendBrowse -> {
+            BackendBrowseScreen(onBack = { viewModel.navigateBack() })
         }
 
         Screen.Settings -> {
