@@ -154,6 +154,23 @@ data class SessionWriteRequest(
 )
 
 @Serializable
+data class SessionSummaryApiRecord(
+    val id: String,
+    val classId: String,
+    val courseId: String?,
+    val title: String,
+    val courseName: String,
+    val professorName: String,
+    val dateMs: Long?,
+    val audioDurationMs: Long,
+    val tags: String,
+    val isPublished: Boolean,
+    val lastEditedMs: Long?,
+    val sortOrder: Int,
+    val version: Long
+)
+
+@Serializable
 data class SessionApiRecord(
     val id: String,
     val classId: String,
@@ -239,6 +256,11 @@ private fun TeachingCourseRecord.toApiRecord() = CourseApiRecord(
 
 private fun TeachingAudioSourceRecord.toApiRecord() = AudioSourceApiRecord(
     id, sessionId, sourceKind, sourceUrl, storageKey, title, sortOrder, isActive
+)
+
+private fun TeachingSessionRecord.toSummaryApiRecord() = SessionSummaryApiRecord(
+    id, classId, courseId, title, courseName, professorName, dateMs,
+    audioDurationMs, tags, isPublished, lastEditedMs, sortOrder, version
 )
 
 private fun TeachingSessionRecord.toApiRecord() = SessionApiRecord(
@@ -906,14 +928,14 @@ fun Application.module(
             }
 
             route("/api/v1/classes/{classId}/sessions") {
-                get {
+async function get(path){return (await tools.mcp__GitHub__fetch_file({repository_full_name:repo,path,ref:branch})).result;}                get {
                     val principal = call.principal<DarsyarPrincipal>()
                     if (principal == null) {
                         call.respond(HttpStatusCode.Unauthorized, ApiError("unauthorized"))
                     } else {
                         try {
                             val classId = call.parameters["classId"] ?: ""
-                            call.respond(sessionRepository.listVisible(principal.userId, principal.roles, classId).map { it.toApiRecord() })
+                            call.respond(sessionRepository.listVisible(principal.userId, principal.roles, classId).map { it.toSummaryApiRecord() })
                         } catch (_: IllegalArgumentException) {
                             call.respond(HttpStatusCode.BadRequest, ApiError("invalid_class_id"))
                         }
