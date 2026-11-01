@@ -58,11 +58,24 @@ export const api = {
   classes: (token: string) => request<ClassRecord[]>("/api/v1/classes", token),
   createClass: (data: NewClass, token: string) =>
     request<ClassRecord>("/api/v1/classes", token, { method: "POST", body: JSON.stringify(data) }),
+  updateClass: (classId: string, data: NewClass, token: string) =>
+    request<ClassRecord>(`/api/v1/classes/${encodeURIComponent(classId)}`, token, { method: "PATCH", body: JSON.stringify(data) }),
+  deleteClass: (classId: string, token: string) =>
+    request<void>(`/api/v1/classes/${encodeURIComponent(classId)}`, token, { method: "DELETE" }),
+  deletedClasses: (token: string) => request<ClassRecord[]>("/api/v1/classes/deleted", token),
+  restoreClass: (classId: string, token: string) =>
+    request<void>(`/api/v1/classes/${encodeURIComponent(classId)}/restore`, token, { method: "POST" }),
   sessions: (classId: string, token: string) => request<SessionSummary[]>(`/api/v1/classes/${encodeURIComponent(classId)}/sessions`, token),
   session: (classId: string, sessionId: string, token: string) =>
     request<SessionDetail>(`/api/v1/classes/${encodeURIComponent(classId)}/sessions/${encodeURIComponent(sessionId)}`, token),
   createSession: (classId: string, data: NewSession, token: string) =>
     request<SessionDetail>(`/api/v1/classes/${encodeURIComponent(classId)}/sessions`, token, { method: "POST", body: JSON.stringify(data) }),
+  updateSession: (sessionId: string, data: NewSession & { courseId?: string | null; audioDurationMs?: number; tags?: string; aiQuizJson?: string | null }, token: string) =>
+    request<SessionDetail>(`/api/v1/sessions/${encodeURIComponent(sessionId)}`, token, { method: "PATCH", body: JSON.stringify(data) }),
+  deleteSession: (sessionId: string, token: string) =>
+    request<void>(`/api/v1/sessions/${encodeURIComponent(sessionId)}`, token, { method: "DELETE" }),
+  restoreSession: (sessionId: string, token: string) =>
+    request<void>(`/api/v1/sessions/${encodeURIComponent(sessionId)}/restore`, token, { method: "POST" }),
   redeemAccessCode: (code: string, token: string) =>
     request<Membership>("/api/v1/class-memberships/redeem", token, { method: "POST", body: JSON.stringify({ code }) }),
   accessCodes: (classId: string, token: string) =>
