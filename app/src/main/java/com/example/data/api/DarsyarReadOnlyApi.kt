@@ -34,7 +34,14 @@ interface DarsyarReadOnlyApi {
     suspend fun getSessions(
         @retrofit2.http.Path("classId") classId: String,
         @Header("Authorization") authorization: String
-    ): Response<List<BackendSessionDto>>
+    ): Response<List<BackendSessionSummaryDto>>
+
+    @GET("api/v1/classes/{classId}/sessions/{sessionId}")
+    suspend fun getSessionDetail(
+        @retrofit2.http.Path("classId") classId: String,
+        @retrofit2.http.Path("sessionId") sessionId: String,
+        @Header("Authorization") authorization: String
+    ): Response<BackendSessionDto>
 }
 
 @JsonClass(generateAdapter = true)
@@ -65,6 +72,23 @@ data class BackendCourseDto(
     val teacherName: String,
     val description: String,
     val createdAtMs: Long?,
+    val sortOrder: Int,
+    val version: Long
+)
+
+@JsonClass(generateAdapter = true)
+data class BackendSessionSummaryDto(
+    val id: String,
+    val classId: String,
+    val courseId: String?,
+    val title: String,
+    val courseName: String,
+    val professorName: String,
+    val dateMs: Long?,
+    val audioDurationMs: Long,
+    val tags: String,
+    val isPublished: Boolean,
+    val lastEditedMs: Long?,
     val sortOrder: Int,
     val version: Long
 )
@@ -116,12 +140,28 @@ class DarsyarReadOnlyRepository(
         return response.body() ?: throw IllegalStateException("Backend returned an empty courses response.")
     }
 
-    suspend fun loadSessions(firebaseIdToken: String, classId: String): List<BackendSessionDto> {
+    suspend fun loadSessions(firebaseIdToken: String, classId: String): List<BackendSessionSummaryDto> {
         require(firebaseIdToken.isNotBlank()) { "Firebase ID token is required." }
         require(classId.isNotBlank()) { "Class ID is required." }
         val response = api.getSessions(classId, "Bearer $firebaseIdToken")
         if (!response.isSuccessful) throw BackendHttpException(response.code(), "/api/v1/classes/{classId}/sessions")
         return response.body() ?: throw IllegalStateException("Backend returned an empty sessions response.")
+    }
+
+    /** Loads full transcript/summary data only for the session the user opened. */
+    suspend fun loadSessionDetail(
+        firebaseIdToken: String,
+        classId: String,
+        sessionId: String
+    ): BackendSessionDto {
+        require(firebaseIdToken.isNotBlank()) { "Firebase ID token is required." }
+        require(classId.isNotBlank()) { "Class ID is required." }
+        require(sessionId.isNotBlank()) { "Session ID is required." }
+        val response = api.getSessionDetail(classId, sessionId, "Bearer $firebaseIdToken")
+        if (!response.isSuccessful) {
+            throw BackendHttpException(response.code(), "/api/v1/classes/{classId}/sessions/{sessionId}")
+        }
+        return response.body() ?: throw IllegalStateException("Backend returned an empty session response.")
     }
 
     suspend fun loadSnapshot(firebaseIdToken: String): BackendReadOnlySnapshot {
