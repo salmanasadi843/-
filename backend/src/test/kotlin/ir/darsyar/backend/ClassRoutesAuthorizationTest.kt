@@ -2,6 +2,7 @@ package ir.darsyar.backend
 
 import io.ktor.client.request.header
 import io.ktor.client.request.post
+import io.ktor.client.request.patch
 import io.ktor.client.request.delete
 import io.ktor.client.request.get
 import io.ktor.client.request.setBody
