@@ -14,7 +14,8 @@ data class TeachingClassRecord(
     val visibility: String,
     val isPublished: Boolean,
     val isHidden: Boolean,
-    val sortOrder: Int
+    val sortOrder: Int,
+    val folderId: String?
 )
 
 data class CreateTeachingClass(
@@ -23,7 +24,8 @@ data class CreateTeachingClass(
     val description: String,
     val term: String,
     val visibility: String,
-    val isPublished: Boolean
+    val isPublished: Boolean,
+    val folderId: String? = null
 )
 
 data class UpdateTeachingClass(
@@ -33,7 +35,8 @@ data class UpdateTeachingClass(
     val visibility: String,
     val isPublished: Boolean,
     val isHidden: Boolean,
-    val sortOrder: Int
+    val sortOrder: Int,
+    val folderId: String? = null
 )
 
 /** Database boundary for class operations. Writes and audit entries commit atomically. */
@@ -44,7 +47,8 @@ class TeachingClassRepository(private val dataSource: DataSource) {
         val isStudent = AppRole.STUDENT in roles
         val sql = """
             SELECT c.id::text, c.owner_user_id::text, c.title, c.description,
-                   c.term, c.visibility, c.is_published, c.is_hidden, c.sort_order
+                   c.term, c.visibility, c.is_published, c.is_hidden, c.sort_order,
+                   c.folder_id::text
             FROM teaching_classes c
             WHERE (? OR c.owner_user_id = ?)
                OR (c.is_hidden = false AND c.is_published = true AND (
@@ -92,18 +96,19 @@ class TeachingClassRepository(private val dataSource: DataSource) {
                 val created = connection.prepareStatement(
                     """
                     INSERT INTO teaching_classes(
-                        owner_user_id, title, description, term, visibility, is_published
-                    ) VALUES (?, ?, ?, ?, ?, ?)
+                        owner_user_id, folder_id, title, description, term, visibility, is_published
+                    ) VALUES (?, ?::uuid, ?, ?, ?, ?, ?)
                     RETURNING id::text, owner_user_id::text, title, description, term,
-                              visibility, is_published, is_hidden, sort_order
+                              visibility, is_published, is_hidden, sort_order, folder_id::text
                     """.trimIndent()
                 ).use { statement ->
                     statement.setObject(1, owner)
-                    statement.setString(2, command.title.trim())
-                    statement.setString(3, command.description)
-                    statement.setString(4, command.term)
-                    statement.setString(5, command.visibility)
-                    statement.setBoolean(6, command.isPublished)
+                    statement.setString(2, command.folderId)
+                    statement.setString(3, command.title.trim())
+                    statement.setString(4, command.description)
+                    statement.setString(5, command.term)
+                    statement.setString(6, command.visibility)
+                    statement.setBoolean(7, command.isPublished)
                     statement.executeQuery().use { rows ->
                         check(rows.next())
                         rows.toTeachingClassRecord()
@@ -141,7 +146,7 @@ class TeachingClassRepository(private val dataSource: DataSource) {
                 val before = connection.prepareStatement(
                     """
                     SELECT id::text, owner_user_id::text, title, description, term,
-                           visibility, is_published, is_hidden, sort_order
+                           visibility, is_published, is_hidden, sort_order, folder_id::text
                     FROM teaching_classes WHERE id = ? FOR UPDATE
                     """.trimIndent()
                 ).use { statement ->
@@ -163,11 +168,11 @@ class TeachingClassRepository(private val dataSource: DataSource) {
                     """
                     UPDATE teaching_classes
                     SET title = ?, description = ?, term = ?, visibility = ?,
-                        is_published = ?, is_hidden = ?, sort_order = ?,
+                        is_published = ?, is_hidden = ?, sort_order = ?, folder_id = ?::uuid,
                         version = version + 1, updated_at = now()
                     WHERE id = ?
                     RETURNING id::text, owner_user_id::text, title, description, term,
-                              visibility, is_published, is_hidden, sort_order
+                              visibility, is_published, is_hidden, sort_order, folder_id::text
                     """.trimIndent()
                 ).use { statement ->
                     statement.setString(1, command.title.trim())
@@ -177,7 +182,8 @@ class TeachingClassRepository(private val dataSource: DataSource) {
                     statement.setBoolean(5, command.isPublished)
                     statement.setBoolean(6, command.isHidden)
                     statement.setInt(7, command.sortOrder)
-                    statement.setObject(8, id)
+                    statement.setString(8, command.folderId)
+                    statement.setObject(9, id)
                     statement.executeQuery().use { rows ->
                         check(rows.next())
                         rows.toTeachingClassRecord()
@@ -207,7 +213,8 @@ class TeachingClassRepository(private val dataSource: DataSource) {
         visibility = getString("visibility"),
         isPublished = getBoolean("is_published"),
         isHidden = getBoolean("is_hidden"),
-        sortOrder = getInt("sort_order")
+        sortOrder = getInt("sort_order"),
+        folderId = getString("folder_id")
     )
 
     private fun TeachingClassRecord.toAuditJson(): String =
