@@ -377,7 +377,7 @@ fun SettingsScreen(
                                                                     backendContentStatus = "دوره‌ها و فهرست جلسه‌ها دریافت شد؛ متن کامل جلسه‌ها هنوز دریافت نشده است."
                                                                 },
                                                                 onFailure = { error ->
-                                                                    backendContentStatus = "دریافت محتوای کلاس ناموفق بود: \${error.localizedMessage ?: "خطای نامشخص"}"
+                                                                    backendContentStatus = "دریافت محتوای کلاس ناموفق بود: ${error.localizedMessage ?: "خطای نامشخص"}"
                                                                 }
                                                             )
                                                         }
@@ -401,7 +401,7 @@ fun SettingsScreen(
                             Text("دوره‌ای برای این کلاس ثبت نشده است.", style = MaterialTheme.typography.bodySmall)
                         } else {
                             backendCourses.sortedBy { it.sortOrder }.forEach { course ->
-                                Text("• \${course.title}", style = MaterialTheme.typography.bodyMedium)
+                                Text("• ${course.title}", style = MaterialTheme.typography.bodyMedium)
                             }
                         }
                         Spacer(Modifier.height(8.dp))
@@ -435,7 +435,7 @@ fun SettingsScreen(
                                                                 backendContentStatus = "جزئیات فقط برای جلسه انتخاب‌شده دریافت شد."
                                                             },
                                                             onFailure = { error ->
-                                                                backendContentStatus = "دریافت جزئیات جلسه ناموفق بود: \${error.localizedMessage ?: "خطای نامشخص"}"
+                                                                backendContentStatus = "دریافت جزئیات جلسه ناموفق بود: ${error.localizedMessage ?: "خطای نامشخص"}"
                                                             }
                                                         )
                                                     }
