@@ -37,10 +37,13 @@ identity in a supported hosting environment). Never commit service-account keys.
 Create/link application users and grant roles through a separately controlled
 administrative process; this service intentionally does not auto-provision accounts.
 
-The protected domain API now covers class and folder management plus class-scoped
-session listing, creation, and content updates. Session deletion, binary audio upload/storage-provider adapters, student-facing membership history, administrative role-management
-workflows, production secrets, and Firebase-to-user linking procedures still require
-further implementation and review. See [the protected class API notes](docs/protected-class-api.md).
+The protected domain API now includes class and session soft deletion/recovery,
+class/folder/course/session management, audio-source metadata, private access-code
+management, redemption, and owner/admin membership listing and revocation. Remaining
+pre-production work includes secure Firebase identity linking and first super-admin
+bootstrap, administrative role-management workflows, student-facing membership
+history/UI, binary audio upload/storage-provider adapters, production secrets, and
+security review. See [the protected class API notes](docs/protected-class-api.md).
 Do not expose this staging service as the production app backend yet.
 
 ## Run locally

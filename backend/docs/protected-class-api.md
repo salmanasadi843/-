@@ -186,7 +186,7 @@ record creation against a disposable PostgreSQL schema.
 ## Deliberate limitations
 
 - Binary audio upload/storage-provider adapters and student-facing membership history/UI integration remain pending.
-- Session deletion, binary audio upload/storage-provider adapters, and student-facing membership history and UI integration are not implemented yet.
+- Secure Firebase identity linking and first super-admin bootstrap, administrative role-management workflows, student-facing membership history/UI integration, and binary audio upload/storage-provider adapters remain pending.
 - This is a backend staging foundation. It is not deployed, does not receive
   production traffic, and is not connected to the Android app or live Firebase
   data.
