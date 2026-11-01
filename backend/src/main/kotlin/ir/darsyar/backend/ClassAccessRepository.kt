@@ -144,7 +144,7 @@ class ClassAccessRepository(
                 val access = connection.prepareStatement(
                     """
                     SELECT ac.id, ac.class_id, ac.max_uses, ac.use_count, ac.expires_at,
-                           c.owner_user_id, c.visibility, c.is_published
+                           c.owner_user_id, c.visibility, c.is_published, c.is_hidden
                     FROM class_access_codes ac
                     JOIN teaching_classes c ON c.id = ac.class_id
                     WHERE ac.code_hash = ? AND ac.is_active = true
@@ -161,18 +161,16 @@ class ClassAccessRepository(
                             rs.getTimestamp("expires_at")?.toInstant(),
                             rs.getObject("owner_user_id", UUID::class.java),
                             rs.getString("visibility"),
-                            rs.getBoolean("is_published")
+                            rs.getBoolean("is_published"),
+                            rs.getBoolean("is_hidden")
                         ) else null
                     }
                 } ?: throw IllegalArgumentException("Invalid or inactive access code.")
 
-                if (access.visibility != "private" || !access.isPublished)
+                if (access.visibility != "private" || !access.isPublished || access.isHidden)
                     throw IllegalArgumentException("This private class is not currently available.")
                 if (access.expiresAt != null && !access.expiresAt.isAfter(Instant.now()))
                     throw IllegalArgumentException("Access code has expired.")
-                if (access.maxUses != null && access.useCount >= access.maxUses)
-                    throw IllegalArgumentException("Access code has reached its usage limit.")
-
                 val existing = connection.prepareStatement(
                     "SELECT status, joined_at FROM class_memberships WHERE class_id = ? AND student_user_id = ? FOR UPDATE"
                 ).use { st ->
@@ -188,6 +186,9 @@ class ClassAccessRepository(
                     connection.commit()
                     return RedeemClassAccessResult(existing, true)
                 }
+
+                if (access.maxUses != null && access.useCount >= access.maxUses)
+                    throw IllegalArgumentException("Access code has reached its usage limit.")
 
                 val membership = connection.prepareStatement(
                     """
@@ -232,7 +233,7 @@ class ClassAccessRepository(
 
     private data class AccessRow(
         val id: UUID, val classId: UUID, val maxUses: Int?, val useCount: Int,
-        val expiresAt: Instant?, val ownerUserId: UUID, val visibility: String, val isPublished: Boolean
+        val expiresAt: Instant?, val ownerUserId: UUID, val visibility: String, val isPublished: Boolean, val isHidden: Boolean
     )
 }
 
