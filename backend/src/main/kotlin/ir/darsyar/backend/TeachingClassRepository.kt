@@ -52,14 +52,12 @@ class TeachingClassRepository(private val dataSource: DataSource) {
             FROM teaching_classes c
             WHERE (? OR c.owner_user_id = ?)
                OR (c.is_hidden = false AND c.is_published = true AND (
-                    ? = true OR (
-                        ? = true AND (
-                            c.visibility = 'public' OR EXISTS (
-                                SELECT 1 FROM class_memberships m
-                                WHERE m.class_id = c.id
-                                  AND m.student_user_id = ?::uuid
-                                  AND m.status = 'active'
-                            )
+                    c.visibility = 'public' OR (
+                        ? = true AND EXISTS (
+                            SELECT 1 FROM class_memberships m
+                            WHERE m.class_id = c.id
+                              AND m.student_user_id = ?::uuid
+                              AND m.status = 'active'
                         )
                     )
                ))
@@ -70,9 +68,8 @@ class TeachingClassRepository(private val dataSource: DataSource) {
             connection.prepareStatement(sql).use { statement ->
                 statement.setBoolean(1, isAdmin)
                 statement.setObject(2, UUID.fromString(actorUserId))
-                statement.setBoolean(3, isTeacher)
-                statement.setBoolean(4, isStudent)
-                statement.setObject(5, UUID.fromString(actorUserId))
+                statement.setBoolean(3, isStudent)
+                statement.setObject(4, UUID.fromString(actorUserId))
                 statement.executeQuery().use { rows ->
                     val result = mutableListOf<TeachingClassRecord>()
                     while (rows.next()) result += rows.toTeachingClassRecord()
