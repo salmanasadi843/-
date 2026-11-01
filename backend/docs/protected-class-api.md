@@ -77,6 +77,17 @@ Soft-deletes an empty folder. Deletion is rejected while it still contains
 child folders or classes; those items must be moved explicitly first.
 Folder mutations write audit records in the same transaction.
 
+## Course endpoints
+
+Courses are optional groupings inside a class; sessions remain directly owned by the class.
+
+- `GET /api/v1/classes/{classId}/courses`: lists courses in a class the caller can see.
+- `POST /api/v1/classes/{classId}/courses`: creates a course for the class owner or super admin.
+- `PATCH /api/v1/courses/{courseId}`: updates course title, teacher name, description, date and order; the class relationship is immutable.
+- `DELETE /api/v1/courses/{courseId}`: soft-deletes an empty course only. Deletion is rejected while non-deleted sessions still reference it.
+
+Course writes are audited transactionally. The database's composite foreign key ensures a session cannot reference a course from another class.
+
 ## Session endpoints
 
 The canonical content hierarchy is **teacher → class → session**. A session
@@ -141,7 +152,7 @@ record creation against a disposable PostgreSQL schema.
 ## Deliberate limitations
 
 - No class deletion endpoint is exposed yet.
-- Course CRUD, session deletion, audio-source management, access-code redemption,
+- Session deletion, binary audio upload/storage-provider adapters, access-code redemption,
   and membership administration are not implemented by this API yet.
 - This is a backend staging foundation. It is not deployed, does not receive
   production traffic, and is not connected to the Android app or live Firebase
