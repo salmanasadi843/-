@@ -100,6 +100,30 @@ class ClassRoutesAuthorizationTest {
     }
 
     @Test
+    fun `audio source listing rejects unauthenticated requests`() = testApplication {
+        application {
+            module(unusedDataSource(), verifier(), usersWith(AppRole.STUDENT))
+        }
+
+        val response = client.get("/api/v1/sessions/11111111-1111-4111-8111-111111111111/audio-sources")
+        assertEquals(HttpStatusCode.Unauthorized, response.status)
+    }
+
+    @Test
+    fun `student cannot create an audio source`() = testApplication {
+        application {
+            module(unusedDataSource(), verifier(), usersWith(AppRole.STUDENT))
+        }
+
+        val response = client.post("/api/v1/sessions/11111111-1111-4111-8111-111111111111/audio-sources") {
+            header(HttpHeaders.Authorization, "Bearer test-token")
+            contentType(ContentType.Application.Json)
+            setBody("""{"sourceKind":"direct_url","sourceUrl":"https://media.example.test/audio.mp3"}""")
+        }
+        assertEquals(HttpStatusCode.Forbidden, response.status)
+    }
+
+    @Test
     fun `student cannot create a session`() = testApplication {
         application {
             module(unusedDataSource(), verifier(), usersWith(AppRole.STUDENT))
