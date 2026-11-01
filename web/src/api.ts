@@ -23,6 +23,7 @@ export type NewSession = {
   transcript: string; originalTranscript: string; aiSummary: string | null; aiKeyPoints: string | null;
   isPublished: boolean; lastEditedMs: number; sortOrder: number;
 };
+export type ClassMember = { classId: string; studentUserId: string; status: string; joinedAtMs: number | null; alreadyActive: boolean };
 export type Membership = {
   classId: string; studentUserId: string; status: string; joinedAtMs: number | null; alreadyActive: boolean;
 };
@@ -73,6 +74,9 @@ export const api = {
   deletedClasses: (token: string) => request<ClassRecord[]>("/api/v1/classes/deleted", token),
   restoreClass: (classId: string, token: string) =>
     request<void>(`/api/v1/classes/${encodeURIComponent(classId)}/restore`, token, { method: "POST" }),
+  classMembers: (classId: string, token: string) => request<ClassMember[]>(`/api/v1/classes/${encodeURIComponent(classId)}/memberships`, token),
+  revokeMembership: (classId: string, studentUserId: string, token: string) =>
+    request<void>(`/api/v1/classes/${encodeURIComponent(classId)}/memberships/${encodeURIComponent(studentUserId)}`, token, { method: "DELETE" }),
   sessions: (classId: string, token: string) => request<SessionSummary[]>(`/api/v1/classes/${encodeURIComponent(classId)}/sessions`, token),
   session: (classId: string, sessionId: string, token: string) =>
     request<SessionDetail>(`/api/v1/classes/${encodeURIComponent(classId)}/sessions/${encodeURIComponent(sessionId)}`, token),
