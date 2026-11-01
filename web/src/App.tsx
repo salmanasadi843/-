@@ -280,14 +280,15 @@ export default function App() {
       </aside>
       <section className="panel content">
         <div className="section-head"><h2>کلاس‌ها</h2><span className="muted">{visibleClasses.length} کلاس</span></div>
-        {canCreateClass && <div className="toolbar"><button className="action" onClick={() => {setShowClassForm(v => !v);setError("");}}>{showClassForm ? "بستن فرم" : "＋ ایجاد کلاس"}</button>{isAdmin && selectedTeacher === "all" && <span className="muted">برای ساخت کلاس، ابتدا استاد موردنظر را انتخاب کنید.</span>}</div>}
+        {canCreateClass && <div className="toolbar"><button className="action" onClick={() => {setEditingClass(false);setShowClassForm(v => !v);setError("");}}>{showClassForm ? "بستن فرم" : "＋ ایجاد کلاس"}</button>{isAdmin && <button className="ghost" onClick={() => void (showDeletedClasses ? setShowDeletedClasses(false) : loadDeletedClasses())}>{showDeletedClasses ? "بستن بازیابی" : "بازیابی کلاس‌های حذف‌شده"}</button>}{isAdmin && selectedTeacher === "all" && <span className="muted">برای ساخت کلاس، ابتدا استاد موردنظر را انتخاب کنید.</span>}</div>
+        {showDeletedClasses && isAdmin && <section className="access-manager"><div className="section-head"><h3>کلاس‌های حذف‌شده</h3><span className="muted">{deletedClasses.length} کلاس</span></div>{deletedClasses.map(c => <div className="code-row" key={c.id}><span><strong>{c.title}</strong><small>{teachers.find(t => t.userId === c.ownerUserId)?.displayName ?? "استاد"}</small></span><button className="ghost" disabled={busy} onClick={() => void restoreDeletedClass(c.id)}>بازیابی</button></div>)}{!deletedClasses.length && <p className="muted">کلاس حذف‌شده‌ای وجود ندارد.</p>}</section>}}
         {showClassForm && <form className="editor-form" onSubmit={createClass}>
-          <h3>کلاس جدید</h3>
+          <h3>{editingClass ? "ویرایش کلاس" : "کلاس جدید"}</h3>
           <label>عنوان کلاس<input value={classTitle} onChange={e => setClassTitle(e.target.value)} required /></label>
           <label>توضیحات<textarea value={classDescription} onChange={e => setClassDescription(e.target.value)} rows={2} /></label>
           <label>ترم یا سال تحصیلی<input value={classTerm} onChange={e => setClassTerm(e.target.value)} /></label>
           <label>دسترسی<select value={classVisibility} onChange={e => setClassVisibility(e.target.value as "public" | "private")}><option value="public">عمومی ـ بدون نیاز به عضویت</option><option value="private">خصوصی ـ نیازمند عضویت</option></select></label>
-          <button disabled={busy || !classTitle.trim() || (isAdmin && selectedTeacher === "all")}>{busy ? "در حال ذخیره…" : "ذخیره کلاس"}</button>
+          <button disabled={busy || !classTitle.trim() || (isAdmin && selectedTeacher === "all")}>{busy ? "در حال ذخیره…" : editingClass ? "ذخیره تغییرات" : "ذخیره کلاس"}</button>
         </form>}
         <div className="class-grid">
           {visibleClasses.map(c => <button key={c.id} className={selectedClass?.id === c.id ? "class-card selected" : "class-card"} onClick={() => void openClass(c)}>
@@ -297,14 +298,15 @@ export default function App() {
         </div>
         {selectedClass && <div className="lower">
           <div className="section-head"><h2>جلسه‌های {selectedClass.title}</h2><span className="muted">{sessions.length} جلسه</span></div>
-          {canManageSelectedClass && <div className="toolbar"><button className="action" onClick={() => setShowSessionForm(v => !v)}>{showSessionForm ? "بستن فرم" : "＋ افزودن جلسه"}</button></div>}
+          {canManageSelectedClass && <div className="toolbar"><button className="ghost" onClick={() => void editSelectedClass()}>ویرایش کلاس</button><button className="ghost danger-text" disabled={busy} onClick={() => void removeSelectedClass()}>حذف کلاس</button></div>}
+          {canManageSelectedClass && <div className="toolbar"><button className="action" onClick={() => {setEditingSession(false);setShowSessionForm(v => !v);}}>{showSessionForm ? "بستن فرم" : "＋ افزودن جلسه"}</button></div>}
           {showSessionForm && canManageSelectedClass && <form className="editor-form" onSubmit={createSession}>
-            <h3>جلسه جدید</h3>
+            <h3>{editingSession ? "ویرایش جلسه" : "جلسه جدید"}</h3>
             <label>عنوان جلسه<input value={sessionTitle} onChange={e => setSessionTitle(e.target.value)} required /></label>
             <label>متن جلسه<textarea value={sessionTranscript} onChange={e => setSessionTranscript(e.target.value)} rows={5} /></label>
             <label>خلاصه هوشمند (اختیاری)<textarea value={sessionSummary} onChange={e => setSessionSummary(e.target.value)} rows={3} /></label>
             <label>نکات کلیدی (اختیاری)<textarea value={sessionKeyPoints} onChange={e => setSessionKeyPoints(e.target.value)} rows={3} /></label>
-            <button disabled={busy || !sessionTitle.trim()}>{busy ? "در حال ذخیره…" : "ذخیره جلسه"}</button>
+            <button disabled={busy || !sessionTitle.trim()}>{busy ? "در حال ذخیره…" : editingSession ? "ذخیره تغییرات" : "ذخیره جلسه"}</button>
           </form>}
           {canManageSelectedClass && selectedClass.visibility === "private" && <section className="access-manager">
             <div className="section-head"><h3>کدهای ورود کلاس خصوصی</h3><span className="muted">{classAccessCodes.filter(code => code.isActive).length} کد فعال</span></div>
@@ -327,7 +329,7 @@ export default function App() {
           {!sessions.length && !busy && <p className="muted">جلسه‌ای ثبت نشده است.</p>}
         </div>}
         {detail && <article className="detail">
-          <h2>{detail.title}</h2>
+          <div className="toolbar"><h2>{detail.title}</h2>{canManageSelectedClass && <><button className="ghost" onClick={() => void editSelectedSession()}>ویرایش جلسه</button><button className="ghost danger-text" disabled={busy} onClick={() => void removeSelectedSession()}>حذف جلسه</button></>}</div>
           {detail.aiSummary && <><h3>خلاصه هوشمند</h3><p className="pre">{detail.aiSummary}</p></>}
           {detail.aiKeyPoints && <><h3>نکات کلیدی</h3><p className="pre">{detail.aiKeyPoints}</p></>}
           {detail.originalTranscript && <><h3>متن اصلی</h3><p className="pre">{detail.originalTranscript}</p></>}
