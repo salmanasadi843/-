@@ -55,9 +55,23 @@ class TeachingClassRepositoryIntegrationTest {
             }
 
             val repository = TeachingClassRepository(dataSource)
+            val folderRepository = TeacherFolderRepository(dataSource)
+            val ownerFolder = folderRepository.create(
+                ownerA.toString(), setOf(AppRole.TEACHER),
+                CreateTeacherFolder(ownerA.toString(), null, "اصول")
+            )
+            val hiddenFolder = folderRepository.create(
+                ownerA.toString(), setOf(AppRole.TEACHER),
+                CreateTeacherFolder(ownerA.toString(), null, "مخفی")
+            ).let {
+                folderRepository.update(
+                    ownerA.toString(), setOf(AppRole.TEACHER), it.id,
+                    UpdateTeacherFolder(null, it.name, it.sortOrder, true)
+                )!!
+            }
             val publicClass = repository.create(
                 ownerA.toString(),
-                CreateTeachingClass(ownerA.toString(), "Public published", "", "", "public", true)
+                CreateTeachingClass(ownerA.toString(), "Public published", "", "", "public", true, ownerFolder.id)
             )
             val privateClass = repository.create(
                 ownerA.toString(),
@@ -86,6 +100,15 @@ class TeachingClassRepositoryIntegrationTest {
                     statement.executeUpdate()
                 }
             }
+
+            assertEquals(ownerFolder.id, publicClass.folderId)
+
+            val teacherFolders = folderRepository.listVisible(ownerB.toString(), setOf(AppRole.TEACHER))
+            assertTrue(teacherFolders.any { it.id == ownerFolder.id })
+            assertTrue(teacherFolders.none { it.id == hiddenFolder.id })
+            val studentFolders = folderRepository.listVisible(student.toString(), setOf(AppRole.STUDENT))
+            assertTrue(studentFolders.any { it.id == ownerFolder.id })
+            assertTrue(studentFolders.none { it.id == hiddenFolder.id })
 
             val teacherView = repository.listVisible(ownerB.toString(), setOf(AppRole.TEACHER))
             assertEquals(
