@@ -20,6 +20,15 @@ class DarsyarReadOnlyRepositoryTest {
     }
 
     @Test
+    fun teacherDirectoryUsesBearerTokenAndReturnsOnlyApiDisplayNames() = runBlocking {
+        val fake = FakeApi()
+        val teachers = DarsyarReadOnlyRepository(fake).loadTeachers("fresh-token")
+        assertEquals("Bearer fresh-token", fake.authorizationForTeachers)
+        assertEquals("استاد الف", teachers.single().displayName)
+        assertEquals("teacher-1", teachers.single().userId)
+    }
+
+    @Test
     fun coursesAndSessionsUseBearerTokenAndSelectedClassId() = runBlocking {
         val fake = FakeApi()
         val repository = DarsyarReadOnlyRepository(fake)
@@ -60,6 +69,7 @@ class DarsyarReadOnlyRepositoryTest {
         }
         assertEquals(null, fake.authorizationForMe)
         assertEquals(null, fake.authorizationForClasses)
+        assertEquals(null, fake.authorizationForTeachers)
         assertEquals(null, fake.authorizationForCourses)
         assertEquals(null, fake.authorizationForSessions)
         assertEquals(null, fake.authorizationForSessionDetail)
@@ -68,6 +78,7 @@ class DarsyarReadOnlyRepositoryTest {
     private class FakeApi : DarsyarReadOnlyApi {
         var authorizationForMe: String? = null
         var authorizationForClasses: String? = null
+        var authorizationForTeachers: String? = null
         var authorizationForCourses: String? = null
         var authorizationForSessions: String? = null
         var requestedClassIdForCourses: String? = null
@@ -79,6 +90,11 @@ class DarsyarReadOnlyRepositoryTest {
         override suspend fun getMe(authorization: String): Response<BackendMeDto> {
             authorizationForMe = authorization
             return Response.success(BackendMeDto("internal-user-1", listOf("student")))
+        }
+
+        override suspend fun getTeachers(authorization: String): Response<List<BackendTeacherDto>> {
+            authorizationForTeachers = authorization
+            return Response.success(listOf(BackendTeacherDto("teacher-1", "استاد الف")))
         }
 
         override suspend fun getCourses(classId: String, authorization: String): Response<List<BackendCourseDto>> {
