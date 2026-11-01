@@ -72,6 +72,16 @@ class ClassAccessRepositoryIntegrationTest {
                 repository.redeem(otherTeacher.toString(), setOf(AppRole.TEACHER), created.code)
             }
 
+            val listedCodes = repository.listCodes(owner.toString(), setOf(AppRole.TEACHER), classRecord.id)
+            val listedCreatedCode = listedCodes.single { it.id == created.id }
+            assertEquals(1, listedCreatedCode.useCount)
+            assertEquals(1, listedCreatedCode.maxUses)
+            assertTrue(listedCreatedCode.isActive)
+            assertEquals(created.expiresAt, listedCreatedCode.expiresAt)
+            assertFailsWith<SecurityException> {
+                repository.listCodes(otherTeacher.toString(), setOf(AppRole.TEACHER), classRecord.id)
+            }
+
             val members = repository.listMembers(owner.toString(), setOf(AppRole.TEACHER), classRecord.id)
             assertEquals(1, members.count { it.status == "active" && it.studentUserId == studentA.toString() })
             assertFailsWith<SecurityException> {
