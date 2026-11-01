@@ -116,6 +116,26 @@ data class SessionApiRecord(
     val version: Long
 )
 
+data class AudioSourceWriteRequest(
+    val sourceKind: String? = null,
+    val sourceUrl: String? = null,
+    val storageKey: String? = null,
+    val title: String? = null,
+    val sortOrder: Int = 0
+)
+
+@Serializable
+data class AudioSourceApiRecord(
+    val id: String,
+    val sessionId: String,
+    val sourceKind: String,
+    val sourceUrl: String?,
+    val storageKey: String?,
+    val title: String?,
+    val sortOrder: Int,
+    val isActive: Boolean
+)
+
 @Serializable
 data class ApiError(val error: String)
 
@@ -129,6 +149,10 @@ private fun TeacherFolderRecord.toApiRecord() = FolderApiRecord(
 private fun TeachingClassRecord.toApiRecord() = ClassApiRecord(
     id, ownerUserId, title, description, term, visibility,
     isPublished, isHidden, sortOrder, folderId
+)
+
+private fun TeachingAudioSourceRecord.toApiRecord() = AudioSourceApiRecord(
+    id, sessionId, sourceKind, sourceUrl, storageKey, title, sortOrder, isActive
 )
 
 private fun TeachingSessionRecord.toApiRecord() = SessionApiRecord(
@@ -172,6 +196,7 @@ fun Application.module(
     val classRepository = TeachingClassRepository(dataSource)
     val folderRepository = TeacherFolderRepository(dataSource)
     val sessionRepository = TeachingSessionRepository(dataSource)
+    val audioSourceRepository = TeachingAudioSourceRepository(dataSource)
 
     install(ContentNegotiation) { json() }
     install(Authentication) {
@@ -476,6 +501,114 @@ fun Application.module(
                         call.respond(HttpStatusCode.BadRequest, ApiError("invalid_session_data"))
                     } catch (_: java.sql.SQLException) {
                         call.respond(HttpStatusCode.BadRequest, ApiError("invalid_session_relation_or_json"))
+                    }
+                }
+            }
+
+            route("/api/v1/sessions/{sessionId}/audio-sources") {
+                get {
+                    val principal = call.principal<DarsyarPrincipal>()
+                    if (principal == null) {
+                        call.respond(HttpStatusCode.Unauthorized, ApiError("unauthorized"))
+                    } else {
+                        try {
+                            val sessionId = call.parameters["sessionId"] ?: ""
+                            val sources = audioSourceRepository.listVisible(principal.userId, principal.roles, sessionId)
+                            call.respond(sources.map { it.toApiRecord() })
+                        } catch (_: IllegalArgumentException) {
+                            call.respond(HttpStatusCode.BadRequest, ApiError("invalid_session_id"))
+                        }
+                    }
+                }
+
+                post {
+                    val principal = call.principal<DarsyarPrincipal>()
+                    if (principal == null) {
+                        call.respond(HttpStatusCode.Unauthorized, ApiError("unauthorized"))
+                        return@post
+                    }
+                    if (AppRole.SUPER_ADMIN !in principal.roles && AppRole.TEACHER !in principal.roles) {
+                        call.respond(HttpStatusCode.Forbidden, ApiError("audio_source_management_forbidden"))
+                        return@post
+                    }
+                    val request = try { call.receive<AudioSourceWriteRequest>() }
+                    catch (_: Exception) {
+                        call.respond(HttpStatusCode.BadRequest, ApiError("invalid_request"))
+                        return@post
+                    }
+                    try {
+                        val created = audioSourceRepository.create(
+                            principal.userId, principal.roles,
+                            call.parameters["sessionId"] ?: "",
+                            CreateTeachingAudioSource(
+                                sourceKind = request.sourceKind ?: "",
+                                sourceUrl = request.sourceUrl,
+                                storageKey = request.storageKey,
+                                title = request.title,
+                                sortOrder = request.sortOrder
+                            )
+                        )
+                        call.respond(HttpStatusCode.Created, created.toApiRecord())
+                    } catch (_: SecurityException) {
+                        call.respond(HttpStatusCode.Forbidden, ApiError("audio_source_management_forbidden"))
+                    } catch (_: IllegalArgumentException) {
+                        call.respond(HttpStatusCode.BadRequest, ApiError("invalid_audio_source"))
+                    } catch (_: java.sql.SQLException) {
+                        call.respond(HttpStatusCode.BadRequest, ApiError("invalid_audio_source_relation"))
+                    }
+                }
+            }
+
+            route("/api/v1/sessions/{sessionId}/audio-sources/{sourceId}") {
+                patch {
+                    val principal = call.principal<DarsyarPrincipal>()
+                    if (principal == null) {
+                        call.respond(HttpStatusCode.Unauthorized, ApiError("unauthorized"))
+                        return@patch
+                    }
+                    val request = try { call.receive<AudioSourceWriteRequest>() }
+                    catch (_: Exception) {
+                        call.respond(HttpStatusCode.BadRequest, ApiError("invalid_request"))
+                        return@patch
+                    }
+                    try {
+                        val updated = audioSourceRepository.update(
+                            principal.userId, principal.roles,
+                            call.parameters["sessionId"] ?: "",
+                            call.parameters["sourceId"] ?: "",
+                            UpdateTeachingAudioSource(
+                                request.sourceUrl, request.storageKey, request.title, request.sortOrder
+                            )
+                        )
+                        if (updated == null) call.respond(HttpStatusCode.NotFound, ApiError("audio_source_not_found"))
+                        else call.respond(updated.toApiRecord())
+                    } catch (_: SecurityException) {
+                        call.respond(HttpStatusCode.Forbidden, ApiError("audio_source_management_forbidden"))
+                    } catch (_: IllegalArgumentException) {
+                        call.respond(HttpStatusCode.BadRequest, ApiError("invalid_audio_source"))
+                    } catch (_: java.sql.SQLException) {
+                        call.respond(HttpStatusCode.BadRequest, ApiError("invalid_audio_source_relation"))
+                    }
+                }
+
+                delete {
+                    val principal = call.principal<DarsyarPrincipal>()
+                    if (principal == null) {
+                        call.respond(HttpStatusCode.Unauthorized, ApiError("unauthorized"))
+                        return@delete
+                    }
+                    try {
+                        val deactivated = audioSourceRepository.deactivate(
+                            principal.userId, principal.roles,
+                            call.parameters["sessionId"] ?: "",
+                            call.parameters["sourceId"] ?: ""
+                        )
+                        if (deactivated) call.respond(HttpStatusCode.NoContent)
+                        else call.respond(HttpStatusCode.NotFound, ApiError("audio_source_not_found"))
+                    } catch (_: SecurityException) {
+                        call.respond(HttpStatusCode.Forbidden, ApiError("audio_source_management_forbidden"))
+                    } catch (_: IllegalArgumentException) {
+                        call.respond(HttpStatusCode.BadRequest, ApiError("invalid_audio_source_id"))
                     }
                 }
             }
