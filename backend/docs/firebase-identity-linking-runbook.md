@@ -43,8 +43,21 @@ export CONFIRM_FIREBASE_IDENTITY_LINK='I_VERIFIED_UID_AND_TARGET_ACCOUNT'
 ./backend/scripts/link-existing-firebase-identity.sh
 ```
 
-The operation runs in one transaction under a PostgreSQL advisory lock. It
-rejects a missing/inactive target, a Firebase UID already linked elsewhere, or
+The database also enforces at most one Firebase identity per internal user
+with a partial unique index. Before applying that migration to any database that
+already contains imported identity rows, check for duplicates:
+
+```sql
+SELECT user_id, count(*)
+FROM auth_identities
+WHERE provider = 'firebase'
+GROUP BY user_id
+HAVING count(*) > 1;
+```
+
+Resolve any returned rows through an independently reviewed account-mapping
+process; never delete or merge identities automatically. The operation runs in
+one transaction under a PostgreSQL advisory lock. It rejects a missing/inactive target, a Firebase UID already linked elsewhere, or
 a target account that already has a Firebase identity. It writes an audit event
 in the same transaction. If any check fails, the transaction is not committed.
 
