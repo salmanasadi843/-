@@ -231,4 +231,34 @@ class ClassRoutesAuthorizationTest {
         assertEquals(HttpStatusCode.Forbidden, response.status)
     }
 
+    @Test
+    fun `student cannot inspect teacher applications`() = testApplication {
+        application { module(unusedDataSource(), verifier(), usersWith(AppRole.STUDENT)) }
+        val response = client.get("/api/v1/admin/teacher-applications") {
+            header(HttpHeaders.Authorization, "Bearer test-token")
+        }
+        assertEquals(HttpStatusCode.Forbidden, response.status)
+    }
+
+    @Test
+    fun `teacher cannot decide teacher applications`() = testApplication {
+        application { module(unusedDataSource(), verifier(), usersWith(AppRole.TEACHER)) }
+        val response = client.patch("/api/v1/admin/teacher-applications/22222222-2222-4222-8222-222222222222") {
+            header(HttpHeaders.Authorization, "Bearer test-token")
+            contentType(ContentType.Application.Json)
+            setBody("""{"decision":"approved"}""")
+        }
+        assertEquals(HttpStatusCode.Forbidden, response.status)
+    }
+
+    @Test
+    fun `teacher application submission requires authentication`() = testApplication {
+        application { module(unusedDataSource(), verifier(), usersWith(AppRole.STUDENT)) }
+        val response = client.post("/api/v1/teacher-applications") {
+            contentType(ContentType.Application.Json)
+            setBody("""{"teachingField":"فقه"}""")
+        }
+        assertEquals(HttpStatusCode.Unauthorized, response.status)
+    }
+
 }
