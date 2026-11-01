@@ -107,6 +107,29 @@ class TeachingSessionRepositoryIntegrationTest {
             assertTrue(ownerView.any { it.id == unpublished.id })
             assertEquals(3, repository.listVisible(admin.toString(), setOf(AppRole.SUPER_ADMIN)).size)
 
+            // Detail reads return full content only for a session visible to this actor
+            // and only when both the requested class and session IDs match.
+            assertEquals(
+                "متن اصلی",
+                repository.findVisible(otherTeacher.toString(), setOf(AppRole.TEACHER), publicClass.id, published.id)?.originalTranscript
+            )
+            assertEquals(
+                null,
+                repository.findVisible(visitor.toString(), emptySet(), privateClass.id, privatePublished.id)
+            )
+            assertEquals(
+                null,
+                repository.findVisible(otherTeacher.toString(), setOf(AppRole.TEACHER), privateClass.id, published.id)
+            )
+            assertEquals(
+                null,
+                repository.findVisible(student.toString(), setOf(AppRole.STUDENT), privateClass.id, unpublished.id)
+            )
+            assertEquals(
+                "متن اصلی",
+                repository.findVisible(admin.toString(), setOf(AppRole.SUPER_ADMIN), publicClass.id, published.id)?.originalTranscript
+            )
+
             assertFailsWith<SecurityException> {
                 repository.update(
                     otherTeacher.toString(), setOf(AppRole.TEACHER), published.id,
