@@ -16,7 +16,7 @@ from collections import Counter, defaultdict
 from pathlib import Path
 from typing import Any
 
-VERSION = "0.2.0"
+VERSION = "0.3.0"
 CLASS_STATES = ("matched_uid", "blank_owner", "unknown_uid", "conflicting_owner", "invalid_record")
 
 
@@ -55,6 +55,7 @@ def run_inventory(paths: list[Path], key: bytes) -> dict[str, Any]:
             "folders": {"exact_owner_reference": 0, "blank_or_unknown_owner": 0,
                         "invalid_parent": 0, "cycles": 0},
             "orphans": {"courses": 0, "sessions": 0},
+            "ambiguous_parent_references": {"courses": 0, "sessions": 0},
             "records_by_population": {"shared_feed": 0, "private_backup": 0, "device_local": 0},
             "duplicate_ids_within_source": 0,
             "rows_processed": 0,
@@ -80,7 +81,6 @@ def run_inventory(paths: list[Path], key: bytes) -> dict[str, Any]:
         source_ref = pseudonym(source_id, key)
         source_type = str(data.get("source_type") or "unknown")
         counts: Counter[str] = Counter()
-        ids: dict[str, Counter[str]] = defaultdict(Counter)
 
         accounts = data.get("accounts", [])
         for account in accounts:
@@ -107,23 +107,25 @@ def run_inventory(paths: list[Path], key: bytes) -> dict[str, Any]:
                 add_exception("duplicate_" + table + "_id_within_source", row_id)
             return ({row_id: items[0] for row_id, items in grouped.items() if len(items) == 1}, duplicates)
 
-        # Ambiguous duplicate IDs are excluded from lookup maps, never silently resolved.
+        # Duplicate IDs are deliberately excluded from reference lookup maps.
         folders, duplicate_folder_ids = index_rows(data.get("folders", []), "folders")
         classes, duplicate_class_ids = index_rows(data.get("classes", []), "classes")
         courses, duplicate_course_ids = index_rows(data.get("courses", []), "courses")
         sessions, duplicate_session_ids = index_rows(data.get("sessions", []), "sessions")
 
         def class_state(row: dict[str, Any]) -> str:
-            owner = row.get("owner_uid")
+            raw_owner = row.get("owner_uid")
+            owner = str(raw_owner).strip() if raw_owner is not None else ""
+            raw_document_owner = row.get("document_owner_uid")
+            document_owner = str(raw_document_owner).strip() if raw_document_owner is not None else ""
             if row.get("invalid") or row.get("id") is None:
                 return "invalid_record"
-            document_owner = row.get("document_owner_uid")
             if (row.get("owner_conflict") or (owner and owner in ambiguous_uids)
-                    or (document_owner and owner and str(document_owner) != str(owner))):
+                    or (document_owner and document_owner != owner)):
                 return "conflicting_owner"
-            if owner is None or not str(owner).strip():
+            if not owner:
                 return "blank_owner"
-            if str(owner) not in known_uids:
+            if owner not in known_uids:
                 return "unknown_uid"
             return "matched_uid"
 
@@ -131,8 +133,6 @@ def run_inventory(paths: list[Path], key: bytes) -> dict[str, Any]:
         for row in data.get("classes", []):
             counts["classes"] += 1
             rid = row.get("id")
-            if rid is not None:
-                ids["classes"][str(rid)] += 1
             state = class_state(row)
             if rid is not None and str(rid) not in duplicate_class_ids:
                 class_states[str(rid)] = state
@@ -149,28 +149,33 @@ def run_inventory(paths: list[Path], key: bytes) -> dict[str, Any]:
 
         def inherited(row: dict[str, Any], kind: str) -> str:
             parent_id = row.get("class_id")
-            if parent_id is None or str(parent_id) not in classes:
+            if parent_id is None:
                 report["aggregates"]["orphans"][kind] += 1
                 add_exception("orphan_" + kind, row.get("id"))
                 return "orphan"
-            return class_states.get(str(parent_id), "invalid_record")
+            parent_key = str(parent_id)
+            if parent_key in duplicate_class_ids:
+                report["aggregates"]["ambiguous_parent_references"][kind] += 1
+                add_exception("ambiguous_parent_class_for_" + kind, row.get("id"))
+                return "ambiguous_parent"
+            if parent_key not in classes:
+                report["aggregates"]["orphans"][kind] += 1
+                add_exception("orphan_" + kind, row.get("id"))
+                return "orphan"
+            return class_states.get(parent_key, "invalid_record")
 
         for row in data.get("courses", []):
             counts["courses"] += 1
-            if row.get("id") is not None:
-                ids["courses"][str(row["id"])] += 1
             state = inherited(row, "courses")
             bucket = report["aggregates"]["courses_by_ownership"]
             bucket[state] = bucket.get(state, 0) + 1
 
         for row in data.get("sessions", []):
             counts["sessions"] += 1
-            if row.get("id") is not None:
-                ids["sessions"][str(row["id"])] += 1
             state = inherited(row, "sessions")
             if row.get("course_id") is not None:
                 course = courses.get(str(row["course_id"]))
-                if not course or str(course.get("class_id")) != str(row.get("class_id")):
+                if not course or str(course.get("class_id")) != str(row.get("class_id"))):
                     add_exception("session_course_class_mismatch", row.get("id"))
             bucket = report["aggregates"]["sessions_by_ownership"]
             bucket[state] = bucket.get(state, 0) + 1
