@@ -53,7 +53,7 @@ def run_inventory(paths: list[Path], key: bytes) -> dict[str, Any]:
             "courses_by_ownership": {},
             "sessions_by_ownership": {},
             "folders": {"exact_owner_reference": 0, "blank_or_unknown_owner": 0,
-                        "invalid_parent": 0, "cycles": 0},
+                        "invalid_parent": 0, "duplicate_id": 0, "cycles": 0},
             "orphans": {"courses": 0, "sessions": 0},
             "ambiguous_parent_references": {"courses": 0, "sessions": 0},
             "records_by_population": {"shared_feed": 0, "private_backup": 0, "device_local": 0},
@@ -187,7 +187,10 @@ def run_inventory(paths: list[Path], key: bytes) -> dict[str, Any]:
             valid_owner = bool(owner and owner in known_uids and owner not in ambiguous_uids)
             parent_id = row.get("parent_folder_id")
             parent = folders.get(str(parent_id)) if parent_id is not None else None
-            if not valid_owner:
+            if row.get("id") is not None and str(row["id"]) in duplicate_folder_ids:
+                report["aggregates"]["folders"]["duplicate_id"] += 1
+                add_exception("folder_duplicate_id_unresolvable", row.get("id"), owner)
+            elif not valid_owner:
                 report["aggregates"]["folders"]["blank_or_unknown_owner"] += 1
                 add_exception("folder_owner_unresolved", row.get("id"), owner)
             elif parent_id is None or (parent and str(parent.get("owner_uid") or "") == owner):
