@@ -16,6 +16,10 @@ export default function App() {
   const [detail, setDetail] = useState<SessionDetail | null>(null);
   const [showClassForm, setShowClassForm] = useState(false);
   const [showSessionForm, setShowSessionForm] = useState(false);
+  const [editingClass, setEditingClass] = useState(false);
+  const [editingSession, setEditingSession] = useState(false);
+  const [deletedClasses, setDeletedClasses] = useState<ClassRecord[]>([]);
+  const [showDeletedClasses, setShowDeletedClasses] = useState(false);
   const [classTitle, setClassTitle] = useState("");
   const [classDescription, setClassDescription] = useState("");
   const [classTerm, setClassTerm] = useState("");
@@ -139,6 +143,59 @@ export default function App() {
     finally { setBusy(false); }
   }
 
+  async function editSelectedClass() {
+    if (!selectedClass || !canManageSelectedClass) return;
+    setClassTitle(selectedClass.title); setClassDescription(selectedClass.description);
+    setClassTerm(selectedClass.term); setClassVisibility(selectedClass.visibility);
+    setEditingClass(true); setShowClassForm(true); setError("");
+  }
+  async function removeSelectedClass() {
+    if (!user || !selectedClass || !canManageSelectedClass) return;
+    if (!window.confirm("این کلاس و محتوای آن به‌صورت نرم‌افزاری حذف شود؟ امکان بازیابی وجود دارد.")) return;
+    setBusy(true); setError("");
+    try {
+      await api.deleteClass(selectedClass.id, await user.getIdToken());
+      setClasses(await api.classes(await user.getIdToken()));
+      setSelectedClass(null); setSessions([]); setDetail(null); setNotice("کلاس حذف شد و در بخش بازیابی قرار گرفت.");
+    } catch (e) { setError(message(e)); }
+    finally { setBusy(false); }
+  }
+  async function loadDeletedClasses() {
+    if (!user || !isAdmin) return;
+    setBusy(true); setError("");
+    try { setDeletedClasses(await api.deletedClasses(await user.getIdToken())); setShowDeletedClasses(true); }
+    catch (e) { setError(message(e)); }
+    finally { setBusy(false); }
+  }
+  async function restoreDeletedClass(classId: string) {
+    if (!user || !isAdmin) return;
+    setBusy(true); setError("");
+    try {
+      await api.restoreClass(classId, await user.getIdToken());
+      const token = await user.getIdToken();
+      setClasses(await api.classes(token)); setDeletedClasses(await api.deletedClasses(token));
+      setNotice("کلاس بازیابی شد.");
+    } catch (e) { setError(message(e)); }
+    finally { setBusy(false); }
+  }
+  async function editSelectedSession() {
+    if (!detail || !canManageSelectedClass) return;
+    setSessionTitle(detail.title); setSessionTranscript(detail.transcript);
+    setSessionSummary(detail.aiSummary ?? ""); setSessionKeyPoints(detail.aiKeyPoints ?? "");
+    setEditingSession(true); setShowSessionForm(true); setError("");
+  }
+  async function removeSelectedSession() {
+    if (!user || !detail || !canManageSelectedClass) return;
+    if (!window.confirm("این جلسه حذف شود؟ امکان بازیابی آن از طریق API وجود دارد.")) return;
+    setBusy(true); setError("");
+    try {
+      await api.deleteSession(detail.id, await user.getIdToken());
+      setSessions(await api.sessions(selectedClass!.id, await user.getIdToken()));
+      setDetail(null); setNotice("جلسه حذف شد.");
+    } catch (e) { setError(message(e)); }
+    finally { setBusy(false); }
+  }
+
   async function createClass(event: FormEvent) {
     event.preventDefault();
     if (!user || !me) return;
@@ -153,12 +210,14 @@ export default function App() {
         title: classTitle.trim(), description: classDescription.trim(), term: classTerm.trim(),
         visibility: classVisibility, isPublished: true, isHidden: false, sortOrder: 0,
       };
-      const created = await api.createClass(data, await user.getIdToken());
-      setClasses(current => [...current, created]);
+      const saved = editingClass && selectedClass
+        ? await api.updateClass(selectedClass.id, data, await user.getIdToken())
+        : await api.createClass(data, await user.getIdToken());
+      setClasses(current => editingClass ? current.map(item => item.id === saved.id ? saved : item) : [...current, saved]);
       setClassTitle(""); setClassDescription(""); setClassTerm(""); setClassVisibility("private");
-      setShowClassForm(false); setNotice("کلاس با موفقیت ایجاد شد.");
-      setSelectedTeacher(created.ownerUserId);
-      await openClass(created);
+      setShowClassForm(false); setEditingClass(false); setNotice(editingClass ? "تغییرات کلاس ذخیره شد." : "کلاس با موفقیت ایجاد شد.");
+      setSelectedTeacher(saved.ownerUserId);
+      await openClass(saved);
     } catch (e) { setError(message(e)); }
     finally { setBusy(false); }
   }
@@ -169,15 +228,22 @@ export default function App() {
     try {
       const now = Date.now();
       const teacherName = teachers.find(t => t.userId === selectedClass.ownerUserId)?.displayName ?? user.displayName ?? "استاد";
-      await api.createSession(selectedClass.id, {
-        title: sessionTitle.trim(), courseName: "", professorName: teacherName, dateMs: now,
-        transcript: sessionTranscript, originalTranscript: sessionTranscript,
+      const payload = {
+        title: sessionTitle.trim(), courseName: detail?.courseName ?? "", professorName: detail?.professorName ?? teacherName,
+        dateMs: detail?.dateMs ?? now, transcript: sessionTranscript,
+        originalTranscript: detail?.originalTranscript ?? sessionTranscript,
         aiSummary: sessionSummary.trim() || null, aiKeyPoints: sessionKeyPoints.trim() || null,
-        isPublished: true, lastEditedMs: now, sortOrder: sessions.length,
-      }, await user.getIdToken());
+        isPublished: detail?.isPublished ?? true, lastEditedMs: now, sortOrder: detail?.sortOrder ?? sessions.length,
+        courseId: detail?.courseId ?? null, audioDurationMs: detail?.audioDurationMs ?? 0,
+        tags: detail?.tags ?? "", aiQuizJson: detail?.aiQuizJson ?? null,
+      };
+      if (editingSession && detail) await api.updateSession(detail.id, payload, await user.getIdToken());
+      else await api.createSession(selectedClass.id, payload, await user.getIdToken());
       setSessionTitle(""); setSessionTranscript(""); setSessionSummary(""); setSessionKeyPoints("");
-      setShowSessionForm(false); setNotice("جلسه با موفقیت ایجاد شد.");
-      setSessions(await api.sessions(selectedClass.id, await user.getIdToken()));
+      setShowSessionForm(false); setEditingSession(false); setNotice(editingSession ? "تغییرات جلسه ذخیره شد." : "جلسه با موفقیت ایجاد شد.");
+      const token = await user.getIdToken();
+      setSessions(await api.sessions(selectedClass.id, token));
+      if (editingSession && detail) setDetail(await api.session(selectedClass.id, detail.id, token));
     } catch (e) { setError(message(e)); }
     finally { setBusy(false); }
   }
