@@ -175,7 +175,7 @@ def run_inventory(paths: list[Path], key: bytes) -> dict[str, Any]:
             state = inherited(row, "sessions")
             if row.get("course_id") is not None:
                 course = courses.get(str(row["course_id"]))
-                if not course or str(course.get("class_id")) != str(row.get("class_id"))):
+                if not course or str(course.get("class_id")) != str(row.get("class_id")):
                     add_exception("session_course_class_mismatch", row.get("id"))
             bucket = report["aggregates"]["sessions_by_ownership"]
             bucket[state] = bucket.get(state, 0) + 1
