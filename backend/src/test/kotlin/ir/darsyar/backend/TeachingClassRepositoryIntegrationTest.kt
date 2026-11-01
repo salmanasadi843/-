@@ -45,7 +45,7 @@ class TeachingClassRepositoryIntegrationTest {
 
             dataSource.connection.use { connection ->
                 connection.prepareStatement(
-                    "INSERT INTO app_users(id, status) VALUES (?, 'active'), (?, 'active'), (?, 'active'), (?, 'active'), (?, 'active')"
+                    "INSERT INTO app_users(id, display_name, status) VALUES (?, 'مدیر', 'active'), (?, 'استاد الف', 'active'), (?, 'استاد ب', 'active'), (?, 'دانشجو', 'active'), (?, 'مهمان', 'active')"
                 ).use { statement ->
                     statement.setObject(1, admin)
                     statement.setObject(2, ownerA)
@@ -117,6 +117,15 @@ class TeachingClassRepositoryIntegrationTest {
                 setOf(publicClass.id),
                 teacherView.map { it.id }.toSet()
             )
+
+            val teacherDirectory = repository.listVisibleTeachers(ownerB.toString(), setOf(AppRole.TEACHER))
+            assertEquals(listOf(ownerA.toString()), teacherDirectory.map { it.userId })
+            assertEquals("استاد الف", teacherDirectory.single().displayName)
+
+            val studentDirectory = repository.listVisibleTeachers(student.toString(), setOf(AppRole.STUDENT))
+            assertEquals(listOf(ownerA.toString()), studentDirectory.map { it.userId })
+            val adminDirectory = repository.listVisibleTeachers(admin.toString(), setOf(AppRole.SUPER_ADMIN))
+            assertEquals(listOf(ownerA.toString()), adminDirectory.map { it.userId })
 
             val studentView = repository.listVisible(student.toString(), setOf(AppRole.STUDENT))
             assertEquals(
