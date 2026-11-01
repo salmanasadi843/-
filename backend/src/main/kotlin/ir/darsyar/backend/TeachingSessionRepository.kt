@@ -119,7 +119,7 @@ class TeachingSessionRepository(private val dataSource: DataSource) {
             connection.autoCommit = false
             try {
                 val ownerId = connection.prepareStatement(
-                    "SELECT owner_user_id FROM teaching_classes WHERE id = ? AND is_hidden = false FOR UPDATE"
+                    "SELECT owner_user_id FROM teaching_classes WHERE id = ? FOR UPDATE"
                 ).use { st ->
                     st.setObject(1, classUuid)
                     st.executeQuery().use { rs -> if (rs.next()) rs.getObject(1, UUID::class.java) else null }
