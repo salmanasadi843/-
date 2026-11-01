@@ -1,6 +1,6 @@
 import { FormEvent, useEffect, useMemo, useState } from "react";
 import { onAuthStateChanged, signInWithEmailAndPassword, signOut, User } from "firebase/auth";
-import { api, AccessCode, ClassRecord, Me, SessionDetail, SessionSummary, Teacher } from "./api";
+import { api, AccessCode, ClassRecord, Me, SessionDetail, SessionSummary, Teacher, TeacherFolder } from "./api";
 import { auth, firebaseConfigured } from "./firebase";
 
 export default function App() {
@@ -9,6 +9,10 @@ export default function App() {
   const [password, setPassword] = useState("");
   const [me, setMe] = useState<Me | null>(null);
   const [teachers, setTeachers] = useState<Teacher[]>([]);
+  const [folders, setFolders] = useState<TeacherFolder[]>([]);
+  const [folderName, setFolderName] = useState("");
+  const [selectedFolderId, setSelectedFolderId] = useState("");
+  const [showFolderForm, setShowFolderForm] = useState(false);
   const [classes, setClasses] = useState<ClassRecord[]>([]);
   const [selectedTeacher, setSelectedTeacher] = useState("all");
   const [selectedClass, setSelectedClass] = useState<ClassRecord | null>(null);
@@ -44,14 +48,14 @@ export default function App() {
   useEffect(() => {
     let cancelled = false;
     async function load() {
-      if (!user) { setMe(null); setTeachers([]); setClasses([]); return; }
+      if (!user) { setMe(null); setTeachers([]); setClasses([]); setFolders([]); return; }
       setBusy(true); setError("");
       try {
         const token = await user.getIdToken();
-        const [profile, teacherList, classList] = await Promise.all([
-          api.me(token), api.teachers(token), api.classes(token),
+        const [profile, teacherList, classList, folderList] = await Promise.all([
+          api.me(token), api.teachers(token), api.classes(token), api.teacherFolders(token),
         ]);
-        if (!cancelled) { setMe(profile); setTeachers(teacherList); setClasses(classList); }
+        if (!cancelled) { setMe(profile); setTeachers(teacherList); setClasses(classList); setFolders(folderList); }
       } catch (e) { if (!cancelled) setError(message(e)); }
       finally { if (!cancelled) setBusy(false); }
     }
@@ -66,6 +70,8 @@ export default function App() {
     () => classes.filter(c => selectedTeacher === "all" || c.ownerUserId === selectedTeacher),
     [classes, selectedTeacher],
   );
+  const folderOwnerId = isAdmin ? (selectedTeacher === "all" ? "" : selectedTeacher) : (me?.roles.includes("teacher") ? me.userId : "");
+  const visibleFolders = useMemo(() => folders.filter(folder => folder.ownerUserId === folderOwnerId), [folders, folderOwnerId]);
   const canManageSelectedClass = !!selectedClass &&
     (isAdmin || selectedClass.ownerUserId === me?.userId) &&
     (isAdmin || (me?.roles.includes("teacher") ?? false));
@@ -143,10 +149,40 @@ export default function App() {
     finally { setBusy(false); }
   }
 
+  async function createTeacherFolder(event: FormEvent) {
+    event.preventDefault();
+    if (!user || !folderOwnerId || !folderName.trim()) return;
+    setBusy(true); setError("");
+    try {
+      const created = await api.createTeacherFolder({ ...(isAdmin ? { ownerUserId: folderOwnerId } : {}), name: folderName.trim(), sortOrder: visibleFolders.length }, await user.getIdToken());
+      setFolders(current => [...current, created]); setFolderName(""); setShowFolderForm(false); setNotice("پوشه استاد ایجاد شد.");
+    } catch (e) { setError(message(e)); }
+    finally { setBusy(false); }
+  }
+  async function toggleFolderHidden(folder: TeacherFolder) {
+    if (!user) return;
+    setBusy(true); setError("");
+    try {
+      const updated = await api.updateTeacherFolder(folder.id, { name: folder.name, parentFolderId: folder.parentFolderId, sortOrder: folder.sortOrder, isHidden: !folder.isHidden }, await user.getIdToken());
+      setFolders(current => current.map(item => item.id === updated.id ? updated : item));
+    } catch (e) { setError(message(e)); }
+    finally { setBusy(false); }
+  }
+  async function removeTeacherFolder(folder: TeacherFolder) {
+    if (!user || !window.confirm("این پوشه حذف شود؟ پوشه باید خالی باشد.")) return;
+    setBusy(true); setError("");
+    try {
+      await api.deleteTeacherFolder(folder.id, await user.getIdToken());
+      setFolders(current => current.filter(item => item.id !== folder.id));
+      if (selectedFolderId === folder.id) setSelectedFolderId("");
+      setNotice("پوشه حذف شد.");
+    } catch (e) { setError(message(e)); }
+    finally { setBusy(false); }
+  }
   async function editSelectedClass() {
     if (!selectedClass || !canManageSelectedClass) return;
     setClassTitle(selectedClass.title); setClassDescription(selectedClass.description);
-    setClassTerm(selectedClass.term); setClassVisibility(selectedClass.visibility);
+    setClassTerm(selectedClass.term); setClassVisibility(selectedClass.visibility); setSelectedFolderId(selectedClass.folderId ?? "");
     setEditingClass(true); setShowClassForm(true); setError("");
   }
   async function removeSelectedClass() {
@@ -211,13 +247,13 @@ export default function App() {
         visibility: classVisibility, isPublished: editingClass ? selectedClass?.isPublished ?? true : true,
         isHidden: editingClass ? selectedClass?.isHidden ?? false : false,
         sortOrder: editingClass ? selectedClass?.sortOrder ?? 0 : 0,
-        folderId: editingClass ? selectedClass?.folderId ?? null : null,
+        folderId: selectedFolderId || null,
       };
       const saved = editingClass && selectedClass
         ? await api.updateClass(selectedClass.id, data, await user.getIdToken())
         : await api.createClass(data, await user.getIdToken());
       setClasses(current => editingClass ? current.map(item => item.id === saved.id ? saved : item) : [...current, saved]);
-      setClassTitle(""); setClassDescription(""); setClassTerm(""); setClassVisibility("private");
+      setClassTitle(""); setClassDescription(""); setClassTerm(""); setClassVisibility("private"); setSelectedFolderId("");
       setShowClassForm(false); setEditingClass(false); setNotice(editingClass ? "تغییرات کلاس ذخیره شد." : "کلاس با موفقیت ایجاد شد.");
       setSelectedTeacher(saved.ownerUserId);
       await openClass(saved);
