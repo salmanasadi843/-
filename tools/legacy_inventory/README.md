@@ -10,7 +10,7 @@ Pass one JSON file per source database/export. Each file may contain:
 
 - `source_id`, `source_type`, `extracted_at`
 - `accounts`: `uid`, `account_id`, `profile_present`, `role_field`
-- `classes`: `id`, `owner_uid`, optional `owner_conflict`, `folder_id`, `published`, `visibility`
+- `classes`: `id`, `owner_uid`, optional `document_owner_uid` / `owner_conflict`, `folder_id`, `published`, `visibility`
 - `courses`: `id`, `class_id`
 - `sessions`: `id`, `class_id`, optional `course_id`
 - `folders`: `id`, `owner_uid`, optional `parent_folder_id`
