@@ -330,7 +330,7 @@ fun Application.module(
                             principal.userId,
                             CreateTeachingClass(
                                 ownerId, request.title, request.description, request.term,
-                                request.visibility, request.isPublished
+                                request.visibility, request.isPublished, request.folderId
                             )
                         )
                         call.respond(HttpStatusCode.Created, created.toApiRecord())
