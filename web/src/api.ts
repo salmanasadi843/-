@@ -1,5 +1,6 @@
 export type Me = { userId: string; roles: string[] };
 export type Teacher = { userId: string; displayName: string };
+export type CourseRecord = { id: string; classId: string; title: string; teacherName: string; description: string; createdAtMs: number | null; sortOrder: number; version: number };
 export type TeacherFolder = { id: string; ownerUserId: string; parentFolderId: string | null; name: string; sortOrder: number; isHidden: boolean; version: number };
 export type ClassRecord = {
   id: string; ownerUserId: string; title: string; description: string; term: string;
@@ -77,6 +78,13 @@ export const api = {
   classMembers: (classId: string, token: string) => request<ClassMember[]>(`/api/v1/classes/${encodeURIComponent(classId)}/memberships`, token),
   revokeMembership: (classId: string, studentUserId: string, token: string) =>
     request<void>(`/api/v1/classes/${encodeURIComponent(classId)}/memberships/${encodeURIComponent(studentUserId)}`, token, { method: "DELETE" }),
+  courses: (classId: string, token: string) => request<CourseRecord[]>(`/api/v1/classes/${encodeURIComponent(classId)}/courses`, token),
+  createCourse: (classId: string, data: { title: string; teacherName?: string; description?: string; createdAtMs?: number | null; sortOrder?: number }, token: string) =>
+    request<CourseRecord>(`/api/v1/classes/${encodeURIComponent(classId)}/courses`, token, { method: "POST", body: JSON.stringify(data) }),
+  updateCourse: (courseId: string, data: { title: string; teacherName?: string; description?: string; createdAtMs?: number | null; sortOrder?: number }, token: string) =>
+    request<CourseRecord>(`/api/v1/courses/${encodeURIComponent(courseId)}`, token, { method: "PATCH", body: JSON.stringify(data) }),
+  deleteCourse: (courseId: string, token: string) =>
+    request<void>(`/api/v1/courses/${encodeURIComponent(courseId)}`, token, { method: "DELETE" }),
   sessions: (classId: string, token: string) => request<SessionSummary[]>(`/api/v1/classes/${encodeURIComponent(classId)}/sessions`, token),
   session: (classId: string, sessionId: string, token: string) =>
     request<SessionDetail>(`/api/v1/classes/${encodeURIComponent(classId)}/sessions/${encodeURIComponent(sessionId)}`, token),
