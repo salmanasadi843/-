@@ -240,6 +240,23 @@ export default function App() {
             <label>نکات کلیدی (اختیاری)<textarea value={sessionKeyPoints} onChange={e => setSessionKeyPoints(e.target.value)} rows={3} /></label>
             <button disabled={busy || !sessionTitle.trim()}>{busy ? "در حال ذخیره…" : "ذخیره جلسه"}</button>
           </form>}
+          {canManageSelectedClass && selectedClass.visibility === "private" && <section className="access-manager">
+            <div className="section-head"><h3>کدهای ورود کلاس خصوصی</h3><span className="muted">{classAccessCodes.filter(code => code.isActive).length} کد فعال</span></div>
+            <form className="inline-code-form" onSubmit={createClassAccessCode}>
+              <label>حداکثر دفعات استفاده<input type="number" min="1" max="10000" value={maxCodeUses} onChange={e => setMaxCodeUses(e.target.value)} required /></label>
+              <button disabled={busy}>{busy ? "در حال ساخت…" : "ساخت کد ورود"}</button>
+            </form>
+            {newlyCreatedCode && <div className="new-code">
+              <strong>کد جدید (فقط همین بار نمایش داده می‌شود)</strong>
+              <code dir="ltr">{newlyCreatedCode}</code>
+              <button type="button" className="ghost" onClick={() => { void navigator.clipboard?.writeText(newlyCreatedCode); setNotice("درخواست کپی کد انجام شد."); }}>کپی کد</button>
+            </div>}
+            {classAccessCodes.map(code => <div className="code-row" key={code.id}>
+              <span><strong>{code.isActive ? "فعال" : "غیرفعال"}</strong><small>{code.useCount} از {code.maxUses ?? "نامحدود"} استفاده</small></span>
+              <span className="muted">{code.expiresAtMs ? new Date(code.expiresAtMs).toLocaleDateString("fa-IR") : "بدون انقضا"}</span>
+              {code.isActive && <button type="button" className="ghost danger-text" disabled={busy} onClick={() => void revokeClassAccessCode(code.id)}>غیرفعال‌کردن</button>}
+            </div>)}
+          </section>}
           {sessions.map(s => <button key={s.id} className="session-row" onClick={() => void openSession(s)}><span>{s.title}</span><span className="muted">{s.courseName}</span></button>)}
           {!sessions.length && !busy && <p className="muted">جلسه‌ای ثبت نشده است.</p>}
         </div>}
