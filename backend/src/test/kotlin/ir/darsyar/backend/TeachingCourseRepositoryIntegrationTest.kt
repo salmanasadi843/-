@@ -82,10 +82,33 @@ class TeachingCourseRepositoryIntegrationTest {
                 CreateTeachingCourse(classRecord.id, "دوره خالی")
             )
             assertTrue(repository.delete(owner.toString(), setOf(AppRole.TEACHER), emptyCourse.id))
+            val sessionRepository = TeachingSessionRepository(ds)
             assertFailsWith<IllegalArgumentException> {
-                TeachingSessionRepository(ds).create(
+                sessionRepository.create(
                     owner.toString(), setOf(AppRole.TEACHER),
                     CreateTeachingSession(classId = classRecord.id, courseId = emptyCourse.id, title = "Invalid session")
+                )
+            }
+            assertFailsWith<IllegalArgumentException> {
+                sessionRepository.update(
+                    owner.toString(), setOf(AppRole.TEACHER), session.id,
+                    UpdateTeachingSession(
+                        courseId = emptyCourse.id,
+                        title = session.title,
+                        courseName = session.courseName,
+                        professorName = session.professorName,
+                        dateMs = session.dateMs,
+                        audioDurationMs = session.audioDurationMs,
+                        transcript = session.transcript,
+                        originalTranscript = session.originalTranscript,
+                        aiSummary = session.aiSummary,
+                        aiKeyPoints = session.aiKeyPoints,
+                        aiQuizJson = session.aiQuizJson,
+                        tags = session.tags,
+                        isPublished = session.isPublished,
+                        lastEditedMs = session.lastEditedMs,
+                        sortOrder = session.sortOrder
+                    )
                 )
             }
             assertEquals(listOf(course.id), repository.listVisible(owner.toString(), setOf(AppRole.TEACHER), classRecord.id).map { it.id })
