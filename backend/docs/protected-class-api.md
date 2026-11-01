@@ -146,14 +146,15 @@ audio-source write and deactivation is audited transactionally.
 ## Private class access and membership
 
 - `POST /api/v1/classes/{classId}/access-codes`: the class owner or super admin creates a code for a private class. Optional `expiresAtMs` and `maxUses` limits can be supplied.
+- `GET /api/v1/classes/{classId}/access-codes`: the class owner or super admin lists code metadata, including expiry, use limit, usage count, active state, and creation time; the secret code is never returned.
 - `DELETE /api/v1/access-codes/{codeId}`: the class owner or super admin deactivates a code.
 - `POST /api/v1/class-memberships/redeem`: a student redeems a code and receives active membership.
 - `GET /api/v1/classes/{classId}/memberships`: the class owner or super admin lists membership records.
 - `DELETE /api/v1/classes/{classId}/memberships/{studentUserId}`: the class owner or super admin revokes an active membership; the record is retained with `revoked` status.
 
-The generated code is returned only once. PostgreSQL stores only its SHA-256 hash. Codes are checked under a row lock, so concurrent redemptions respect usage limits. Repeating a redemption by a student who already has active membership is idempotent and does not consume another use. Codes work only for published private classes; public/unlisted classes do not need this mechanism. Every code creation/deactivation and membership activation/revocation is audited in the same transaction. Revocation does not delete membership history; a later valid code redemption can reactivate the membership.
+The generated code is returned only once. PostgreSQL stores only its SHA-256 hash. Listing codes returns metadata only and includes inactive records for management history; it never returns the raw code or its hash. Codes are checked under a row lock, so concurrent redemptions respect usage limits. Repeating a redemption by a student who already has active membership is idempotent and does not consume another use. Codes work only for published private classes; public/unlisted classes do not need this mechanism. Every code creation/deactivation and membership activation/revocation is audited in the same transaction. Revocation does not delete membership history; a later valid code redemption can reactivate the membership.
 
-The API supports owner/admin membership listing and revocation. Student-facing membership history and UI integration remain pending.
+The API supports owner/admin access-code listing/deactivation and membership listing/revocation. Student-facing membership history and UI integration remain pending.
 
 ## Audit and transaction guarantees
 
