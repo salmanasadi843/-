@@ -48,6 +48,35 @@ teacher remains read-only for ordinary teachers.
 The owner ID is immutable through this endpoint. The request's optional
 `ownerUserId` field is ignored for updates; ownership transfer is not exposed.
 
+
+## Teacher folder endpoints
+
+### `GET /api/v1/teacher-folders`
+
+Returns non-deleted folders the caller may see. Owners and super admins can
+see their full folder trees. Other approved teachers see folders containing
+published, non-hidden classes. Students see folders containing published,
+non-hidden public classes or classes for which they have an active membership.
+
+### `POST /api/v1/teacher-folders`
+
+Creates a folder. Teachers are always assigned as owner of their own folder.
+A super admin must provide `ownerUserId` when creating a folder for another
+teacher. Optional `parentFolderId` must belong to the same owner.
+
+### `PATCH /api/v1/teacher-folders/{folderId}`
+
+Renames, hides/unhides, reorders, or moves a folder within the same owner's
+folder tree. The API rejects moving a folder beneath itself or one of its
+descendants. Cross-owner moves are rejected by the database's composite
+foreign key.
+
+### `DELETE /api/v1/teacher-folders/{folderId}`
+
+Soft-deletes an empty folder. Deletion is rejected while it still contains
+child folders or classes; those items must be moved explicitly first.
+Folder mutations write audit records in the same transaction.
+
 ## Audit and transaction guarantees
 
 Class creation and update, together with their corresponding `audit_log`
