@@ -178,7 +178,7 @@ class TeachingCourseRepository(private val dataSource: DataSource) {
                     !(AppRole.TEACHER in roles && owner == actor)
                 ) throw SecurityException("Course deletion is not allowed.")
                 val hasSessions = connection.prepareStatement(
-                    "SELECT EXISTS(SELECT 1 FROM teaching_sessions WHERE course_id = ? AND deleted_at IS NULL)"
+                    "SELECT EXISTS(SELECT 1 FROM teaching_sessions WHERE course_id = ?)"
                 ).use { st ->
                     st.setObject(1, id)
                     st.executeQuery().use { rs -> rs.next() && rs.getBoolean(1) }
