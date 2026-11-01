@@ -197,6 +197,45 @@ class TeachingClassRepositoryIntegrationTest {
             assertTrue(TeachingSessionRepository(dataSource).listVisible(admin.toString(), setOf(AppRole.SUPER_ADMIN)).any { it.id == nestedSessionId.toString() })
             assertTrue(TeachingCourseRepository(dataSource).listVisible(admin.toString(), setOf(AppRole.SUPER_ADMIN)).any { it.id == nestedCourseId.toString() })
 
+            // A super-admin can manage nested content owned by another teacher;
+            // an ordinary teacher can only manage content in their own classes.
+            val courseRepository = TeachingCourseRepository(dataSource)
+            assertFailsWith<SecurityException> {
+                courseRepository.update(
+                    ownerB.toString(), setOf(AppRole.TEACHER), nestedCourseId.toString(),
+                    UpdateTeachingCourse("Unauthorized course edit", "", "", null, 0)
+                )
+            }
+            val adminCourseUpdate = courseRepository.update(
+                admin.toString(), setOf(AppRole.SUPER_ADMIN), nestedCourseId.toString(),
+                UpdateTeachingCourse("Admin updated course", "استاد الف", "", null, 0)
+            )
+            assertNotNull(adminCourseUpdate)
+            assertEquals("Admin updated course", adminCourseUpdate.title)
+
+            val sessionRepository = TeachingSessionRepository(dataSource)
+            assertFailsWith<SecurityException> {
+                sessionRepository.update(
+                    ownerB.toString(), setOf(AppRole.TEACHER), nestedSessionId.toString(),
+                    UpdateTeachingSession(
+                        nestedCourseId.toString(), "Unauthorized session edit", "", "", null, 0,
+                        "bad edit", "original", null, null, null, "", true, null, 0
+                    )
+                )
+            }
+            val adminSessionUpdate = sessionRepository.update(
+                admin.toString(), setOf(AppRole.SUPER_ADMIN), nestedSessionId.toString(),
+                UpdateTeachingSession(
+                    nestedCourseId.toString(), "Admin updated session", "Nested course", "استاد الف",
+                    null, 0, "admin edited transcript", "original", "admin summary", "key points",
+                    null, "", true, null, 0
+                )
+            )
+            assertNotNull(adminSessionUpdate)
+            assertEquals("Admin updated session", adminSessionUpdate.title)
+            assertEquals("admin edited transcript", adminSessionUpdate.transcript)
+            assertEquals("original", adminSessionUpdate.originalTranscript)
+
             val adminView = repository.listVisible(admin.toString(), setOf(AppRole.SUPER_ADMIN))
             assertEquals(4, adminView.size)
 
