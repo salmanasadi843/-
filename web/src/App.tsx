@@ -328,7 +328,7 @@ export default function App() {
         originalTranscript: detail?.originalTranscript ?? sessionTranscript,
         aiSummary: sessionSummary.trim() || null, aiKeyPoints: sessionKeyPoints.trim() || null,
         isPublished: detail?.isPublished ?? true, lastEditedMs: now, sortOrder: detail?.sortOrder ?? sessions.length,
-        courseId: detail?.courseId ?? null, audioDurationMs: detail?.audioDurationMs ?? 0,
+        audioDurationMs: detail?.audioDurationMs ?? 0,
         tags: detail?.tags ?? "", aiQuizJson: detail?.aiQuizJson ?? null,
       };
       if (editingSession && detail) await api.updateSession(detail.id, payload, await user.getIdToken());
