@@ -72,12 +72,26 @@ class ClassAccessRepositoryIntegrationTest {
                 repository.redeem(otherTeacher.toString(), setOf(AppRole.TEACHER), created.code)
             }
 
+            val members = repository.listMembers(owner.toString(), setOf(AppRole.TEACHER), classRecord.id)
+            assertEquals(1, members.count { it.status == "active" && it.studentUserId == studentA.toString() })
+            assertFailsWith<SecurityException> {
+                repository.listMembers(otherTeacher.toString(), setOf(AppRole.TEACHER), classRecord.id)
+            }
+            assertFailsWith<SecurityException> {
+                repository.revokeMembership(otherTeacher.toString(), setOf(AppRole.TEACHER), classRecord.id, studentA.toString())
+            }
+
             val listedForStudent = TeachingClassRepository(ds).listVisible(
                 studentA.toString(), setOf(AppRole.STUDENT)
             )
             assertTrue(listedForStudent.any { it.id == classRecord.id })
             assertTrue(TeachingClassRepository(ds).listVisible(
                 studentB.toString(), setOf(AppRole.STUDENT)
+            ).none { it.id == classRecord.id })
+            assertTrue(repository.revokeMembership(owner.toString(), setOf(AppRole.TEACHER), classRecord.id, studentA.toString()))
+            assertTrue(!repository.revokeMembership(owner.toString(), setOf(AppRole.TEACHER), classRecord.id, studentA.toString()))
+            assertTrue(TeachingClassRepository(ds).listVisible(
+                studentA.toString(), setOf(AppRole.STUDENT)
             ).none { it.id == classRecord.id })
 
             val unlimited = repository.createCode(owner.toString(), setOf(AppRole.TEACHER), classRecord.id)
@@ -91,7 +105,7 @@ class ClassAccessRepositoryIntegrationTest {
 
             ds.connection.use { connection ->
                 connection.prepareStatement("SELECT count(*) FROM audit_log WHERE entity_type IN ('class_access_code','class_membership')").use { st ->
-                    st.executeQuery().use { rs -> check(rs.next()); assertEquals(4, rs.getInt(1)) }
+                    st.executeQuery().use { rs -> check(rs.next()); assertEquals(5, rs.getInt(1)) }
                 }
                 connection.prepareStatement("SELECT code_hash FROM class_access_codes WHERE id = ?").use { st ->
                     st.setObject(1, UUID.fromString(created.id))
