@@ -242,7 +242,7 @@ private fun Connection.writeSessionAudit(
     prepareStatement(
         """
         INSERT INTO audit_log(actor_user_id, action, entity_type, entity_id, owner_user_id, before_data, after_data)
-        SELECT ?, ?, 'session', ?, c.owner_user_id, ?::jsonb, ?::jsonb
+        SELECT ?, ?, 'session', ?::uuid, c.owner_user_id, ?::jsonb, ?::jsonb
         FROM teaching_classes c WHERE c.id = ?::uuid
         """.trimIndent()
     ).use { st ->
