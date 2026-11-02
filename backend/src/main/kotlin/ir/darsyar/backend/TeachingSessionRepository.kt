@@ -363,6 +363,28 @@ class TeachingSessionRepository(private val dataSource: DataSource) {
                     st.setObject(4, sessionUuid)
                     st.executeQuery().use { rs -> check(rs.next()); rs.toSessionRecord() }
                 }
+                // Discussions attached to this session follow it into the destination class.
+                connection.prepareStatement(
+                    "UPDATE forum_topics SET class_id = ? WHERE session_id = ? AND class_id = ?"
+                ).use { st ->
+                    st.setObject(1, targetUuid)
+                    st.setObject(2, sessionUuid)
+                    st.setObject(3, UUID.fromString(old.classId))
+                    st.executeUpdate()
+                }
+                connection.prepareStatement(
+                    """
+                    UPDATE user_notifications SET class_id = ?
+                    WHERE class_id = ? AND topic_id IN (
+                      SELECT id FROM forum_topics WHERE session_id = ?
+                    )
+                    """.trimIndent()
+                ).use { st ->
+                    st.setObject(1, targetUuid)
+                    st.setObject(2, UUID.fromString(old.classId))
+                    st.setObject(3, sessionUuid)
+                    st.executeUpdate()
+                }
                 connection.writeSessionAudit(actor, "session.moved", moved, old)
                 connection.commit()
                 return moved
