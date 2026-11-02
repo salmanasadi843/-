@@ -114,8 +114,8 @@ fun BackendBrowseScreen(onBack: () -> Unit) {
             TopAppBar(
                 title = {
                     Column {
-                        Text("مرور ساختار سرور جدید", fontWeight = FontWeight.Bold)
-                        Text("استاد ← کلاس ← جلسه · فقط خواندنی", style = MaterialTheme.typography.labelSmall)
+                        Text("کلاس‌های آنلاین و تالار گفتگو", fontWeight = FontWeight.Bold)
+                        Text("استاد ← کلاس ← جلسه · تالار و اطلاعیه‌ها", style = MaterialTheme.typography.labelSmall)
                     }
                 },
                 navigationIcon = {
