@@ -113,7 +113,7 @@ class ClassForumRepository(private val dataSource: DataSource) {
             c.autoCommit=false
             try {
                 val context=c.requireTopicAccess(topic,user,roles,lock=true)
-                if(context.second) throw IllegalStateException("This discussion is locked.")
+                if(context.locked) throw IllegalStateException("This discussion is locked.")
                 if(parent!=null) c.prepareStatement("SELECT 1 FROM forum_posts WHERE id=? AND topic_id=? AND deleted_at IS NULL").use {
                     it.setObject(1,parent);it.setObject(2,topic);it.executeQuery().use { rs -> require(rs.next()) { "Parent reply not found." } }
                 }
@@ -130,11 +130,11 @@ class ClassForumRepository(private val dataSource: DataSource) {
                 }
                 c.prepareStatement("UPDATE forum_topics SET updated_at=now() WHERE id=?").use { it.setObject(1,topic);it.executeUpdate() }
                 val recipients=linkedSetOf<UUID>()
-                recipients+=context.first
+                recipients+=context.owner
                 c.prepareStatement("SELECT author_user_id FROM forum_posts WHERE topic_id=? AND deleted_at IS NULL").use {
                     it.setObject(1,topic);it.executeQuery().use { rs -> while(rs.next()) recipients+=rs.getObject(1,UUID::class.java) }
                 }
-                notifyUsers(c,recipients-user,user,UUID.fromString(context.third),topic,UUID.fromString(result.id),"forum_reply","پاسخ تازه‌ای در بحث «${context.fourth}» ثبت شد.")
+                notifyUsers(c,recipients-user,user,UUID.fromString(context.classId),topic,UUID.fromString(result.id),"forum_reply","پاسخ تازه‌ای در بحث «${context.title}» ثبت شد.")
                 notifyMentions(c,body,user,UUID.fromString(context.third),topic,UUID.fromString(result.id))
                 c.commit();return result
             } catch(e:Throwable){c.rollback();throw e} finally {c.autoCommit=true}
