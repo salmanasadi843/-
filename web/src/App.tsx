@@ -1,6 +1,6 @@
 import { FormEvent, MouseEvent, useEffect, useMemo, useState } from "react";
 import { onAuthStateChanged, sendPasswordResetEmail, signInWithEmailAndPassword, signOut, User } from "firebase/auth";
-import { api, AccessCode, AudioSource, ClassAnnouncement, ClassMember, ClassRecord, CourseRecord, ForumPost, ForumTopic, Me, SessionDetail, SessionNote, GlobalSessionNote, SessionState, SessionSummary, Teacher, TeacherFolder, UserNotification } from "./api";
+import { api, AccessCode, AudioSource, ClassAnnouncement, ClassMember, ClassRecord, CourseRecord, ForumPost, ForumTopic, Me, SessionDetail, SessionNote, GlobalSessionNote, SessionState, SessionSummary, Teacher, TeacherApplication, TeacherFolder, UserNotification } from "./api";
 import { auth, firebaseConfigured } from "./firebase";
 
 export default function App() {
@@ -90,6 +90,10 @@ export default function App() {
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
   const [notice, setNotice] = useState("");
+  const [applicationTeachingField, setApplicationTeachingField] = useState("");
+  const [applicationInstitution, setApplicationInstitution] = useState("");
+  const [pendingTeacherApplications, setPendingTeacherApplications] = useState<TeacherApplication[]>([]);
+  const [loadingTeacherApplications, setLoadingTeacherApplications] = useState(false);
 
   useEffect(() => {
     if (!auth) return;
@@ -141,6 +145,24 @@ export default function App() {
   }
 
   const isAdmin = me?.roles.includes("super_admin") ?? false;
+
+  useEffect(() => {
+    let cancelled = false;
+    async function loadApplications() {
+      if (!user || !isAdmin) { setPendingTeacherApplications([]); return; }
+      setLoadingTeacherApplications(true);
+      try {
+        const items = await api.pendingTeacherApplications(await user.getIdToken());
+        if (!cancelled) setPendingTeacherApplications(items);
+      } catch (e) {
+        if (!cancelled) setError(message(e));
+      } finally {
+        if (!cancelled) setLoadingTeacherApplications(false);
+      }
+    }
+    void loadApplications();
+    return () => { cancelled = true; };
+  }, [user, isAdmin]);
   const canCreateClass = isAdmin || (me?.roles.includes("teacher") ?? false);
   const canRedeemCode = me?.roles.includes("student") ?? false;
   const visibleClasses = useMemo(
@@ -173,6 +195,43 @@ export default function App() {
     setBusy(true); setError(""); setNotice("");
     try { await signInWithEmailAndPassword(auth, email.trim(), password); setPassword(""); }
     catch (e) { setError(message(e)); }
+    finally { setBusy(false); }
+  }
+
+  async function submitTeacherApplication(event: FormEvent) {
+    event.preventDefault();
+    if (!user) return;
+    if (!applicationTeachingField.trim() && !applicationInstitution.trim()) {
+      setError("حوزه تدریس یا نام مرکز آموزشی را وارد کنید.");
+      return;
+    }
+    setBusy(true); setError(""); setNotice("");
+    try {
+      const result = await api.submitTeacherApplication({
+        teachingField: applicationTeachingField.trim() || null,
+        institutionName: applicationInstitution.trim() || null,
+      }, await user.getIdToken());
+      setNotice("درخواست همکاری شما ثبت شد؛ وضعیت: " + (result.approvalStatus === "pending" ? "در انتظار بررسی مدیر" : result.approvalStatus) + ".");
+      setApplicationTeachingField(""); setApplicationInstitution("");
+    } catch (e) { setError(message(e)); }
+    finally { setBusy(false); }
+  }
+
+  async function decideTeacherApplication(item: TeacherApplication, decision: "approved" | "rejected") {
+    if (!user || !isAdmin) return;
+    const label = decision === "approved" ? "تأیید" : "رد";
+    if (!window.confirm("درخواست " + item.displayName + " " + label + " شود؟")) return;
+    setBusy(true); setError(""); setNotice("");
+    try {
+      await api.decideTeacherApplication(item.userId, decision, await user.getIdToken());
+      setPendingTeacherApplications(current => current.filter(application => application.userId !== item.userId));
+      if (decision === "approved") {
+        setTeachers(await api.teachers(await user.getIdToken()));
+        setNotice("درخواست " + item.displayName + " تأیید شد و دسترسی استاد برای او فعال شد.");
+      } else {
+        setNotice("درخواست " + item.displayName + " رد شد.");
+      }
+    } catch (e) { setError(message(e)); }
     finally { setBusy(false); }
   }
 
@@ -864,6 +923,23 @@ export default function App() {
       </article>)}
       {!globalNotes.length && <p className="muted empty">هنوز یادداشتی ثبت نکرده‌اید.</p>}
       {!!globalNotes.length && !globalNotes.some(note => [note.noteText,note.quotedText,note.classTitle,note.sessionTitle,note.courseName,note.teacherName].join(" ").toLocaleLowerCase().includes(globalNotesSearch.trim().toLocaleLowerCase())) && <p className="muted empty">نتیجه‌ای برای این جست‌وجو پیدا نشد.</p>}
+    </section>}
+    {!isAdmin && !(me?.roles.includes("teacher") ?? false) && <section className="panel content teacher-application-panel">
+      <div className="section-head"><div><h2>درخواست همکاری به‌عنوان استاد</h2><p className="muted">پس از ثبت درخواست، مدیر آن را بررسی می‌کند و دسترسی تدریس فقط پس از تأیید فعال می‌شود.</p></div></div>
+      <form className="editor-form" onSubmit={submitTeacherApplication}>
+        <label>حوزه تدریس<input value={applicationTeachingField} onChange={event => setApplicationTeachingField(event.target.value)} maxLength={200} placeholder="مثلاً فقه و اصول، ادبیات…" /></label>
+        <label>نام مرکز آموزشی یا مؤسسه (اختیاری)<input value={applicationInstitution} onChange={event => setApplicationInstitution(event.target.value)} maxLength={200} placeholder="نام مدرسه، دانشگاه یا مؤسسه" /></label>
+        <button disabled={busy || (!applicationTeachingField.trim() && !applicationInstitution.trim())}>{busy ? "در حال ثبت…" : "ثبت درخواست همکاری"}</button>
+      </form>
+    </section>}
+    {isAdmin && <section className="panel content teacher-applications-panel">
+      <div className="section-head"><div><h2>درخواست‌های همکاری استادان</h2><p className="muted">با تأیید درخواست، نقش استاد برای حساب کاربر فعال می‌شود.</p></div><span className="muted">{pendingTeacherApplications.length} درخواست در انتظار</span></div>
+      {loadingTeacherApplications && <p className="muted">در حال دریافت درخواست‌ها…</p>}
+      {pendingTeacherApplications.map(item => <article className="code-row" key={item.userId}>
+        <span><strong>{item.displayName || "کاربر بدون نام"}</strong><small>{item.email || "بدون ایمیل"} · {item.teachingField || "حوزه تدریس مشخص نشده"}{item.institutionName ? " · " + item.institutionName : ""}</small></span>
+        <span><button className="action" disabled={busy} onClick={() => void decideTeacherApplication(item, "approved")}>تأیید</button><button className="ghost danger-text" disabled={busy} onClick={() => void decideTeacherApplication(item, "rejected")}>رد درخواست</button></span>
+      </article>)}
+      {!loadingTeacherApplications && !pendingTeacherApplications.length && <p className="muted">درخواست در انتظار بررسی وجود ندارد.</p>}
     </section>}
     <div className="layout">
       <aside className="panel sidebar">
