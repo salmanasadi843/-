@@ -31,6 +31,14 @@ interface DarsyarCommunityApi {
     suspend fun deletePost(@Path("postId") postId:String,@Header("Authorization") auth:String):Response<Unit>
     @PATCH("api/v1/forum/topics/{topicId}/moderation")
     suspend fun moderate(@Path("topicId") topicId:String,@Body body:ForumModerationDto,@Header("Authorization") auth:String):Response<Unit>
+    @GET("api/v1/classes/{classId}/sessions/{sessionId}/notes")
+    suspend fun sessionNotes(@Path("classId") classId:String,@Path("sessionId") sessionId:String,@Header("Authorization") auth:String):Response<List<BackendSessionNoteDto>>
+    @POST("api/v1/classes/{classId}/sessions/{sessionId}/notes")
+    suspend fun createSessionNote(@Path("classId") classId:String,@Path("sessionId") sessionId:String,@Body body:SessionNoteWriteDto,@Header("Authorization") auth:String):Response<BackendSessionNoteDto>
+    @PATCH("api/v1/session-notes/{noteId}")
+    suspend fun updateSessionNote(@Path("noteId") noteId:String,@Body body:SessionNoteWriteDto,@Header("Authorization") auth:String):Response<BackendSessionNoteDto>
+    @DELETE("api/v1/session-notes/{noteId}")
+    suspend fun deleteSessionNote(@Path("noteId") noteId:String,@Header("Authorization") auth:String):Response<Unit>
     @GET("api/v1/classes/{classId}/sessions/{sessionId}/state")
     suspend fun sessionState(@Path("classId") classId:String,@Path("sessionId") sessionId:String,@Header("Authorization") auth:String):Response<BackendSessionStateDto>
     @PUT("api/v1/classes/{classId}/sessions/{sessionId}/state")
@@ -66,6 +74,15 @@ data class BackendSessionStateDto(
 )
 @JsonClass(generateAdapter=true)
 data class SessionStateWriteDto(val isFavorite:Boolean,val lastPlaybackPositionMs:Long=0L)
+@JsonClass(generateAdapter=true)
+data class BackendSessionNoteDto(
+    val id:String,val userId:String,val sessionId:String,val quotedText:String,val noteText:String,
+    val startOffset:Int?,val endOffset:Int?,val createdAtMs:Long,val updatedAtMs:Long
+)
+@JsonClass(generateAdapter=true)
+data class SessionNoteWriteDto(
+    val quotedText:String="",val noteText:String,val startOffset:Int?=null,val endOffset:Int?=null
+)
 @JsonClass(generateAdapter=true)
 data class BackendNotificationDto(
     val id:String,val notificationType:String,val message:String,val classId:String?,val topicId:String?,
@@ -111,6 +128,16 @@ class DarsyarCommunityRepository(private val api:DarsyarCommunityApi) {
     suspend fun moderate(token:String,topicId:String,pinned:Boolean,locked:Boolean) {
         val response=api.moderate(topicId,ForumModerationDto(pinned,locked),"Bearer $token")
         if(!response.isSuccessful) throw BackendHttpException(response.code(),"forum/moderation")
+    }
+    suspend fun sessionNotes(token:String,classId:String,sessionId:String)=
+        checked(api.sessionNotes(classId,sessionId,"Bearer $token"),"session/notes")
+    suspend fun createSessionNote(token:String,classId:String,sessionId:String,quotedText:String,noteText:String)=
+        checked(api.createSessionNote(classId,sessionId,SessionNoteWriteDto(quotedText,noteText),"Bearer $token"),"session/notes/create")
+    suspend fun updateSessionNote(token:String,noteId:String,quotedText:String,noteText:String)=
+        checked(api.updateSessionNote(noteId,SessionNoteWriteDto(quotedText,noteText),"Bearer $token"),"session/notes/update")
+    suspend fun deleteSessionNote(token:String,noteId:String) {
+        val response=api.deleteSessionNote(noteId,"Bearer $token")
+        if(!response.isSuccessful) throw BackendHttpException(response.code(),"session/notes/delete")
     }
     suspend fun sessionState(token:String,classId:String,sessionId:String)=
         checked(api.sessionState(classId,sessionId,"Bearer $token"),"session/state")
