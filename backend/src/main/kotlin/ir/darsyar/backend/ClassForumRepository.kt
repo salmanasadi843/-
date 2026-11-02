@@ -69,7 +69,7 @@ class ClassForumRepository(private val dataSource: DataSource) {
                     INSERT INTO forum_topics(class_id,session_id,author_user_id,title,body)
                     VALUES(?,?,?,?,?)
                     RETURNING id::text,class_id::text,session_id::text,author_user_id::text,
-                    (SELECT COALESCE(NULLIF(display_name,''),'کاربر') FROM app_users WHERE id=author_user_id) author_name,
+                    'کاربر'::text author_name,
                     title,body,is_pinned,is_locked,0::int reply_count,
                     (extract(epoch from created_at)*1000)::bigint created_ms,
                     (extract(epoch from updated_at)*1000)::bigint updated_ms
