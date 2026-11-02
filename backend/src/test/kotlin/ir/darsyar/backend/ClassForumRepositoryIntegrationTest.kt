@@ -39,6 +39,11 @@ class ClassForumRepositoryIntegrationTest {
                     it.setObject(1,UUID.fromString(clazz.id));it.setObject(2,student);it.executeUpdate()
                 }
             }
+            val announcements=ClassAnnouncementRepository(ds)
+            val announcement=announcements.create(owner.toString(),setOf(AppRole.TEACHER),clazz.id,
+                "تغییر برنامه کلاس","جلسه آینده نیم ساعت دیرتر برگزار می‌شود.")
+            assertEquals(1,announcements.list(student.toString(),setOf(AppRole.STUDENT),clazz.id).size)
+            assertEquals(0,announcements.list(stranger.toString(),setOf(AppRole.STUDENT),clazz.id).size)
             val repo=ClassForumRepository(ds)
             val topic=repo.createTopic(student.toString(),setOf(AppRole.STUDENT),clazz.id,null,
                 "پرسش درباره درس","لطفاً این نکته را توضیح دهید.")
@@ -52,7 +57,7 @@ class ClassForumRepositoryIntegrationTest {
             assertEquals(1,repo.listPosts(student.toString(),setOf(AppRole.STUDENT),topic.id).size)
             assertTrue(reply.topicId==topic.id)
             val studentInbox=repo.listNotifications(student.toString(),true)
-            assertTrue(studentInbox.any { it.notificationType=="forum_reply" && it.topicId==topic.id })
+            assertTrue(studentInbox.any { it.notificationType=="forum_reply" && it.topicId==topic.id })\n            assertTrue(studentInbox.any { it.notificationType=="class_announcement" })
             assertFalse(repo.listNotifications(owner.toString(),true).any { it.actorUserId==owner.toString() })
             assertTrue(repo.moderateTopic(owner.toString(),setOf(AppRole.TEACHER),topic.id,true,true))
             assertFailsWith<IllegalStateException> {
