@@ -57,13 +57,14 @@ class ClassForumRepositoryIntegrationTest {
             assertEquals(1,repo.listPosts(student.toString(),setOf(AppRole.STUDENT),topic.id).size)
             assertTrue(reply.topicId==topic.id)
             val studentInbox=repo.listNotifications(student.toString(),true)
-            assertTrue(studentInbox.any { it.notificationType=="forum_reply" && it.topicId==topic.id })\n            assertTrue(studentInbox.any { it.notificationType=="class_announcement" })
+            assertTrue(studentInbox.any { it.notificationType=="forum_reply" && it.topicId==topic.id })
+            assertTrue(studentInbox.any { it.notificationType=="class_announcement" })
             assertFalse(repo.listNotifications(owner.toString(),true).any { it.actorUserId==owner.toString() })
             assertTrue(repo.moderateTopic(owner.toString(),setOf(AppRole.TEACHER),topic.id,true,true))
             assertFailsWith<IllegalStateException> {
                 repo.createReply(student.toString(),setOf(AppRole.STUDENT),topic.id,null,"پاسخ پس از بسته شدن")
             }
-            assertTrue(repo.markNotificationRead(student.toString(),studentInbox.first().id))
+            studentInbox.forEach { assertTrue(repo.markNotificationRead(student.toString(),it.id)) }
             assertEquals(0,repo.listNotifications(student.toString(),true).size)
         }
     }
