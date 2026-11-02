@@ -151,6 +151,12 @@ class TeachingSessionRepositoryIntegrationTest {
             }
             assertEquals(true, repository.setDeleted(admin.toString(), setOf(AppRole.SUPER_ADMIN), published.id, true))
             assertTrue(repository.listVisible(admin.toString(), setOf(AppRole.SUPER_ADMIN)).none { it.id == published.id })
+            assertEquals(setOf(published.id), repository.listDeleted(admin.toString(), setOf(AppRole.SUPER_ADMIN)).map { it.id }.toSet())
+            assertEquals(setOf(published.id), repository.listDeleted(owner.toString(), setOf(AppRole.TEACHER)).map { it.id }.toSet())
+            assertTrue(repository.listDeleted(otherTeacher.toString(), setOf(AppRole.TEACHER)).isEmpty())
+            assertFailsWith<SecurityException> {
+                repository.listDeleted(student.toString(), setOf(AppRole.STUDENT))
+            }
             assertEquals(false, repository.setDeleted(admin.toString(), setOf(AppRole.SUPER_ADMIN), published.id, true))
             assertEquals(true, repository.setDeleted(admin.toString(), setOf(AppRole.SUPER_ADMIN), published.id, false))
             assertTrue(repository.listVisible(admin.toString(), setOf(AppRole.SUPER_ADMIN)).any { it.id == published.id })
