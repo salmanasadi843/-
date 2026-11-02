@@ -1,3 +1,7 @@
+export type ClassAnnouncement = {
+  id: string; classId: string; authorUserId: string; authorName: string;
+  title: string; body: string; isPinned: boolean; publishedAtMs: number;
+};
 export type ForumTopic = {
   id: string; classId: string; sessionId: string | null; authorUserId: string; authorName: string;
   title: string; body: string; isPinned: boolean; isLocked: boolean; replyCount: number;
@@ -143,4 +147,9 @@ export const api = {
     request<UserNotification[]>(`/api/v1/notifications?unreadOnly=${unreadOnly}`, token),
   markNotificationRead: (notificationId: string, token: string) =>
     request<void>(`/api/v1/notifications/${encodeURIComponent(notificationId)}/read`, token, { method: "POST" }),
+  classAnnouncements: (classId: string, token: string) =>
+    request<ClassAnnouncement[]>(`/api/v1/classes/${encodeURIComponent(classId)}/announcements`, token),
+  createClassAnnouncement: (classId: string, data: { title: string; body: string }, token: string) =>
+    request<ClassAnnouncement>(`/api/v1/classes/${encodeURIComponent(classId)}/announcements`, token, { method: "POST", body: JSON.stringify(data) }),
+
 };
