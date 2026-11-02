@@ -64,6 +64,14 @@ class UserSessionNoteRepositoryIntegrationTest {
             assertEquals(created.id, ownNotes.single().id)
             assertTrue(repository.list(otherStudent.toString(), setOf(AppRole.STUDENT), publicClass.id, publicSession.id).isEmpty())
 
+            val globalNotes = repository.listAllVisible(student.toString(), setOf(AppRole.STUDENT))
+            assertEquals(1, globalNotes.size)
+            assertEquals(publicClass.id, globalNotes.single().classId)
+            assertEquals("عمومی", globalNotes.single().classTitle)
+            assertEquals("جلسه عمومی", globalNotes.single().sessionTitle)
+            assertEquals(created.id, globalNotes.single().id)
+            assertTrue(repository.listAllVisible(otherStudent.toString(), setOf(AppRole.STUDENT)).isEmpty())
+
             val updated = repository.update(
                 student.toString(), setOf(AppRole.STUDENT), created.id,
                 "درس نمونه", "نکته ویرایش‌شده", 0, 9
