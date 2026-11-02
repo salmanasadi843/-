@@ -31,6 +31,10 @@ interface DarsyarCommunityApi {
     suspend fun deletePost(@Path("postId") postId:String,@Header("Authorization") auth:String):Response<Unit>
     @PATCH("api/v1/forum/topics/{topicId}/moderation")
     suspend fun moderate(@Path("topicId") topicId:String,@Body body:ForumModerationDto,@Header("Authorization") auth:String):Response<Unit>
+    @GET("api/v1/classes/{classId}/sessions/{sessionId}/state")
+    suspend fun sessionState(@Path("classId") classId:String,@Path("sessionId") sessionId:String,@Header("Authorization") auth:String):Response<BackendSessionStateDto>
+    @PUT("api/v1/classes/{classId}/sessions/{sessionId}/state")
+    suspend fun saveSessionState(@Path("classId") classId:String,@Path("sessionId") sessionId:String,@Body body:SessionStateWriteDto,@Header("Authorization") auth:String):Response<BackendSessionStateDto>
     @GET("api/v1/notifications")
     suspend fun notifications(@Query("unreadOnly") unreadOnly:Boolean,@Header("Authorization") auth:String):Response<List<BackendNotificationDto>>
     @POST("api/v1/notifications/{notificationId}/read")
@@ -55,6 +59,13 @@ data class BackendForumPostDto(
     val id:String,val topicId:String,val parentPostId:String?,val authorUserId:String,val authorName:String,
     val body:String,val createdAtMs:Long,val updatedAtMs:Long
 )
+@JsonClass(generateAdapter=true)
+data class BackendSessionStateDto(
+    val userId:String,val sessionId:String,val isFavorite:Boolean,
+    val lastPlaybackPositionMs:Long,val updatedAtMs:Long
+)
+@JsonClass(generateAdapter=true)
+data class SessionStateWriteDto(val isFavorite:Boolean,val lastPlaybackPositionMs:Long=0L)
 @JsonClass(generateAdapter=true)
 data class BackendNotificationDto(
     val id:String,val notificationType:String,val message:String,val classId:String?,val topicId:String?,
@@ -101,6 +112,10 @@ class DarsyarCommunityRepository(private val api:DarsyarCommunityApi) {
         val response=api.moderate(topicId,ForumModerationDto(pinned,locked),"Bearer $token")
         if(!response.isSuccessful) throw BackendHttpException(response.code(),"forum/moderation")
     }
+    suspend fun sessionState(token:String,classId:String,sessionId:String)=
+        checked(api.sessionState(classId,sessionId,"Bearer $token"),"session/state")
+    suspend fun saveSessionState(token:String,classId:String,sessionId:String,isFavorite:Boolean,positionMs:Long)=
+        checked(api.saveSessionState(classId,sessionId,SessionStateWriteDto(isFavorite,positionMs),"Bearer $token"),"session/state/save")
     suspend fun notifications(token:String,unreadOnly:Boolean=false)=
         checked(api.notifications(unreadOnly,"Bearer $token"),"notifications")
     suspend fun markRead(token:String,id:String) {
