@@ -185,3 +185,20 @@ Android app (Room / offline cache)       Responsive web site
 - شناسه‌های منفی محتوای اشتراکی و شناسه‌های عددی Room شناسه جهانی مقصد نیستند.
 
 تا رفع و آزمون این موارد، schema فقط روی staging خالی و با داده ساختگی آزمایش می‌شود. هیچ داده تولیدی منتقل نمی‌شود.
+
+
+## 14. وضعیت اجرایی تا 2026-11-02
+
+### وضعیت زیرساخت و CI
+
+- Firebase در فاز فعلی منبع عملیاتی اصلی باقی می‌ماند؛ سرور ایران فقط مقصد مرحله انتقال آینده است.
+- Backend مستقل Ktor/PostgreSQL، قرارداد API و نمونه Web/Android در شاخه توسعه پیاده‌سازی اولیه دارند.
+- CI روی commit `a38e3308e7b9bf1ca8e55dd47c9de9a5a0dd4fd3` موفق است: Android unit tests و Debug APK، Web build، Backend unit/PostgreSQL integration، build distribution، اجرای API روی PostgreSQL موقت، backup/restore محلی، bootstrap مدیر و identity linking.
+- موفقیت backup/restore محلی به معنی فعال‌بودن Firebase Storage backup یا backup ابری واقعی نیست؛ آن بخش هنوز پیاده‌سازی و نیازمند credential/تأیید است.
+
+### مرز فعلی اتصال کلاینت‌ها
+
+- اپ اصلی Android هنوز جریان عملیاتی Room/Firestore خود را حفظ می‌کند؛ صفحه `BackendBrowse` یک پیش‌نمایش جداگانه و read-only از API آینده است و جایگزین Home/Class/Session فعلی نشده است.
+- سایت نمونه به API مشترک وصل است؛ build موفق، به‌تنهایی تأیید آزمون کاربری کامل یا برابری همه قابلیت‌های سایت با Android نیست.
+- گام توسعه بعدی: اتصال مرحله‌ای و کنترل‌شده Android به API مشترک (ابتدا خواندن استاد/کلاس/جلسه، سپس نوشتن با مجوزها)، بدون حذف مسیر Firebase و با امکان rollback. هم‌زمان باید دسترسی بدون ورود برای کلاس عمومی و محدودیت کلاس خصوصی در Web/API تکمیل و تست شود.
+- PR شماره 39 همچنان Draft/Open است؛ merge، deploy، cutover یا تغییر Firebase انجام نشده است.
