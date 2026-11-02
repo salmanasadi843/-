@@ -906,6 +906,8 @@ export default function App() {
         </div>}
         {selectedClass && <div className="lower">
           <div className="section-head"><div><p className="eyebrow">{teachers.find(teacher => teacher.userId === selectedClass.ownerUserId)?.displayName ?? "استاد"} ← کلاس</p><h2>جلسه‌های {selectedClass.title}</h2></div><span className="muted">{sessions.length} جلسه</span></div>
+          {isAdmin && selectedClass.ownerUserId !== me?.userId && <p className="notice">حالت مدیر: امکان مدیریت کامل این کلاس و جلسه‌های استاد دیگر فعال است.</p>}
+          {!isAdmin && selectedClass.ownerUserId !== me?.userId && <p className="muted readonly-notice">این کلاس متعلق به استاد دیگری است؛ محتوای منتشرشده را فقط می‌توانید مشاهده کنید.</p>}
           {canManageSelectedClass && <section className="access-manager">
             <div className="section-head"><h3>دوره‌های کلاس</h3><button className="ghost" onClick={() => {setEditingCourseId(null);setCourseTitle("");setCourseDescription("");setShowCourseForm(v => !v);}}>＋ افزودن دوره</button></div>
             {showCourseForm && <form className="editor-form" onSubmit={saveCourse}>
