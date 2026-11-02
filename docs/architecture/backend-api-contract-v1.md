@@ -16,9 +16,10 @@
 - منابع صوتی: `GET/POST /api/v1/sessions/{sessionId}/audio-sources`, `PATCH/DELETE /api/v1/sessions/{sessionId}/audio-sources/{sourceId}`.
 - کد ورود: `GET/POST /api/v1/classes/{classId}/access-codes`, `DELETE /api/v1/access-codes/{codeId}`, `POST /api/v1/class-memberships/redeem`.
 - عضویت: `GET /api/v1/classes/{classId}/memberships`, `DELETE /api/v1/classes/{classId}/memberships/{studentUserId}`.
+- اعلان‌های رسمی کلاس: `GET/POST /api/v1/classes/{classId}/announcements`؛ فقط مالک کلاس یا مدیر اعلان منتشر می‌کند و اعضای فعال کلاس اعلان درون‌برنامه‌ای می‌گیرند.
 - تالار گفتگو: `GET/POST /api/v1/classes/{classId}/forum/topics`, `GET/POST /api/v1/forum/topics/{topicId}/posts`, `PATCH /api/v1/forum/topics/{topicId}/moderation` برای سنجاق/قفل؛ بحث می‌تواند به یک جلسه همان کلاس متصل باشد.
 - اعلان‌ها: `GET /api/v1/notifications?unreadOnly=true|false`, `POST /api/v1/notifications/{notificationId}/read`. اعلان‌های بحث تازه، پاسخ و mention در پایگاه داده ذخیره می‌شوند؛ ارسال push notification هنوز پیاده نشده است.
-- Migration `V4__class_forums_and_notifications.sql` جداول موضوع‌ها، پاسخ‌های چندسطحی، اعلان‌ها و indexهای inbox را اضافه می‌کند.
+- Migration `V4__class_forums_and_notifications.sql` جداول موضوع‌ها، پاسخ‌های چندسطحی و inbox اعلان را اضافه می‌کند؛ `V5__class_announcements.sql` تابلوی اعلان رسمی کلاس و نوع اعلان مربوط را اضافه می‌کند.
 
 نکته مهم دسترسی عمومی: مسیرهای فعلی زیر `authenticate("firebase")` هستند؛ بنابراین کلاس `public` در Backend فعلی یعنی بدون عضویت کلاس برای حساب واردشده قابل مشاهده است، نه مشاهده ناشناس بدون ورود. همچنین مسیر مستقل `GET /api/v1/classes/{classId}` برای جزئیات یک کلاس و صفحه‌بندی فهرست هنوز پیاده نشده‌اند. تا زمان افزودن و آزمون endpoint عمومی، ستون «مهمان» در ماتریس بالا قابلیت هدف آینده است و نباید در سایت به‌عنوان قابلیت موجود نمایش داده شود.
 
