@@ -200,6 +200,31 @@ data class SessionApiRecord(
 )
 
 @Serializable
+data class SessionNoteWriteRequest(
+    val quotedText: String = "",
+    val noteText: String,
+    val startOffset: Int? = null,
+    val endOffset: Int? = null
+)
+
+@Serializable
+data class SessionNoteApiRecord(
+    val id: String,
+    val userId: String,
+    val sessionId: String,
+    val quotedText: String,
+    val noteText: String,
+    val startOffset: Int?,
+    val endOffset: Int?,
+    val createdAtMs: Long,
+    val updatedAtMs: Long
+)
+
+private fun UserSessionNoteRecord.toApiRecord() = SessionNoteApiRecord(
+    id, userId, sessionId, quotedText, noteText, startOffset, endOffset, createdAtMs, updatedAtMs
+)
+
+@Serializable
 data class SessionStateWriteRequest(
     val isFavorite: Boolean,
     val lastPlaybackPositionMs: Long = 0
@@ -381,6 +406,7 @@ fun Application.module(
     val folderRepository = TeacherFolderRepository(dataSource)
     val sessionRepository = TeachingSessionRepository(dataSource)
     val sessionStateRepository = UserSessionStateRepository(dataSource, sessionRepository)
+    val sessionNoteRepository = UserSessionNoteRepository(dataSource, sessionRepository)
     val audioSourceRepository = TeachingAudioSourceRepository(dataSource)
     val courseRepository = TeachingCourseRepository(dataSource)
     val classAccessRepository = ClassAccessRepository(dataSource)
@@ -1137,6 +1163,86 @@ fun Application.module(
                         call.respond(HttpStatusCode.Forbidden, ApiError("session_recovery_forbidden"))
                     } catch (_: IllegalArgumentException) {
                         call.respond(HttpStatusCode.BadRequest, ApiError("invalid_user_id"))
+                    }
+                }
+            }
+
+            route("/api/v1/classes/{classId}/sessions/{sessionId}/notes") {
+                get {
+                    val principal = call.principal<DarsyarPrincipal>()
+                    if (principal == null) {
+                        call.respond(HttpStatusCode.Unauthorized, ApiError("unauthorized"))
+                        return@get
+                    }
+                    val notes = sessionNoteRepository.list(
+                        principal.userId, principal.roles,
+                        call.parameters["classId"] ?: "", call.parameters["sessionId"] ?: ""
+                    )
+                    call.respond(notes.map { it.toApiRecord() })
+                }
+                post {
+                    val principal = call.principal<DarsyarPrincipal>()
+                    if (principal == null) {
+                        call.respond(HttpStatusCode.Unauthorized, ApiError("unauthorized"))
+                        return@post
+                    }
+                    val request = try { call.receive<SessionNoteWriteRequest>() }
+                    catch (_: Exception) {
+                        call.respond(HttpStatusCode.BadRequest, ApiError("invalid_request"))
+                        return@post
+                    }
+                    try {
+                        val note = sessionNoteRepository.create(
+                            principal.userId, principal.roles,
+                            call.parameters["classId"] ?: "", call.parameters["sessionId"] ?: "",
+                            request.quotedText, request.noteText, request.startOffset, request.endOffset
+                        )
+                        call.respond(HttpStatusCode.Created, note.toApiRecord())
+                    } catch (_: NoSuchElementException) {
+                        call.respond(HttpStatusCode.NotFound, ApiError("session_not_found"))
+                    } catch (_: IllegalArgumentException) {
+                        call.respond(HttpStatusCode.BadRequest, ApiError("invalid_session_note"))
+                    }
+                }
+            }
+            route("/api/v1/session-notes/{noteId}") {
+                patch {
+                    val principal = call.principal<DarsyarPrincipal>()
+                    if (principal == null) {
+                        call.respond(HttpStatusCode.Unauthorized, ApiError("unauthorized"))
+                        return@patch
+                    }
+                    val request = try { call.receive<SessionNoteWriteRequest>() }
+                    catch (_: Exception) {
+                        call.respond(HttpStatusCode.BadRequest, ApiError("invalid_request"))
+                        return@patch
+                    }
+                    try {
+                        val note = sessionNoteRepository.update(
+                            principal.userId, principal.roles, call.parameters["noteId"] ?: "",
+                            request.quotedText, request.noteText, request.startOffset, request.endOffset
+                        )
+                        call.respond(note.toApiRecord())
+                    } catch (_: NoSuchElementException) {
+                        call.respond(HttpStatusCode.NotFound, ApiError("session_note_not_found"))
+                    } catch (_: IllegalArgumentException) {
+                        call.respond(HttpStatusCode.BadRequest, ApiError("invalid_session_note"))
+                    }
+                }
+                delete {
+                    val principal = call.principal<DarsyarPrincipal>()
+                    if (principal == null) {
+                        call.respond(HttpStatusCode.Unauthorized, ApiError("unauthorized"))
+                        return@delete
+                    }
+                    try {
+                        val deleted = sessionNoteRepository.delete(
+                            principal.userId, principal.roles, call.parameters["noteId"] ?: ""
+                        )
+                        if (deleted) call.respond(HttpStatusCode.NoContent)
+                        else call.respond(HttpStatusCode.NotFound, ApiError("session_note_not_found"))
+                    } catch (_: IllegalArgumentException) {
+                        call.respond(HttpStatusCode.BadRequest, ApiError("invalid_session_note"))
                     }
                 }
             }
