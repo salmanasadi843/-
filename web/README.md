@@ -28,6 +28,7 @@ Build verification: `npm run build`. GitHub Actions runs the same production bui
 - Student redemption of private-class codes and teacher/admin membership list with revocation.
 - Soft deletion of classes and sessions, with recovery panels for authorized managers.
 - Session audio sources: add direct audio URLs or hosted/external links, play direct URLs in the browser, and deactivate links without deleting the underlying file.
+- Official class announcements: teachers/admins can publish notices to active class members; announcements appear in the class and generate in-app alerts.
 - Class discussion forum: create class-wide or session-linked topics, threaded replies, pin/lock moderation for the responsible teacher/admin.
 - In-app notification inbox: new-topic/reply notifications, user mentions via `@[user-uuid]`, unread count and mark-as-read.
 - Super-admin cross-teacher content management; teacher controls are limited to their own classes by backend authorization.
