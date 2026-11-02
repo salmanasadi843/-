@@ -1,6 +1,6 @@
 import { FormEvent, useEffect, useMemo, useState } from "react";
 import { onAuthStateChanged, signInWithEmailAndPassword, signOut, User } from "firebase/auth";
-import { api, AccessCode, AudioSource, ClassAnnouncement, ClassMember, ClassRecord, CourseRecord, ForumPost, ForumTopic, Me, SessionDetail, SessionSummary, Teacher, TeacherFolder, UserNotification } from "./api";
+import { api, AccessCode, AudioSource, ClassAnnouncement, ClassMember, ClassRecord, CourseRecord, ForumPost, ForumTopic, Me, SessionDetail, SessionState, SessionSummary, Teacher, TeacherFolder, UserNotification } from "./api";
 import { auth, firebaseConfigured } from "./firebase";
 
 export default function App() {
@@ -50,6 +50,8 @@ export default function App() {
   const [notifications, setNotifications] = useState<UserNotification[]>([]);
   const [showNotifications, setShowNotifications] = useState(false);
   const [audioSources, setAudioSources] = useState<AudioSource[]>([]);
+  const [sessionState, setSessionState] = useState<SessionState | null>(null);
+  const [playbackPositionMs, setPlaybackPositionMs] = useState(0);
   const [audioTitle, setAudioTitle] = useState("");
   const [audioUrl, setAudioUrl] = useState("");
   const [audioKind, setAudioKind] = useState<"direct_url" | "hosted_page" | "external_link">("direct_url");
@@ -186,16 +188,35 @@ export default function App() {
     setBusy(true); setError(""); setDetail(null);
     try {
       const token = await user.getIdToken();
-      const [sessionDetail, sources] = await Promise.all([
+      const [sessionDetail, sources, savedState] = await Promise.all([
         api.session(selectedClass.id, item.id, token),
         api.audioSources(item.id, token),
+        api.sessionState(selectedClass.id, item.id, token),
       ]);
       setDetail(sessionDetail);
       setAudioSources(sources);
+      setSessionState(savedState);
+      setPlaybackPositionMs(savedState.lastPlaybackPositionMs);
     }
     catch (e) { setError(message(e)); }
     finally { setBusy(false); }
   }
+  async function persistSessionState(patch: Partial<Pick<SessionState, "isFavorite" | "lastPlaybackPositionMs">>) {
+    if (!user || !selectedClass || !detail || !sessionState) return;
+    setBusy(true); setError(""); setNotice("");
+    try {
+      const next = {
+        isFavorite: patch.isFavorite ?? sessionState.isFavorite,
+        lastPlaybackPositionMs: patch.lastPlaybackPositionMs ?? sessionState.lastPlaybackPositionMs,
+      };
+      const saved = await api.saveSessionState(selectedClass.id, detail.id, next, await user.getIdToken());
+      setSessionState(saved);
+      setPlaybackPositionMs(saved.lastPlaybackPositionMs);
+      setNotice("وضعیت مطالعه شما ذخیره شد.");
+    } catch (e) { setError(message(e)); }
+    finally { setBusy(false); }
+  }
+
   async function addAudioSource(event: FormEvent) {
     event.preventDefault();
     if (!user || !detail || !canManageSelectedClass || !audioUrl.trim()) return;
@@ -844,6 +865,23 @@ export default function App() {
         {detail && <article className="detail">
           <div className="toolbar"><h2>{detail.title}</h2>{canManageSelectedClass && <><button className="ghost" onClick={() => void editSelectedSession()}>ویرایش جلسه</button><button className="ghost danger-text" disabled={busy} onClick={() => void removeSelectedSession()}>حذف جلسه</button></>}</div>
           <section className="access-manager">
+            <div className="section-head"><h3>وضعیت مطالعه من</h3><span className="muted">فقط برای حساب شما</span></div>
+            {sessionState && <>
+              <div className="toolbar">
+                <strong>{sessionState.isFavorite ? "★ این جلسه نشان شده است" : "☆ این جلسه نشان نشده است"}</strong>
+                <button className="ghost" disabled={busy} onClick={() => void persistSessionState({ isFavorite: !sessionState.isFavorite })}>
+                  {sessionState.isFavorite ? "برداشتن نشان" : "نشان‌کردن جلسه"}
+                </button>
+              </div>
+              <label>موقعیت شنیدن: {formatDuration(playbackPositionMs)}
+                <input type="range" min="0" max={detail.audioDurationMs > 0 ? detail.audioDurationMs : 604800000}
+                  step="1000" value={Math.min(playbackPositionMs, detail.audioDurationMs > 0 ? detail.audioDurationMs : 604800000)}
+                  onChange={event => setPlaybackPositionMs(Number(event.target.value))} />
+              </label>
+              <button className="ghost" disabled={busy} onClick={() => void persistSessionState({ lastPlaybackPositionMs: playbackPositionMs })}>ذخیره موقعیت مطالعه</button>
+            </>}
+          </section>
+          <section className="access-manager">
             <div className="section-head"><h3>فایل‌ها و پیوندهای صوتی</h3><span className="muted">{audioSources.length} منبع</span></div>
             {audioSources.map(source => <div className="code-row" key={source.id}>
               <span><strong>{source.title || "منبع صوتی جلسه"}</strong><small>{source.sourceKind === "direct_url" ? "پخش مستقیم" : source.sourceKind === "hosted_page" ? "صفحه میزبان" : "پیوند خارجی"}</small></span>
@@ -851,7 +889,15 @@ export default function App() {
                 {source.sourceUrl && <a href={source.sourceUrl} target="_blank" rel="noreferrer">بازکردن</a>}
                 {canManageSelectedClass && <button className="ghost danger-text" disabled={busy} onClick={() => void removeAudioSource(source.id)}>برداشتن</button>}
               </span>
-              {source.sourceKind === "direct_url" && source.sourceUrl && <audio controls preload="none" src={source.sourceUrl} />}
+              {source.sourceKind === "direct_url" && source.sourceUrl && <audio
+                controls preload="none" src={source.sourceUrl}
+                onTimeUpdate={event => setPlaybackPositionMs(Math.floor(event.currentTarget.currentTime * 1000))}
+                onPause={event => void persistSessionState({ lastPlaybackPositionMs: Math.floor(event.currentTarget.currentTime * 1000) })}
+                onLoadedMetadata={event => {
+                  const saved = sessionState?.lastPlaybackPositionMs ?? 0;
+                  if (saved > 0 && saved < event.currentTarget.duration * 1000) event.currentTarget.currentTime = saved / 1000;
+                }}
+              />}
             </div>)}
             {!audioSources.length && <p className="muted">برای این جلسه پیوند صوتی ثبت نشده است.</p>}
             {canManageSelectedClass && <form className="editor-form" onSubmit={addAudioSource}>
@@ -874,6 +920,13 @@ export default function App() {
 }
 function Brand() { return <div className="brand"><span className="brand-mark">د</span><span>درس‌یار</span></div>; }
 function message(e: unknown) { return e instanceof Error ? e.message : "خطای پیش‌بینی‌نشده رخ داد."; }
+function formatDuration(milliseconds: number) {
+  const totalSeconds = Math.max(0, Math.floor(milliseconds / 1000));
+  const hours = Math.floor(totalSeconds / 3600);
+  const minutes = Math.floor((totalSeconds % 3600) / 60);
+  const seconds = totalSeconds % 60;
+  return hours > 0 ? `${hours}:${String(minutes).padStart(2, "0")}:${String(seconds).padStart(2, "0")}` : `${minutes}:${String(seconds).padStart(2, "0")}`;
+}
 function roleLabel(roles: string[]) {
   if (roles.includes("super_admin")) return "مدیر اصلی";
   if (roles.includes("teacher")) return "استاد";
