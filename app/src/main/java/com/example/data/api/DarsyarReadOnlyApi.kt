@@ -14,6 +14,20 @@ import retrofit2.http.Header
  * Authorization is supplied per call so Firebase token refresh remains owned by FirebaseAuth.
  */
 interface DarsyarReadOnlyApi {
+    @GET("api/v1/public/classes")
+    suspend fun getPublicClasses(): Response<List<BackendClassDto>>
+
+    @GET("api/v1/public/classes/{classId}/sessions")
+    suspend fun getPublicSessions(
+        @retrofit2.http.Path("classId") classId: String
+    ): Response<List<BackendSessionSummaryDto>>
+
+    @GET("api/v1/public/classes/{classId}/sessions/{sessionId}")
+    suspend fun getPublicSessionDetail(
+        @retrofit2.http.Path("classId") classId: String,
+        @retrofit2.http.Path("sessionId") sessionId: String
+    ): Response<BackendSessionDto>
+
     @GET("api/v1/me")
     suspend fun getMe(
         @Header("Authorization") authorization: String
@@ -164,6 +178,27 @@ class DarsyarReadOnlyRepository(
         val response = api.getTeachers("Bearer $firebaseIdToken")
         if (!response.isSuccessful) throw BackendHttpException(response.code(), "/api/v1/teachers")
         return response.body() ?: throw IllegalStateException("Backend returned an empty teachers response.")
+    }
+
+    /** Public catalog endpoints deliberately require no Firebase token or membership. */
+    suspend fun loadPublicClasses(): List<BackendClassDto> {
+        val response = api.getPublicClasses()
+        if (!response.isSuccessful) throw BackendHttpException(response.code(), "/api/v1/public/classes")
+        return response.body() ?: throw IllegalStateException("فهرست کلاس‌های عمومی خالی دریافت شد.")
+    }
+
+    suspend fun loadPublicSessions(classId: String): List<BackendSessionSummaryDto> {
+        require(classId.isNotBlank()) { "شناسه کلاس لازم است." }
+        val response = api.getPublicSessions(classId)
+        if (!response.isSuccessful) throw BackendHttpException(response.code(), "/api/v1/public/classes/{classId}/sessions")
+        return response.body() ?: throw IllegalStateException("فهرست جلسات عمومی خالی دریافت شد.")
+    }
+
+    suspend fun loadPublicSessionDetail(classId: String, sessionId: String): BackendSessionDto {
+        require(classId.isNotBlank() && sessionId.isNotBlank()) { "شناسه کلاس و جلسه لازم است." }
+        val response = api.getPublicSessionDetail(classId, sessionId)
+        if (!response.isSuccessful) throw BackendHttpException(response.code(), "/api/v1/public/classes/{classId}/sessions/{sessionId}")
+        return response.body() ?: throw IllegalStateException("جزئیات جلسه عمومی خالی دریافت شد.")
     }
 
     /** Loads full transcript/summary data only for the session the user opened. */
