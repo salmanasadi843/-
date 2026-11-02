@@ -82,6 +82,7 @@ class TeachingSessionRepositoryIntegrationTest {
                 owner.toString(), setOf(AppRole.TEACHER),
                 CreateTeachingSession(
                     classId = publicClass.id, courseId = courseId, title = "جلسه منتشرشده",
+                    courseName = "دوره اختیاری", professorName = "استاد آزمون",
                     dateMs = 123456L, audioDurationMs = 9000L,
                     transcript = "متن ویرایش‌شده", originalTranscript = "متن اصلی",
                     aiSummary = "خلاصه", aiKeyPoints = "کلیدواژه‌ها",
@@ -152,6 +153,8 @@ class TeachingSessionRepositoryIntegrationTest {
             assertEquals(privateClass.id, moved.classId)
             assertEquals(null, moved.courseId)
             assertEquals(123456L, moved.dateMs)
+            assertEquals("دوره اختیاری", moved.courseName)
+            assertEquals("استاد آزمون", moved.professorName)
             assertEquals("متن اصلی", moved.originalTranscript)
             assertEquals("متن ویرایش‌شده", moved.transcript)
             assertEquals("خلاصه", moved.aiSummary)
