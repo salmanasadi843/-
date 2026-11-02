@@ -191,6 +191,22 @@ export default function App() {
       </div>
     ));
 
+  const renderAdminTeacherFolders = (ownerId: string, parentId: string | null = null, depth = 0): JSX.Element[] =>
+    folders.filter(folder => folder.ownerUserId === ownerId && folder.parentFolderId === parentId).map(folder => (
+      <div key={folder.id}>
+        <div className="folder-row" style={{ paddingInlineStart: depth * 18 }}>
+          <span>{depth > 0 ? "↳ " : ""}{folder.name}{folder.isHidden ? " · مخفی" : ""}</span>
+          <span>
+            <button className="ghost" onClick={() => {setSelectedTeacher(ownerId);setBrowseFolderId(folder.id);setSelectedClass(null);setDetail(null);}}>نمایش کلاس‌ها</button>
+            <button className="ghost" disabled={busy} onClick={() => void renameTeacherFolder(folder)}>تغییر نام</button>
+            <button className="ghost" disabled={busy} onClick={() => void toggleFolderHidden(folder)}>{folder.isHidden ? "نمایش" : "مخفی"}</button>
+            <button className="ghost danger-text" disabled={busy} onClick={() => void removeTeacherFolder(folder)}>حذف</button>
+          </span>
+        </div>
+        {renderAdminTeacherFolders(ownerId, folder.id, depth + 1)}
+      </div>
+    ));
+
   async function login(event: FormEvent) {
     event.preventDefault(); if (!auth) return;
     setBusy(true); setError(""); setNotice("");
@@ -1010,6 +1026,12 @@ export default function App() {
                 <span className="muted">{teacherClasses.length} کلاس</span>
                 {isAdmin && <button className="ghost" onClick={() => {setSelectedTeacher(teacher.userId);setBrowseFolderId("all");setSelectedClass(null);setDetail(null);}}>مدیریت استاد</button>}
               </div>
+              {isAdmin && folders.some(folder => folder.ownerUserId === teacher.userId) && (
+                <div className="admin-teacher-folders">
+                  <strong className="muted">پوشه‌های استاد</strong>
+                  {renderAdminTeacherFolders(teacher.userId)}
+                </div>
+              )}
               {teacherClasses.length ? <div className="class-grid">
                 {teacherClasses.map(c => <button key={c.id} className={selectedClass?.id === c.id ? "class-card selected" : "class-card"} onClick={() => void openClass(c)}>
                   <span className="tag">{c.visibility === "public" ? "عمومی" : "خصوصی"}{!c.isPublished ? " · پیش‌نویس" : ""}</span><strong>{c.title}</strong>
