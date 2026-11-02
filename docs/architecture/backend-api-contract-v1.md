@@ -18,6 +18,8 @@
 - عضویت: `GET /api/v1/classes/{classId}/memberships`, `DELETE /api/v1/classes/{classId}/memberships/{studentUserId}`.
 - اعلان‌های رسمی کلاس: `GET/POST /api/v1/classes/{classId}/announcements`؛ فقط مالک کلاس یا مدیر اعلان منتشر می‌کند و اعضای فعال کلاس اعلان درون‌برنامه‌ای می‌گیرند.
 - تالار گفتگو: `GET/POST /api/v1/classes/{classId}/forum/topics`, `GET/POST /api/v1/forum/topics/{topicId}/posts`, `PATCH /api/v1/forum/topics/{topicId}/moderation` برای سنجاق/قفل؛ بحث می‌تواند به یک جلسه همان کلاس متصل باشد.
+- ویرایش بحث: `PATCH /api/v1/forum/topics/{topicId}` و حذف نرم بحث: `DELETE /api/v1/forum/topics/{topicId}`؛ نویسنده، مالک کلاس و مدیر اصلی مجازند.
+- ویرایش پاسخ: `PATCH /api/v1/forum/posts/{postId}` و حذف نرم پاسخ: `DELETE /api/v1/forum/posts/{postId}`؛ نویسنده پاسخ، مالک کلاس و مدیر اصلی مجازند. حذف، رکورد را از نمایش عادی خارج می‌کند و داده خام را فوراً پاک نمی‌کند.
 - اعلان‌ها: `GET /api/v1/notifications?unreadOnly=true|false`, `POST /api/v1/notifications/{notificationId}/read`. اعلان‌های بحث تازه، پاسخ و mention در پایگاه داده ذخیره می‌شوند؛ ارسال push notification هنوز پیاده نشده است.
 - Migration `V4__class_forums_and_notifications.sql` جداول موضوع‌ها، پاسخ‌های چندسطحی و inbox اعلان را اضافه می‌کند؛ `V5__class_announcements.sql` تابلوی اعلان رسمی کلاس و نوع اعلان مربوط را اضافه می‌کند.
 
