@@ -205,7 +205,7 @@ private fun Connection.requireClassAccess(clazz:UUID,user:UUID,roles:Set<AppRole
         SELECT c.owner_user_id FROM teaching_classes c WHERE c.id=? AND c.deleted_at IS NULL
         AND ((? OR c.owner_user_id=?) OR (c.is_published AND c.is_hidden=false AND
           (c.visibility='public' OR (? AND EXISTS(SELECT 1 FROM class_memberships m
-           WHERE m.class_id=c.id AND m.student_user_id=? AND m.status='active'))))
+           WHERE m.class_id=c.id AND m.student_user_id=? AND m.status='active')))))
     """.trimIndent()
     return prepareStatement(sql).use { st ->
         st.setObject(1,clazz);st.setBoolean(2,AppRole.SUPER_ADMIN in roles);st.setObject(3,user)
@@ -221,7 +221,7 @@ private fun Connection.requireTopicAccess(topic:UUID,user:UUID,roles:Set<AppRole
         WHERE t.id=? AND t.deleted_at IS NULL AND c.deleted_at IS NULL
         AND ((? OR c.owner_user_id=?) OR (c.is_published AND c.is_hidden=false AND
           (c.visibility='public' OR (? AND EXISTS(SELECT 1 FROM class_memberships m
-           WHERE m.class_id=c.id AND m.student_user_id=? AND m.status='active'))))
+           WHERE m.class_id=c.id AND m.student_user_id=? AND m.status='active')))))
         ${if(lock) "FOR UPDATE OF t" else ""}
     """.trimIndent()
     return prepareStatement(sql).use { st ->
