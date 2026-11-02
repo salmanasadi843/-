@@ -221,17 +221,6 @@ fun LectureDetailScreen(
     var showExportDialog by remember { mutableStateOf(false) }
     var exportOriginalTranscript by remember { mutableStateOf(false) }
     var chatInputText by remember { mutableStateOf("") }
-    var showHandoutTypographySettings by remember { mutableStateOf(false) }
-    val handoutPrefs = remember(context) {
-        context.getSharedPreferences("darsyar_handout_display", Context.MODE_PRIVATE)
-    }
-    var handoutBodyFontSize by remember {
-        mutableStateOf(handoutPrefs.getFloat("body_font_size", 17f).coerceIn(14f, 24f))
-    }
-    var handoutHeadingScale by remember {
-        mutableStateOf(handoutPrefs.getFloat("heading_scale", 1f).coerceIn(0.8f, 1.4f))
-    }
-
     if (lecture == null) {
         Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
             CircularProgressIndicator()
@@ -621,6 +610,17 @@ fun TranscriptTab(
     val displayedTranscript = if (selectedTextTab == 0) originalText else correctedText
     val hasText = originalText.isNotBlank() || correctedText.isNotBlank()
     val tags = lecture.tags.split(",").map { it.trim() }.filter { it.isNotBlank() }
+    val context = LocalContext.current
+    var showHandoutTypographySettings by remember(lecture.id) { mutableStateOf(false) }
+    val handoutPrefs = remember(context) {
+        context.getSharedPreferences("darsyar_handout_display", Context.MODE_PRIVATE)
+    }
+    var handoutBodyFontSize by remember(lecture.id) {
+        mutableStateOf(handoutPrefs.getFloat("body_font_size", 17f).coerceIn(14f, 24f))
+    }
+    var handoutHeadingScale by remember(lecture.id) {
+        mutableStateOf(handoutPrefs.getFloat("heading_scale", 1f).coerceIn(0.8f, 1.4f))
+    }
 
     Column(
         modifier = Modifier
