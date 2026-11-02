@@ -309,6 +309,39 @@ class TeachingSessionRepository(private val dataSource: DataSource) {
 
 
     /**
+     * Lists recoverable sessions only for administrators and the owning teacher.
+     * Sessions whose parent class is deleted are intentionally omitted until that class is restored.
+     */
+    fun listDeleted(actorUserId: String, roles: Set<AppRole>): List<TeachingSessionRecord> {
+        if (AppRole.SUPER_ADMIN !in roles && AppRole.TEACHER !in roles) {
+            throw SecurityException("Session recovery is not allowed.")
+        }
+        val admin = AppRole.SUPER_ADMIN in roles
+        val actor = UUID.fromString(actorUserId)
+        val sql = """
+            SELECT s.id::text, s.class_id::text, s.course_id::text, s.title, s.course_name,
+                   s.professor_name, s.date_ms, s.audio_duration_ms, s.transcript,
+                   s.original_transcript, s.ai_summary, s.ai_key_points,
+                   s.ai_quiz_json::text AS ai_quiz_json, s.tags, s.is_published,
+                   s.last_edited_ms, s.sort_order, s.version
+            FROM teaching_sessions s
+            JOIN teaching_classes c ON c.id = s.class_id
+            WHERE s.deleted_at IS NOT NULL AND c.deleted_at IS NULL
+              AND (? OR c.owner_user_id = ?)
+            ORDER BY c.owner_user_id, s.class_id, s.sort_order, s.title
+        """.trimIndent()
+        dataSource.connection.use { connection ->
+            connection.prepareStatement(sql).use { statement ->
+                statement.setBoolean(1, admin)
+                statement.setObject(2, actor)
+                statement.executeQuery().use { rows ->
+                    return buildList { while (rows.next()) add(rows.toSessionRecord()) }
+                }
+            }
+        }
+    }
+
+    /**
      * Soft-deletes or restores a session without removing its content or audio metadata.
      * Returns null when missing, false when already in the requested state.
      */
