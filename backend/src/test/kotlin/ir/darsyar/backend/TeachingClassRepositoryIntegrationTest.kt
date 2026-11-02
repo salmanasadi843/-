@@ -42,16 +42,26 @@ class TeachingClassRepositoryIntegrationTest {
             val ownerB = UUID.randomUUID()
             val student = UUID.randomUUID()
             val visitor = UUID.randomUUID()
+            val teacherWithoutClasses = UUID.randomUUID()
 
             dataSource.connection.use { connection ->
                 connection.prepareStatement(
-                    "INSERT INTO app_users(id, display_name, status) VALUES (?, 'مدیر', 'active'), (?, 'استاد الف', 'active'), (?, 'استاد ب', 'active'), (?, 'دانشجو', 'active'), (?, 'مهمان', 'active')"
+                    "INSERT INTO app_users(id, display_name, status) VALUES (?, 'مدیر', 'active'), (?, 'استاد الف', 'active'), (?, 'استاد ب', 'active'), (?, 'دانشجو', 'active'), (?, 'مهمان', 'active'), (?, 'استاد بدون کلاس', 'active')"
                 ).use { statement ->
                     statement.setObject(1, admin)
                     statement.setObject(2, ownerA)
                     statement.setObject(3, ownerB)
                     statement.setObject(4, student)
                     statement.setObject(5, visitor)
+                    statement.setObject(6, teacherWithoutClasses)
+                    statement.executeUpdate()
+                }
+                connection.prepareStatement(
+                    "INSERT INTO app_roles(user_id, role_name) VALUES (?, 'teacher'), (?, 'teacher'), (?, 'teacher')"
+                ).use { statement ->
+                    statement.setObject(1, ownerA)
+                    statement.setObject(2, ownerB)
+                    statement.setObject(3, teacherWithoutClasses)
                     statement.executeUpdate()
                 }
             }
@@ -125,7 +135,14 @@ class TeachingClassRepositoryIntegrationTest {
             val studentDirectory = repository.listVisibleTeachers(student.toString(), setOf(AppRole.STUDENT))
             assertEquals(listOf(ownerA.toString()), studentDirectory.map { it.userId })
             val adminDirectory = repository.listVisibleTeachers(admin.toString(), setOf(AppRole.SUPER_ADMIN))
-            assertEquals(listOf(ownerA.toString()), adminDirectory.map { it.userId })
+            assertEquals(
+                setOf(ownerA.toString(), ownerB.toString(), teacherWithoutClasses.toString()),
+                adminDirectory.map { it.userId }.toSet()
+            )
+            assertEquals(
+                "استاد بدون کلاس",
+                adminDirectory.single { it.userId == teacherWithoutClasses.toString() }.displayName
+            )
 
             val studentView = repository.listVisible(student.toString(), setOf(AppRole.STUDENT))
             assertEquals(
