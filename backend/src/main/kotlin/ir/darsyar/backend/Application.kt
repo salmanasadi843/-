@@ -583,6 +583,10 @@ fun Application.module(
                         question = request.question.trim(),
                         selectedText = request.selectedText?.trim()?.takeIf { it.isNotEmpty() }
                     )
+                    if (!result.isGroundedIn(session.transcript)) {
+                        call.respond(HttpStatusCode.BadGateway, ApiError("invalid_ai_response"))
+                        return@post
+                    }
                     call.respond(AiAnswerApiRecord(result.answer, result.citations.map {
                         AiCitationApiRecord(it.startOffset, it.endOffset, it.excerpt)
                     }))
