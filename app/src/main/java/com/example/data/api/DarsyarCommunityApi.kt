@@ -31,6 +31,8 @@ interface DarsyarCommunityApi {
     suspend fun deletePost(@Path("postId") postId:String,@Header("Authorization") auth:String):Response<Unit>
     @PATCH("api/v1/forum/topics/{topicId}/moderation")
     suspend fun moderate(@Path("topicId") topicId:String,@Body body:ForumModerationDto,@Header("Authorization") auth:String):Response<Unit>
+    @GET("api/v1/me/notes")
+    suspend fun myNotes(@Header("Authorization") auth:String):Response<List<BackendGlobalSessionNoteDto>>
     @GET("api/v1/classes/{classId}/sessions/{sessionId}/notes")
     suspend fun sessionNotes(@Path("classId") classId:String,@Path("sessionId") sessionId:String,@Header("Authorization") auth:String):Response<List<BackendSessionNoteDto>>
     @POST("api/v1/classes/{classId}/sessions/{sessionId}/notes")
@@ -77,6 +79,13 @@ data class SessionStateWriteDto(val isFavorite:Boolean,val lastPlaybackPositionM
 @JsonClass(generateAdapter=true)
 data class BackendSessionNoteDto(
     val id:String,val userId:String,val sessionId:String,val quotedText:String,val noteText:String,
+    val startOffset:Int?,val endOffset:Int?,val createdAtMs:Long,val updatedAtMs:Long
+)
+@JsonClass(generateAdapter=true)
+data class BackendGlobalSessionNoteDto(
+    val id:String,val userId:String,val sessionId:String,val classId:String,
+    val classTitle:String,val sessionTitle:String,val courseName:String,val teacherName:String,
+    val dateMs:Long?,val quotedText:String,val noteText:String,
     val startOffset:Int?,val endOffset:Int?,val createdAtMs:Long,val updatedAtMs:Long
 )
 @JsonClass(generateAdapter=true)
@@ -129,6 +138,7 @@ class DarsyarCommunityRepository(private val api:DarsyarCommunityApi) {
         val response=api.moderate(topicId,ForumModerationDto(pinned,locked),"Bearer $token")
         if(!response.isSuccessful) throw BackendHttpException(response.code(),"forum/moderation")
     }
+    suspend fun myNotes(token:String)=checked(api.myNotes("Bearer $token"),"me/notes")
     suspend fun sessionNotes(token:String,classId:String,sessionId:String)=
         checked(api.sessionNotes(classId,sessionId,"Bearer $token"),"session/notes")
     suspend fun createSessionNote(token:String,classId:String,sessionId:String,quotedText:String,noteText:String,startOffset:Int?=null,endOffset:Int?=null)=
