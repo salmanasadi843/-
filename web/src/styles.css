@@ -25,3 +25,12 @@
 .announcement-item:last-child{border-bottom:0}
 .announcement-item p{margin:8px 0}
 .announcement-item small{color:var(--muted,#777);font-size:12px}
+
+
+.entry-layout { width: min(100% - 2rem, 760px); display: grid; grid-template-columns: minmax(260px, 340px) minmax(280px, 1fr); gap: 1rem; align-items: start; margin: 2rem auto; }
+.public-catalog { text-align: right; max-height: min(80vh, 760px); overflow: auto; }
+.public-catalog h2 { margin-top: 0; }
+.public-catalog .list-item { display: flex; width: 100%; flex-direction: column; align-items: flex-start; gap: .35rem; text-align: right; margin: .4rem 0; padding: .8rem; }
+.public-catalog .list-item small { color: var(--muted, #777); }
+.public-catalog .transcript { white-space: pre-wrap; overflow-wrap: anywhere; max-height: 45vh; overflow: auto; font: inherit; line-height: 1.9; }
+@media (max-width: 700px) { .entry-layout { grid-template-columns: 1fr; width: min(100% - 1.25rem, 460px); } .public-catalog { max-height: none; } }
