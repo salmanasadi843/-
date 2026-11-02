@@ -46,6 +46,30 @@ data class UpdateTeachingClass(
 
 /** Database boundary for class operations. Writes and audit entries commit atomically. */
 class TeachingClassRepository(private val dataSource: DataSource) {
+    /** Anonymous catalog: only published, non-hidden public classes; no private metadata leaks. */
+    fun listAnonymousPublic(): List<TeachingClassRecord> {
+        val sql = """
+            SELECT c.id::text, c.owner_user_id::text, c.title, c.description,
+                   c.term, c.visibility, c.is_published, c.is_hidden, c.sort_order,
+                   c.folder_id::text
+            FROM teaching_classes c
+            WHERE c.deleted_at IS NULL
+              AND c.is_hidden = false
+              AND c.is_published = true
+              AND c.visibility = 'public'
+            ORDER BY c.sort_order, c.title
+        """.trimIndent()
+        dataSource.connection.use { connection ->
+            connection.prepareStatement(sql).use { statement ->
+                statement.executeQuery().use { rows ->
+                    return buildList {
+                        while (rows.next()) add(rows.toTeachingClassRecord())
+                    }
+                }
+            }
+        }
+    }
+
     fun listVisible(actorUserId: String, roles: Set<AppRole>): List<TeachingClassRecord> {
         val isAdmin = AppRole.SUPER_ADMIN in roles
         val isTeacher = AppRole.TEACHER in roles
