@@ -19,3 +19,9 @@
 .forum-post-meta{display:flex;justify-content:space-between;gap:10px;align-items:center}
 .forum-post p{margin:10px 0}
 @media(max-width:600px){.notification-popover{position:fixed;top:72px;inset-inline:6vw;width:88vw}.forum-panel{padding:12px}.forum-post.nested{margin-inline-start:12px}}
+
+.announcement-panel{margin-top:22px;padding:18px;border:1px solid var(--border,#e5e1d8);border-radius:16px;background:var(--panel,#fff)}
+.announcement-item{padding:13px 0;border-bottom:1px solid var(--border,#e5e1d8)}
+.announcement-item:last-child{border-bottom:0}
+.announcement-item p{margin:8px 0}
+.announcement-item small{color:var(--muted,#777);font-size:12px}
