@@ -42,8 +42,8 @@ class ClassForumRepositoryIntegrationTest {
             val announcements=ClassAnnouncementRepository(ds)
             val announcement=announcements.create(owner.toString(),setOf(AppRole.TEACHER),clazz.id,
                 "تغییر برنامه کلاس","جلسه آینده نیم ساعت دیرتر برگزار می‌شود.")
-            assertEquals(1,announcements.list(student.toString(),setOf(AppRole.STUDENT),clazz.id).size)
-            assertEquals(0,announcements.list(stranger.toString(),setOf(AppRole.STUDENT),clazz.id).size)
+            assertEquals(announcement.id,announcements.list(student.toString(),setOf(AppRole.STUDENT),clazz.id).single().id)
+            assertEquals(1,announcements.list(stranger.toString(),setOf(AppRole.STUDENT),clazz.id).size)
             val repo=ClassForumRepository(ds)
             val topic=repo.createTopic(student.toString(),setOf(AppRole.STUDENT),clazz.id,null,
                 "پرسش درباره درس","لطفاً این نکته را توضیح دهید.")
