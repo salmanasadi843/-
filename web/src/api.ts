@@ -35,6 +35,10 @@ export type AccessCode = {
 export type CreatedAccessCode = {
   id: string; classId: string; code: string; expiresAtMs: number | null; maxUses: number | null;
 };
+export type AudioSource = {
+  id: string; sessionId: string; sourceKind: string; sourceUrl: string | null;
+  storageKey: string | null; title: string | null; sortOrder: number; isActive: boolean;
+};
 const base = (import.meta.env.VITE_DARSYAR_API_BASE_URL || "").replace(/\/+$/, "");
 async function request<T>(path: string, token: string, options: RequestInit = {}): Promise<T> {
   if (!base) throw new Error("نشانی سرور تنظیم نشده است.");
@@ -105,4 +109,10 @@ export const api = {
     request<CreatedAccessCode>(`/api/v1/classes/${encodeURIComponent(classId)}/access-codes`, token, { method: "POST", body: JSON.stringify(data) }),
   revokeAccessCode: (codeId: string, token: string) =>
     request<void>(`/api/v1/access-codes/${encodeURIComponent(codeId)}`, token, { method: "DELETE" }),
+  audioSources: (sessionId: string, token: string) =>
+    request<AudioSource[]>(`/api/v1/sessions/${encodeURIComponent(sessionId)}/audio-sources`, token),
+  createAudioSource: (sessionId: string, data: { sourceKind: string; sourceUrl: string; title?: string; sortOrder?: number }, token: string) =>
+    request<AudioSource>(`/api/v1/sessions/${encodeURIComponent(sessionId)}/audio-sources`, token, { method: "POST", body: JSON.stringify(data) }),
+  deactivateAudioSource: (sessionId: string, sourceId: string, token: string) =>
+    request<void>(`/api/v1/sessions/${encodeURIComponent(sessionId)}/audio-sources/${encodeURIComponent(sourceId)}`, token, { method: "DELETE" }),
 };
