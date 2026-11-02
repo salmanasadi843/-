@@ -41,6 +41,7 @@ fun BackendBrowseScreen(onBack: () -> Unit) {
     var showNotifications by remember { mutableStateOf(false) }
     var unreadNotificationCount by remember { mutableIntStateOf(0) }
     var notificationTopicId by remember { mutableStateOf<String?>(null) }
+    var notificationPostId by remember { mutableStateOf<String?>(null) }
     var status by remember { mutableStateOf("در حال آماده‌سازی اتصال…") }
 
     fun withFreshToken(action: suspend (String) -> Unit) {
@@ -272,6 +273,7 @@ fun BackendBrowseScreen(onBack: () -> Unit) {
                     BackendForumPanel(
                         classId = clazz.id,
                         initialTopicId = notificationTopicId,
+                        initialPostId = notificationPostId,
                         sessionId = selectedSession?.id,
                         currentUserId = accountId,
                         canModerate = "super_admin" in accountRoles || ("teacher" in accountRoles && clazz.ownerUserId == accountId),
@@ -313,6 +315,7 @@ fun BackendBrowseScreen(onBack: () -> Unit) {
             val targetClass = classes.firstOrNull { it.id == notification.classId }
             if (targetClass != null) {
                 notificationTopicId = notification.topicId
+                notificationPostId = notification.postId
                 selectedTeacherId = targetClass.ownerUserId
                 openClass(targetClass)
                 status = if (notification.topicId != null) "کلاس مرتبط باز شد؛ گفت‌وگوی مربوطه در تالار انتخاب می‌شود." else "کلاس مرتبط با اعلان باز شد."
