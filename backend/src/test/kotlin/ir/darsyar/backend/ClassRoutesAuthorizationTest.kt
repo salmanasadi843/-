@@ -294,4 +294,26 @@ class ClassRoutesAuthorizationTest {
     }
 
 
+    @Test
+    fun aiAnswerEndpointRejectsUnauthenticatedRequests() = testApplication {
+        application { module(unusedDataSource(), verifier(), usersWith(AppRole.STUDENT)) }
+        val response = client.post(
+            "/api/v1/classes/11111111-1111-4111-8111-111111111111/sessions/22222222-2222-4222-8222-222222222222/ai/answer"
+        ) {
+            contentType(ContentType.Application.Json)
+            setBody("""{"question":"این جلسه چه می‌گوید؟"}""")
+        }
+        assertEquals(HttpStatusCode.Unauthorized, response.status)
+    }
+
+    @Test
+    fun aiAnswerEndpointValidatesSessionIdentifiersBeforeDatabaseAccess() = testApplication {
+        application { module(unusedDataSource(), verifier(), usersWith(AppRole.STUDENT)) }
+        val response = client.post("/api/v1/classes/not-a-uuid/sessions/not-a-uuid/ai/answer") {
+            header(HttpHeaders.Authorization, "Bearer test-token")
+            contentType(ContentType.Application.Json)
+            setBody("""{"question":"این جلسه چه می‌گوید؟"}""")
+        }
+        assertEquals(HttpStatusCode.BadRequest, response.status)
+    }
 }
