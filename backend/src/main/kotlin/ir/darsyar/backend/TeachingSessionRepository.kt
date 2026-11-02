@@ -286,6 +286,93 @@ class TeachingSessionRepository(private val dataSource: DataSource) {
         }
     }
 
+    /** Move a session to another class without replacing its identity or content. */
+    fun move(
+        actorUserId: String,
+        roles: Set<AppRole>,
+        sessionId: String,
+        targetClassId: String
+    ): TeachingSessionRecord? {
+        val actor = UUID.fromString(actorUserId)
+        val sessionUuid = UUID.fromString(sessionId)
+        val targetUuid = UUID.fromString(targetClassId)
+        dataSource.connection.use { connection ->
+            connection.autoCommit = false
+            try {
+                val before = connection.prepareStatement(
+                    """
+                    SELECT s.id::text, s.class_id::text, s.course_id::text, s.title, s.course_name,
+                      s.professor_name, s.date_ms, s.audio_duration_ms, s.transcript,
+                      s.original_transcript, s.ai_summary, s.ai_key_points,
+                      s.ai_quiz_json::text AS ai_quiz_json, s.tags, s.is_published,
+                      s.last_edited_ms, s.sort_order, s.version, c.owner_user_id::text
+                    FROM teaching_sessions s JOIN teaching_classes c ON c.id = s.class_id
+                    WHERE s.id = ? AND s.deleted_at IS NULL AND c.deleted_at IS NULL
+                    FOR UPDATE OF s
+                    """.trimIndent()
+                ).use { st ->
+                    st.setObject(1, sessionUuid)
+                    st.executeQuery().use { rs ->
+                        if (rs.next()) rs.toSessionRecord() to rs.getString("owner_user_id") else null
+                    }
+                } ?: run { connection.rollback(); return null }
+
+                val (old, sourceOwnerId) = before
+                val target = connection.prepareStatement(
+                    """
+                    SELECT owner_user_id::text, title, teacher_name
+                    FROM teaching_classes
+                    WHERE id = ? AND deleted_at IS NULL
+                    FOR UPDATE
+                    """.trimIndent()
+                ).use { st ->
+                    st.setObject(1, targetUuid)
+                    st.executeQuery().use { rs ->
+                        if (rs.next()) Triple(rs.getString("owner_user_id"), rs.getString("title"), rs.getString("teacher_name"))
+                        else null
+                    }
+                } ?: throw IllegalArgumentException("Target class not found.")
+
+                val (targetOwnerId, targetTitle, targetTeacherName) = target
+                val admin = AppRole.SUPER_ADMIN in roles
+                val teacherOwnsBoth = AppRole.TEACHER in roles &&
+                    sourceOwnerId == actorUserId && targetOwnerId == actorUserId
+                if (!admin && !teacherOwnsBoth) {
+                    throw SecurityException("Moving sessions between these classes is not allowed.")
+                }
+                require(old.classId != targetClassId) { "Session is already in the target class." }
+
+                val moved = connection.prepareStatement(
+                    """
+                    UPDATE teaching_sessions
+                    SET class_id = ?, course_id = NULL, course_name = '',
+                        professor_name = ?, sort_order = 0,
+                        last_edited_ms = ?, version = version + 1, updated_at = now()
+                    WHERE id = ?
+                    RETURNING id::text, class_id::text, course_id::text, title, course_name,
+                      professor_name, date_ms, audio_duration_ms, transcript, original_transcript,
+                      ai_summary, ai_key_points, ai_quiz_json::text AS ai_quiz_json, tags,
+                      is_published, last_edited_ms, sort_order, version
+                    """.trimIndent()
+                ).use { st ->
+                    st.setObject(1, targetUuid)
+                    st.setString(2, targetTeacherName)
+                    st.setLong(3, System.currentTimeMillis())
+                    st.setObject(4, sessionUuid)
+                    st.executeQuery().use { rs -> check(rs.next()); rs.toSessionRecord() }
+                }
+                connection.writeSessionAudit(actor, "session.moved", moved, old)
+                connection.commit()
+                return moved
+            } catch (error: Throwable) {
+                connection.rollback()
+                throw error
+            } finally {
+                connection.autoCommit = true
+            }
+        }
+    }
+
     fun update(actorUserId: String, roles: Set<AppRole>, sessionId: String, command: UpdateTeachingSession): TeachingSessionRecord? {
         require(command.title.isNotBlank()) { "Session title is required." }
         require(command.audioDurationMs >= 0) { "Audio duration cannot be negative." }
