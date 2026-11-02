@@ -707,12 +707,26 @@ export default function App() {
           <button disabled={busy || !classTitle.trim() || (isAdmin && selectedTeacher === "all")}>{busy ? "در حال ذخیره…" : editingClass ? "ذخیره تغییرات" : "ذخیره کلاس"}</button>
         </form>}
 <div className="folder-filter"><button className={browseFolderId === "all" ? "choice active" : "choice"} onClick={() => setBrowseFolderId("all")}>همه پوشه‌ها</button><button className={browseFolderId === "none" ? "choice active" : "choice"} onClick={() => setBrowseFolderId("none")}>بدون پوشه</button>{visibleFolders.filter(folder => !folder.isHidden).map(folder => <button key={folder.id} className={browseFolderId === folder.id ? "choice active" : "choice"} onClick={() => setBrowseFolderId(folder.id)}>{folder.name}</button>)}</div>
-        <div className="class-grid">
+        {selectedTeacher === "all" ? <div className="teacher-class-groups">
+          {teachers.map(teacher => {
+            const teacherClasses = visibleClasses.filter(c => c.ownerUserId === teacher.userId);
+            if (!teacherClasses.length) return null;
+            return <section className="teacher-class-group" key={teacher.userId}>
+              <div className="section-head"><h3>استاد: {teacher.displayName}</h3><span className="muted">{teacherClasses.length} کلاس</span></div>
+              <div className="class-grid">
+                {teacherClasses.map(c => <button key={c.id} className={selectedClass?.id === c.id ? "class-card selected" : "class-card"} onClick={() => void openClass(c)}>
+                  <span className="tag">{c.visibility === "public" ? "عمومی" : "خصوصی"}{!c.isPublished ? " · پیش‌نویس" : ""}</span><strong>{c.title}</strong>
+                </button>)}
+              </div>
+            </section>;
+          })}
+          {!visibleClasses.length && <p className="muted empty">کلاسی برای نمایش وجود ندارد.</p>}
+        </div> : <div className="class-grid">
           {visibleClasses.map(c => <button key={c.id} className={selectedClass?.id === c.id ? "class-card selected" : "class-card"} onClick={() => void openClass(c)}>
-            <span className="tag">{c.visibility === "public" ? "عمومی" : "خصوصی"}{!c.isPublished ? " · پیش‌نویس" : ""}</span><strong>{c.title}</strong><span className="muted">{teachers.find(t => t.userId === c.ownerUserId)?.displayName ?? "استاد"}</span>
+            <span className="tag">{c.visibility === "public" ? "عمومی" : "خصوصی"}{!c.isPublished ? " · پیش‌نویس" : ""}</span><strong>{c.title}</strong>
           </button>)}
           {!visibleClasses.length && <p className="muted empty">کلاسی برای نمایش وجود ندارد.</p>}
-        </div>
+        </div>}
         {selectedClass && <div className="lower">
           <div className="section-head"><h2>جلسه‌های {selectedClass.title}</h2><span className="muted">{sessions.length} جلسه</span></div>
           {canManageSelectedClass && <section className="access-manager">
