@@ -322,7 +322,7 @@ class TeachingSessionRepository(private val dataSource: DataSource) {
                 val (old, sourceOwnerId) = before
                 val target = connection.prepareStatement(
                     """
-                    SELECT owner_user_id::text, title, teacher_name
+                    SELECT owner_user_id::text
                     FROM teaching_classes
                     WHERE id = ? AND deleted_at IS NULL
                     FOR UPDATE
@@ -330,12 +330,11 @@ class TeachingSessionRepository(private val dataSource: DataSource) {
                 ).use { st ->
                     st.setObject(1, targetUuid)
                     st.executeQuery().use { rs ->
-                        if (rs.next()) Triple(rs.getString("owner_user_id"), rs.getString("title"), rs.getString("teacher_name"))
-                        else null
+                        if (rs.next()) rs.getString("owner_user_id") else null
                     }
                 } ?: throw IllegalArgumentException("Target class not found.")
 
-                val (targetOwnerId, targetTitle, targetTeacherName) = target
+                val targetOwnerId = target
                 val admin = AppRole.SUPER_ADMIN in roles
                 val teacherOwnsBoth = AppRole.TEACHER in roles &&
                     sourceOwnerId == actorUserId && targetOwnerId == actorUserId
@@ -344,11 +343,17 @@ class TeachingSessionRepository(private val dataSource: DataSource) {
                 }
                 require(old.classId != targetClassId) { "Session is already in the target class." }
 
+                val nextOrder = connection.prepareStatement(
+                    "SELECT COALESCE(MAX(sort_order), 0) + 1 FROM teaching_sessions WHERE class_id = ? AND deleted_at IS NULL"
+                ).use { st ->
+                    st.setObject(1, targetUuid)
+                    st.executeQuery().use { rs -> check(rs.next()); rs.getInt(1) }
+                }
+
                 val moved = connection.prepareStatement(
                     """
                     UPDATE teaching_sessions
-                    SET class_id = ?, course_id = NULL, course_name = '',
-                        professor_name = ?, sort_order = 0,
+                    SET class_id = ?, course_id = NULL, sort_order = ?,
                         last_edited_ms = ?, version = version + 1, updated_at = now()
                     WHERE id = ?
                     RETURNING id::text, class_id::text, course_id::text, title, course_name,
@@ -358,7 +363,7 @@ class TeachingSessionRepository(private val dataSource: DataSource) {
                     """.trimIndent()
                 ).use { st ->
                     st.setObject(1, targetUuid)
-                    st.setString(2, targetTeacherName)
+                    st.setInt(2, nextOrder)
                     st.setLong(3, System.currentTimeMillis())
                     st.setObject(4, sessionUuid)
                     st.executeQuery().use { rs -> check(rs.next()); rs.toSessionRecord() }
