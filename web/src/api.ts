@@ -133,6 +133,14 @@ export const api = {
     request<SessionState>(`/api/v1/classes/${encodeURIComponent(classId)}/sessions/${encodeURIComponent(sessionId)}/state`, token),
   saveSessionState: (classId: string, sessionId: string, data: { isFavorite: boolean; lastPlaybackPositionMs: number }, token: string) =>
     request<SessionState>(`/api/v1/classes/${encodeURIComponent(classId)}/sessions/${encodeURIComponent(sessionId)}/state`, token, { method: "PUT", body: JSON.stringify(data) }),
+  sessionNotes: (classId: string, sessionId: string, token: string) =>
+    request<SessionNote[]>(`/api/v1/classes/${encodeURIComponent(classId)}/sessions/${encodeURIComponent(sessionId)}/notes`, token),
+  createSessionNote: (classId: string, sessionId: string, data: { quotedText?: string; noteText: string }, token: string) =>
+    request<SessionNote>(`/api/v1/classes/${encodeURIComponent(classId)}/sessions/${encodeURIComponent(sessionId)}/notes`, token, { method: "POST", body: JSON.stringify(data) }),
+  updateSessionNote: (noteId: string, data: { quotedText?: string; noteText: string }, token: string) =>
+    request<SessionNote>(`/api/v1/session-notes/${encodeURIComponent(noteId)}`, token, { method: "PATCH", body: JSON.stringify(data) }),
+  deleteSessionNote: (noteId: string, token: string) =>
+    request<void>(`/api/v1/session-notes/${encodeURIComponent(noteId)}`, token, { method: "DELETE" }),
   createSession: (classId: string, data: NewSession, token: string) =>
     request<SessionDetail>(`/api/v1/classes/${encodeURIComponent(classId)}/sessions`, token, { method: "POST", body: JSON.stringify(data) }),
   updateSession: (sessionId: string, data: NewSession & { courseId?: string | null; audioDurationMs?: number; tags?: string; aiQuizJson?: string | null }, token: string) =>
