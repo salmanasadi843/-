@@ -99,6 +99,85 @@ import java.util.Locale
 import com.example.ui.theme.TagPillBg
 import com.example.ui.theme.TagPillText
 
+@Composable
+private fun FormattedHandoutContent(
+    content: String,
+    modifier: Modifier = Modifier
+) {
+    val numberPattern = Regex("""^([0-9۰-۹]+(?:[ـ.-][0-9۰-۹]+)*[.)]?)\\s+(.+)$""")
+    val letterPattern = Regex("""^([الفبپتثجچحخدذرزژسشصضطظعغفقکگلمنوهی])[).ـ]\\s*(.+)$""")
+
+    Column(modifier = modifier) {
+        content.lines().forEach { rawLine ->
+            val line = rawLine.trim()
+            if (line.isEmpty()) {
+                Spacer(Modifier.height(7.dp))
+            } else {
+                val markdownLevel = line.takeWhile { it == '#' }.length
+                val cleanLine = line.removePrefix("#").trim().removeSurrounding("**")
+                val numbered = numberPattern.matchEntire(cleanLine)
+                val lettered = letterPattern.matchEntire(cleanLine)
+
+                when {
+                    markdownLevel > 0 -> {
+                        Text(
+                            text = cleanLine.removePrefix("#").trim(),
+                            color = Color.Black,
+                            fontSize = when (markdownLevel) {
+                                1 -> 25.sp
+                                2 -> 22.sp
+                                3 -> 19.sp
+                                else -> 17.sp
+                            },
+                            fontWeight = FontWeight.Bold,
+                            lineHeight = 32.sp,
+                            modifier = Modifier.padding(top = 10.dp, bottom = 5.dp)
+                        )
+                    }
+                    numbered != null -> {
+                        val prefix = numbered.groupValues[1]
+                        val level = Regex("[ـ.-]").findAll(prefix).count() + 1
+                        Text(
+                            text = cleanLine,
+                            color = Color.Black,
+                            fontSize = when (level) {
+                                1 -> 24.sp
+                                2 -> 21.sp
+                                3 -> 18.sp
+                                else -> 16.sp
+                            },
+                            fontWeight = FontWeight.Bold,
+                            lineHeight = 30.sp,
+                            modifier = Modifier.padding(
+                                top = if (level == 1) 12.dp else 8.dp,
+                                bottom = 4.dp
+                            )
+                        )
+                    }
+                    lettered != null -> {
+                        Text(
+                            text = cleanLine,
+                            color = Color.Black,
+                            fontSize = 16.sp,
+                            fontWeight = FontWeight.SemiBold,
+                            lineHeight = 27.sp,
+                            modifier = Modifier.padding(top = 5.dp, bottom = 2.dp)
+                        )
+                    }
+                    else -> {
+                        Text(
+                            text = cleanLine,
+                            color = MaterialTheme.colorScheme.onSurface,
+                            fontSize = 17.sp,
+                            lineHeight = 29.sp
+                        )
+                    }
+                }
+            }
+        }
+    }
+}
+
 private fun formatDuration(milliseconds: Long): String {
     val totalSeconds = (milliseconds / 1000L).coerceAtLeast(0L)
     val hours = totalSeconds / 3600L
@@ -664,15 +743,10 @@ fun TranscriptTab(
             shape = RoundedCornerShape(16.dp),
             color = MaterialTheme.colorScheme.surface
         ) {
-            Text(
-                text = lecture.aiSummary?.takeIf { it.isNotBlank() }
+            FormattedHandoutContent(
+                content = lecture.aiSummary?.takeIf { it.isNotBlank() }
                     ?: "هنوز خلاصه‌ای برای این جلسه تولید نشده است.",
-                modifier = Modifier.padding(16.dp),
-                style = MaterialTheme.typography.bodyLarge.copy(lineHeight = 28.sp),
-                color = if (lecture.aiSummary.isNullOrBlank())
-                    MaterialTheme.colorScheme.onSurfaceVariant
-                else
-                    MaterialTheme.colorScheme.onPrimaryContainer
+                modifier = Modifier.padding(16.dp)
             )
         }
 
