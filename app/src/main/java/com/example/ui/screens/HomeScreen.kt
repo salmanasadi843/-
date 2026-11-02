@@ -245,7 +245,7 @@ fun HomeScreen(
                     IconButton(onClick = viewModel::openClasses) { Icon(Icons.Default.School, "کلاس‌ها") }
                     if (BackendEndpointConfig.isConfigured) {
                         IconButton(onClick = onNavigateToBackendBrowse) {
-                            Icon(Icons.Default.Cloud, contentDescription = "مرور ساختار سرور جدید")
+                            Icon(Icons.Default.Cloud, contentDescription = "تالار گفتگو و اعلان‌ها")
                         }
                     }
                     IconButton(onClick = { viewModel.navigateTo(Screen.Settings) }) { Icon(Icons.Default.Settings, "تنظیمات") }
