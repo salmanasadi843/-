@@ -226,7 +226,7 @@ export default function App() {
     finally { setLoadingGlobalNotes(false); }
   }
 
-  async function openGlobalNote(note: GlobalSessionNote) {
+  async function openGlobalNote(note: GlobalSessionNote, editAfterOpen = false) {
     if (!user) return;
     setBusy(true); setError(""); setShowMyNotes(false);
     try {
@@ -246,7 +246,8 @@ export default function App() {
       setSelectedClass(classRecord); setSessions(sessionList); setDetail(sessionDetail);
       setAudioSources(sources); setSessionState(savedState); setPlaybackPositionMs(savedState.lastPlaybackPositionMs);
       setSessionNotes(notes); setActiveNoteId(note.id); setPendingNoteFocusId(note.id);
-      setNoteQuote(""); setNoteDraft(""); setNoteOffsets(null); setEditingNoteId(null);
+      if (editAfterOpen) editPersonalNote(note);
+      else { setNoteQuote(""); setNoteDraft(""); setNoteOffsets(null); setEditingNoteId(null); }
     } catch (e) { setError(message(e)); }
     finally { setBusy(false); }
   }
@@ -841,7 +842,7 @@ export default function App() {
           <p className="pre">{note.noteText}</p>
           <small className="muted">{note.courseName ? note.courseName + " · " : ""}{new Date(note.updatedAtMs).toLocaleDateString("fa-IR")}</small>
         </div>
-        <div className="global-note-actions"><button className="ghost" onClick={() => void openGlobalNote(note)}>رفتن به جلسه و متن</button><button className="ghost danger-text" disabled={busy} onClick={() => void deleteGlobalNote(note.id)}>حذف</button></div>
+        <div className="global-note-actions"><button className="ghost" onClick={() => void openGlobalNote(note)}>رفتن به جلسه و متن</button><button className="ghost" onClick={() => void openGlobalNote(note, true)}>ویرایش</button><button className="ghost danger-text" disabled={busy} onClick={() => void deleteGlobalNote(note.id)}>حذف</button></div>
       </article>)}
       {!globalNotes.length && <p className="muted empty">هنوز یادداشتی ثبت نکرده‌اید.</p>}
       {!!globalNotes.length && !globalNotes.some(note => [note.noteText,note.quotedText,note.classTitle,note.sessionTitle,note.courseName,note.teacherName].join(" ").toLocaleLowerCase().includes(globalNotesSearch.trim().toLocaleLowerCase())) && <p className="muted empty">نتیجه‌ای برای این جست‌وجو پیدا نشد.</p>}
