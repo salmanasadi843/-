@@ -13,7 +13,7 @@ import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 
 @Composable
-fun BackendForumPanel(classId:String, sessionId:String?, canModerate:Boolean, onStatus:(String)->Unit) {
+fun BackendForumPanel(classId:String, sessionId:String?, currentUserId:String, canModerate:Boolean, onStatus:(String)->Unit) {
     val context=LocalContext.current
     val scope= rememberCoroutineScope()
     var topics by remember(classId) { mutableStateOf<List<BackendForumTopicDto>>(emptyList()) }
@@ -23,6 +23,13 @@ fun BackendForumPanel(classId:String, sessionId:String?, canModerate:Boolean, on
     var body by remember { mutableStateOf("") }
     var reply by remember { mutableStateOf("") }
     var parentId by remember { mutableStateOf<String?>(null) }
+    var editingTopic by remember { mutableStateOf(false) }
+    var editTopicTitle by remember { mutableStateOf("") }
+    var editTopicBody by remember { mutableStateOf("") }
+    var editingPostId by remember { mutableStateOf<String?>(null) }
+    var editPostBody by remember { mutableStateOf("") }
+    var pendingDeleteTopic by remember { mutableStateOf<BackendForumTopicDto?>(null) }
+    var pendingDeletePost by remember { mutableStateOf<BackendForumPostDto?>(null) }
     var busy by remember { mutableStateOf(false) }
     var error by remember { mutableStateOf<String?>(null) }
 
@@ -65,7 +72,24 @@ fun BackendForumPanel(classId:String, sessionId:String?, canModerate:Boolean, on
         selected?.let { topic ->
             HorizontalDivider()
             Text(topic.title,style=MaterialTheme.typography.titleSmall,fontWeight=FontWeight.Bold)
-            Text(topic.body,style=MaterialTheme.typography.bodyMedium)
+            if(topic.authorUserId==currentUserId || canModerate) {
+                Row(horizontalArrangement=Arrangement.spacedBy(8.dp)) {
+                    TextButton(enabled=!busy,onClick={editTopicTitle=topic.title;editTopicBody=topic.body;editingTopic=true}) { Text("ویرایش بحث") }
+                    TextButton(enabled=!busy,onClick={pendingDeleteTopic=topic}) { Text("حذف بحث") }
+                }
+            }
+            if(editingTopic) {
+                OutlinedTextField(value=editTopicTitle,onValueChange={editTopicTitle=it},modifier=Modifier.fillMaxWidth(),label={Text("عنوان بحث")},singleLine=true)
+                OutlinedTextField(value=editTopicBody,onValueChange={editTopicBody=it},modifier=Modifier.fillMaxWidth(),label={Text("متن بحث")},minLines=2)
+                Row(horizontalArrangement=Arrangement.spacedBy(8.dp)) {
+                    Button(enabled=!busy && editTopicTitle.isNotBlank() && editTopicBody.isNotBlank(),onClick={run { token,repo ->
+                        val updated=repo.updateTopic(token,topic.id,editTopicTitle.trim(),editTopicBody.trim())
+                        topics=topics.map { if(it.id==updated.id) updated else it };selected=updated;editingTopic=false
+                        onStatus("بحث ویرایش شد.")
+                    }}) { Text("ذخیره تغییرات") }
+                    TextButton(enabled=!busy,onClick={editingTopic=false}) { Text("انصراف") }
+                }
+            } else Text(topic.body,style=MaterialTheme.typography.bodyMedium)
             if(canModerate) Row(horizontalArrangement=Arrangement.spacedBy(8.dp)) {
                 TextButton(enabled=!busy,onClick={run { token,repo ->
                     repo.moderate(token,topic.id,!topic.isPinned,topic.isLocked)
@@ -80,7 +104,23 @@ fun BackendForumPanel(classId:String, sessionId:String?, canModerate:Boolean, on
                 Card(Modifier.fillMaxWidth().padding(start=if(post.parentPostId==null) 0.dp else 18.dp)) {
                     Column(Modifier.padding(10.dp)) {
                         Text(post.authorName,fontWeight=FontWeight.SemiBold,style=MaterialTheme.typography.labelMedium)
-                        Text(post.body,style=MaterialTheme.typography.bodySmall)
+                        if(editingPostId==post.id) {
+                            OutlinedTextField(value=editPostBody,onValueChange={editPostBody=it},modifier=Modifier.fillMaxWidth(),label={Text("متن پاسخ")},minLines=2)
+                            Row(horizontalArrangement=Arrangement.spacedBy(8.dp)) {
+                                Button(enabled=!busy && editPostBody.isNotBlank(),onClick={run { token,repo ->
+                                    val updated=repo.updatePost(token,post.id,editPostBody.trim())
+                                    posts=posts.map { if(it.id==updated.id) updated else it };editingPostId=null
+                                    onStatus("پاسخ ویرایش شد.")
+                                }}) { Text("ذخیره") }
+                                TextButton(enabled=!busy,onClick={editingPostId=null}) { Text("انصراف") }
+                            }
+                        } else {
+                            Text(post.body,style=MaterialTheme.typography.bodySmall)
+                            if(post.authorUserId==currentUserId || canModerate) Row {
+                                TextButton(enabled=!busy,onClick={editingPostId=post.id;editPostBody=post.body}) { Text("ویرایش") }
+                                TextButton(enabled=!busy,onClick={pendingDeletePost=post}) { Text("حذف") }
+                            }
+                        }
                         if(!topic.isLocked) TextButton(onClick={parentId=post.id}) { Text("پاسخ به این پیام") }
                     }
                 }
@@ -99,6 +139,30 @@ fun BackendForumPanel(classId:String, sessionId:String?, canModerate:Boolean, on
                 }
             } else Text("این بحث بسته شده و امکان ارسال پاسخ ندارد.",style=MaterialTheme.typography.bodySmall)
         }
+    }
+    pendingDeleteTopic?.let { topic ->
+        AlertDialog(
+            onDismissRequest={pendingDeleteTopic=null},
+            title={Text("حذف بحث")},
+            text={Text("این بحث و پاسخ‌های آن از تالار حذف شود؟")},
+            confirmButton={TextButton(onClick={run { token,repo ->
+                repo.deleteTopic(token,topic.id);topics=topics.filterNot{it.id==topic.id};selected=null;posts=emptyList();editingTopic=false;pendingDeleteTopic=null
+                onStatus("بحث حذف شد.")
+            }}) { Text("حذف") }},
+            dismissButton={TextButton(onClick={pendingDeleteTopic=null}) { Text("انصراف") }}
+        )
+    }
+    pendingDeletePost?.let { post ->
+        AlertDialog(
+            onDismissRequest={pendingDeletePost=null},
+            title={Text("حذف پاسخ")},
+            text={Text("این پاسخ از تالار حذف شود؟")},
+            confirmButton={TextButton(onClick={run { token,repo ->
+                repo.deletePost(token,post.id);posts=posts.filterNot{it.id==post.id};topics=repo.topics(token,classId);selected=topics.firstOrNull{it.id==selected?.id};pendingDeletePost=null
+                onStatus("پاسخ حذف شد.")
+            }}) { Text("حذف") }},
+            dismissButton={TextButton(onClick={pendingDeletePost=null}) { Text("انصراف") }}
+        )
     }
 }
 
