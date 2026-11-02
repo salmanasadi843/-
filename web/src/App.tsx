@@ -1,6 +1,6 @@
 import { FormEvent, useEffect, useMemo, useState } from "react";
 import { onAuthStateChanged, signInWithEmailAndPassword, signOut, User } from "firebase/auth";
-import { api, AccessCode, AudioSource, ClassAnnouncement, ClassMember, ClassRecord, CourseRecord, ForumPost, ForumTopic, Me, SessionDetail, SessionState, SessionSummary, Teacher, TeacherFolder, UserNotification } from "./api";
+import { api, AccessCode, AudioSource, ClassAnnouncement, ClassMember, ClassRecord, CourseRecord, ForumPost, ForumTopic, Me, SessionDetail, SessionNote, SessionState, SessionSummary, Teacher, TeacherFolder, UserNotification } from "./api";
 import { auth, firebaseConfigured } from "./firebase";
 
 export default function App() {
@@ -51,6 +51,10 @@ export default function App() {
   const [showNotifications, setShowNotifications] = useState(false);
   const [audioSources, setAudioSources] = useState<AudioSource[]>([]);
   const [sessionState, setSessionState] = useState<SessionState | null>(null);
+  const [sessionNotes, setSessionNotes] = useState<SessionNote[]>([]);
+  const [noteQuote, setNoteQuote] = useState("");
+  const [noteDraft, setNoteDraft] = useState("");
+  const [editingNoteId, setEditingNoteId] = useState<string | null>(null);
   const [playbackPositionMs, setPlaybackPositionMs] = useState(0);
   const [audioTitle, setAudioTitle] = useState("");
   const [audioUrl, setAudioUrl] = useState("");
@@ -188,15 +192,18 @@ export default function App() {
     setBusy(true); setError(""); setDetail(null);
     try {
       const token = await user.getIdToken();
-      const [sessionDetail, sources, savedState] = await Promise.all([
+      const [sessionDetail, sources, savedState, notes] = await Promise.all([
         api.session(selectedClass.id, item.id, token),
         api.audioSources(item.id, token),
         api.sessionState(selectedClass.id, item.id, token),
+        api.sessionNotes(selectedClass.id, item.id, token),
       ]);
       setDetail(sessionDetail);
       setAudioSources(sources);
       setSessionState(savedState);
       setPlaybackPositionMs(savedState.lastPlaybackPositionMs);
+      setSessionNotes(notes);
+      setNoteQuote(""); setNoteDraft(""); setEditingNoteId(null);
     }
     catch (e) { setError(message(e)); }
     finally { setBusy(false); }
@@ -213,6 +220,36 @@ export default function App() {
       setSessionState(saved);
       setPlaybackPositionMs(saved.lastPlaybackPositionMs);
       setNotice("وضعیت مطالعه شما ذخیره شد.");
+    } catch (e) { setError(message(e)); }
+    finally { setBusy(false); }
+  }
+
+  async function savePersonalNote(event: FormEvent) {
+    event.preventDefault();
+    if (!user || !selectedClass || !detail || !noteDraft.trim()) return;
+    setBusy(true); setError(""); setNotice("");
+    try {
+      const token = await user.getIdToken();
+      const data = { quotedText: noteQuote.trim(), noteText: noteDraft.trim() };
+      if (editingNoteId) await api.updateSessionNote(editingNoteId, data, token);
+      else await api.createSessionNote(selectedClass.id, detail.id, data, token);
+      setSessionNotes(await api.sessionNotes(selectedClass.id, detail.id, token));
+      setNoteQuote(""); setNoteDraft(""); setEditingNoteId(null);
+      setNotice("یادداشت شخصی ذخیره شد.");
+    } catch (e) { setError(message(e)); }
+    finally { setBusy(false); }
+  }
+  function editPersonalNote(note: SessionNote) {
+    setEditingNoteId(note.id); setNoteQuote(note.quotedText); setNoteDraft(note.noteText);
+  }
+  async function deletePersonalNote(noteId: string) {
+    if (!user) return;
+    setBusy(true); setError(""); setNotice("");
+    try {
+      await api.deleteSessionNote(noteId, await user.getIdToken());
+      setSessionNotes(current => current.filter(note => note.id !== noteId));
+      if (editingNoteId === noteId) { setEditingNoteId(null); setNoteQuote(""); setNoteDraft(""); }
+      setNotice("یادداشت حذف شد.");
     } catch (e) { setError(message(e)); }
     finally { setBusy(false); }
   }
@@ -880,6 +917,28 @@ export default function App() {
               </label>
               <button className="ghost" disabled={busy} onClick={() => void persistSessionState({ lastPlaybackPositionMs: playbackPositionMs })}>ذخیره موقعیت مطالعه</button>
             </>}
+          </section>
+          <section className="access-manager">
+            <div className="section-head"><h3>یادداشت‌های شخصی من</h3><span className="muted">{sessionNotes.length} یادداشت · فقط برای شما</span></div>
+            {sessionNotes.map(note => <article className="code-row" key={note.id}>
+              <div>
+                {note.quotedText && <blockquote className="pre">{note.quotedText}</blockquote>}
+                <p className="pre">{note.noteText}</p>
+              </div>
+              <span>
+                <button className="ghost" type="button" onClick={() => editPersonalNote(note)}>ویرایش</button>
+                <button className="ghost danger-text" type="button" disabled={busy} onClick={() => void deletePersonalNote(note.id)}>حذف</button>
+              </span>
+            </article>)}
+            <form className="editor-form" onSubmit={savePersonalNote}>
+              <h4>{editingNoteId ? "ویرایش یادداشت" : "افزودن یادداشت شخصی"}</h4>
+              <label>عبارت مرتبط از متن درس (اختیاری)<textarea value={noteQuote} onChange={e => setNoteQuote(e.target.value)} rows={2} maxLength={10000} placeholder="عبارت یا بخش مهم درس را اینجا وارد کنید…" /></label>
+              <label>یادداشت شما<textarea value={noteDraft} onChange={e => setNoteDraft(e.target.value)} rows={3} maxLength={20000} placeholder="نکته، پرسش یا توضیح خود را بنویسید…" required /></label>
+              <span>
+                <button disabled={busy || !noteDraft.trim()}>{busy ? "در حال ذخیره…" : editingNoteId ? "ذخیره ویرایش" : "ذخیره یادداشت"}</button>
+                {editingNoteId && <button type="button" className="ghost" onClick={() => { setEditingNoteId(null); setNoteQuote(""); setNoteDraft(""); }}>انصراف</button>}
+              </span>
+            </form>
           </section>
           <section className="access-manager">
             <div className="section-head"><h3>فایل‌ها و پیوندهای صوتی</h3><span className="muted">{audioSources.length} منبع</span></div>
