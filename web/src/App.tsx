@@ -710,14 +710,17 @@ export default function App() {
         {selectedTeacher === "all" ? <div className="teacher-class-groups">
           {teachers.map(teacher => {
             const teacherClasses = visibleClasses.filter(c => c.ownerUserId === teacher.userId);
-            if (!teacherClasses.length) return null;
             return <section className="teacher-class-group" key={teacher.userId}>
-              <div className="section-head"><h3>استاد: {teacher.displayName}</h3><span className="muted">{teacherClasses.length} کلاس</span></div>
-              <div className="class-grid">
+              <div className="section-head">
+                <h3>استاد: {teacher.displayName}</h3>
+                <span className="muted">{teacherClasses.length} کلاس</span>
+                {isAdmin && <button className="ghost" onClick={() => {setSelectedTeacher(teacher.userId);setBrowseFolderId("all");setSelectedClass(null);setDetail(null);}}>مدیریت استاد</button>}
+              </div>
+              {teacherClasses.length ? <div className="class-grid">
                 {teacherClasses.map(c => <button key={c.id} className={selectedClass?.id === c.id ? "class-card selected" : "class-card"} onClick={() => void openClass(c)}>
                   <span className="tag">{c.visibility === "public" ? "عمومی" : "خصوصی"}{!c.isPublished ? " · پیش‌نویس" : ""}</span><strong>{c.title}</strong>
                 </button>)}
-              </div>
+              </div> : <p className="muted">هنوز کلاسی برای این استاد ثبت نشده است.</p>}
             </section>;
           })}
           {!visibleClasses.length && <p className="muted empty">کلاسی برای نمایش وجود ندارد.</p>}
