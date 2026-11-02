@@ -411,7 +411,7 @@ fun Application.module(
             )
         }
 
-        authenticate("firebase") {
+        // Public catalog deliberately sits outside Firebase authentication. It exposes only published public classes.\n        get("/api/v1/public/classes") {\n            call.respond(classRepository.listAnonymousPublic().map { it.toApiRecord() })\n        }\n\n        authenticate("firebase") {
             get("/api/v1/me") {
                 val principal = call.principal<DarsyarPrincipal>()
                 if (principal == null) {
