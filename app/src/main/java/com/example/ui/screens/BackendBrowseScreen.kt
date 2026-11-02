@@ -249,6 +249,13 @@ fun BackendBrowseScreen(onBack: () -> Unit) {
                     }
                 }
                 item {
+                    BackendAnnouncementsPanel(
+                        classId = clazz.id,
+                        canManage = "super_admin" in accountRoles || ("teacher" in accountRoles && clazz.ownerUserId == accountId),
+                        onStatus = { status = it }
+                    )
+                }
+                item {
                     BackendForumPanel(
                         classId = clazz.id,
                         sessionId = selectedSession?.id,
