@@ -28,6 +28,8 @@ Build verification: `npm run build`. GitHub Actions runs the same production bui
 - Student redemption of private-class codes and teacher/admin membership list with revocation.
 - Soft deletion of classes and sessions, with recovery panels for authorized managers.
 - Session audio sources: add direct audio URLs or hosted/external links, play direct URLs in the browser, and deactivate links without deleting the underlying file.
+- Class discussion forum: create class-wide or session-linked topics, threaded replies, pin/lock moderation for the responsible teacher/admin.
+- In-app notification inbox: new-topic/reply notifications, user mentions via `@[user-uuid]`, unread count and mark-as-read.
 - Super-admin cross-teacher content management; teacher controls are limited to their own classes by backend authorization.
 - Backend remains the authority for all permission checks; UI visibility is not treated as a security boundary.
 
@@ -38,7 +40,7 @@ Build verification: `npm run build`. GitHub Actions runs the same production bui
 - Student-facing learning progress, bookmarks and personal session state.
 - Search, transcript navigation/highlighting, notes/questions and AI study tools.
 - Speech-to-text workflows and richer audio integration; this increment stores external links only and does not upload audio.
-- Discussion forum for each class and session, including threaded questions/replies, moderation, notifications and references to lesson sections.
+- Forum enhancements still pending: editing/deleting individual replies and topics, file attachments, richer user-mention picker, notification preferences and push delivery; current mentions use an explicit user UUID syntax.
 - Full Android Room/Firestore synchronization and safe migration workflows.
 - End-to-end tests against a disposable staging environment, security review and production operations runbook.
 
