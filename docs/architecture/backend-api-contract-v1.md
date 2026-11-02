@@ -16,10 +16,13 @@
 - منابع صوتی: `GET/POST /api/v1/sessions/{sessionId}/audio-sources`, `PATCH/DELETE /api/v1/sessions/{sessionId}/audio-sources/{sourceId}`.
 - کد ورود: `GET/POST /api/v1/classes/{classId}/access-codes`, `DELETE /api/v1/access-codes/{codeId}`, `POST /api/v1/class-memberships/redeem`.
 - عضویت: `GET /api/v1/classes/{classId}/memberships`, `DELETE /api/v1/classes/{classId}/memberships/{studentUserId}`.
+- تالار گفتگو: `GET/POST /api/v1/classes/{classId}/forum/topics`, `GET/POST /api/v1/forum/topics/{topicId}/posts`, `PATCH /api/v1/forum/topics/{topicId}/moderation` برای سنجاق/قفل؛ بحث می‌تواند به یک جلسه همان کلاس متصل باشد.
+- اعلان‌ها: `GET /api/v1/notifications?unreadOnly=true|false`, `POST /api/v1/notifications/{notificationId}/read`. اعلان‌های بحث تازه، پاسخ و mention در پایگاه داده ذخیره می‌شوند؛ ارسال push notification هنوز پیاده نشده است.
+- Migration `V4__class_forums_and_notifications.sql` جداول موضوع‌ها، پاسخ‌های چندسطحی، اعلان‌ها و indexهای inbox را اضافه می‌کند.
 
 نکته مهم دسترسی عمومی: مسیرهای فعلی زیر `authenticate("firebase")` هستند؛ بنابراین کلاس `public` در Backend فعلی یعنی بدون عضویت کلاس برای حساب واردشده قابل مشاهده است، نه مشاهده ناشناس بدون ورود. همچنین مسیر مستقل `GET /api/v1/classes/{classId}` برای جزئیات یک کلاس و صفحه‌بندی فهرست هنوز پیاده نشده‌اند. تا زمان افزودن و آزمون endpoint عمومی، ستون «مهمان» در ماتریس بالا قابلیت هدف آینده است و نباید در سایت به‌عنوان قابلیت موجود نمایش داده شود.
 
-مرورگر Android فعلی فقط خواندن را پشتیبانی می‌کند: فهرست استادان و کلاس‌ها، فهرست خلاصه جلسه‌ها و جزئیات جلسه انتخاب‌شده. هیچ عملیات نوشتن یا همگام‌سازی Room در این اتصال فعال نیست. این فهرست، مسیرهای ثبت‌شده در کد است و به‌معنی تکمیل همه نیازهای محصول یا اتصال عملیاتی کلاینت نیست. مواردی مانند `POST /api/v1/auth/exchange`، فهرست ثبت‌نام‌های کاربر، endpointهای sync، صفحه‌بندی cursor-based، وضعیت شخصی جلسه و OpenAPI کامل هنوز در این فاز به‌عنوان قرارداد هدف/کار باقیمانده‌اند. نام‌های قرارداد اولیه مانند `teacher-requests` و `classes/{classId}/join` با مسیر واقعی فعلی یکسان نیستند؛ مسیرهای بالا مرجع پیاده‌سازی فعلی‌اند.
+مرورگر Android فعلی برای محتوای آموزشی اصلی همچنان فقط خواندن را پشتیبانی می‌کند؛ پنل جامعه در حال اضافه‌شدن است و از API مشترک تالار/اعلان استفاده می‌کند. این پنل هنوز جایگزین تجربه کامل Android/Room نیست. هیچ عملیات نوشتن یا همگام‌سازی Room در این اتصال فعال نیست. این فهرست، مسیرهای ثبت‌شده در کد است و به‌معنی تکمیل همه نیازهای محصول یا اتصال عملیاتی کلاینت نیست. مواردی مانند `POST /api/v1/auth/exchange`، فهرست ثبت‌نام‌های کاربر، endpointهای sync، صفحه‌بندی cursor-based، وضعیت شخصی جلسه و OpenAPI کامل هنوز در این فاز به‌عنوان قرارداد هدف/کار باقیمانده‌اند. نام‌های قرارداد اولیه مانند `teacher-requests` و `classes/{classId}/join` با مسیر واقعی فعلی یکسان نیستند؛ مسیرهای بالا مرجع پیاده‌سازی فعلی‌اند.
 
 آزمون‌های CI با PostgreSQL موقت، مجوزهای مسیرهای کلاس، پوشه، دوره، جلسه، صوت، کد ورود و عضویت را بررسی می‌کنند. موفقیت CI staging به‌تنهایی پذیرش امنیتی یا مجوز استقرار عملیاتی نیست.
 
