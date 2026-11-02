@@ -25,7 +25,6 @@ import androidx.compose.ui.text.buildAnnotatedString
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.TextFieldValue
 import androidx.compose.ui.text.TextRange
-import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.unit.dp
 import com.example.data.api.*
 import kotlinx.coroutines.Dispatchers
@@ -51,7 +50,8 @@ fun BackendBrowseScreen(onBack: () -> Unit) {
     var noteStartOffset by remember { mutableStateOf<Int?>(null) }
     var noteEndOffset by remember { mutableStateOf<Int?>(null) }
     var activeNoteId by remember { mutableStateOf<String?>(null) }
-    var transcriptSelection by remember { mutableStateOf(TextRange.Zero) }
+    var originalTranscriptSelection by remember { mutableStateOf(TextRange.Zero) }
+    var editedTranscriptSelection by remember { mutableStateOf(TextRange.Zero) }
     val originalTranscriptRequester = remember { BringIntoViewRequester() }
     val editedTranscriptRequester = remember { BringIntoViewRequester() }
     var editingNoteId by remember { mutableStateOf<String?>(null) }
@@ -141,7 +141,7 @@ fun BackendBrowseScreen(onBack: () -> Unit) {
             selectedSessionState = result.second
             sessionNotes = result.third
             noteQuote = ""; noteDraft = ""; noteStartOffset = null; noteEndOffset = null
-            activeNoteId = null; transcriptSelection = TextRange.Zero; editingNoteId = null
+            activeNoteId = null; originalTranscriptSelection = TextRange.Zero; editedTranscriptSelection = TextRange.Zero; editingNoteId = null
             playbackPositionDraft = result.second.lastPlaybackPositionMs.toFloat()
             status = "جزئیات جلسه، وضعیت مطالعه و یادداشت‌های شخصی دریافت شد."
         }
@@ -485,9 +485,9 @@ fun BackendBrowseScreen(onBack: () -> Unit) {
                                     if (start >= 0 && anchor != null) addStyle(SpanStyle(background = MaterialTheme.colorScheme.tertiaryContainer), start, (start + anchor.quotedText.length).coerceAtMost(transcript.length))
                                 }
                                 BasicTextField(
-                                    value = TextFieldValue(annotated, selection = transcriptSelection),
+                                    value = TextFieldValue(annotated, selection = originalTranscriptSelection),
                                     onValueChange = { value ->
-                                        transcriptSelection = value.selection
+                                        originalTranscriptSelection = value.selection
                                         if (!value.selection.collapsed) {
                                             val a = value.selection.min.coerceIn(0, transcript.length)
                                             val b = value.selection.max.coerceIn(a, transcript.length)
@@ -512,9 +512,9 @@ fun BackendBrowseScreen(onBack: () -> Unit) {
                                 if (editedStart >= 0 && editedAnchor != null) addStyle(SpanStyle(background = MaterialTheme.colorScheme.tertiaryContainer), editedStart, (editedStart + editedAnchor.quotedText.length).coerceAtMost(edited.length))
                             }
                             BasicTextField(
-                                value = TextFieldValue(editedAnnotated, selection = transcriptSelection),
+                                value = TextFieldValue(editedAnnotated, selection = editedTranscriptSelection),
                                 onValueChange = { value ->
-                                    transcriptSelection = value.selection
+                                    editedTranscriptSelection = value.selection
                                     if (!value.selection.collapsed) {
                                         val a = value.selection.min.coerceIn(0, edited.length)
                                         val b = value.selection.max.coerceIn(a, edited.length)
