@@ -9,7 +9,7 @@ import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.Cloud
 import androidx.compose.material.icons.filled.Person
 import androidx.compose.material.icons.filled.School
-import androidx.compose.material.icons.filled.MenuBook
+import androidx.compose.material.icons.filled.MenuBook\nimport androidx.compose.material.icons.filled.Notifications
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
@@ -34,7 +34,7 @@ fun BackendBrowseScreen(onBack: () -> Unit) {
     var selectedTeacherId by remember { mutableStateOf<String?>(null) }
     var selectedClass by remember { mutableStateOf<BackendClassDto?>(null) }
     var selectedSession by remember { mutableStateOf<BackendSessionDto?>(null) }
-    var busy by remember { mutableStateOf(false) }
+    var busy by remember { mutableStateOf(false) }\n    var accountId by remember { mutableStateOf("") }\n    var accountRoles by remember { mutableStateOf<List<String>>(emptyList()) }\n    var showNotifications by remember { mutableStateOf(false) }
     var status by remember { mutableStateOf("در حال آماده‌سازی اتصال…") }
 
     fun withFreshToken(action: suspend (String) -> Unit) {
