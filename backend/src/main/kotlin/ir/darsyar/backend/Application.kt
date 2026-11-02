@@ -198,6 +198,7 @@ data class SessionApiRecord(
     val version: Long
 )
 
+@Serializable
 data class AudioSourceWriteRequest(
     val sourceKind: String? = null,
     val sourceUrl: String? = null,
