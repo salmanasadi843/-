@@ -162,8 +162,6 @@ export const api = {
     request<SessionDetail>(`/api/v1/sessions/${encodeURIComponent(sessionId)}/move`, token, {
       method: "POST", body: JSON.stringify({ targetClassId }),
     }),
-  moveSession: (sessionId: string, targetClassId: string, token: string) =>
-    request<SessionDetail>(`/api/v1/sessions/${encodeURIComponent(sessionId)}/move`, token, { method: "POST", body: JSON.stringify({ targetClassId }) }),
   updateSession: (sessionId: string, data: NewSession & { courseId?: string | null; audioDurationMs?: number; tags?: string; aiQuizJson?: string | null }, token: string) =>
     request<SessionDetail>(`/api/v1/sessions/${encodeURIComponent(sessionId)}`, token, { method: "PATCH", body: JSON.stringify(data) }),
   deleteSession: (sessionId: string, token: string) =>
