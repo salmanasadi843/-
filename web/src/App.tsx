@@ -892,7 +892,7 @@ export default function App() {
   if (!user) return <main className="center"><div className="entry-layout">
     <form className="panel narrow" onSubmit={login}>
       <Brand /><h1>ورود به درس‌یار</h1><p className="muted">با حساب کاربری فعلی درس‌یار وارد شوید.</p>
-      <label>ایمیل<input type="email" autoComplete="username" value={email} onChange={e => setEmail(e.target.value)} required /></label>
+      <label>ایمیل<input id="login-email" type="email" autoComplete="username" value={email} onChange={e => setEmail(e.target.value)} required /></label>
       <label>گذرواژه<input type="password" autoComplete="current-password" value={password} onChange={e => setPassword(e.target.value)} required /></label>
       {error && <p className="error">{error}</p>}
       {notice && <p className="success">{notice}</p>}
@@ -917,7 +917,8 @@ export default function App() {
           <p className="muted">می‌توانید بخشی از متن را انتخاب کنید تا در همین نشست به‌صورت موقت هایلایت شود؛ این هایلایت ذخیره نمی‌شود.</p>
           <pre className="transcript" onMouseUp={capturePublicTranscriptSelection}>{publicTranscriptWithHighlight()}</pre>
           {publicHighlight && <button type="button" className="ghost" onClick={() => setPublicHighlight(null)}>پاک‌کردن هایلایت موقت</button>}
-          <p className="muted">برای پرسیدن سؤال از هوش مصنوعی، ذخیره هایلایت، یادداشت و نشانک، ابتدا وارد حساب کاربری شوید.</p>
+          <p className="muted">هایلایت این صفحه فقط موقت است. برای پرسیدن سؤال از هوش مصنوعی یا ذخیره هایلایت، یادداشت و نشانک باید وارد حساب کاربری شوید.</p>
+          <button type="button" className="ghost" onClick={() => { setNotice("برای ادامه، ایمیل حساب خود را وارد کنید و سپس دکمه ورود را بزنید."); document.getElementById("login-email")?.scrollIntoView({ behavior: "smooth", block: "center" }); document.getElementById("login-email")?.focus(); }}>ورود برای استفاده از امکانات تعاملی</button>
         </> : publicSessions.map(session => <button className="list-item" key={session.id} onClick={() => void openPublicSession(session)}>{session.title}</button>)}
         {!publicLoading && !publicSessions.length && !publicDetail && <p className="muted">هنوز جلسه عمومی منتشرشده‌ای در این کلاس نیست.</p>}
       </> : <>
