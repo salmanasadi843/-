@@ -51,7 +51,17 @@ class TeacherFolderRepositoryIntegrationTest {
                 CreateTeacherFolder(owner.toString(), null, "اصول"))
             val child = repo.create(owner.toString(), ownerRoles,
                 CreateTeacherFolder(owner.toString(), root.id, "جلسات"))
+            val otherRoot = repo.create(otherTeacher.toString(), ownerRoles,
+                CreateTeacherFolder(otherTeacher.toString(), null, "پوشه استاد دیگر"))
 
+            assertFailsWith<IllegalArgumentException> {
+                repo.create(owner.toString(), ownerRoles,
+                    CreateTeacherFolder(owner.toString(), otherRoot.id, "پوشه نامعتبر"))
+            }
+            assertFailsWith<IllegalArgumentException> {
+                repo.update(owner.toString(), ownerRoles, root.id,
+                    UpdateTeacherFolder(otherRoot.id, "اصول", 0, false))
+            }
             assertFailsWith<SecurityException> {
                 repo.update(otherTeacher.toString(), ownerRoles, root.id,
                     UpdateTeacherFolder(null, "غیرمجاز", 0, false))
@@ -71,13 +81,14 @@ class TeacherFolderRepositoryIntegrationTest {
 
             assertTrue(repo.delete(owner.toString(), ownerRoles, child.id))
             assertTrue(repo.delete(owner.toString(), ownerRoles, root.id))
+            assertTrue(repo.delete(otherTeacher.toString(), ownerRoles, otherRoot.id))
             assertTrue(repo.listVisible(owner.toString(), ownerRoles).isEmpty())
 
             ds.connection.use { c ->
                 c.prepareStatement("SELECT count(*) FROM audit_log WHERE entity_type = 'teacher_folder'").use { s ->
                     s.executeQuery().use { rows ->
                         assertTrue(rows.next())
-                        assertEquals(5, rows.getInt(1))
+                        assertEquals(7, rows.getInt(1))
                     }
                 }
             }
