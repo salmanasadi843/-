@@ -415,6 +415,28 @@ fun Application.module(
         get("/api/v1/public/classes") {
             call.respond(classRepository.listAnonymousPublic().map { it.toApiRecord() })
         }
+        get("/api/v1/public/classes/{classId}/sessions") {
+            val classId = call.parameters["classId"]
+            if (classId == null || runCatching { java.util.UUID.fromString(classId) }.isFailure) {
+                call.respond(HttpStatusCode.BadRequest, ApiError("invalid_class_id"))
+            } else {
+                call.respond(sessionRepository.listAnonymousPublic(classId).map { it.toSummaryApiRecord() })
+            }
+        }
+        get("/api/v1/public/classes/{classId}/sessions/{sessionId}") {
+            val classId = call.parameters["classId"]
+            val sessionId = call.parameters["sessionId"]
+            if (classId == null || sessionId == null ||
+                runCatching { java.util.UUID.fromString(classId) }.isFailure ||
+                runCatching { java.util.UUID.fromString(sessionId) }.isFailure
+            ) {
+                call.respond(HttpStatusCode.BadRequest, ApiError("invalid_session_reference"))
+            } else {
+                val session = sessionRepository.findAnonymousPublic(classId, sessionId)
+                if (session == null) call.respond(HttpStatusCode.NotFound, ApiError("not_found"))
+                else call.respond(session.toApiRecord())
+            }
+        }
 
         authenticate("firebase") {
             get("/api/v1/me") {
