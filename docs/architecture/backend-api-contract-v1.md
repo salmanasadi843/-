@@ -124,6 +124,8 @@
 - `PATCH/DELETE /api/v1/audio-sources/{sourceId}`
 - `GET /api/v1/classes/{classId}/sessions/{sessionId}/state` — دریافت علاقه‌مندی و موقعیت پخش شخصی کاربر؛ فقط برای جلسه‌ای که کاربر مجاز به مشاهده آن است.
 - `PUT /api/v1/classes/{classId}/sessions/{sessionId}/state` — ذخیره هم‌زمان علاقه‌مندی و موقعیت پخش شخصی؛ داده برای هر کاربر جداست و موقعیت باید بین صفر تا هفت روز باشد.
+- یادداشت‌های شخصی جلسه: `GET/POST /api/v1/classes/{classId}/sessions/{sessionId}/notes` و `PATCH/DELETE /api/v1/session-notes/{noteId}`؛ هر یادداشت به حساب نویسنده محدود است و می‌تواند متن نقل‌شده و بازه انتخاب در transcript را نگه دارد. حذف نرم انجام می‌شود.
+- Migration `V6__personal_session_notes.sql` جدول یادداشت‌های خصوصی هر کاربر را با کلید خارجی جلسه و ایندکس فهرست فعال اضافه می‌کند.
 
 ### مدیر اصلی
 
