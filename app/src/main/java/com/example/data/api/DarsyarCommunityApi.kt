@@ -17,10 +17,18 @@ interface DarsyarCommunityApi {
     suspend fun topics(@Path("classId") classId:String,@Header("Authorization") auth:String):Response<List<BackendForumTopicDto>>
     @POST("api/v1/classes/{classId}/forum/topics")
     suspend fun createTopic(@Path("classId") classId:String,@Body body:ForumTopicWriteDto,@Header("Authorization") auth:String):Response<BackendForumTopicDto>
+    @PATCH("api/v1/forum/topics/{topicId}")
+    suspend fun updateTopic(@Path("topicId") topicId:String,@Body body:ForumTopicUpdateDto,@Header("Authorization") auth:String):Response<BackendForumTopicDto>
+    @DELETE("api/v1/forum/topics/{topicId}")
+    suspend fun deleteTopic(@Path("topicId") topicId:String,@Header("Authorization") auth:String):Response<Unit>
     @GET("api/v1/forum/topics/{topicId}/posts")
     suspend fun posts(@Path("topicId") topicId:String,@Header("Authorization") auth:String):Response<List<BackendForumPostDto>>
     @POST("api/v1/forum/topics/{topicId}/posts")
     suspend fun reply(@Path("topicId") topicId:String,@Body body:ForumReplyWriteDto,@Header("Authorization") auth:String):Response<BackendForumPostDto>
+    @PATCH("api/v1/forum/posts/{postId}")
+    suspend fun updatePost(@Path("postId") postId:String,@Body body:ForumPostUpdateDto,@Header("Authorization") auth:String):Response<BackendForumPostDto>
+    @DELETE("api/v1/forum/posts/{postId}")
+    suspend fun deletePost(@Path("postId") postId:String,@Header("Authorization") auth:String):Response<Unit>
     @PATCH("api/v1/forum/topics/{topicId}/moderation")
     suspend fun moderate(@Path("topicId") topicId:String,@Body body:ForumModerationDto,@Header("Authorization") auth:String):Response<Unit>
     @GET("api/v1/notifications")
@@ -57,6 +65,10 @@ data class ForumTopicWriteDto(val sessionId:String?=null,val title:String,val bo
 @JsonClass(generateAdapter=true)
 data class ForumReplyWriteDto(val parentPostId:String?=null,val body:String)
 @JsonClass(generateAdapter=true)
+data class ForumTopicUpdateDto(val title:String,val body:String)
+@JsonClass(generateAdapter=true)
+data class ForumPostUpdateDto(val body:String)
+@JsonClass(generateAdapter=true)
 data class ForumModerationDto(val isPinned:Boolean,val isLocked:Boolean)
 
 class DarsyarCommunityRepository(private val api:DarsyarCommunityApi) {
@@ -70,9 +82,21 @@ class DarsyarCommunityRepository(private val api:DarsyarCommunityApi) {
     suspend fun topics(token:String,classId:String)=checked(api.topics(classId,"Bearer $token"),"forum/topics")
     suspend fun createTopic(token:String,classId:String,sessionId:String?,title:String,body:String)=
         checked(api.createTopic(classId,ForumTopicWriteDto(sessionId,title,body),"Bearer $token"),"forum/topics")
+    suspend fun updateTopic(token:String,topicId:String,title:String,body:String)=
+        checked(api.updateTopic(topicId,ForumTopicUpdateDto(title,body),"Bearer $token"),"forum/topics/update")
+    suspend fun deleteTopic(token:String,topicId:String) {
+        val response=api.deleteTopic(topicId,"Bearer $token")
+        if(!response.isSuccessful) throw BackendHttpException(response.code(),"forum/topics/delete")
+    }
     suspend fun posts(token:String,topicId:String)=checked(api.posts(topicId,"Bearer $token"),"forum/posts")
     suspend fun reply(token:String,topicId:String,parentId:String?,body:String)=
         checked(api.reply(topicId,ForumReplyWriteDto(parentId,body),"Bearer $token"),"forum/reply")
+    suspend fun updatePost(token:String,postId:String,body:String)=
+        checked(api.updatePost(postId,ForumPostUpdateDto(body),"Bearer $token"),"forum/posts/update")
+    suspend fun deletePost(token:String,postId:String) {
+        val response=api.deletePost(postId,"Bearer $token")
+        if(!response.isSuccessful) throw BackendHttpException(response.code(),"forum/posts/delete")
+    }
     suspend fun moderate(token:String,topicId:String,pinned:Boolean,locked:Boolean) {
         val response=api.moderate(topicId,ForumModerationDto(pinned,locked),"Bearer $token")
         if(!response.isSuccessful) throw BackendHttpException(response.code(),"forum/moderation")
