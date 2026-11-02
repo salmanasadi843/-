@@ -181,3 +181,5 @@ jobs:
           test "$AUTH_STATUS" = "401"
           CLASS_AUTH_STATUS="$(curl --silent --output /tmp/classes-auth-response.json --write-out '%{http_code}' http://127.0.0.1:8080/api/v1/classes)"
           test "$CLASS_AUTH_STATUS" = "401"
+          DELETED_SESSIONS_AUTH_STATUS="$(curl --silent --output /tmp/deleted-sessions-auth-response.json --write-out '%{http_code}' http://127.0.0.1:8080/api/v1/sessions/deleted)"
+          test "$DELETED_SESSIONS_AUTH_STATUS" = "401"
