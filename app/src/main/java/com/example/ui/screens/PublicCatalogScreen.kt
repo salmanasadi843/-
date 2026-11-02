@@ -9,6 +9,7 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.text.selection.SelectionContainer
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material3.Card
@@ -101,7 +102,20 @@ fun PublicCatalogScreen(onBack: () -> Unit, onLogin: () -> Unit) {
                     Text(detail.aiKeyPoints.orEmpty())
                 }
                 Text("متن جلسه", style = MaterialTheme.typography.titleMedium)
-                Text(detail.transcript.ifBlank { "متنی برای این جلسه منتشر نشده است." })
+                Text(
+                    "می‌توانید متن عمومی را انتخاب و کپی کنید؛ انتخاب متن فقط موقت است و در حساب ذخیره نمی‌شود.",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                )
+                SelectionContainer {
+                    Text(detail.transcript.ifBlank { "متنی برای این جلسه منتشر نشده است." })
+                }
+                Text(
+                    "برای پرسیدن سؤال از هوش مصنوعی، ذخیره هایلایت، یادداشت و نشانک، ابتدا وارد حساب کاربری شوید.",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    modifier = Modifier.padding(top = 12.dp)
+                )
             } else if (selectedClass != null) {
                 LazyColumn(verticalArrangement = Arrangement.spacedBy(8.dp)) {
                     item {
