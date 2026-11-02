@@ -34,3 +34,5 @@
 .public-catalog .list-item small { color: var(--muted, #777); }
 .public-catalog .transcript { white-space: pre-wrap; overflow-wrap: anywhere; max-height: 45vh; overflow: auto; font: inherit; line-height: 1.9; }
 @media (max-width: 700px) { .entry-layout { grid-template-columns: 1fr; width: min(100% - 1.25rem, 460px); } .public-catalog { max-height: none; } }
+
+.teacher-class-groups{display:grid;gap:22px}.teacher-class-group{padding-top:14px;border-top:1px solid #edf0f4}.teacher-class-group>.section-head{margin-bottom:10px}.teacher-class-group>.section-head h3{margin:0;font-size:15px;color:#344a68}.teacher-class-group .class-grid{margin-top:8px}
