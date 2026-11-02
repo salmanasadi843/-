@@ -60,7 +60,8 @@ class ClassAnnouncementRepository(private val dataSource:DataSource) {
                 c.prepareStatement("SELECT student_user_id FROM class_memberships WHERE class_id=? AND status='active'").use { st ->
                     st.setObject(1,clazz);st.executeQuery().use { rs -> while(rs.next()) recipients+=rs.getObject(1,UUID::class.java) }
                 }
-                recipients.remove(user).forEach { recipient ->
+                recipients.remove(user)
+                recipients.forEach { recipient: UUID ->
                     c.prepareStatement("""
                         INSERT INTO user_notifications(recipient_user_id,actor_user_id,class_id,notification_type,message)
                         VALUES(?,?,?,'class_announcement',?)
