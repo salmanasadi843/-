@@ -1,6 +1,6 @@
 import { FormEvent, MouseEvent, useEffect, useMemo, useState } from "react";
 import { onAuthStateChanged, signInWithEmailAndPassword, signOut, User } from "firebase/auth";
-import { api, AccessCode, AudioSource, ClassAnnouncement, ClassMember, ClassRecord, CourseRecord, ForumPost, ForumTopic, Me, SessionDetail, SessionNote, SessionState, SessionSummary, Teacher, TeacherFolder, UserNotification } from "./api";
+import { api, AccessCode, AudioSource, ClassAnnouncement, ClassMember, ClassRecord, CourseRecord, ForumPost, ForumTopic, Me, SessionDetail, SessionNote, GlobalSessionNote, SessionState, SessionSummary, Teacher, TeacherFolder, UserNotification } from "./api";
 import { auth, firebaseConfigured } from "./firebase";
 
 export default function App() {
@@ -52,6 +52,11 @@ export default function App() {
   const [audioSources, setAudioSources] = useState<AudioSource[]>([]);
   const [sessionState, setSessionState] = useState<SessionState | null>(null);
   const [sessionNotes, setSessionNotes] = useState<SessionNote[]>([]);
+  const [globalNotes, setGlobalNotes] = useState<GlobalSessionNote[]>([]);
+  const [globalNotesSearch, setGlobalNotesSearch] = useState("");
+  const [showMyNotes, setShowMyNotes] = useState(false);
+  const [loadingGlobalNotes, setLoadingGlobalNotes] = useState(false);
+  const [pendingNoteFocusId, setPendingNoteFocusId] = useState<string | null>(null);
   const [noteQuote, setNoteQuote] = useState("");
   const [noteDraft, setNoteDraft] = useState("");
   const [noteOffsets, setNoteOffsets] = useState<{ start: number; end: number } | null>(null);
@@ -210,6 +215,54 @@ export default function App() {
     catch (e) { setError(message(e)); }
     finally { setBusy(false); }
   }
+  async function loadGlobalNotes() {
+    if (!user) return;
+    setLoadingGlobalNotes(true); setError("");
+    try {
+      const items = await api.myNotes(await user.getIdToken());
+      setGlobalNotes(items);
+      setShowMyNotes(true);
+    } catch (e) { setError(message(e)); }
+    finally { setLoadingGlobalNotes(false); }
+  }
+
+  async function openGlobalNote(note: GlobalSessionNote) {
+    if (!user) return;
+    setBusy(true); setError(""); setShowMyNotes(false);
+    try {
+      const token = await user.getIdToken();
+      const classList = classes.length ? classes : await api.classes(token);
+      const classRecord = classList.find(item => item.id === note.classId);
+      if (!classRecord) throw new Error("این کلاس دیگر در فهرست قابل‌دسترسی شما نیست.");
+      const sessionList = await api.sessions(classRecord.id, token);
+      const session = sessionList.find(item => item.id === note.sessionId);
+      if (!session) throw new Error("این جلسه دیگر در دسترس نیست.");
+      const [sessionDetail, sources, savedState, notes] = await Promise.all([
+        api.session(classRecord.id, session.id, token),
+        api.audioSources(session.id, token),
+        api.sessionState(classRecord.id, session.id, token),
+        api.sessionNotes(classRecord.id, session.id, token),
+      ]);
+      setSelectedClass(classRecord); setSessions(sessionList); setDetail(sessionDetail);
+      setAudioSources(sources); setSessionState(savedState); setPlaybackPositionMs(savedState.lastPlaybackPositionMs);
+      setSessionNotes(notes); setActiveNoteId(note.id); setPendingNoteFocusId(note.id);
+      setNoteQuote(""); setNoteDraft(""); setNoteOffsets(null); setEditingNoteId(null);
+    } catch (e) { setError(message(e)); }
+    finally { setBusy(false); }
+  }
+
+  async function deleteGlobalNote(noteId: string) {
+    if (!user || !window.confirm("این یادداشت شخصی حذف شود؟")) return;
+    setBusy(true); setError("");
+    try {
+      await api.deleteSessionNote(noteId, await user.getIdToken());
+      setGlobalNotes(items => items.filter(item => item.id !== noteId));
+      setSessionNotes(items => items.filter(item => item.id !== noteId));
+      setNotice("یادداشت حذف شد.");
+    } catch (e) { setError(message(e)); }
+    finally { setBusy(false); }
+  }
+
   async function persistSessionState(patch: Partial<Pick<SessionState, "isFavorite" | "lastPlaybackPositionMs">>) {
     if (!user || !selectedClass || !detail || !sessionState) return;
     setBusy(true); setError(""); setNotice("");
@@ -263,6 +316,13 @@ export default function App() {
     setNoteOffsets({ start, end: start + quote.length });
     setActiveNoteId(null);
   }
+  useEffect(() => {
+    if (!pendingNoteFocusId || !detail || !sessionNotes.some(note => note.id === pendingNoteFocusId)) return;
+    const note = sessionNotes.find(item => item.id === pendingNoteFocusId);
+    if (note) focusPersonalNote(note);
+    setPendingNoteFocusId(null);
+  }, [pendingNoteFocusId, detail, sessionNotes]);
+
   function focusPersonalNote(note: SessionNote) {
     setActiveNoteId(note.id);
     if (!detail || !note.quotedText) return;
@@ -766,11 +826,26 @@ export default function App() {
     </section>
   </div></main>;
 
-  return <main className="shell">
-    <header className="topbar"><Brand /><div className="account"><div className="notification-wrap"><button className="ghost notification-button" onClick={() => {setShowNotifications(v => !v);if(!showNotifications) void refreshNotifications();}}>اعلان‌ها {notifications.filter(n => !n.isRead).length ? <b className="notification-count">{notifications.filter(n => !n.isRead).length}</b> : null}</button>{showNotifications && <section className="notification-popover"><div className="section-head"><strong>اعلان‌ها</strong><button className="ghost" onClick={() => void refreshNotifications()}>تازه‌سازی</button></div>{notifications.slice(0,30).map(n => <button key={n.id} className={n.isRead ? "notification-item read" : "notification-item"} onClick={() => void openNotification(n)}><span>{n.message}</span><small>{new Date(n.createdAtMs).toLocaleString("fa-IR")}</small></button>)}{!notifications.length && <p className="muted">اعلانی ندارید.</p>}</section>}</div><span>{user.email}</span><button className="ghost" onClick={() => void signOut(auth!)}>خروج</button></div></header>
+  return <main className={showMyNotes ? "shell notes-mode" : "shell"}>
+    <header className="topbar"><Brand /><div className="account">{user && <button className="ghost" onClick={() => showMyNotes ? setShowMyNotes(false) : void loadGlobalNotes()}>{showMyNotes ? "بازگشت به کلاس‌ها" : loadingGlobalNotes ? "در حال دریافت یادداشت‌ها…" : "یادداشت‌های من"}</button>}<div className="notification-wrap"><button className="ghost notification-button" onClick={() => {setShowNotifications(v => !v);if(!showNotifications) void refreshNotifications();}}>اعلان‌ها {notifications.filter(n => !n.isRead).length ? <b className="notification-count">{notifications.filter(n => !n.isRead).length}</b> : null}</button>{showNotifications && <section className="notification-popover"><div className="section-head"><strong>اعلان‌ها</strong><button className="ghost" onClick={() => void refreshNotifications()}>تازه‌سازی</button></div>{notifications.slice(0,30).map(n => <button key={n.id} className={n.isRead ? "notification-item read" : "notification-item"} onClick={() => void openNotification(n)}><span>{n.message}</span><small>{new Date(n.createdAtMs).toLocaleString("fa-IR")}</small></button>)}{!notifications.length && <p className="muted">اعلانی ندارید.</p>}</section>}</div><span>{user.email}</span><button className="ghost" onClick={() => void signOut(auth!)}>خروج</button></div></header>
     <section className="welcome"><div><p className="eyebrow">محیط آموزشی درس‌یار</p><h1>{isAdmin ? "مدیریت و مرور محتوا" : "کلاس‌های آموزشی"}</h1><p>ساختار استاد ← کلاس ← جلسه</p></div><span className="role">{roleLabel(me?.roles ?? [])}</span></section>
     {error && <p className="error notice">{error}</p>}
     {notice && <p className="success notice">{notice}</p>}
+    {showMyNotes && <section className="panel content global-notes-panel">
+      <div className="section-head"><div><h2>یادداشت‌های من</h2><p className="muted">یادداشت‌های شخصی شما در همه کلاس‌ها و جلسه‌های قابل‌دسترسی</p></div><span className="muted">{globalNotes.length} یادداشت</span></div>
+      <input className="global-notes-search" value={globalNotesSearch} onChange={event => setGlobalNotesSearch(event.target.value)} placeholder="جست‌وجو در یادداشت، عبارت، استاد یا کلاس…" />
+      {globalNotes.filter(note => [note.noteText,note.quotedText,note.classTitle,note.sessionTitle,note.courseName,note.teacherName].join(" ").toLocaleLowerCase().includes(globalNotesSearch.trim().toLocaleLowerCase())).map(note => <article className="global-note-row" key={note.id}>
+        <div className="global-note-content">
+          <div className="global-note-meta"><strong>{note.classTitle}</strong><span>{note.teacherName}</span><span>{note.sessionTitle}</span></div>
+          {note.quotedText && <blockquote className="pre">{note.quotedText}</blockquote>}
+          <p className="pre">{note.noteText}</p>
+          <small className="muted">{note.courseName ? note.courseName + " · " : ""}{new Date(note.updatedAtMs).toLocaleDateString("fa-IR")}</small>
+        </div>
+        <div className="global-note-actions"><button className="ghost" onClick={() => void openGlobalNote(note)}>رفتن به جلسه و متن</button><button className="ghost danger-text" disabled={busy} onClick={() => void deleteGlobalNote(note.id)}>حذف</button></div>
+      </article>)}
+      {!globalNotes.length && <p className="muted empty">هنوز یادداشتی ثبت نکرده‌اید.</p>}
+      {!!globalNotes.length && !globalNotes.some(note => [note.noteText,note.quotedText,note.classTitle,note.sessionTitle,note.courseName,note.teacherName].join(" ").toLocaleLowerCase().includes(globalNotesSearch.trim().toLocaleLowerCase())) && <p className="muted empty">نتیجه‌ای برای این جست‌وجو پیدا نشد.</p>}
+    </section>}
     <div className="layout">
       <aside className="panel sidebar">
         {canRedeemCode && <form className="join-form" onSubmit={redeemCode}>
