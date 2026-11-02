@@ -442,7 +442,8 @@ fun Application.module(dataSource: DataSource) {
 fun Application.module(
     dataSource: DataSource,
     tokenVerifier: IdentityTokenVerifier,
-    userRepository: AuthenticatedUserRepository
+    userRepository: AuthenticatedUserRepository,
+    aiAnswerService: AiAnswerService = DisabledAiAnswerService
 ) {
     val authenticationService = AuthenticationService(tokenVerifier, userRepository)
     val classRepository = TeachingClassRepository(dataSource)
@@ -456,7 +457,6 @@ fun Application.module(
     val teacherAdministrationRepository = TeacherAdministrationRepository(dataSource)
     val forumRepository = ClassForumRepository(dataSource)
     val announcementRepository = ClassAnnouncementRepository(dataSource)
-    val aiAnswerService: AiAnswerService = DisabledAiAnswerService
 
     install(ContentNegotiation) { json() }
     install(Authentication) {
