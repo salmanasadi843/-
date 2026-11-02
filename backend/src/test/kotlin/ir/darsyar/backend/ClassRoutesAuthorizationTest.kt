@@ -307,6 +307,47 @@ class ClassRoutesAuthorizationTest {
     }
 
     @Test
+    fun aiAnswerEndpointRejectsBlankQuestionBeforeDatabaseAccess() = testApplication {
+        application { module(unusedDataSource(), verifier(), usersWith(AppRole.STUDENT)) }
+        val response = client.post(
+            "/api/v1/classes/11111111-1111-4111-8111-111111111111/sessions/22222222-2222-4222-8222-222222222222/ai/answer"
+        ) {
+            header(HttpHeaders.Authorization, "Bearer test-token")
+            contentType(ContentType.Application.Json)
+            setBody("""{"question":"   "}""")
+        }
+        assertEquals(HttpStatusCode.BadRequest, response.status)
+    }
+
+    @Test
+    fun aiAnswerEndpointRejectsOversizedQuestionBeforeDatabaseAccess() = testApplication {
+        application { module(unusedDataSource(), verifier(), usersWith(AppRole.STUDENT)) }
+        val oversizedQuestion = "x".repeat(4_001)
+        val response = client.post(
+            "/api/v1/classes/11111111-1111-4111-8111-111111111111/sessions/22222222-2222-4222-8222-222222222222/ai/answer"
+        ) {
+            header(HttpHeaders.Authorization, "Bearer test-token")
+            contentType(ContentType.Application.Json)
+            setBody(kotlinx.serialization.json.Json.encodeToString(AiAnswerWriteRequest(oversizedQuestion)))
+        }
+        assertEquals(HttpStatusCode.BadRequest, response.status)
+    }
+
+    @Test
+    fun aiAnswerEndpointRejectsOversizedSelectedTextBeforeDatabaseAccess() = testApplication {
+        application { module(unusedDataSource(), verifier(), usersWith(AppRole.STUDENT)) }
+        val oversizedSelection = "x".repeat(12_001)
+        val response = client.post(
+            "/api/v1/classes/11111111-1111-4111-8111-111111111111/sessions/22222222-2222-4222-8222-222222222222/ai/answer"
+        ) {
+            header(HttpHeaders.Authorization, "Bearer test-token")
+            contentType(ContentType.Application.Json)
+            setBody(kotlinx.serialization.json.Json.encodeToString(AiAnswerWriteRequest("سؤال", oversizedSelection)))
+        }
+        assertEquals(HttpStatusCode.BadRequest, response.status)
+    }
+
+    @Test
     fun aiAnswerEndpointValidatesSessionIdentifiersBeforeDatabaseAccess() = testApplication {
         application { module(unusedDataSource(), verifier(), usersWith(AppRole.STUDENT)) }
         val response = client.post("/api/v1/classes/not-a-uuid/sessions/not-a-uuid/ai/answer") {
