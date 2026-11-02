@@ -36,17 +36,21 @@ Build verification: `npm run build`. GitHub Actions runs the same production bui
 
 ## Remaining work before product parity or deployment
 
-- Anonymous (not signed-in) public class/session browsing. Current protected API requires Firebase sign-in even for public classes.
+- Public guest browsing is implemented for published, visible public classes and their published sessions through separate anonymous read-only API routes. Private, hidden, unpublished or deleted content remains excluded. The Android guest experience is not enabled yet; its current backend browse screen is an authenticated staging preview.
 - Teacher application submission/review screens and account creation/password reset.
 - Student-facing learning progress, bookmarks and personal session state.
 - Search, transcript navigation/highlighting, notes/questions and AI study tools.
 - Speech-to-text workflows and richer audio integration; this increment stores external links only and does not upload audio.
-- Forum enhancements still pending: editing/deleting individual replies and topics, file attachments, richer user-mention picker, notification preferences and push delivery; current mentions use an explicit user UUID syntax.
+- Forum enhancements still pending: file attachments, richer user-mention picker, notification preferences and push delivery; current mentions use an explicit user UUID syntax. Topic/reply edit and delete controls are implemented in the staging clients.
 - Full Android Room/Firestore synchronization and safe migration workflows.
 - End-to-end tests against a disposable staging environment, security review and production operations runbook.
 
+## Backend and hosting status
+
+Firebase remains the current primary identity/data environment. The shared backend and web client are being developed as a staging layer; this work does not switch Android or web production traffic to that backend. The agreed future direction is to make a suitable Iranian server the primary host and retain Firebase as an independent backup, only after infrastructure, budget, recovery and migration checks are complete.
+
 ## Safety boundary
 
-This is a staging client only. It is not connected to production data and does not authorize server deployment or migration. Firebase production, the current Iran server, DNS and existing user data remain unchanged.
+This is a staging client only. It is not yet a publicly deployed production website and does not authorize server deployment or migration. Firebase production, the current Iran server, DNS and existing user data remain unchanged.
 
 Never add Firebase Admin credentials or other private secrets to `.env.local` or any `VITE_*` variable; Vite variables are bundled into browser code. The Firebase values above are browser app public configuration, not a service-account credential. The backend URL is centralized in `src/api.ts`; do not hardcode hostnames in UI components.
