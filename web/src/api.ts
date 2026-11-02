@@ -85,6 +85,7 @@ export const api = {
     request<CourseRecord>(`/api/v1/courses/${encodeURIComponent(courseId)}`, token, { method: "PATCH", body: JSON.stringify(data) }),
   deleteCourse: (courseId: string, token: string) =>
     request<void>(`/api/v1/courses/${encodeURIComponent(courseId)}`, token, { method: "DELETE" }),
+  deletedSessions: (token: string) => request<SessionSummary[]>("/api/v1/sessions/deleted", token),
   sessions: (classId: string, token: string) => request<SessionSummary[]>(`/api/v1/classes/${encodeURIComponent(classId)}/sessions`, token),
   session: (classId: string, sessionId: string, token: string) =>
     request<SessionDetail>(`/api/v1/classes/${encodeURIComponent(classId)}/sessions/${encodeURIComponent(sessionId)}`, token),
