@@ -27,7 +27,6 @@ import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.combine
-import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.debounce
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
@@ -962,59 +961,6 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
             } catch (e: Exception) {
                 Log.e(TAG, "Reordering class sessions failed", e)
                 _cloudSyncStatus.value = "ذخیره ترتیب جلسات ناموفق بود: ${e.localizedMessage ?: "خطای نامشخص"}"
-            }
-        }
-    }
-
-    /** Move a session between two classes owned by the signed-in teacher.
-     * The existing session row/ID and all transcript, audio, AI and date fields are preserved.
-     */
-    fun moveLectureToClass(
-        lectureId: Long,
-        targetClassId: Long,
-        onMoved: () -> Unit = {},
-        onFailure: (String) -> Unit = {}
-    ) {
-        viewModelScope.launch {
-            if (!teacherPermissionGranted()) {
-                denyTeacherMutation()
-                onFailure("مجوز فعال استاد تأیید نشد.")
-                return@launch
-            }
-
-            val uid = AuthPreferences.currentUid(getApplication<Application>()).orEmpty()
-            val lecture = repository.getLecture(lectureId)
-            val targetClass = repository.getClass(targetClassId)
-            if (uid.isBlank() || lecture == null || lecture.id <= 0L ||
-                targetClass == null || targetClass.id <= 0L ||
-                targetClass.ownerUid != uid) {
-                onFailure("انتقال فقط بین کلاس‌های متعلق به همین حساب مجاز است.")
-                return@launch
-            }
-
-            val sourceClassId = lecture.classId ?: lecture.courseId?.let { repository.getCourse(it)?.classId }
-            val sourceClass = sourceClassId?.let { repository.getClass(it) }
-            if (sourceClass == null || sourceClass.ownerUid != uid || sourceClass.id == targetClass.id) {
-                onFailure("جلسه یا کلاس مبدأ متعلق به این حساب نیست، یا کلاس مقصد همان کلاس فعلی است.")
-                return@launch
-            }
-
-            try {
-                val targetSessions = repository.allLectures.first().filter { it.classId == targetClass.id }
-                val nextOrder = (targetSessions.maxOfOrNull { it.sortOrder } ?: 0) + 1
-                val moved = lecture.copy(
-                    classId = targetClass.id,
-                    courseId = null,
-                    sortOrder = nextOrder,
-                    lastEditedMillis = System.currentTimeMillis()
-                )
-                repository.saveLecture(moved)
-                if (_selectedLecture.value?.id == lectureId) _selectedLecture.value = moved
-                withContext(Dispatchers.IO) { CloudMaterialsSync.sync(getApplication<Application>()) }
-                onMoved()
-            } catch (e: Exception) {
-                Log.e(TAG, "Moving session to another class failed", e)
-                onFailure("انتقال جلسه ذخیره نشد: ${e.localizedMessage ?: "خطای نامشخص"}")
             }
         }
     }
