@@ -1024,6 +1024,23 @@ fun Application.module(
                 }
             }
 
+            route("/api/v1/sessions") {
+                get("/deleted") {
+                    val principal = call.principal<DarsyarPrincipal>()
+                    if (principal == null) {
+                        call.respond(HttpStatusCode.Unauthorized, ApiError("unauthorized"))
+                        return@get
+                    }
+                    try {
+                        call.respond(sessionRepository.listDeleted(principal.userId, principal.roles).map { it.toApiRecord() })
+                    } catch (_: SecurityException) {
+                        call.respond(HttpStatusCode.Forbidden, ApiError("session_recovery_forbidden"))
+                    } catch (_: IllegalArgumentException) {
+                        call.respond(HttpStatusCode.BadRequest, ApiError("invalid_user_id"))
+                    }
+                }
+            }
+
             route("/api/v1/sessions/{sessionId}/audio-sources") {
                 get {
                     val principal = call.principal<DarsyarPrincipal>()
