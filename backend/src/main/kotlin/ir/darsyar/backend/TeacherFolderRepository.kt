@@ -84,6 +84,17 @@ class TeacherFolderRepository(private val dataSource: DataSource) {
         return dataSource.connection.use { connection ->
             connection.autoCommit = false
             try {
+                if (command.parentFolderId != null) {
+                    val parentOwner = connection.prepareStatement(
+                        "SELECT owner_user_id::text FROM teacher_folders WHERE id = ?::uuid AND deleted_at IS NULL"
+                    ).use { statement ->
+                        statement.setString(1, command.parentFolderId)
+                        statement.executeQuery().use { rows -> if (rows.next()) rows.getString(1) else null }
+                    }
+                    require(parentOwner == owner.toString()) {
+                        "Parent folder must belong to the same teacher."
+                    }
+                }
                 val created = connection.prepareStatement(
                     """
                     INSERT INTO teacher_folders(owner_user_id, parent_folder_id, name, sort_order)
@@ -138,6 +149,15 @@ class TeacherFolderRepository(private val dataSource: DataSource) {
                 if (command.parentFolderId != null) {
                     val parent = UUID.fromString(command.parentFolderId)
                     if (parent == id) throw IllegalArgumentException("A folder cannot be its own parent.")
+                    val parentOwner = connection.prepareStatement(
+                        "SELECT owner_user_id::text FROM teacher_folders WHERE id = ? AND deleted_at IS NULL"
+                    ).use { statement ->
+                        statement.setObject(1, parent)
+                        statement.executeQuery().use { rows -> if (rows.next()) rows.getString(1) else null }
+                    }
+                    require(parentOwner == before.ownerUserId) {
+                        "Parent folder must belong to the same teacher."
+                    }
                     val cycle = connection.prepareStatement(
                         """
                         WITH RECURSIVE descendants(id) AS (
