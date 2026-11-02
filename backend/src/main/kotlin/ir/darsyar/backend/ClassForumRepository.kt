@@ -130,7 +130,8 @@ class ClassForumRepository(private val dataSource: DataSource) {
                 }
                 c.prepareStatement("UPDATE forum_topics SET updated_at=now() WHERE id=?").use { it.setObject(1,topic);it.executeUpdate() }
                 val recipients=linkedSetOf<UUID>()
-                recipients+=context.owner\n                recipients+=context.author
+                recipients+=context.owner
+                recipients+=context.author
                 c.prepareStatement("SELECT author_user_id FROM forum_posts WHERE topic_id=? AND deleted_at IS NULL").use {
                     it.setObject(1,topic);it.executeQuery().use { rs -> while(rs.next()) recipients+=rs.getObject(1,UUID::class.java) }
                 }
