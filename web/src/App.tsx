@@ -131,7 +131,7 @@ export default function App() {
     try {
       const token = await user.getIdToken();
       const canManage = me?.roles.includes("super_admin") || (me?.roles.includes("teacher") && item.ownerUserId === me.userId);
-      const [sessionList, courseList, codes, members] = await Promise.all([
+      const [sessionList, courseList, codes, members, topics, notices] = await Promise.all([
         api.sessions(item.id, token),
         api.courses(item.id, token),
         canManage ? api.accessCodes(item.id, token) : Promise.resolve([] as AccessCode[]),
