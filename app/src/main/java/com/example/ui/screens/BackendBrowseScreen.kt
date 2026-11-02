@@ -35,6 +35,8 @@ fun BackendBrowseScreen(onBack: () -> Unit) {
     var selectedTeacherId by remember { mutableStateOf<String?>(null) }
     var selectedClass by remember { mutableStateOf<BackendClassDto?>(null) }
     var selectedSession by remember { mutableStateOf<BackendSessionDto?>(null) }
+    var selectedSessionState by remember { mutableStateOf<BackendSessionStateDto?>(null) }
+    var playbackPositionDraft by remember { mutableStateOf(0f) }
     var busy by remember { mutableStateOf(false) }
     var accountId by remember { mutableStateOf("") }
     var accountRoles by remember { mutableStateOf<List<String>>(emptyList()) }
@@ -107,11 +109,31 @@ fun BackendBrowseScreen(onBack: () -> Unit) {
 
     fun openSession(session: BackendSessionSummaryDto) {
         selectedSession = null
+        selectedSessionState = null
         withFreshToken { token ->
-            selectedSession = withContext(Dispatchers.IO) {
-                DarsyarReadOnlyApiFactory.create().loadSessionDetail(token, session.classId, session.id)
+            val result = withContext(Dispatchers.IO) {
+                val detail = DarsyarReadOnlyApiFactory.create().loadSessionDetail(token, session.classId, session.id)
+                val state = DarsyarCommunityApiFactory.create().sessionState(token, session.classId, session.id)
+                detail to state
             }
-            status = "جزئیات فقط برای جلسه انتخاب‌شده دریافت شد."
+            selectedSession = result.first
+            selectedSessionState = result.second
+            playbackPositionDraft = result.second.lastPlaybackPositionMs.toFloat()
+            status = "جزئیات جلسه و وضعیت مطالعه شخصی دریافت شد."
+        }
+    }
+
+    fun saveSessionState(isFavorite: Boolean, positionMs: Long) {
+        val detail = selectedSession ?: return
+        withFreshToken { token ->
+            val saved = withContext(Dispatchers.IO) {
+                DarsyarCommunityApiFactory.create().saveSessionState(
+                    token, detail.classId, detail.id, isFavorite, positionMs.coerceIn(0L, 604_800_000L)
+                )
+            }
+            selectedSessionState = saved
+            playbackPositionDraft = saved.lastPlaybackPositionMs.toFloat()
+            status = "علاقه‌مندی و پیشرفت شخصی ذخیره شد."
         }
     }
 
@@ -287,6 +309,47 @@ fun BackendBrowseScreen(onBack: () -> Unit) {
                     Card(Modifier.fillMaxWidth(), colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant)) {
                         Column(Modifier.padding(14.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
                             Text("محتوای جلسه انتخاب‌شده", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
+                            Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+                                Text(
+                                    if (selectedSessionState?.isFavorite == true) "این جلسه در علاقه‌مندی‌های شماست." else "این جلسه هنوز ذخیره نشده است.",
+                                    modifier = Modifier.weight(1f),
+                                    style = MaterialTheme.typography.bodySmall
+                                )
+                                TextButton(
+                                    enabled = !busy && selectedSessionState != null,
+                                    onClick = {
+                                        saveSessionState(
+                                            selectedSessionState?.isFavorite != true,
+                                            playbackPositionDraft.toLong()
+                                        )
+                                    }
+                                ) {
+                                    Text(if (selectedSessionState?.isFavorite == true) "حذف از علاقه‌مندی‌ها" else "افزودن به علاقه‌مندی‌ها")
+                                }
+                            }
+                            if (detail.audioDurationMs > 0L) {
+                                val duration = detail.audioDurationMs.coerceAtMost(604_800_000L)
+                                Text(
+                                    "پیشرفت شنیدن: ${(playbackPositionDraft.toLong() / 60_000L)} از ${(duration / 60_000L)} دقیقه",
+                                    style = MaterialTheme.typography.bodySmall
+                                )
+                                Slider(
+                                    value = playbackPositionDraft.coerceIn(0f, duration.toFloat()),
+                                    onValueChange = { playbackPositionDraft = it },
+                                    valueRange = 0f..duration.toFloat(),
+                                    enabled = !busy
+                                )
+                                Button(
+                                    enabled = !busy && selectedSessionState != null,
+                                    onClick = {
+                                        saveSessionState(
+                                            selectedSessionState?.isFavorite == true,
+                                            playbackPositionDraft.toLong()
+                                        )
+                                    },
+                                    modifier = Modifier.fillMaxWidth()
+                                ) { Text("ذخیره پیشرفت شنیدن") }
+                            }
                             detail.aiSummary?.takeIf { it.isNotBlank() }?.let {
                                 Text("خلاصه هوشمند", fontWeight = FontWeight.SemiBold)
                                 Text(it, style = MaterialTheme.typography.bodyMedium)
