@@ -1,0 +1,1170 @@
+package com.example.ui.screens
+
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.contract.ActivityResultContracts
+import androidx.compose.foundation.BorderStroke
+import androidx.compose.foundation.background
+import androidx.compose.foundation.border
+import androidx.compose.foundation.clickable
+import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.verticalScroll
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.automirrored.filled.ArrowBack
+import androidx.compose.material.icons.filled.AutoAwesome
+import androidx.compose.material.icons.filled.CheckCircle
+import androidx.compose.material.icons.filled.DeleteOutline
+import androidx.compose.material.icons.filled.Key
+import androidx.compose.material.icons.filled.NetworkCheck
+import androidx.compose.material.icons.automirrored.filled.Logout
+import androidx.compose.material.icons.filled.Visibility
+import androidx.compose.material.icons.filled.VisibilityOff
+import androidx.compose.material3.Button
+import androidx.compose.material3.Card
+import androidx.compose.material3.CardDefaults
+import androidx.compose.material3.CircularProgressIndicator
+import androidx.compose.material3.ExperimentalMaterial3Api
+import androidx.compose.material3.Icon
+import androidx.compose.material3.IconButton
+import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.OutlinedButton
+import androidx.compose.material3.OutlinedTextField
+import androidx.compose.material3.Scaffold
+import androidx.compose.material3.Text
+import androidx.compose.material3.TopAppBar
+import androidx.compose.runtime.Composable
+import androidx.compose.runtime.DisposableEffect
+import androidx.compose.runtime.collectAsState
+import androidx.compose.runtime.rememberCoroutineScope
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
+import androidx.compose.ui.Alignment
+import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.text.input.PasswordVisualTransformation
+import androidx.compose.ui.text.input.VisualTransformation
+import androidx.compose.ui.unit.dp
+import com.example.data.local.DatabaseBackup
+import com.example.data.local.CloudMaterialsSync
+import com.example.data.api.BackendClassDto
+import com.example.data.api.BackendEndpointConfig
+import com.example.data.api.BackendSessionSummaryDto
+import com.example.data.api.DarsyarReadOnlyApiFactory
+import com.example.data.api.GeminiApiService
+import com.example.data.api.GroqApiService
+import com.example.data.api.SpeechmaticsApiService
+import com.example.ui.screens.AuthPreferences
+import com.example.ui.theme.AppThemeMode
+import com.example.ui.theme.themeAccent
+import com.google.firebase.firestore.FirebaseFirestore
+import com.google.firebase.firestore.ListenerRegistration
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
+
+data class ManagedTeacherAccount(val uid: String, val name: String, val email: String)
+
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+fun SettingsScreen(
+    viewModel: MainViewModel,
+    onNavigateBack: () -> Unit,
+    currentTheme: AppThemeMode = AppThemeMode.PURPLE,
+    onThemeChanged: (AppThemeMode) -> Unit = {},
+    onLogout: () -> Unit = {}
+) {
+    val context = LocalContext.current
+    val backupScope = rememberCoroutineScope()
+    var backendCheckBusy by remember { mutableStateOf(false) }
+    var backendCheckStatus by remember { mutableStateOf<String?>(null) }
+    var backendCheckError by remember { mutableStateOf(false) }
+    var backendClasses by remember { mutableStateOf<List<BackendClassDto>>(emptyList()) }
+    var backendSelectedClassId by remember { mutableStateOf<String?>(null) }
+    var backendCourses by remember { mutableStateOf<List<com.example.data.api.BackendCourseDto>>(emptyList()) }
+    var backendSessions by remember { mutableStateOf<List<BackendSessionSummaryDto>>(emptyList()) }
+    var backendSelectedSession by remember { mutableStateOf<com.example.data.api.BackendSessionDto?>(null) }
+    var backendContentBusy by remember { mutableStateOf(false) }
+    var backendContentStatus by remember { mutableStateOf<String?>(null) }
+    var backupBusy by remember { mutableStateOf(false) }
+    var backupStatus by remember { mutableStateOf<String?>(null) }
+    var backupError by remember { mutableStateOf(false) }
+    var cloudBusy by remember { mutableStateOf(false) }
+    var cloudStatus by remember { mutableStateOf<String?>(null) }
+    var cloudError by remember { mutableStateOf(false) }
+    var showPublishConfirm by remember { mutableStateOf(false) }
+    var teacherName by remember { mutableStateOf(AuthPreferences.currentName(context)) }
+    var teacherField by remember { mutableStateOf("") }
+    var institutionName by remember { mutableStateOf("") }
+    var teacherRequestBusy by remember { mutableStateOf(false) }
+    var teacherRequestStatus by remember { mutableStateOf<String?>(null) }
+    var teacherRequestError by remember { mutableStateOf(false) }
+    val isPrimaryAdmin = remember { AuthPreferences.isPrimaryTeacher(context) }
+    var managedTeacherAccounts by remember { mutableStateOf<List<ManagedTeacherAccount>>(emptyList()) }
+    var teacherManagementStatus by remember { mutableStateOf<String?>(null) }
+    var teacherManagementBusyUid by remember { mutableStateOf<String?>(null) }
+    val createBackup = rememberLauncherForActivityResult(ActivityResultContracts.CreateDocument("application/json")) { uri ->
+        if (uri != null) backupScope.launch {
+            backupBusy = true; backupStatus = null
+            val result = withContext(Dispatchers.IO) { runCatching { DatabaseBackup.export(context, uri) } }
+            backupBusy = false
+            backupError = result.isFailure
+            backupStatus = if (result.isSuccess) "پشتیبان با موفقیت ذخیره شد. فایل را در فضای امن یا فضای ابری نگه دارید." else "ساخت پشتیبان ناموفق بود: ${result.exceptionOrNull()?.localizedMessage}"
+        }
+    }
+    val runCloudSync = {
+        backupScope.launch {
+            cloudBusy = true
+            cloudStatus = null
+            val result = withContext(Dispatchers.IO) { runCatching { CloudMaterialsSync.sync(context) } }
+            cloudBusy = false
+            cloudError = result.isFailure
+            cloudStatus = result.getOrElse { "همگام‌سازی آنلاین ناموفق بود: ${it.localizedMessage}" }
+        }
+    }
+    val restoreBackup = rememberLauncherForActivityResult(ActivityResultContracts.OpenDocument()) { uri ->
+        if (uri != null) backupScope.launch {
+            backupBusy = true; backupStatus = null
+            val result = withContext(Dispatchers.IO) { runCatching { DatabaseBackup.import(context, uri) } }
+            backupBusy = false
+            backupError = result.isFailure
+            backupStatus = result.getOrElse { "بازیابی ناموفق بود: ${it.localizedMessage}" }
+        }
+    }
+
+    DisposableEffect(isPrimaryAdmin) {
+        var registration: ListenerRegistration? = null
+        if (isPrimaryAdmin) {
+            registration = FirebaseFirestore.getInstance().collection("users")
+                .whereEqualTo("role", UserRole.TEACHER.name)
+                .addSnapshotListener { snapshot, error ->
+                    if (error != null) {
+                        teacherManagementStatus = "دریافت حساب‌های استاد ناموفق بود: ${error.localizedMessage}"
+                    } else {
+                        managedTeacherAccounts = snapshot?.documents.orEmpty()
+                            .filter { it.getString("email")?.trim()?.lowercase() != "salmanasadi843@gmail.com" }
+                            .map { doc -> ManagedTeacherAccount(doc.id, doc.getString("name").orEmpty(), doc.getString("email").orEmpty()) }
+                            .sortedBy { it.name.lowercase() }
+                        teacherManagementStatus = null
+                    }
+                }
+        }
+        onDispose { registration?.remove() }
+    }
+
+    var groqKey by remember { mutableStateOf(GroqApiService.getSavedApiKey(context)) }
+    var speechmaticsKey by remember { mutableStateOf(SpeechmaticsApiService.getSavedApiKey(context)) }
+
+    var apiKey by remember {
+        mutableStateOf(
+            GeminiApiService.getSavedApiKey(context)
+        )
+    }
+
+    var showKey by remember { mutableStateOf(false) }
+    var isTesting by remember { mutableStateOf(false) }
+    var status by remember { mutableStateOf<String?>(null) }
+    var statusIsError by remember { mutableStateOf(false) }
+
+    if (showPublishConfirm) {
+        androidx.compose.material3.AlertDialog(
+            onDismissRequest = { showPublishConfirm = false },
+            title = { Text("انتشار آنلاین مطالب") },
+            text = { Text("متن، خلاصه، کلیدواژه‌ها، اطلاعات کلاس و لینک صوت همه جلسات این حساب برای کاربران واردشده به درس‌یار قابل مشاهده خواهد شد. فایل صوتی اصلی ارسال نمی‌شود. آیا ادامه می‌دهید؟") },
+            confirmButton = {
+                Button(onClick = {
+                    showPublishConfirm = false
+                    runCloudSync()
+                }) { Text("انتشار و ادامه") }
+            },
+            dismissButton = {
+                OutlinedButton(onClick = { showPublishConfirm = false }) { Text("انصراف") }
+            }
+        )
+    }
+
+    Scaffold(
+        topBar = {
+            TopAppBar(
+                title = { Text("تنظیمات") },
+                navigationIcon = {
+                    IconButton(onClick = onNavigateBack) {
+                        Icon(
+                            Icons.AutoMirrored.Filled.ArrowBack,
+                            contentDescription = "بازگشت"
+                        )
+                    }
+                }
+            )
+        }
+    ) { padding ->
+        Column(
+            modifier = Modifier
+                .fillMaxSize()
+                .padding(padding)
+                .verticalScroll(rememberScrollState())
+                .padding(16.dp),
+            verticalArrangement = Arrangement.spacedBy(16.dp)
+        ) {
+            val cloudSyncStatus by viewModel.cloudSyncStatus.collectAsState()
+            Card(
+                colors = CardDefaults.cardColors(
+                    containerColor = MaterialTheme.colorScheme.surface
+                ),
+                elevation = CardDefaults.cardElevation(2.dp),
+                modifier = Modifier.fillMaxWidth()
+            ) {
+                Column(modifier = Modifier.padding(18.dp)) {
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        Icon(Icons.Filled.NetworkCheck, contentDescription = null)
+                        Spacer(Modifier.width(8.dp))
+                        Text("وضعیت پشتیبان‌گیری ابری", style = MaterialTheme.typography.titleLarge)
+                    }
+                    Spacer(Modifier.height(8.dp))
+                    Text(cloudSyncStatus, style = MaterialTheme.typography.bodyMedium)
+                    Spacer(Modifier.height(12.dp))
+                    OutlinedButton(
+                        onClick = { viewModel.startCloudSync() },
+                        enabled = !cloudBusy
+                    ) {
+                        Text("بررسی و تلاش دوباره")
+                    }
+                    Text(
+                        "موفقیت این بخش یعنی برنامه توانسته عملیات ابری را انجام دهد؛ برای تأیید نهایی ذخیره داده‌ها می‌توان بعداً فایربیس را هم بررسی کرد.",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                }
+            }
+            Card(
+                colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
+                elevation = CardDefaults.cardElevation(2.dp),
+                modifier = Modifier.fillMaxWidth()
+            ) {
+                Column(modifier = Modifier.padding(18.dp)) {
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        Icon(Icons.Filled.NetworkCheck, contentDescription = null)
+                        Spacer(Modifier.width(8.dp))
+                        Text("آزمایش اتصال سرور جدید", style = MaterialTheme.typography.titleLarge)
+                    }
+                    Spacer(Modifier.height(8.dp))
+                    Text(
+                        if (BackendEndpointConfig.isConfigured)
+                            "این بخش فقط اتصال آزمایشیِ خواندنی را بررسی می‌کند؛ اطلاعاتی در سرور، Room یا فایربیس تغییر نمی‌دهد."
+                        else
+                            "نشانی سرور هنوز هنگام ساخت برنامه تنظیم نشده است. تا زمان استقرار و تأیید سرور، این بخش غیرفعال می‌ماند.",
+                        style = MaterialTheme.typography.bodyMedium,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                    Spacer(Modifier.height(12.dp))
+                    OutlinedButton(
+                        onClick = {
+                            backendCheckBusy = true
+                            backendCheckStatus = null
+                            backendCheckError = false
+                            AuthPreferences.getFirebaseIdToken(context) { tokenResult ->
+                                tokenResult.fold(
+                                    onSuccess = { token ->
+                                        backupScope.launch {
+                                            val result = withContext(Dispatchers.IO) {
+                                                runCatching {
+                                                    DarsyarReadOnlyApiFactory.create().loadSnapshot(token)
+                                                }
+                                            }
+                                            backendCheckBusy = false
+                                            backendCheckError = result.isFailure
+                                            backendCheckStatus = result.fold(
+                                                onSuccess = { snapshot ->
+                                                    backendClasses = snapshot.classes
+                                                    backendSelectedClassId = null
+                                                    backendCourses = emptyList()
+                                                    backendSessions = emptyList()
+                                                    backendSelectedSession = null
+                                                    backendContentStatus = null
+                                                    "اتصال موفق بود؛ نقش‌های حساب: ${snapshot.account.roles.joinToString()}؛ تعداد کلاس‌های قابل مشاهده: ${snapshot.classes.size}. برای دیدن دوره‌ها و جلسه‌ها، یک کلاس را انتخاب کنید."
+                                                },
+                                                onFailure = { error ->
+                                                    "اتصال ناموفق بود: ${error.localizedMessage ?: "خطای نامشخص"}"
+                                                }
+                                            )
+                                        }
+                                    },
+                                    onFailure = { error ->
+                                        backendCheckBusy = false
+                                        backendCheckError = true
+                                        backendCheckStatus = error.localizedMessage ?: "دریافت توکن ورود ناموفق بود."
+                                    }
+                                )
+                            }
+                        },
+                        enabled = BackendEndpointConfig.isConfigured && !backendCheckBusy
+                    ) {
+                        if (backendCheckBusy) {
+                            CircularProgressIndicator(modifier = Modifier.size(18.dp), strokeWidth = 2.dp)
+                            Spacer(Modifier.width(8.dp))
+                        }
+                        Text("بررسی اتصال (فقط خواندن)")
+                    }
+                    backendCheckStatus?.let { message ->
+                        Spacer(Modifier.height(8.dp))
+                        Text(
+                            message,
+                            style = MaterialTheme.typography.bodyMedium,
+                            color = if (backendCheckError) MaterialTheme.colorScheme.error
+                            else MaterialTheme.colorScheme.primary
+                        )
+                    }
+                    if (backendClasses.isNotEmpty()) {
+                        Spacer(Modifier.height(12.dp))
+                        Text("کلاس‌های قابل مشاهده", style = MaterialTheme.typography.titleMedium)
+                        backendClasses.sortedBy { it.sortOrder }.forEach { backendClass ->
+                            Card(
+                                modifier = Modifier.fillMaxWidth(),
+                                colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant)
+                            ) {
+                                Row(
+                                    modifier = Modifier.fillMaxWidth().padding(10.dp),
+                                    verticalAlignment = Alignment.CenterVertically,
+                                    horizontalArrangement = Arrangement.spacedBy(8.dp)
+                                ) {
+                                    Column(Modifier.weight(1f)) {
+                                        Text(backendClass.title, style = MaterialTheme.typography.titleSmall)
+                                        Text(
+                                            if (backendClass.visibility == "public") "عمومی" else "خصوصی",
+                                            style = MaterialTheme.typography.bodySmall,
+                                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                                        )
+                                    }
+                                    OutlinedButton(
+                                        enabled = !backendContentBusy,
+                                        onClick = {
+                                            backendContentBusy = true
+                                            backendContentStatus = null
+                                            backendSelectedClassId = backendClass.id
+                                            backendCourses = emptyList()
+                                            backendSessions = emptyList()
+                                            backendSelectedSession = null
+                                            AuthPreferences.getFirebaseIdToken(context) { tokenResult ->
+                                                tokenResult.fold(
+                                                    onSuccess = { token ->
+                                                        backupScope.launch {
+                                                            val result = withContext(Dispatchers.IO) {
+                                                                runCatching {
+                                                                    val repository = DarsyarReadOnlyApiFactory.create()
+                                                                    val courses = repository.loadCourses(token, backendClass.id)
+                                                                    val sessions = repository.loadSessions(token, backendClass.id)
+                                                                    courses to sessions
+                                                                }
+                                                            }
+                                                            backendContentBusy = false
+                                                            result.fold(
+                                                                onSuccess = { content ->
+                                                                    backendCourses = content.first
+                                                                    backendSessions = content.second
+                                                                    backendContentStatus = "دوره‌ها و فهرست جلسه‌ها دریافت شد؛ متن کامل جلسه‌ها هنوز دریافت نشده است."
+                                                                },
+                                                                onFailure = { error ->
+                                                                    backendContentStatus = "دریافت محتوای کلاس ناموفق بود: ${error.localizedMessage ?: "خطای نامشخص"}"
+                                                                }
+                                                            )
+                                                        }
+                                                    },
+                                                    onFailure = { error ->
+                                                        backendContentBusy = false
+                                                        backendContentStatus = error.localizedMessage ?: "دریافت توکن ورود ناموفق بود."
+                                                    }
+                                                )
+                                            }
+                                        }
+                                    ) { Text(if (backendSelectedClassId == backendClass.id && backendContentBusy) "در حال دریافت..." else "نمایش محتوا") }
+                                }
+                            }
+                        }
+                    }
+                    if (backendSelectedClassId != null) {
+                        Spacer(Modifier.height(10.dp))
+                        Text("دوره‌های کلاس انتخاب‌شده", style = MaterialTheme.typography.titleMedium)
+                        if (backendCourses.isEmpty()) {
+                            Text("دوره‌ای برای این کلاس ثبت نشده است.", style = MaterialTheme.typography.bodySmall)
+                        } else {
+                            backendCourses.sortedBy { it.sortOrder }.forEach { course ->
+                                Text("• ${course.title}", style = MaterialTheme.typography.bodyMedium)
+                            }
+                        }
+                        Spacer(Modifier.height(8.dp))
+                        Text("جلسه‌ها", style = MaterialTheme.typography.titleMedium)
+                        if (backendSessions.isEmpty()) {
+                            Text("جلسه‌ای برای این کلاس ثبت نشده است.", style = MaterialTheme.typography.bodySmall)
+                        } else {
+                            backendSessions.sortedBy { it.sortOrder }.forEach { session ->
+                                OutlinedButton(
+                                    modifier = Modifier.fillMaxWidth(),
+                                    enabled = !backendContentBusy,
+                                    onClick = {
+                                        backendContentBusy = true
+                                        backendContentStatus = null
+                                        backendSelectedSession = null
+                                        AuthPreferences.getFirebaseIdToken(context) { tokenResult ->
+                                            tokenResult.fold(
+                                                onSuccess = { token ->
+                                                    backupScope.launch {
+                                                        val result = withContext(Dispatchers.IO) {
+                                                            runCatching {
+                                                                DarsyarReadOnlyApiFactory.create().loadSessionDetail(
+                                                                    token, session.classId, session.id
+                                                                )
+                                                            }
+                                                        }
+                                                        backendContentBusy = false
+                                                        result.fold(
+                                                            onSuccess = { detail ->
+                                                                backendSelectedSession = detail
+                                                                backendContentStatus = "جزئیات فقط برای جلسه انتخاب‌شده دریافت شد."
+                                                            },
+                                                            onFailure = { error ->
+                                                                backendContentStatus = "دریافت جزئیات جلسه ناموفق بود: ${error.localizedMessage ?: "خطای نامشخص"}"
+                                                            }
+                                                        )
+                                                    }
+                                                },
+                                                onFailure = { error ->
+                                                    backendContentBusy = false
+                                                    backendContentStatus = error.localizedMessage ?: "دریافت توکن ورود ناموفق بود."
+                                                }
+                                            )
+                                        }
+                                    }
+                                ) {
+                                    Text(session.title)
+                                }
+                            }
+                        }
+                    }
+                    backendSelectedSession?.let { detail ->
+                        Spacer(Modifier.height(8.dp))
+                        Card(
+                            modifier = Modifier.fillMaxWidth(),
+                            colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant)
+                        ) {
+                            Column(Modifier.padding(12.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                                Text(detail.title, style = MaterialTheme.typography.titleMedium)
+                                detail.aiSummary?.takeIf { it.isNotBlank() }?.let {
+                                    Text("خلاصه هوشمند", style = MaterialTheme.typography.titleSmall)
+                                    Text(it, style = MaterialTheme.typography.bodyMedium)
+                                }
+                                detail.aiKeyPoints?.takeIf { it.isNotBlank() }?.let {
+                                    Text("کلیدواژه‌ها و نکات", style = MaterialTheme.typography.titleSmall)
+                                    Text(it, style = MaterialTheme.typography.bodyMedium)
+                                }
+                                Text("متن جلسه", style = MaterialTheme.typography.titleSmall)
+                                Text(
+                                    detail.transcript.ifBlank { "متنی برای این جلسه ثبت نشده است." },
+                                    style = MaterialTheme.typography.bodySmall
+                                )
+                            }
+                        }
+                    }
+                    backendContentStatus?.let {
+                        Spacer(Modifier.height(6.dp))
+                        Text(
+                            it,
+                            style = MaterialTheme.typography.bodySmall,
+                            color = if (it.contains("ناموفق")) MaterialTheme.colorScheme.error
+                            else MaterialTheme.colorScheme.primary
+                        )
+                    }
+                }
+            }
+            Card(
+                colors = CardDefaults.cardColors(
+                    containerColor = MaterialTheme.colorScheme.surface
+                ),
+                elevation = CardDefaults.cardElevation(2.dp),
+                modifier = Modifier.fillMaxWidth()
+            ) {
+                Column(modifier = Modifier.padding(18.dp)) {
+                    Text(
+                        "ظاهر برنامه",
+                        style = MaterialTheme.typography.titleLarge
+                    )
+                    Spacer(Modifier.height(6.dp))
+                    Text(
+                        "رنگ مورد علاقه‌تان را انتخاب کنید. تغییر تم بلافاصله روی کل برنامه اعمال می‌شود.",
+                        style = MaterialTheme.typography.bodyMedium,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                    Spacer(Modifier.height(14.dp))
+
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.spacedBy(8.dp)
+                    ) {
+                        ThemeChoiceCard(
+                            mode = AppThemeMode.PURPLE,
+                            selected = currentTheme == AppThemeMode.PURPLE,
+                            onClick = { onThemeChanged(AppThemeMode.PURPLE) },
+                            modifier = Modifier.weight(1f)
+                        )
+                        ThemeChoiceCard(
+                            mode = AppThemeMode.BLUE,
+                            selected = currentTheme == AppThemeMode.BLUE,
+                            onClick = { onThemeChanged(AppThemeMode.BLUE) },
+                            modifier = Modifier.weight(1f)
+                        )
+                    }
+
+                    Spacer(Modifier.height(8.dp))
+
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.spacedBy(8.dp)
+                    ) {
+                        ThemeChoiceCard(
+                            mode = AppThemeMode.GREEN,
+                            selected = currentTheme == AppThemeMode.GREEN,
+                            onClick = { onThemeChanged(AppThemeMode.GREEN) },
+                            modifier = Modifier.weight(1f)
+                        )
+                        ThemeChoiceCard(
+                            mode = AppThemeMode.ORANGE,
+                            selected = currentTheme == AppThemeMode.ORANGE,
+                            onClick = { onThemeChanged(AppThemeMode.ORANGE) },
+                            modifier = Modifier.weight(1f)
+                        )
+                    }
+                }
+            }
+
+            Card(
+                colors = CardDefaults.cardColors(
+                    containerColor = MaterialTheme.colorScheme.surface
+                ),
+                elevation = CardDefaults.cardElevation(2.dp),
+                modifier = Modifier.fillMaxWidth()
+            ) {
+                Column(modifier = Modifier.padding(18.dp)) {
+                    Row(
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Icon(
+                            Icons.Default.AutoAwesome,
+                            contentDescription = null,
+                            tint = MaterialTheme.colorScheme.primary,
+                            modifier = Modifier.size(30.dp)
+                        )
+                        Spacer(Modifier.width(10.dp))
+                        Column {
+                            Text(
+                                "هوش مصنوعی",
+                                style = MaterialTheme.typography.titleLarge
+                            )
+                            Text(
+                                "تنظیم سرویس‌های هوش مصنوعی استادیار",
+                                style = MaterialTheme.typography.bodySmall,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant
+                            )
+                        }
+                    }
+
+                    Spacer(Modifier.height(18.dp))
+
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        Icon(
+                            Icons.Default.Key,
+                            contentDescription = null,
+                            tint = MaterialTheme.colorScheme.primary
+                        )
+                        Spacer(Modifier.width(8.dp))
+                        Text(
+                            "Google Gemini",
+                            style = MaterialTheme.typography.titleMedium
+                        )
+                    }
+
+                    Spacer(Modifier.height(8.dp))
+
+                    Text(
+                        "کلید API خودتان را وارد کنید. کلید به‌صورت رمزنگاری‌شده روی همین دستگاه ذخیره می‌شود.",
+                        style = MaterialTheme.typography.bodyMedium,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+
+                    Spacer(Modifier.height(12.dp))
+
+                    OutlinedTextField(
+                        value = apiKey,
+                        onValueChange = {
+                            apiKey = it
+                            status = null
+                        },
+                        modifier = Modifier.fillMaxWidth(),
+                        label = { Text("Gemini API Key") },
+                        placeholder = { Text("کلید را اینجا وارد کنید") },
+                        singleLine = true,
+                        visualTransformation =
+                            if (showKey) VisualTransformation.None
+                            else PasswordVisualTransformation(),
+                        leadingIcon = {
+                            Icon(
+                                Icons.Default.Key,
+                                contentDescription = null
+                            )
+                        },
+                        trailingIcon = {
+                            IconButton(
+                                onClick = { showKey = !showKey }
+                            ) {
+                                Icon(
+                                    if (showKey)
+                                        Icons.Default.VisibilityOff
+                                    else
+                                        Icons.Default.Visibility,
+                                    contentDescription =
+                                        if (showKey) "مخفی کردن" else "نمایش کلید"
+                                )
+                            }
+                        }
+                    )
+
+                    Spacer(Modifier.height(12.dp))
+
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.spacedBy(8.dp)
+                    ) {
+                        Button(
+                            onClick = {
+                                GeminiApiService.saveApiKey(context, apiKey)
+                                status = "کلید با موفقیت ذخیره شد."
+                                statusIsError = false
+                            },
+                            enabled = apiKey.isNotBlank()
+                        ) {
+                            Text("ذخیره کلید")
+                        }
+
+                        OutlinedButton(
+                            onClick = {
+                                GeminiApiService.deleteSavedApiKey(context)
+                                apiKey = ""
+                                status = "کلید حذف شد."
+                                statusIsError = false
+                            }
+                        ) {
+                            Icon(
+                                Icons.Default.DeleteOutline,
+                                contentDescription = null
+                            )
+                            Spacer(Modifier.width(4.dp))
+                            Text("حذف")
+                        }
+                    }
+
+                    Spacer(Modifier.height(8.dp))
+
+                    OutlinedButton(
+                        onClick = {
+                            if (apiKey.isBlank()) {
+                                status = "ابتدا کلید Gemini را وارد کنید."
+                                statusIsError = true
+                                return@OutlinedButton
+                            }
+
+                            GeminiApiService.saveApiKey(context, apiKey)
+                            isTesting = true
+                            status = null
+
+                            viewModel.testGeminiConnection {
+                                isTesting = false
+
+                                if (it == null) {
+                                    status = "✓ اتصال Gemini برقرار است."
+                                    statusIsError = false
+                                } else {
+                                    status = it
+                                    statusIsError = true
+                                }
+                            }
+                        },
+                        enabled = !isTesting && apiKey.isNotBlank(),
+                        modifier = Modifier.fillMaxWidth()
+                    ) {
+                        if (isTesting) {
+                            CircularProgressIndicator(
+                                modifier = Modifier.size(18.dp),
+                                strokeWidth = 2.dp
+                            )
+                            Spacer(Modifier.width(8.dp))
+                            Text("در حال آزمایش اتصال...")
+                        } else {
+                            Icon(
+                                Icons.Default.CheckCircle,
+                                contentDescription = null
+                            )
+                            Spacer(Modifier.width(8.dp))
+                            Text("آزمایش اتصال")
+                        }
+                    }
+
+                    if (status != null) {
+                        Spacer(Modifier.height(10.dp))
+                        Text(
+                            status!!,
+                            color =
+                                if (statusIsError)
+                                    MaterialTheme.colorScheme.error
+                                else
+                                    MaterialTheme.colorScheme.primary,
+                            style = MaterialTheme.typography.bodyMedium
+                        )
+                    }
+                }
+            }
+
+            Card(
+                colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
+                elevation = CardDefaults.cardElevation(2.dp),
+                modifier = Modifier.fillMaxWidth()
+            ) {
+                Column(modifier = Modifier.padding(18.dp)) {
+                    Text("GROQ — تبدیل صوت به متن", style = MaterialTheme.typography.titleLarge)
+                    Spacer(Modifier.height(6.dp))
+                    Text("Groq با مدل Whisper برای تبدیل صوت به متن استفاده می‌شود و در صورت ناموفق بودن Gemini، جایگزین آن خواهد شد.", style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                    Spacer(Modifier.height(12.dp))
+                    OutlinedTextField(value = groqKey, onValueChange = { groqKey = it; status = null }, modifier = Modifier.fillMaxWidth(), label = { Text("Groq API Key") }, placeholder = { Text("کلید Groq را وارد کنید") }, singleLine = true, visualTransformation = PasswordVisualTransformation(), leadingIcon = { Icon(Icons.Default.Key, contentDescription = null) })
+                    Spacer(Modifier.height(10.dp))
+                    Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                        Button(onClick = { GroqApiService.saveApiKey(context, groqKey); status = "کلید Groq با موفقیت ذخیره شد."; statusIsError = false }, enabled = groqKey.isNotBlank()) { Text("ذخیره Groq") }
+                        OutlinedButton(onClick = { GroqApiService.deleteSavedApiKey(context); groqKey = ""; status = "کلید Groq حذف شد."; statusIsError = false }) { Text("حذف") }
+                    }
+                    Spacer(Modifier.height(8.dp))
+                    OutlinedButton(
+                        onClick = {
+                            if (groqKey.isBlank()) {
+                                status = "ابتدا کلید Groq را وارد کنید."
+                                statusIsError = true
+                                return@OutlinedButton
+                            }
+                            GroqApiService.saveApiKey(context, groqKey)
+                            isTesting = true
+                            status = null
+                            viewModel.testGroqConnection {
+                                isTesting = false
+                                if (it == null) {
+                                    status = "✓ اتصال Groq برقرار است؛ اصلاح متن با Groq انجام می‌شود."
+                                    statusIsError = false
+                                } else {
+                                    status = it
+                                    statusIsError = true
+                                }
+                            }
+                        },
+                        enabled = !isTesting
+                    ) {
+                        if (isTesting) CircularProgressIndicator(modifier = Modifier.size(16.dp), strokeWidth = 2.dp)
+                        else Icon(Icons.Default.NetworkCheck, contentDescription = null)
+                        Spacer(Modifier.width(6.dp))
+                        Text("تست اتصال Groq")
+                    }
+                    Spacer(Modifier.height(8.dp))
+                    Text("اصلاح متن: ابتدا Gemini ← در صورت خطا → Groq", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.primary)
+                }
+            }
+            Card(
+                colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
+                elevation = CardDefaults.cardElevation(2.dp),
+                modifier = Modifier.fillMaxWidth()
+            ) {
+                Column(modifier = Modifier.padding(18.dp)) {
+                    Text("Speechmatics — تبدیل صوت به متن", style = MaterialTheme.typography.titleLarge)
+                    Spacer(Modifier.height(6.dp))
+                    Text(
+                        "Speechmatics جایگزین نهایی تبدیل صوت به متن است؛ ابتدا Gemini و سپس Groq امتحان می‌شوند.",
+                        style = MaterialTheme.typography.bodyMedium,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                    Spacer(Modifier.height(12.dp))
+                    OutlinedTextField(
+                        value = speechmaticsKey,
+                        onValueChange = { speechmaticsKey = it; status = null },
+                        modifier = Modifier.fillMaxWidth(),
+                        label = { Text("Speechmatics API Key") },
+                        placeholder = { Text("کلید Speechmatics را وارد کنید") },
+                        singleLine = true,
+                        visualTransformation = PasswordVisualTransformation(),
+                        leadingIcon = { Icon(Icons.Default.Key, contentDescription = null) }
+                    )
+                    Spacer(Modifier.height(10.dp))
+                    Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                        Button(
+                            onClick = {
+                                SpeechmaticsApiService.saveApiKey(context, speechmaticsKey)
+                                status = "کلید Speechmatics با موفقیت ذخیره شد."
+                                statusIsError = false
+                            },
+                            enabled = speechmaticsKey.isNotBlank()
+                        ) { Text("ذخیره Speechmatics") }
+                        OutlinedButton(
+                            onClick = {
+                                SpeechmaticsApiService.deleteSavedApiKey(context)
+                                speechmaticsKey = ""
+                                status = "کلید Speechmatics حذف شد."
+                                statusIsError = false
+                            }
+                        ) { Text("حذف") }
+                    }
+                    Spacer(Modifier.height(8.dp))
+                    Text(
+                        "اولویت تبدیل صوت: ۱) Gemini  ۲) Groq  ۳) Speechmatics",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.primary
+                    )
+                }
+            }
+
+            if (isPrimaryAdmin) {
+                Card(
+                    colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
+                    elevation = CardDefaults.cardElevation(2.dp),
+                    modifier = Modifier.fillMaxWidth()
+                ) {
+                    Column(Modifier.padding(18.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                        Text("مدیریت حساب استادها", style = MaterialTheme.typography.titleLarge)
+                        Text("حساب‌های دارای نقش استاد را مشاهده کنید و در صورت نیاز مجوز آن‌ها را لغو کنید.", style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                        if (teacherManagementStatus != null) Text(teacherManagementStatus!!, color = MaterialTheme.colorScheme.error)
+                        if (managedTeacherAccounts.isEmpty()) {
+                            Text("در حال حاضر حساب دیگری با نقش استاد ثبت نشده است.")
+                        } else {
+                            managedTeacherAccounts.forEach { account ->
+                                Card(Modifier.fillMaxWidth(), colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant)) {
+                                    Row(Modifier.fillMaxWidth().padding(12.dp), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                                        Column(Modifier.weight(1f)) {
+                                            Text(account.name.ifBlank { "نام ثبت نشده" }, style = MaterialTheme.typography.titleMedium)
+                                            Text(account.email, style = MaterialTheme.typography.bodySmall)
+                                        }
+                                        OutlinedButton(
+                                            enabled = teacherManagementBusyUid == null,
+                                            onClick = {
+                                                teacherManagementBusyUid = account.uid
+                                                AuthPreferences.reviewTeacherRequest(context, account.uid, account.name, account.email, false) { result ->
+                                                    teacherManagementBusyUid = null
+                                                    teacherManagementStatus = result.fold(
+                                                        onSuccess = { "مجوز استاد لغو شد." },
+                                                        onFailure = { "لغو مجوز ناموفق بود: ${it.localizedMessage}" }
+                                                    )
+                                                }
+                                            }
+                                        ) { Text(if (teacherManagementBusyUid == account.uid) "..." else "لغو مجوز") }
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+            Card(
+                    colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
+                    elevation = CardDefaults.cardElevation(2.dp),
+                    modifier = Modifier.fillMaxWidth()
+                ) {
+                    Column(
+                        modifier = Modifier.padding(18.dp),
+                        verticalArrangement = Arrangement.spacedBy(10.dp)
+                    ) {
+                        Text(
+                            "درخواست تأیید به‌عنوان استاد",
+                            style = MaterialTheme.typography.titleLarge
+                        )
+                        Text(
+                            "نام استاد و درس موردنظر را وارد کنید تا مدیر سامانه درخواست را بررسی کند. ثبت درخواست به‌تنهایی نقش حساب را تغییر نمی‌دهد.",
+                            style = MaterialTheme.typography.bodyMedium,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                        )
+                        OutlinedTextField(
+                            value = teacherName,
+                            onValueChange = {
+                                teacherName = it
+                                teacherRequestStatus = null
+                            },
+                            modifier = Modifier.fillMaxWidth(),
+                            label = { Text("نام و نام خانوادگی استاد") },
+                            placeholder = { Text("نام استاد درخواست‌دهنده") },
+                            singleLine = true
+                        )
+                        OutlinedTextField(
+                            value = teacherField,
+                            onValueChange = {
+                                teacherField = it
+                                teacherRequestStatus = null
+                            },
+                            modifier = Modifier.fillMaxWidth(),
+                            label = { Text("درس موردنظر برای تدریس") },
+                            placeholder = { Text("مثلاً اصول فقه، زبان انگلیسی") },
+                            singleLine = true
+                        )
+                        OutlinedTextField(
+                            value = institutionName,
+                            onValueChange = {
+                                institutionName = it
+                                teacherRequestStatus = null
+                            },
+                            modifier = Modifier.fillMaxWidth(),
+                            label = { Text("دانشگاه یا مؤسسه آموزشی") },
+                            placeholder = { Text("نام محل تدریس (اختیاری)") },
+                            singleLine = true
+                        )
+                        Button(
+                            onClick = {
+                                if (teacherName.isBlank() || teacherField.isBlank()) {
+                                    teacherRequestStatus = "نام استاد و درس موردنظر را وارد کنید."
+                                    teacherRequestError = true
+                                } else {
+                                    teacherRequestBusy = true
+                                    teacherRequestStatus = null
+                                    AuthPreferences.submitTeacherRequest(
+                                        context = context,
+                                        teacherName = teacherName.trim(),
+                                        teachingField = teacherField.trim(),
+                                        institutionName = institutionName.trim()
+                                    ) { result ->
+                                        teacherRequestBusy = false
+                                        teacherRequestError = result.isFailure
+                                        teacherRequestStatus = result.fold(
+                                            onSuccess = {
+                                                "درخواست شما ثبت شد و در انتظار بررسی است."
+                                            },
+                                            onFailure = {
+                                                "ثبت درخواست ناموفق بود: ${it.localizedMessage ?: "خطای نامشخص"}"
+                                            }
+                                        )
+                                    }
+                                }
+                            },
+                            enabled = !teacherRequestBusy && teacherName.isNotBlank() && teacherField.isNotBlank(),
+                            modifier = Modifier.fillMaxWidth()
+                        ) {
+                            if (teacherRequestBusy) {
+                                CircularProgressIndicator(
+                                    modifier = Modifier.size(18.dp),
+                                    strokeWidth = 2.dp
+                                )
+                                Spacer(Modifier.width(8.dp))
+                                Text("در حال ثبت درخواست...")
+                            } else {
+                                Text("ثبت درخواست استاد")
+                            }
+                        }
+                        if (teacherRequestStatus != null) {
+                            Text(
+                                teacherRequestStatus!!,
+                                color = if (teacherRequestError) MaterialTheme.colorScheme.error
+                                        else MaterialTheme.colorScheme.primary,
+                                style = MaterialTheme.typography.bodyMedium
+                            )
+                        }
+                    }
+                }
+
+            Card(
+                colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
+                elevation = CardDefaults.cardElevation(2.dp),
+                modifier = Modifier.fillMaxWidth()
+            ) {
+                Column(modifier = Modifier.padding(18.dp)) {
+                    Text("دسترسی آنلاین مطالب", style = MaterialTheme.typography.titleLarge)
+                    Spacer(Modifier.height(6.dp))
+                    Text(
+                        if (AuthPreferences.currentRole(context) == UserRole.TEACHER)
+                            "با همگام‌سازی، متن جزوه، خلاصه، کلیدواژه، مشخصات کلاس و لینک صوت جلسات این حساب برای کاربران واردشده به درس‌یار قابل دریافت می‌شود. فایل صوتی اصلی بارگذاری نمی‌شود."
+                        else
+                            "با به‌روزرسانی مطالب آنلاین، جزوه‌ها، خلاصه‌ها، کلیدواژه‌ها و لینک‌های صوت منتشرشده توسط استادها روی این دستگاه دریافت می‌شود. برای این کار باید اینترنت متصل باشد.",
+                        style = MaterialTheme.typography.bodyMedium,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                    Spacer(Modifier.height(12.dp))
+                    Button(
+                        onClick = {
+                            if (AuthPreferences.currentRole(context) == UserRole.TEACHER) showPublishConfirm = true
+                            else runCloudSync()
+                        },
+                        enabled = !cloudBusy,
+                        modifier = Modifier.fillMaxWidth()
+                    ) {
+                        if (cloudBusy) CircularProgressIndicator(modifier = Modifier.size(18.dp), strokeWidth = 2.dp)
+                        else Icon(Icons.Default.NetworkCheck, contentDescription = null)
+                        Spacer(Modifier.width(8.dp))
+                        Text(if (cloudBusy) "در حال همگام‌سازی..." else if (AuthPreferences.currentRole(context) == UserRole.TEACHER) "انتشار و همگام‌سازی مطالب استاد" else "دریافت مطالب آنلاین")
+                    }
+                    if (cloudStatus != null) {
+                        Spacer(Modifier.height(10.dp))
+                        Text(
+                            cloudStatus!!,
+                            color = if (cloudError) MaterialTheme.colorScheme.error else MaterialTheme.colorScheme.primary,
+                            style = MaterialTheme.typography.bodyMedium
+                        )
+                    }
+                    Text(
+                        "نکته: این گزینه با فایل پشتیبان فرق دارد؛ همگام‌سازی آنلاین به اتصال و تنظیم صحیح دسترسی‌های Firebase نیاز دارد.",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                }
+            }
+
+            Card(
+                colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
+                elevation = CardDefaults.cardElevation(2.dp),
+                modifier = Modifier.fillMaxWidth()
+            ) {
+                Column(modifier = Modifier.padding(18.dp)) {
+                    Text("پشتیبان‌گیری و بازیابی", style = MaterialTheme.typography.titleLarge)
+                    Spacer(Modifier.height(6.dp))
+                    Text(
+                        "برای جلوگیری از پاک شدن جزوه‌ها با حذف برنامه، یک فایل پشتیبان بسازید و آن را در فضای ابری یا حافظه‌ای امن نگه دارید. بازیابی، اطلاعات فعلی را با اطلاعات فایل پشتیبان جایگزین می‌کند.",
+                        style = MaterialTheme.typography.bodyMedium,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                    Spacer(Modifier.height(12.dp))
+                    Button(
+                        onClick = { createBackup.launch("darsyar-backup.json") },
+                        enabled = !backupBusy,
+                        modifier = Modifier.fillMaxWidth()
+                    ) {
+                        Icon(Icons.Default.CheckCircle, contentDescription = null)
+                        Spacer(Modifier.width(8.dp))
+                        Text("ساخت فایل پشتیبان")
+                    }
+                    Spacer(Modifier.height(8.dp))
+                    OutlinedButton(
+                        onClick = { restoreBackup.launch(arrayOf("application/json", "text/*", "application/octet-stream")) },
+                        enabled = !backupBusy,
+                        modifier = Modifier.fillMaxWidth()
+                    ) {
+                        Icon(Icons.Default.NetworkCheck, contentDescription = null)
+                        Spacer(Modifier.width(8.dp))
+                        Text("بازیابی از فایل پشتیبان")
+                    }
+                    if (backupBusy) {
+                        Spacer(Modifier.height(10.dp))
+                        Row(verticalAlignment = Alignment.CenterVertically) {
+                            CircularProgressIndicator(modifier = Modifier.size(18.dp), strokeWidth = 2.dp)
+                            Spacer(Modifier.width(8.dp))
+                            Text("در حال پردازش فایل...")
+                        }
+                    }
+                    if (backupStatus != null) {
+                        Spacer(Modifier.height(10.dp))
+                        Text(
+                            backupStatus!!,
+                            color = if (backupError) MaterialTheme.colorScheme.error else MaterialTheme.colorScheme.primary,
+                            style = MaterialTheme.typography.bodyMedium
+                        )
+                    }
+                }
+            }
+
+            Card(
+                colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
+                elevation = CardDefaults.cardElevation(2.dp),
+                modifier = Modifier.fillMaxWidth()
+            ) {
+                Column(modifier = Modifier.padding(18.dp)) {
+                    Text("حساب کاربری", style = MaterialTheme.typography.titleLarge)
+                    Spacer(Modifier.height(6.dp))
+                    Text(
+                        "برای تغییر حساب یا ورود با نقش کاربری دیگر، ابتدا از حساب فعلی خارج شوید.",
+                        style = MaterialTheme.typography.bodyMedium,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                    Spacer(Modifier.height(12.dp))
+                    OutlinedButton(
+                        onClick = onLogout,
+                        modifier = Modifier.fillMaxWidth()
+                    ) {
+                        Icon(Icons.AutoMirrored.Filled.Logout, contentDescription = null)
+                        Spacer(Modifier.width(8.dp))
+                        Text("خروج از حساب")
+                    }
+                }
+            }
+
+            Text(
+                "کلید واردشده داخل APK ثابت قرار نمی‌گیرد و برای هر نصب می‌تواند جداگانه تنظیم شود.",
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant
+            )
+        }
+    }
+}
+
+
+@Composable
+private fun ThemeChoiceCard(
+    mode: AppThemeMode,
+    selected: Boolean,
+    onClick: () -> Unit,
+    modifier: Modifier = Modifier
+) {
+    val accent = themeAccent(mode)
+
+    Card(
+        modifier = modifier
+            .clickable(onClick = onClick)
+            .border(
+                width = if (selected) 2.dp else 1.dp,
+                color = if (selected) accent else MaterialTheme.colorScheme.outlineVariant,
+                shape = MaterialTheme.shapes.medium
+            ),
+        colors = CardDefaults.cardColors(
+            containerColor = if (selected)
+                accent.copy(alpha = 0.08f)
+            else
+                MaterialTheme.colorScheme.surface
+        ),
+        elevation = CardDefaults.cardElevation(
+            defaultElevation = if (selected) 3.dp else 0.dp
+        )
+    ) {
+        Column(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(vertical = 12.dp, horizontal = 8.dp),
+            horizontalAlignment = Alignment.CenterHorizontally
+        ) {
+            Box(
+                modifier = Modifier
+                    .size(34.dp)
+                    .background(accent, CircleShape)
+                    .border(2.dp, Color.White, CircleShape)
+                    .border(1.dp, accent, CircleShape)
+            )
+            Spacer(Modifier.height(8.dp))
+            Text(
+                text = mode.title,
+                style = MaterialTheme.typography.labelLarge,
+                color = if (selected) accent else MaterialTheme.colorScheme.onSurface
+            )
+            if (selected) {
+                Spacer(Modifier.height(2.dp))
+                Text(
+                    "انتخاب‌شده",
+                    style = MaterialTheme.typography.labelMedium,
+                    color = accent
+                )
+            }
+        }
+    }
+}

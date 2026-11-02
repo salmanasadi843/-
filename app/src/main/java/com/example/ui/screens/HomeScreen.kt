@@ -1,0 +1,612 @@
+package com.example.ui.screens
+
+import androidx.compose.foundation.background
+import androidx.compose.foundation.clickable
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.verticalScroll
+import androidx.compose.foundation.layout.*
+import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.AutoAwesome
+import androidx.compose.material.icons.filled.PlayArrow
+import androidx.compose.material.icons.filled.Settings
+import androidx.compose.material.icons.filled.Search
+import androidx.compose.material.icons.filled.Share
+import androidx.compose.material.icons.filled.School
+import androidx.compose.material.icons.filled.Cloud
+import com.example.data.api.BackendEndpointConfig
+import androidx.compose.material3.*
+import androidx.compose.ui.platform.LocalContext
+import android.content.Context
+import android.widget.Toast
+import android.net.ConnectivityManager
+import android.net.Network
+import android.net.NetworkCapabilities
+import com.example.data.local.ClassEntity
+import com.example.data.local.LectureEntity
+import com.google.firebase.firestore.FirebaseFirestore
+import com.google.firebase.firestore.ListenerRegistration
+import androidx.compose.foundation.layout.heightIn
+import androidx.compose.ui.text.style.TextAlign
+import androidx.compose.material3.AlertDialog
+import androidx.compose.material3.TextButton
+import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.DisposableEffect
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.collectAsState
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.setValue
+import androidx.compose.ui.Alignment
+import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.unit.dp
+
+private data class TeacherRequestItem(
+    val uid: String,
+    val name: String,
+    val email: String,
+    val subject: String,
+    val institution: String
+)
+
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+fun HomeScreen(
+    viewModel: MainViewModel,
+    userRole: UserRole,
+    onNavigateToAdd: () -> Unit,
+    onNavigateToDetail: (Long) -> Unit,
+    onNavigateToAiSummary: (Long) -> Unit,
+    onNavigateToBackendBrowse: () -> Unit
+) {
+    val allClasses by viewModel.repository.allClasses.collectAsState(initial = emptyList())
+    val allLectures by viewModel.repository.allLectures.collectAsState(initial = emptyList())
+    val studentSyncStatus by viewModel.studentMaterialsSyncStatus.collectAsState()
+    LaunchedEffect(userRole) { if (userRole == UserRole.STUDENT) viewModel.startStudentMaterialsSync() }
+    // While refreshing, do not expose stale cached classes whose publication may have been revoked.
+    val studentFeedReady = userRole != UserRole.STUDENT || (
+        studentSyncStatus != "مطالب آنلاین هنوز بررسی نشده‌اند." &&
+        !studentSyncStatus.contains("در حال دریافت") &&
+        !studentSyncStatus.contains("دریافت خودکار مطالب انجام نشد")
+    )
+    val classes = if (userRole == UserRole.STUDENT) {
+        if (studentFeedReady) allClasses.filter { it.id < 0L && it.isPublished }
+        else emptyList()
+    } else allClasses
+    val visibleClassIds = classes.map { it.id }.toSet()
+    val lectures = if (userRole == UserRole.STUDENT) {
+        allLectures.filter { it.id < 0L && it.isPublished && it.classId in visibleClassIds }
+    } else allLectures
+    val isTeacher = userRole == UserRole.TEACHER
+    val isPrimaryTeacher = isTeacher && AuthPreferences.isPrimaryTeacher(LocalContext.current)
+    val context = LocalContext.current
+    val isOnline = rememberNetworkConnection()
+    var showBulkExportDialog by androidx.compose.runtime.remember { androidx.compose.runtime.mutableStateOf(false) }
+    var showAdvancedSearch by remember { mutableStateOf(false) }
+    var showTeacherRequests by remember { mutableStateOf(false) }
+    var pendingTeacherRequests by remember { mutableStateOf<List<TeacherRequestItem>>(emptyList()) }
+    var teacherRequestsLoadError by remember { mutableStateOf<String?>(null) }
+    var reviewingRequestUid by remember { mutableStateOf<String?>(null) }
+
+    DisposableEffect(isPrimaryTeacher) {
+        var registration: ListenerRegistration? = null
+        if (isPrimaryTeacher) {
+            registration = FirebaseFirestore.getInstance()
+                .collection("teacher_requests")
+                .whereEqualTo("status", "PENDING")
+                .addSnapshotListener { snapshot, error ->
+                    if (error != null) {
+                        teacherRequestsLoadError = error.localizedMessage ?: "دریافت درخواست‌ها ناموفق بود."
+                    } else {
+                        teacherRequestsLoadError = null
+                        pendingTeacherRequests = snapshot?.documents.orEmpty().map { doc ->
+                            TeacherRequestItem(
+                                uid = doc.getString("uid") ?: doc.id,
+                                name = doc.getString("teacherName") ?: doc.getString("name").orEmpty(),
+                                email = doc.getString("email").orEmpty(),
+                                subject = doc.getString("subject") ?: doc.getString("teachingField").orEmpty(),
+                                institution = doc.getString("institutionName").orEmpty()
+                            )
+                        }
+                    }
+                }
+        }
+        onDispose { registration?.remove() }
+    }
+
+    if (showTeacherRequests) {
+        AlertDialog(
+            onDismissRequest = { if (reviewingRequestUid == null) showTeacherRequests = false },
+            title = { Text("درخواست‌های تأیید استاد") },
+            text = {
+                when {
+                    teacherRequestsLoadError != null -> Text(teacherRequestsLoadError!!, color = MaterialTheme.colorScheme.error)
+                    pendingTeacherRequests.isEmpty() -> Text(
+                        "در حال حاضر درخواست تأییدنشده‌ای وجود ندارد.",
+                        textAlign = TextAlign.Center,
+                        modifier = Modifier.fillMaxWidth()
+                    )
+                    else -> Column(
+                        modifier = Modifier.fillMaxWidth().heightIn(max = 460.dp).verticalScroll(rememberScrollState()),
+                        verticalArrangement = Arrangement.spacedBy(10.dp)
+                    ) {
+                        pendingTeacherRequests.forEach { request ->
+                            Card(
+                                modifier = Modifier.fillMaxWidth(),
+                                colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant)
+                            ) {
+                                Column(Modifier.padding(12.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                                    Text(request.name.ifBlank { "نام ثبت نشده" }, style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
+                                    Text("ایمیل: " + request.email, style = MaterialTheme.typography.bodySmall)
+                                    Text("درس درخواستی: " + request.subject.ifBlank { "ثبت نشده" })
+                                    if (request.institution.isNotBlank()) Text("مؤسسه: " + request.institution, style = MaterialTheme.typography.bodySmall)
+                                    Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                                        Button(
+                                            onClick = {
+                                                reviewingRequestUid = request.uid
+                                                AuthPreferences.reviewTeacherRequest(
+                                                    context = context,
+                                                    uid = request.uid,
+                                                    teacherName = request.name,
+                                                    email = request.email,
+                                                    approve = true
+                                                ) { result ->
+                                                    reviewingRequestUid = null
+                                                    result.fold(
+                                                        onSuccess = { Toast.makeText(context, "درخواست تأیید شد و نقش استاد اعمال شد.", Toast.LENGTH_LONG).show() },
+                                                        onFailure = { Toast.makeText(context, "تأیید ناموفق بود: ${it.localizedMessage}", Toast.LENGTH_LONG).show() }
+                                                    )
+                                                }
+                                            },
+                                            enabled = reviewingRequestUid == null,
+                                            modifier = Modifier.weight(1f)
+                                        ) { Text(if (reviewingRequestUid == request.uid) "در حال انجام..." else "تأیید") }
+                                        OutlinedButton(
+                                            onClick = {
+                                                reviewingRequestUid = request.uid
+                                                AuthPreferences.reviewTeacherRequest(
+                                                    context = context,
+                                                    uid = request.uid,
+                                                    teacherName = request.name,
+                                                    email = request.email,
+                                                    approve = false
+                                                ) { result ->
+                                                    reviewingRequestUid = null
+                                                    result.fold(
+                                                        onSuccess = { Toast.makeText(context, "درخواست رد شد.", Toast.LENGTH_SHORT).show() },
+                                                        onFailure = { Toast.makeText(context, "رد درخواست ناموفق بود: ${it.localizedMessage}", Toast.LENGTH_LONG).show() }
+                                                    )
+                                                }
+                                            },
+                                            enabled = reviewingRequestUid == null,
+                                            modifier = Modifier.weight(1f)
+                                        ) { Text("رد درخواست") }
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+            },
+            confirmButton = {
+                TextButton(onClick = { showTeacherRequests = false }, enabled = reviewingRequestUid == null) {
+                    Text("بستن")
+                }
+            }
+        )
+    }
+
+    if (showAdvancedSearch) {
+        AdvancedSearchScreen(
+            viewModel = viewModel,
+            userRole = userRole,
+            onOpenLecture = onNavigateToDetail,
+            onBack = { showAdvancedSearch = false }
+        )
+        return
+    }
+
+    Scaffold(
+        containerColor = MaterialTheme.colorScheme.background,
+        topBar = {
+            TopAppBar(
+                title = {
+                    Column {
+                        Text("درس‌یار", fontWeight = FontWeight.Bold)
+                        Text(
+                            if (isTeacher) "پنل استاد" else "فضای مطالعه",
+                            style = MaterialTheme.typography.labelMedium,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                        )
+                        Spacer(Modifier.height(3.dp))
+                        Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(4.dp)) {
+                            Box(
+                                Modifier.size(7.dp).background(
+                                    if (isOnline) Color(0xFF2E7D32) else Color(0xFFD97706),
+                                    androidx.compose.foundation.shape.CircleShape
+                                )
+                            )
+                            Text(
+                                if (isOnline) "اینترنت متصل" else "آفلاین",
+                                style = MaterialTheme.typography.labelSmall,
+                                color = if (isOnline) Color(0xFF2E7D32) else MaterialTheme.colorScheme.error
+                            )
+                        }
+                    }
+                },
+                actions = {
+                    IconButton(onClick = { showAdvancedSearch = true }) { Icon(Icons.Default.Search, contentDescription = "جستجوی پیشرفته در درس‌ها") }
+                    if (isTeacher) IconButton(onClick = { showBulkExportDialog = true }) { Icon(Icons.Default.Share, contentDescription = "ارسال گروهی مطالب") }
+                    IconButton(onClick = viewModel::openClasses) { Icon(Icons.Default.School, "کلاس‌ها") }
+                    if (BackendEndpointConfig.isConfigured) {
+                        IconButton(onClick = onNavigateToBackendBrowse) {
+                            Icon(Icons.Default.Cloud, contentDescription = "تالار گفتگو و اعلان‌ها")
+                        }
+                    }
+                    IconButton(onClick = { viewModel.navigateTo(Screen.Settings) }) { Icon(Icons.Default.Settings, "تنظیمات") }
+                }
+            )
+        }
+    ) { padding ->
+        LazyColumn(
+            Modifier.fillMaxSize().padding(padding),
+            contentPadding = PaddingValues(16.dp, 8.dp, 16.dp, 24.dp),
+            verticalArrangement = Arrangement.spacedBy(14.dp)
+        ) {
+            if (BackendEndpointConfig.isConfigured) {
+                item {
+                    Card(
+                        modifier = Modifier.fillMaxWidth().clickable(onClick = onNavigateToBackendBrowse),
+                        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.secondaryContainer)
+                    ) {
+                        Row(
+                            Modifier.fillMaxWidth().padding(16.dp),
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.spacedBy(12.dp)
+                        ) {
+                            Icon(Icons.Default.Cloud, contentDescription = null, tint = MaterialTheme.colorScheme.onSecondaryContainer)
+                            Column(Modifier.weight(1f)) {
+                                Text("تالار گفتگو و اعلان‌ها", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
+                                Text(
+                                    "گفتگوهای کلاس، اطلاعیه‌های استاد و مرور کلاس‌های آنلاین",
+                                    style = MaterialTheme.typography.bodySmall,
+                                    color = MaterialTheme.colorScheme.onSecondaryContainer
+                                )
+                            }
+                            Text("ورود", color = MaterialTheme.colorScheme.primary, fontWeight = FontWeight.Bold)
+                        }
+                    }
+                }
+            }
+            if (isTeacher) {
+                if (isPrimaryTeacher) {
+                    item {
+                        Card(
+                            modifier = Modifier.fillMaxWidth().clickable { showTeacherRequests = true },
+                            colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.secondaryContainer)
+                        ) {
+                            Row(
+                                Modifier.fillMaxWidth().padding(16.dp),
+                                verticalAlignment = Alignment.CenterVertically,
+                                horizontalArrangement = Arrangement.spacedBy(12.dp)
+                            ) {
+                                Icon(Icons.Default.School, contentDescription = null, tint = MaterialTheme.colorScheme.onSecondaryContainer)
+                                Column(Modifier.weight(1f)) {
+                                    Text("درخواست‌های تأیید استاد", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
+                                    Text(
+                                        if (pendingTeacherRequests.isEmpty()) "درخواستی در انتظار نیست" else "${pendingTeacherRequests.size} درخواست در انتظار بررسی",
+                                        style = MaterialTheme.typography.bodySmall
+                                    )
+                                }
+                                Text("بررسی", color = MaterialTheme.colorScheme.primary, fontWeight = FontWeight.Bold)
+                            }
+                        }
+                    }
+                }
+                item {
+                    Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+                        HomeActionCard(
+                            Modifier.weight(1f),
+                            Icons.Default.AutoAwesome,
+                            "خلاصه هوشمند",
+                            "خلاصه و کلیدواژه آخرین جلسه"
+                        ) {
+                            lectures.maxByOrNull { it.dateMillis }?.let { onNavigateToAiSummary(it.id) }
+                        }
+                        HomeActionCard(
+                            Modifier.weight(1f),
+                            Icons.Default.School,
+                            "کلاس جدید",
+                            "ایجاد کلاس و افزودن جلسات",
+                            onNavigateToAdd
+                        )
+                    }
+                }
+            } else {
+                item {
+                    Card(Modifier.fillMaxWidth(), RoundedCornerShape(24.dp), colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.primary)) {
+                        Column(Modifier.padding(22.dp)) {
+                            Text("مطالعه را ادامه دهید", style = MaterialTheme.typography.headlineSmall, fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.onPrimary)
+                            Spacer(Modifier.height(5.dp))
+                            Text("کلاس را انتخاب کنید و وارد جلسه موردنظر شوید.", color = MaterialTheme.colorScheme.onPrimary.copy(alpha = 0.82f))
+                            Spacer(Modifier.height(8.dp))
+                            Text(
+                                studentSyncStatus,
+                                style = MaterialTheme.typography.bodySmall,
+                                color = MaterialTheme.colorScheme.onPrimary.copy(alpha = 0.9f)
+                            )
+                            Spacer(Modifier.height(14.dp))
+                            Button(onClick = viewModel::openClasses, Modifier.fillMaxWidth(), colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.secondary, contentColor = MaterialTheme.colorScheme.onSecondary)) {
+                                Icon(Icons.Default.School, null)
+                                Spacer(Modifier.width(7.dp))
+                                Text("مشاهده کلاس‌ها")
+                            }
+                        }
+                    }
+                }
+            }
+
+            item {
+                Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.SpaceBetween) {
+                    Column {
+                        Text("کلاس‌های من", style = MaterialTheme.typography.headlineSmall, fontWeight = FontWeight.Bold)
+                        Text(
+                            if (isTeacher) "کلاس‌ها را مدیریت و جلسات را ثبت کنید." else "کلاس‌ها و جلسات برای مطالعه",
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                        )
+                    }
+                    Text(classes.size.toString() + " کلاس", style = MaterialTheme.typography.labelLarge, color = MaterialTheme.colorScheme.secondary)
+                }
+            }
+
+            if (classes.isEmpty()) {
+                item {
+                    Card(Modifier.fillMaxWidth(), RoundedCornerShape(22.dp), colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface)) {
+                        Column(Modifier.fillMaxWidth().padding(24.dp), horizontalAlignment = Alignment.CenterHorizontally) {
+                            Icon(Icons.Default.School, null, Modifier.size(44.dp), tint = MaterialTheme.colorScheme.primary)
+                            Spacer(Modifier.height(10.dp))
+                            Text(if (isTeacher) "کلاس خود را ایجاد کنید" else "هنوز کلاسی در دسترس نیست", fontWeight = FontWeight.Bold)
+                            Spacer(Modifier.height(5.dp))
+                            Text(
+                                if (isTeacher) "از کارت «کلاس جدید» شروع کنید." else "پس از اضافه شدن کلاس، جلسات اینجا قابل مشاهده خواهند بود.",
+                                color = MaterialTheme.colorScheme.onSurfaceVariant
+                            )
+                        }
+                    }
+                }
+            } else {
+                items(classes, key = { it.id }) { classItem ->
+                    val classLectures = lectures.filter { it.classId == classItem.id }.sortedByDescending { it.dateMillis }
+                    Card(
+                        Modifier.fillMaxWidth().clickable { viewModel.openClass(classItem.id) },
+                        RoundedCornerShape(22.dp),
+                        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
+                        elevation = CardDefaults.cardElevation(1.dp)
+                    ) {
+                        Column(Modifier.padding(18.dp)) {
+                            Row(verticalAlignment = Alignment.CenterVertically) {
+                                Surface(Modifier.size(48.dp), RoundedCornerShape(15.dp), color = MaterialTheme.colorScheme.primaryContainer) {
+                                    Box(contentAlignment = Alignment.Center) { Icon(Icons.Default.School, null, tint = MaterialTheme.colorScheme.primary) }
+                                }
+                                Spacer(Modifier.width(12.dp))
+                                Column(Modifier.weight(1f)) {
+                                    Text(classItem.name, style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
+                                    if (classItem.teacherName.isNotBlank()) {
+                                        Text("استاد: " + classItem.teacherName, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                                    }
+                                }
+                            }
+                            Spacer(Modifier.height(12.dp))
+                            HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant)
+                            Spacer(Modifier.height(10.dp))
+                            if (isTeacher) {
+                                Row(
+                                    Modifier.fillMaxWidth(),
+                                    verticalAlignment = Alignment.CenterVertically,
+                                    horizontalArrangement = Arrangement.SpaceBetween
+                                ) {
+                                    Column(Modifier.weight(1f)) {
+                                        Text(
+                                            if (classItem.isPublished) "منتشر برای دانشجو" else "پنهان از دانشجو",
+                                            style = MaterialTheme.typography.labelMedium,
+                                            color = if (classItem.isPublished) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.error
+                                        )
+                                        Text(
+                                            "وضعیت انتشار کل کلاس و همه جلسات",
+                                            style = MaterialTheme.typography.labelSmall,
+                                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                                        )
+                                    }
+                                    Switch(
+                                        checked = classItem.isPublished,
+                                        onCheckedChange = { published -> viewModel.setClassPublished(classItem, published) }
+                                    )
+                                }
+                                Spacer(Modifier.height(6.dp))
+                            }
+                            Row(verticalAlignment = Alignment.CenterVertically) {
+                                Spacer(Modifier.weight(1f))
+                                Text(classLectures.size.toString() + " جلسه", style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                            }
+                            Spacer(Modifier.height(10.dp))
+                            if (!isTeacher && classLectures.isNotEmpty()) {
+                                val latest = classLectures.first()
+                                OutlinedButton(onClick = { onNavigateToDetail(latest.id) }, Modifier.fillMaxWidth()) {
+                                    Icon(Icons.Default.PlayArrow, null)
+                                    Spacer(Modifier.width(6.dp))
+                                    Text("ادامه مطالعه: " + latest.title)
+                                }
+                            } else {
+                                Text("مشاهده جلسات  ›", color = MaterialTheme.colorScheme.primary, fontWeight = FontWeight.SemiBold)
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
+    if (showBulkExportDialog && isTeacher) {
+        BulkExportDialog(
+            lectures = lectures,
+            classes = classes,
+            onDismiss = { showBulkExportDialog = false }
+        )
+    }
+}
+
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+private fun BulkExportDialog(
+    lectures: List<LectureEntity>,
+    classes: List<ClassEntity>,
+    onDismiss: () -> Unit
+) {
+    val context = LocalContext.current
+    var scope by androidx.compose.runtime.remember { androidx.compose.runtime.mutableStateOf("all") }
+    var selectedTarget by androidx.compose.runtime.remember(scope) { androidx.compose.runtime.mutableStateOf("") }
+    val targets: List<Pair<String, String>> = when (scope) {
+        "professor" -> lectures.map { it.professorName.trim() }.filter { it.isNotBlank() }.distinct().sorted().map { it to it }
+        "course" -> lectures.map { it.courseName.trim() }.filter { it.isNotBlank() }.distinct().sorted().map { it to it }
+        "class" -> classes.map { it.id.toString() to it.name }
+        else -> emptyList()
+    }
+    val target = selectedTarget.takeIf { value -> targets.any { it.first == value } } ?: targets.firstOrNull()?.first.orEmpty()
+    val selectedLectures = when (scope) {
+        "professor" -> lectures.filter { it.professorName.trim() == target }
+        "course" -> lectures.filter { it.courseName.trim() == target }
+        "class" -> lectures.filter { it.classId?.toString() == target }
+        else -> lectures
+    }.sortedBy { it.dateMillis }
+
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = { Text("ارسال گروهی مطالب") },
+        text = {
+            Column(
+                Modifier.fillMaxWidth().heightIn(max = 440.dp).verticalScroll(rememberScrollState()),
+                verticalArrangement = Arrangement.spacedBy(4.dp)
+            ) {
+                Text("محدوده مطالب را انتخاب کنید:", style = MaterialTheme.typography.titleSmall, fontWeight = FontWeight.Bold)
+                listOf(
+                    "all" to "همه مطالب ذخیره‌شده",
+                    "professor" to "همه جلسات یک استاد",
+                    "course" to "همه جلسات یک درس",
+                    "class" to "همه جلسات یک کلاس"
+                ).forEach { (value, label) ->
+                    Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.fillMaxWidth()) {
+                        RadioButton(selected = scope == value, onClick = { scope = value; selectedTarget = "" })
+                        Text(label, modifier = Modifier.clickable { scope = value; selectedTarget = "" })
+                    }
+                }
+                if (scope != "all") {
+                    Spacer(Modifier.height(6.dp))
+                    Text(
+                        when (scope) {
+                            "professor" -> "استاد موردنظر:"
+                            "course" -> "درس موردنظر:"
+                            else -> "کلاس موردنظر:"
+                        },
+                        style = MaterialTheme.typography.titleSmall,
+                        fontWeight = FontWeight.Bold
+                    )
+                    if (targets.isEmpty()) {
+                        Text("موردی برای انتخاب وجود ندارد.", color = MaterialTheme.colorScheme.error)
+                    } else {
+                        targets.forEach { (value, label) ->
+                            Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.fillMaxWidth()) {
+                                RadioButton(selected = target == value, onClick = { selectedTarget = value })
+                                Text(label, modifier = Modifier.clickable { selectedTarget = value })
+                            }
+                        }
+                    }
+                }
+                Spacer(Modifier.height(4.dp))
+                Text("تعداد جلسات انتخاب‌شده: ${selectedLectures.size}", style = MaterialTheme.typography.labelLarge, color = MaterialTheme.colorScheme.primary)
+                Text("Word و PDF شامل عنوان، تاریخ، خلاصه، کلیدواژه‌ها و متن جزوه می‌شوند.", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+            }
+        },
+        confirmButton = {
+            Row(horizontalArrangement = Arrangement.spacedBy(2.dp)) {
+                TextButton(enabled = selectedLectures.isNotEmpty(), onClick = {
+                    runCatching { LectureExport.share(context, selectedLectures, LectureExportFormat.WORD, "مطالب درس‌یار") }
+                        .onFailure { Toast.makeText(context, "خروجی Word ناموفق بود: ${it.localizedMessage}", Toast.LENGTH_LONG).show() }
+                    if (selectedLectures.isNotEmpty()) onDismiss()
+                }) { Text("Word") }
+                TextButton(enabled = selectedLectures.isNotEmpty(), onClick = {
+                    runCatching { LectureExport.share(context, selectedLectures, LectureExportFormat.PDF, "مطالب درس‌یار") }
+                        .onFailure { Toast.makeText(context, "خروجی PDF ناموفق بود: ${it.localizedMessage}", Toast.LENGTH_LONG).show() }
+                    if (selectedLectures.isNotEmpty()) onDismiss()
+                }) { Text("PDF") }
+                TextButton(enabled = selectedLectures.isNotEmpty(), onClick = {
+                    runCatching { LectureExport.share(context, selectedLectures, LectureExportFormat.TEXT, "مطالب درس‌یار") }
+                        .onFailure { Toast.makeText(context, "اشتراک‌گذاری ناموفق بود: ${it.localizedMessage}", Toast.LENGTH_LONG).show() }
+                    if (selectedLectures.isNotEmpty()) onDismiss()
+                }) { Text("متن") }
+            }
+        },
+        dismissButton = { TextButton(onClick = onDismiss) { Text("انصراف") } }
+    )
+}
+
+@Composable
+private fun rememberNetworkConnection(): Boolean {
+    val context = LocalContext.current
+    val connectivityManager = remember(context) {
+        context.getSystemService(Context.CONNECTIVITY_SERVICE) as ConnectivityManager
+    }
+    fun connected(): Boolean {
+        val network = connectivityManager.activeNetwork ?: return false
+        val capabilities = connectivityManager.getNetworkCapabilities(network) ?: return false
+        return capabilities.hasCapability(NetworkCapabilities.NET_CAPABILITY_INTERNET) &&
+            capabilities.hasCapability(NetworkCapabilities.NET_CAPABILITY_VALIDATED)
+    }
+    val online = remember { mutableStateOf(connected()) }
+    DisposableEffect(connectivityManager) {
+        val callback = object : ConnectivityManager.NetworkCallback() {
+            override fun onAvailable(network: Network) {
+                online.value = connected()
+            }
+            override fun onCapabilitiesChanged(network: Network, networkCapabilities: NetworkCapabilities) {
+                online.value = networkCapabilities.hasCapability(NetworkCapabilities.NET_CAPABILITY_INTERNET) &&
+                    networkCapabilities.hasCapability(NetworkCapabilities.NET_CAPABILITY_VALIDATED)
+            }
+            override fun onLost(network: Network) {
+                online.value = connected()
+            }
+        }
+        runCatching { connectivityManager.registerDefaultNetworkCallback(callback) }
+        online.value = connected()
+        onDispose { runCatching { connectivityManager.unregisterNetworkCallback(callback) } }
+    }
+    return online.value
+}
+
+@Composable
+private fun HomeActionCard(
+    modifier: Modifier,
+    icon: androidx.compose.ui.graphics.vector.ImageVector,
+    title: String,
+    subtitle: String,
+    onClick: () -> Unit
+) {
+    Card(
+        modifier.clickable(onClick = onClick),
+        RoundedCornerShape(20.dp),
+        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
+        elevation = CardDefaults.cardElevation(1.dp)
+    ) {
+        Column(Modifier.padding(16.dp)) {
+            Icon(icon, null, tint = MaterialTheme.colorScheme.secondary)
+            Spacer(Modifier.height(10.dp))
+            Text(title, fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.onSurface)
+            Spacer(Modifier.height(4.dp))
+            Text(subtitle, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+        }
+    }
+}
