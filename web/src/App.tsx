@@ -1,6 +1,6 @@
 import { FormEvent, useEffect, useMemo, useState } from "react";
 import { onAuthStateChanged, signInWithEmailAndPassword, signOut, User } from "firebase/auth";
-import { api, AccessCode, AudioSource, ClassMember, ClassRecord, CourseRecord, ForumPost, ForumTopic, Me, SessionDetail, SessionSummary, Teacher, TeacherFolder, UserNotification } from "./api";
+import { api, AccessCode, AudioSource, ClassAnnouncement, ClassMember, ClassRecord, CourseRecord, ForumPost, ForumTopic, Me, SessionDetail, SessionSummary, Teacher, TeacherFolder, UserNotification } from "./api";
 import { auth, firebaseConfigured } from "./firebase";
 
 export default function App() {
@@ -26,6 +26,9 @@ export default function App() {
   const [showCourseForm, setShowCourseForm] = useState(false);
   const [sessionCourseId, setSessionCourseId] = useState("");
   const [detail, setDetail] = useState<SessionDetail | null>(null);
+  const [announcements, setAnnouncements] = useState<ClassAnnouncement[]>([]);
+  const [announcementTitle, setAnnouncementTitle] = useState("");
+  const [announcementBody, setAnnouncementBody] = useState("");
   const [forumTopics, setForumTopics] = useState<ForumTopic[]>([]);
   const [activeTopic, setActiveTopic] = useState<ForumTopic | null>(null);
   const [forumPosts, setForumPosts] = useState<ForumPost[]>([]);
@@ -124,7 +127,7 @@ export default function App() {
   }
   async function openClass(item: ClassRecord) {
     if (!user) return;
-    setSelectedClass(item); setDetail(null); setAudioSources([]); setForumTopics([]); setActiveTopic(null); setForumPosts([]); setSessions([]); setCourses([]); setClassAccessCodes([]); setClassMembers([]); setNewlyCreatedCode(""); setShowSessionForm(false); setBusy(true); setError("");
+    setSelectedClass(item); setDetail(null); setAudioSources([]); setAnnouncements([]); setForumTopics([]); setActiveTopic(null); setForumPosts([]); setSessions([]); setCourses([]); setClassAccessCodes([]); setClassMembers([]); setNewlyCreatedCode(""); setShowSessionForm(false); setBusy(true); setError("");
     try {
       const token = await user.getIdToken();
       const canManage = me?.roles.includes("super_admin") || (me?.roles.includes("teacher") && item.ownerUserId === me.userId);
@@ -178,6 +181,22 @@ export default function App() {
       setAudioSources(current => current.filter(source => source.id !== sourceId));
       setNotice("پیوند صوتی از جلسه برداشته شد.");
     } catch (e) { setError(message(e)); }
+    finally { setBusy(false); }
+  }
+
+  async function createClassAnnouncement(event: FormEvent) {
+    event.preventDefault();
+    if (!user || !selectedClass || !canManageSelectedClass || !announcementTitle.trim() || !announcementBody.trim()) return;
+    setBusy(true); setError(""); setNotice("");
+    try {
+      const created = await api.createClassAnnouncement(selectedClass.id, {
+        title: announcementTitle.trim(), body: announcementBody.trim(),
+      }, await user.getIdToken());
+      setAnnouncements(current => [created, ...current]);
+      setAnnouncementTitle(""); setAnnouncementBody("");
+      await refreshNotifications();
+      setNotice("اعلان برای اعضای فعال کلاس منتشر شد.");
+    } catch(e) { setError(message(e)); }
     finally { setBusy(false); }
   }
 
@@ -629,7 +648,20 @@ export default function App() {
             </div>)}
           </section>}
           {sessions.map(s => <button key={s.id} className="session-row" onClick={() => void openSession(s)}><span>{s.title}</span><span className="muted">{s.courseName}</span></button>)}
-          {!sessions.length && !busy && <p className="muted">جلسه‌ای ثبت نشده است.</p>}\n          <section className="forum-panel">
+          {!sessions.length && !busy && <p className="muted">جلسه‌ای ثبت نشده است.</p>}\n          <section className="announcement-panel">
+            <div className="section-head"><div><h3>اعلان‌های رسمی کلاس</h3><p className="muted">اطلاعیه‌های استاد برای اعضای کلاس</p></div><span className="muted">{announcements.length} اعلان</span></div>
+            {canManageSelectedClass && <form className="editor-form" onSubmit={createClassAnnouncement}>
+              <label>عنوان اعلان<input value={announcementTitle} onChange={e => setAnnouncementTitle(e.target.value)} maxLength={200} placeholder="مثلاً تغییر زمان جلسه" required /></label>
+              <label>متن اعلان<textarea value={announcementBody} onChange={e => setAnnouncementBody(e.target.value)} rows={3} maxLength={20000} placeholder="متن اطلاعیه را بنویسید…" required /></label>
+              <button disabled={busy || !announcementTitle.trim() || !announcementBody.trim()}>انتشار اعلان</button>
+            </form>}
+            {announcements.map(item => <article className="announcement-item" key={item.id}>
+              <strong>{item.title}</strong><p className="pre">{item.body}</p>
+              <small>{item.authorName} · {new Date(item.publishedAtMs).toLocaleString("fa-IR")}</small>
+            </article>)}
+            {!announcements.length && <p className="muted">هنوز اعلانی برای این کلاس منتشر نشده است.</p>}
+          </section>
+          <section className="forum-panel">
             <div className="section-head"><div><h3>تالار گفت‌وگوی کلاس</h3><p className="muted">پرسش‌ها، پاسخ‌ها و گفت‌وگوهای مرتبط با درس</p></div><span className="muted">{forumTopics.length} بحث</span></div>
             <form className="editor-form forum-form" onSubmit={createForumTopic}>
               <h4>{detail ? `بحث درباره جلسه: ${detail.title}` : "ایجاد بحث جدید در کلاس"}</h4>
