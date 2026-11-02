@@ -61,6 +61,10 @@ export type SessionState = {
   userId: string; sessionId: string; isFavorite: boolean;
   lastPlaybackPositionMs: number; updatedAtMs: number;
 };
+export type SessionNote = {
+  id: string; userId: string; sessionId: string; quotedText: string; noteText: string;
+  startOffset: number | null; endOffset: number | null; createdAtMs: number; updatedAtMs: number;
+};
 const base = (import.meta.env.VITE_DARSYAR_API_BASE_URL || "").replace(/\/+$/, "");
 async function requestPublic<T>(path: string): Promise<T> {
   if (!base) throw new Error("نشانی سرور تنظیم نشده است.");
