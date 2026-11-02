@@ -57,6 +57,10 @@ export type AudioSource = {
   id: string; sessionId: string; sourceKind: string; sourceUrl: string | null;
   storageKey: string | null; title: string | null; sortOrder: number; isActive: boolean;
 };
+export type SessionState = {
+  userId: string; sessionId: string; isFavorite: boolean;
+  lastPlaybackPositionMs: number; updatedAtMs: number;
+};
 const base = (import.meta.env.VITE_DARSYAR_API_BASE_URL || "").replace(/\/+$/, "");
 async function requestPublic<T>(path: string): Promise<T> {
   if (!base) throw new Error("نشانی سرور تنظیم نشده است.");
@@ -121,6 +125,10 @@ export const api = {
   sessions: (classId: string, token: string) => request<SessionSummary[]>(`/api/v1/classes/${encodeURIComponent(classId)}/sessions`, token),
   session: (classId: string, sessionId: string, token: string) =>
     request<SessionDetail>(`/api/v1/classes/${encodeURIComponent(classId)}/sessions/${encodeURIComponent(sessionId)}`, token),
+  sessionState: (classId: string, sessionId: string, token: string) =>
+    request<SessionState>(`/api/v1/classes/${encodeURIComponent(classId)}/sessions/${encodeURIComponent(sessionId)}/state`, token),
+  saveSessionState: (classId: string, sessionId: string, data: { isFavorite: boolean; lastPlaybackPositionMs: number }, token: string) =>
+    request<SessionState>(`/api/v1/classes/${encodeURIComponent(classId)}/sessions/${encodeURIComponent(sessionId)}/state`, token, { method: "PUT", body: JSON.stringify(data) }),
   createSession: (classId: string, data: NewSession, token: string) =>
     request<SessionDetail>(`/api/v1/classes/${encodeURIComponent(classId)}/sessions`, token, { method: "POST", body: JSON.stringify(data) }),
   updateSession: (sessionId: string, data: NewSession & { courseId?: string | null; audioDurationMs?: number; tags?: string; aiQuizJson?: string | null }, token: string) =>
