@@ -27,6 +27,7 @@ import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.combine
+import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.debounce
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
@@ -999,9 +1000,7 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
             }
 
             try {
-                val targetSessions = repository.allLectures.let { flow ->
-                    kotlinx.coroutines.flow.first(flow)
-                }.filter { it.classId == targetClass.id }
+                val targetSessions = repository.allLectures.first().filter { it.classId == targetClass.id }
                 val nextOrder = (targetSessions.maxOfOrNull { it.sortOrder } ?: 0) + 1
                 val moved = lecture.copy(
                     classId = targetClass.id,
