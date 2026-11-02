@@ -16,26 +16,34 @@ Responsive Persian RTL web client for the Darsyar staging backend.
 
 Build verification: `npm run build`. GitHub Actions runs the same production build on web changes.
 
-## Implemented in this increment
+## Implemented in this staging increment
 
 - Firebase email/password sign-in using the existing identity provider.
-- Reads the signed-in user's role, teacher directory, visible classes, session summaries and selected session detail.
-- Displays the hierarchy teacher → class → session.
-- Teacher and super-admin can create classes; super-admin must select the target teacher.
-- Teacher can create sessions in their own classes; super-admin can create sessions in any class returned by the backend.
-- Class visibility can be set to public or private at creation.
-- Signed-in students can redeem a private-class access code and refresh their authorized class list.
-- Admins can browse classes returned by the backend; ordinary users see only what the backend authorizes.
+- Role-aware teacher directory, visible class list and the hierarchy teacher → class → session.
+- Create and edit classes, with public/private visibility and teacher-folder assignment.
+- Nested teacher folders: create, choose parent, rename, hide/show, delete when allowed, and filter classes by folder.
+- Create and edit sessions, preserving original transcript separately from edited transcript; show AI summary and key points.
+- Optional courses inside a class, with create/edit/delete controls.
+- Private class access codes: create, display once, copy, list and revoke.
+- Student redemption of private-class codes and teacher/admin membership list with revocation.
+- Soft deletion of classes and sessions, with recovery panels for authorized managers.
+- Session audio sources: add direct audio URLs or hosted/external links, play direct URLs in the browser, and deactivate links without deleting the underlying file.
+- Super-admin cross-teacher content management; teacher controls are limited to their own classes by backend authorization.
 - Backend remains the authority for all permission checks; UI visibility is not treated as a security boundary.
 
-## Not implemented yet
+## Remaining work before product parity or deployment
 
-- Editing, hiding, deleting and restoring classes/sessions from the web UI.
-- Managing teacher folders and course records.
-- Generating and revoking class access codes from the teacher/admin web panel.
 - Anonymous (not signed-in) public class/session browsing. Current protected API requires Firebase sign-in even for public classes.
-- Full sync with Android Room/Firestore, migration, production deployment, account creation and password reset.
+- Teacher application submission/review screens and account creation/password reset.
+- Student-facing learning progress, bookmarks and personal session state.
+- Search, transcript navigation/highlighting, notes/questions and AI study tools.
+- Speech-to-text workflows and richer audio integration; this increment stores external links only and does not upload audio.
+- Discussion forum for each class and session, including threaded questions/replies, moderation, notifications and references to lesson sections.
+- Full Android Room/Firestore synchronization and safe migration workflows.
+- End-to-end tests against a disposable staging environment, security review and production operations runbook.
+
+## Safety boundary
+
+This is a staging client only. It is not connected to production data and does not authorize server deployment or migration. Firebase production, the current Iran server, DNS and existing user data remain unchanged.
 
 Never add Firebase Admin credentials or other private secrets to `.env.local` or any `VITE_*` variable; Vite variables are bundled into browser code. The Firebase values above are browser app public configuration, not a service-account credential. The backend URL is centralized in `src/api.ts`; do not hardcode hostnames in UI components.
-
-This is a staging client only. It is not connected to production data and does not authorize server deployment or migration.
