@@ -1020,6 +1020,60 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
         }
     }
 
+    /** Move a session between two classes owned by the signed-in teacher. */
+    fun moveLectureToClass(
+        lectureId: Long,
+        targetClassId: Long,
+        onMoved: () -> Unit = {}
+    ) {
+        viewModelScope.launch {
+            if (!teacherPermissionGranted()) {
+                denyTeacherMutation()
+                return@launch
+            }
+
+            val uid = AuthPreferences.currentUid(getApplication<Application>()).orEmpty()
+            val lecture = repository.getLecture(lectureId)
+            val targetClass = repository.getClass(targetClassId)
+            val sourceClassId = lecture?.classId ?: lecture?.courseId?.let { courseId ->
+                repository.getCourse(courseId)?.classId
+            }
+            val sourceClass = sourceClassId?.let { repository.getClass(it) }
+
+            if (uid.isBlank() || lecture == null || lecture.id <= 0L ||
+                targetClassId <= 0L || targetClass == null || sourceClass == null ||
+                sourceClass.ownerUid != uid || targetClass.ownerUid != uid ||
+                sourceClass.id == targetClass.id
+            ) {
+                _cloudSyncStatus.value = "انتقال فقط برای جلسه و کلاس‌هایی مجاز است که مالکیت هر دو برای همین حساب تأیید شده باشد."
+                return@launch
+            }
+
+            val moved = lecture.copy(
+                classId = targetClass.id,
+                courseId = null,
+                courseName = targetClass.name,
+                professorName = targetClass.teacherName.ifBlank { lecture.professorName },
+                sortOrder = 0,
+                lastEditedMillis = System.currentTimeMillis()
+            )
+
+            try {
+                repository.saveLecture(moved)
+                withContext(Dispatchers.IO) {
+                    CloudMaterialsSync.sync(getApplication<Application>())
+                }
+                _cloudSyncStatus.value = "جلسه با حفظ متن‌ها، خلاصه‌ها و پیوند صوتی به کلاس مقصد منتقل شد."
+                onMoved()
+            } catch (error: Exception) {
+                // Do not leave a local-only move that failed to reach the shared store.
+                runCatching { repository.saveLecture(lecture) }
+                Log.e(TAG, "Moving session to another class failed", error)
+                _cloudSyncStatus.value = "انتقال جلسه ذخیره نشد: ${error.localizedMessage ?: "خطای نامشخص"}"
+            }
+        }
+    }
+
     fun deleteLecture(
         id: Long,
         onDeleted: () -> Unit
