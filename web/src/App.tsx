@@ -1,6 +1,6 @@
 import { FormEvent, useEffect, useMemo, useState } from "react";
 import { onAuthStateChanged, signInWithEmailAndPassword, signOut, User } from "firebase/auth";
-import { api, AccessCode, AudioSource, ClassMember, ClassRecord, CourseRecord, Me, SessionDetail, SessionSummary, Teacher, TeacherFolder } from "./api";
+import { api, AccessCode, AudioSource, ClassMember, ClassRecord, CourseRecord, ForumPost, ForumTopic, Me, SessionDetail, SessionSummary, Teacher, TeacherFolder, UserNotification } from "./api";
 import { auth, firebaseConfigured } from "./firebase";
 
 export default function App() {
@@ -26,6 +26,15 @@ export default function App() {
   const [showCourseForm, setShowCourseForm] = useState(false);
   const [sessionCourseId, setSessionCourseId] = useState("");
   const [detail, setDetail] = useState<SessionDetail | null>(null);
+  const [forumTopics, setForumTopics] = useState<ForumTopic[]>([]);
+  const [activeTopic, setActiveTopic] = useState<ForumTopic | null>(null);
+  const [forumPosts, setForumPosts] = useState<ForumPost[]>([]);
+  const [forumTitle, setForumTitle] = useState("");
+  const [forumBody, setForumBody] = useState("");
+  const [replyBody, setReplyBody] = useState("");
+  const [replyParentId, setReplyParentId] = useState<string | null>(null);
+  const [notifications, setNotifications] = useState<UserNotification[]>([]);
+  const [showNotifications, setShowNotifications] = useState(false);
   const [audioSources, setAudioSources] = useState<AudioSource[]>([]);
   const [audioTitle, setAudioTitle] = useState("");
   const [audioUrl, setAudioUrl] = useState("");
@@ -63,7 +72,7 @@ export default function App() {
   useEffect(() => {
     let cancelled = false;
     async function load() {
-      if (!user) { setMe(null); setTeachers([]); setClasses([]); setFolders([]); return; }
+      if (!user) { setMe(null); setTeachers([]); setClasses([]); setFolders([]); setNotifications([]); return; }
       setBusy(true); setError("");
       try {
         const token = await user.getIdToken();
@@ -115,7 +124,7 @@ export default function App() {
   }
   async function openClass(item: ClassRecord) {
     if (!user) return;
-    setSelectedClass(item); setDetail(null); setAudioSources([]); setSessions([]); setCourses([]); setClassAccessCodes([]); setClassMembers([]); setNewlyCreatedCode(""); setShowSessionForm(false); setBusy(true); setError("");
+    setSelectedClass(item); setDetail(null); setAudioSources([]); setForumTopics([]); setActiveTopic(null); setForumPosts([]); setSessions([]); setCourses([]); setClassAccessCodes([]); setClassMembers([]); setNewlyCreatedCode(""); setShowSessionForm(false); setBusy(true); setError("");
     try {
       const token = await user.getIdToken();
       const canManage = me?.roles.includes("super_admin") || (me?.roles.includes("teacher") && item.ownerUserId === me.userId);
@@ -169,6 +178,89 @@ export default function App() {
       setAudioSources(current => current.filter(source => source.id !== sourceId));
       setNotice("پیوند صوتی از جلسه برداشته شد.");
     } catch (e) { setError(message(e)); }
+    finally { setBusy(false); }
+  }
+
+  async function openForumTopic(topic: ForumTopic) {
+    if (!user) return;
+    setBusy(true); setError("");
+    try {
+      const posts = await api.forumPosts(topic.id, await user.getIdToken());
+      setActiveTopic(topic); setForumPosts(posts); setReplyParentId(null);
+    } catch(e) { setError(message(e)); }
+    finally { setBusy(false); }
+  }
+  async function createForumTopic(event: FormEvent) {
+    event.preventDefault();
+    if (!user || !selectedClass || !forumTitle.trim() || !forumBody.trim()) return;
+    setBusy(true); setError(""); setNotice("");
+    try {
+      const created = await api.createForumTopic(selectedClass.id, {
+        title: forumTitle.trim(), body: forumBody.trim(),
+        sessionId: detail?.id ?? undefined,
+      }, await user.getIdToken());
+      setForumTopics(current => [created, ...current]);
+      setForumTitle(""); setForumBody("");
+      await openForumTopic(created);
+      await refreshNotifications();
+      setNotice("بحث جدید در تالار کلاس ایجاد شد.");
+    } catch(e) { setError(message(e)); }
+    finally { setBusy(false); }
+  }
+  async function createForumReply(event: FormEvent) {
+    event.preventDefault();
+    if (!user || !activeTopic || !replyBody.trim() || activeTopic.isLocked) return;
+    setBusy(true); setError(""); setNotice("");
+    try {
+      await api.createForumReply(activeTopic.id, { parentPostId: replyParentId, body: replyBody.trim() }, await user.getIdToken());
+      setReplyBody(""); setReplyParentId(null);
+      const [posts, topics] = await Promise.all([
+        api.forumPosts(activeTopic.id, await user.getIdToken()),
+        api.forumTopics(activeTopic.classId, await user.getIdToken()),
+      ]);
+      setForumPosts(posts); setForumTopics(topics);
+      setActiveTopic(topics.find(t => t.id === activeTopic.id) ?? activeTopic);
+      await refreshNotifications();
+      setNotice("پاسخ شما ثبت شد.");
+    } catch(e) { setError(message(e)); }
+    finally { setBusy(false); }
+  }
+  async function moderateForumTopic(topic: ForumTopic, patch: Partial<Pick<ForumTopic,"isPinned"|"isLocked">>) {
+    if (!user || !canManageSelectedClass) return;
+    setBusy(true); setError("");
+    try {
+      await api.moderateForumTopic(topic.id, {
+        isPinned: patch.isPinned ?? topic.isPinned,
+        isLocked: patch.isLocked ?? topic.isLocked,
+      }, await user.getIdToken());
+      const topics = await api.forumTopics(topic.classId, await user.getIdToken());
+      setForumTopics(topics); setActiveTopic(topics.find(t => t.id === topic.id) ?? null);
+      setNotice("تنظیمات بحث به‌روزرسانی شد.");
+    } catch(e) { setError(message(e)); }
+    finally { setBusy(false); }
+  }
+  async function refreshNotifications() {
+    if (!user) return;
+    try { setNotifications(await api.notifications(false, await user.getIdToken())); }
+    catch(e) { setError(message(e)); }
+  }
+  async function openNotification(item: UserNotification) {
+    if (!user) return;
+    setBusy(true); setError("");
+    try {
+      if (!item.isRead) await api.markNotificationRead(item.id, await user.getIdToken());
+      const inbox = await api.notifications(false, await user.getIdToken());
+      setNotifications(inbox);
+      setShowNotifications(false);
+      const clazz = item.classId ? classes.find(c => c.id === item.classId) : null;
+      if (clazz) {
+        await openClass(clazz);
+        if (item.topicId) {
+          const topic = (await api.forumTopics(clazz.id, await user.getIdToken())).find(t => t.id === item.topicId);
+          if (topic) await openForumTopic(topic);
+        }
+      }
+    } catch(e) { setError(message(e)); }
     finally { setBusy(false); }
   }
 
@@ -440,7 +532,7 @@ export default function App() {
   </form></main>;
 
   return <main className="shell">
-    <header className="topbar"><Brand /><div className="account"><span>{user.email}</span><button className="ghost" onClick={() => void signOut(auth!)}>خروج</button></div></header>
+    <header className="topbar"><Brand /><div className="account"><div className="notification-wrap"><button className="ghost notification-button" onClick={() => {setShowNotifications(v => !v);if(!showNotifications) void refreshNotifications();}}>اعلان‌ها {notifications.filter(n => !n.isRead).length ? <b className="notification-count">{notifications.filter(n => !n.isRead).length}</b> : null}</button>{showNotifications && <section className="notification-popover"><div className="section-head"><strong>اعلان‌ها</strong><button className="ghost" onClick={() => void refreshNotifications()}>تازه‌سازی</button></div>{notifications.slice(0,30).map(n => <button key={n.id} className={n.isRead ? "notification-item read" : "notification-item"} onClick={() => void openNotification(n)}><span>{n.message}</span><small>{new Date(n.createdAtMs).toLocaleString("fa-IR")}</small></button>)}{!notifications.length && <p className="muted">اعلانی ندارید.</p>}</section>}</div><span>{user.email}</span><button className="ghost" onClick={() => void signOut(auth!)}>خروج</button></div></header>
     <section className="welcome"><div><p className="eyebrow">محیط آموزشی درس‌یار</p><h1>{isAdmin ? "مدیریت و مرور محتوا" : "کلاس‌های آموزشی"}</h1><p>ساختار استاد ← کلاس ← جلسه</p></div><span className="role">{roleLabel(me?.roles ?? [])}</span></section>
     {error && <p className="error notice">{error}</p>}
     {notice && <p className="success notice">{notice}</p>}
@@ -537,7 +629,38 @@ export default function App() {
             </div>)}
           </section>}
           {sessions.map(s => <button key={s.id} className="session-row" onClick={() => void openSession(s)}><span>{s.title}</span><span className="muted">{s.courseName}</span></button>)}
-          {!sessions.length && !busy && <p className="muted">جلسه‌ای ثبت نشده است.</p>}
+          {!sessions.length && !busy && <p className="muted">جلسه‌ای ثبت نشده است.</p>}\n          <section className="forum-panel">
+            <div className="section-head"><div><h3>تالار گفت‌وگوی کلاس</h3><p className="muted">پرسش‌ها، پاسخ‌ها و گفت‌وگوهای مرتبط با درس</p></div><span className="muted">{forumTopics.length} بحث</span></div>
+            <form className="editor-form forum-form" onSubmit={createForumTopic}>
+              <h4>{detail ? `بحث درباره جلسه: ${detail.title}` : "ایجاد بحث جدید در کلاس"}</h4>
+              <label>عنوان بحث<input value={forumTitle} onChange={e => setForumTitle(e.target.value)} maxLength={200} placeholder="موضوع پرسش یا گفت‌وگو" required /></label>
+              <label>متن پیام<textarea value={forumBody} onChange={e => setForumBody(e.target.value)} rows={3} maxLength={20000} placeholder="متن پرسش یا توضیح خود را بنویسید…" required /></label>
+              <button disabled={busy || !forumTitle.trim() || !forumBody.trim()}>ثبت بحث</button>
+            </form>
+            <div className="forum-topics">
+              {forumTopics.map(topic => <button key={topic.id} className={activeTopic?.id === topic.id ? "forum-topic active" : "forum-topic"} onClick={() => void openForumTopic(topic)}>
+                <span className="forum-topic-flags">{topic.isPinned ? "📌 سنجاق‌شده · " : ""}{topic.isLocked ? "🔒 بسته · " : ""}{topic.sessionId ? "مرتبط با جلسه" : "گفت‌وگوی عمومی کلاس"}</span>
+                <strong>{topic.title}</strong><span className="muted">{topic.authorName} · {topic.replyCount} پاسخ</span>
+              </button>)}
+              {!forumTopics.length && <p className="muted">هنوز بحثی در این تالار ایجاد نشده است.</p>}
+            </div>
+            {activeTopic && <article className="forum-thread">
+              <div className="section-head"><div><h4>{activeTopic.title}</h4><span className="muted">ایجادکننده: {activeTopic.authorName}</span></div>{canManageSelectedClass && <span><button className="ghost" disabled={busy} onClick={() => void moderateForumTopic(activeTopic,{isPinned:!activeTopic.isPinned})}>{activeTopic.isPinned ? "برداشتن سنجاق" : "سنجاق بحث"}</button><button className="ghost" disabled={busy} onClick={() => void moderateForumTopic(activeTopic,{isLocked:!activeTopic.isLocked})}>{activeTopic.isLocked ? "بازکردن بحث" : "بستن بحث"}</button></span>}</div>
+              <p className="pre forum-topic-body">{activeTopic.body}</p>
+              <h4>پاسخ‌ها ({forumPosts.length})</h4>
+              {forumPosts.map(post => <div key={post.id} className={post.parentPostId ? "forum-post nested" : "forum-post"}>
+                <div className="forum-post-meta"><strong>{post.authorName}</strong><small>{new Date(post.createdAtMs).toLocaleString("fa-IR")}</small></div>
+                <p className="pre">{post.body}</p>
+                {!activeTopic.isLocked && <button className="ghost" onClick={() => {setReplyParentId(post.id);setReplyBody("");}}>پاسخ به این پیام</button>}
+              </div>)}
+              {!activeTopic.isLocked ? <form className="editor-form forum-reply-form" onSubmit={createForumReply}>
+                <h4>{replyParentId ? "پاسخ به پیام انتخاب‌شده" : "ثبت پاسخ"}</h4>
+                {replyParentId && <button type="button" className="ghost" onClick={() => setReplyParentId(null)}>لغو انتخاب پاسخ</button>}
+                <textarea value={replyBody} onChange={e => setReplyBody(e.target.value)} rows={3} maxLength={20000} placeholder="پاسخ خود را بنویسید…" required />
+                <button disabled={busy || !replyBody.trim()}>ارسال پاسخ</button>
+              </form> : <p className="muted">این بحث توسط مدیر یا استاد مسئول بسته شده است.</p>}
+            </article>}
+          </section>
         </div>}
         {detail && <article className="detail">
           <div className="toolbar"><h2>{detail.title}</h2>{canManageSelectedClass && <><button className="ghost" onClick={() => void editSelectedSession()}>ویرایش جلسه</button><button className="ghost danger-text" disabled={busy} onClick={() => void removeSelectedSession()}>حذف جلسه</button></>}</div>
