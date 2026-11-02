@@ -1,4 +1,19 @@
-export type Me = { userId: string; roles: string[] };
+ex
+export type ForumTopic = {
+  id: string; classId: string; sessionId: string | null; authorUserId: string; authorName: string;
+  title: string; body: string; isPinned: boolean; isLocked: boolean; replyCount: number;
+  createdAtMs: number; updatedAtMs: number;
+};
+export type ForumPost = {
+  id: string; topicId: string; parentPostId: string | null; authorUserId: string;
+  authorName: string; body: string; createdAtMs: number; updatedAtMs: number;
+};
+export type UserNotification = {
+  id: string; notificationType: string; message: string; classId: string | null;
+  topicId: string | null; postId: string | null; actorUserId: string | null;
+  isRead: boolean; createdAtMs: number;
+};
+port type Me = { userId: string; roles: string[] };
 export type Teacher = { userId: string; displayName: string };
 export type CourseRecord = { id: string; classId: string; title: string; teacherName: string; description: string; createdAtMs: number | null; sortOrder: number; version: number };
 export type TeacherFolder = { id: string; ownerUserId: string; parentFolderId: string | null; name: string; sortOrder: number; isHidden: boolean; version: number };
@@ -115,4 +130,19 @@ export const api = {
     request<AudioSource>(`/api/v1/sessions/${encodeURIComponent(sessionId)}/audio-sources`, token, { method: "POST", body: JSON.stringify(data) }),
   deactivateAudioSource: (sessionId: string, sourceId: string, token: string) =>
     request<void>(`/api/v1/sessions/${encodeURIComponent(sessionId)}/audio-sources/${encodeURIComponent(sourceId)}`, token, { method: "DELETE" }),
-};
+}
+  forumTopics: (classId: string, token: string) =>
+    request<ForumTopic[]>(`/api/v1/classes/${encodeURIComponent(classId)}/forum/topics`, token),
+  createForumTopic: (classId: string, data: { sessionId?: string | null; title: string; body: string }, token: string) =>
+    request<ForumTopic>(`/api/v1/classes/${encodeURIComponent(classId)}/forum/topics`, token, { method: "POST", body: JSON.stringify(data) }),
+  forumPosts: (topicId: string, token: string) =>
+    request<ForumPost[]>(`/api/v1/forum/topics/${encodeURIComponent(topicId)}/posts`, token),
+  createForumReply: (topicId: string, data: { parentPostId?: string | null; body: string }, token: string) =>
+    request<ForumPost>(`/api/v1/forum/topics/${encodeURIComponent(topicId)}/posts`, token, { method: "POST", body: JSON.stringify(data) }),
+  moderateForumTopic: (topicId: string, data: { isPinned: boolean; isLocked: boolean }, token: string) =>
+    request<void>(`/api/v1/forum/topics/${encodeURIComponent(topicId)}/moderation`, token, { method: "PATCH", body: JSON.stringify(data) }),
+  notifications: (unreadOnly: boolean, token: string) =>
+    request<UserNotification[]>(`/api/v1/notifications?unreadOnly=${unreadOnly}`, token),
+  markNotificationRead: (notificationId: string, token: string) =>
+    request<void>(`/api/v1/notifications/${encodeURIComponent(notificationId)}/read`, token, { method: "POST" }),
+;
