@@ -26,6 +26,7 @@ export default function App() {
   const [selectedTeacher, setSelectedTeacher] = useState("all");
   const [selectedClass, setSelectedClass] = useState<ClassRecord | null>(null);
   const [sessions, setSessions] = useState<SessionSummary[]>([]);
+  const [movingSessionId, setMovingSessionId] = useState<string | null>(null);
   const [courses, setCourses] = useState<CourseRecord[]>([]);
   const [courseTitle, setCourseTitle] = useState("");
   const [courseDescription, setCourseDescription] = useState("");
@@ -832,6 +833,23 @@ export default function App() {
     setSessionSummary(detail.aiSummary ?? ""); setSessionKeyPoints(detail.aiKeyPoints ?? "");
     setEditingSession(true); setShowSessionForm(true); setError("");
   }
+  async function moveSessionToClass(session: SessionSummary, targetClassId: string) {
+    if (!user || !canManageSelectedClass || !selectedClass) return;
+    const target = classes.find(item => item.id === targetClassId);
+    if (!target || target.id === selectedClass.id) return;
+    if (!window.confirm(`جلسه «${session.title}» به کلاس «${target.title}» منتقل شود؟ متن‌ها، خلاصه‌ها، صوت‌ها و شناسه جلسه حفظ می‌شوند.`)) return;
+    setBusy(true); setError(""); setNotice("");
+    try {
+      const token = await user.getIdToken();
+      await api.moveSession(session.id, target.id, token);
+      setSessions(await api.sessions(selectedClass.id, token));
+      if (detail?.id === session.id) setDetail(null);
+      setMovingSessionId(null);
+      setNotice(`جلسه به کلاس «${target.title}» منتقل شد.`);
+    } catch (e) { setError(message(e)); }
+    finally { setBusy(false); }
+  }
+
   async function removeSelectedSession() {
     if (!user || !detail || !canManageSelectedClass) return;
     if (!window.confirm("این جلسه حذف شود؟ امکان بازیابی آن از طریق API وجود دارد.")) return;
@@ -1101,7 +1119,18 @@ export default function App() {
               {code.isActive && <button type="button" className="ghost danger-text" disabled={busy} onClick={() => void revokeClassAccessCode(code.id)}>غیرفعال‌کردن</button>}
             </div>)}
           </section>}
-          {sessions.map(s => <button key={s.id} className="session-row" onClick={() => void openSession(s)}><span>{s.title}</span><span className="muted">{s.courseName}</span></button>)}
+          {sessions.map(s => <div key={s.id} className="session-row">
+            <button type="button" className="session-row-open" onClick={() => void openSession(s)}><span>{s.title}</span><span className="muted">{s.courseName}</span></button>
+            {canManageSelectedClass && <button type="button" className="ghost" disabled={busy} onClick={() => setMovingSessionId(current => current === s.id ? null : s.id)}>انتقال به کلاس دیگر</button>}
+            {movingSessionId === s.id && canManageSelectedClass && <div className="session-move-targets">
+              <span className="muted">کلاس مقصد:</span>
+              {classes.filter(target => target.id !== selectedClass.id && (isAdmin || target.ownerUserId === me?.userId)).map(target =>
+                <button type="button" className="ghost" key={target.id} disabled={busy} onClick={() => void moveSessionToClass(s, target.id)}>{target.title}</button>
+              )}
+              {!classes.some(target => target.id !== selectedClass.id && (isAdmin || target.ownerUserId === me?.userId)) && <span className="muted">کلاس مقصد دیگری در دسترس نیست.</span>}
+              <button type="button" className="ghost" onClick={() => setMovingSessionId(null)}>انصراف</button>
+            </div>}
+          </div>)}
           {!sessions.length && !busy && <p className="muted">جلسه‌ای ثبت نشده است.</p>}\n          <section className="announcement-panel">
             <div className="section-head"><div><h3>اعلان‌های رسمی کلاس</h3><p className="muted">اطلاعیه‌های استاد برای اعضای کلاس</p></div><span className="muted">{announcements.length} اعلان</span></div>
             {canManageSelectedClass && <form className="editor-form" onSubmit={createClassAnnouncement}>
