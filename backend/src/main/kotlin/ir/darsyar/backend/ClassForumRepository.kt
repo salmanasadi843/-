@@ -135,7 +135,7 @@ class ClassForumRepository(private val dataSource: DataSource) {
                     it.setObject(1,topic);it.executeQuery().use { rs -> while(rs.next()) recipients+=rs.getObject(1,UUID::class.java) }
                 }
                 notifyUsers(c,recipients-user,user,UUID.fromString(context.classId),topic,UUID.fromString(result.id),"forum_reply","پاسخ تازه‌ای در بحث «${context.title}» ثبت شد.")
-                notifyMentions(c,body,user,UUID.fromString(context.third),topic,UUID.fromString(result.id))
+                notifyMentions(c,body,user,UUID.fromString(context.classId),topic,UUID.fromString(result.id))
                 c.commit();return result
             } catch(e:Throwable){c.rollback();throw e} finally {c.autoCommit=true}
         }
