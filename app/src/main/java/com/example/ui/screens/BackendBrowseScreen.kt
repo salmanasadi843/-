@@ -129,7 +129,7 @@ fun BackendBrowseScreen(onBack: () -> Unit) {
         }
     }
 
-    fun openGlobalNote(note: BackendGlobalSessionNoteDto) {
+    fun openGlobalNote(note: BackendGlobalSessionNoteDto, editAfterOpen: Boolean = false) {
         showMyNotesDialog = false
         withFreshToken { token ->
             val clazz = classes.firstOrNull { it.id == note.classId }
@@ -154,7 +154,32 @@ fun BackendBrowseScreen(onBack: () -> Unit) {
             playbackPositionDraft = selectedSessionState!!.lastPlaybackPositionMs.toFloat()
             activeNoteId = note.id
             pendingGlobalNoteFocusId = note.id
-            status = "جلسه و یادداشت مرتبط باز شد."
+            if (editAfterOpen) {
+                editingNoteId = note.id
+                noteQuote = note.quotedText
+                noteDraft = note.noteText
+                noteStartOffset = note.startOffset
+                noteEndOffset = note.endOffset
+                status = "یادداشت برای ویرایش باز شد؛ پس از تغییر، ذخیرهٔ ویرایش را بزنید."
+            } else {
+                status = "جلسه و یادداشت مرتبط باز شد."
+            }
+        }
+    }
+
+    fun deleteGlobalNote(note: BackendGlobalSessionNoteDto) {
+        withFreshToken { token ->
+            withContext(Dispatchers.IO) {
+                DarsyarCommunityApiFactory.create().deleteSessionNote(token, note.id)
+            }
+            myNotes = myNotes.filterNot { it.id == note.id }
+            sessionNotes = sessionNotes.filterNot { it.id == note.id }
+            if (activeNoteId == note.id) activeNoteId = null
+            if (editingNoteId == note.id) {
+                editingNoteId = null
+                noteQuote = ""; noteDraft = ""; noteStartOffset = null; noteEndOffset = null
+            }
+            status = "یادداشت حذف شد."
         }
     }
 
@@ -628,7 +653,9 @@ fun BackendBrowseScreen(onBack: () -> Unit) {
                                         if (note.quotedText.isNotBlank()) Text("«${note.quotedText}»", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.primary)
                                         Text(note.noteText, style = MaterialTheme.typography.bodyMedium)
                                         Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.End) {
-                                            TextButton(onClick = { openGlobalNote(note) }, enabled = !busy) { Text("رفتن به جلسه و متن") }
+                                            TextButton(onClick = { openGlobalNote(note) }, enabled = !busy) { Text("رفتن به جلسه") }
+                                            TextButton(onClick = { openGlobalNote(note, editAfterOpen = true) }, enabled = !busy) { Text("ویرایش") }
+                                            TextButton(onClick = { deleteGlobalNote(note) }, enabled = !busy) { Text("حذف") }
                                         }
                                     }
                                 }
