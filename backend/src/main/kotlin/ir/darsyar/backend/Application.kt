@@ -220,6 +220,17 @@ data class AudioSourceApiRecord(
 )
 
 @Serializable
+data class ClassAnnouncementWriteRequest(val title:String,val body:String)
+@Serializable
+data class ClassAnnouncementApiRecord(
+    val id:String,val classId:String,val authorUserId:String,val authorName:String,
+    val title:String,val body:String,val isPinned:Boolean,val publishedAtMs:Long
+)
+private fun ClassAnnouncementRecord.toApiRecord() = ClassAnnouncementApiRecord(
+    id,classId,authorUserId,authorName,title,body,isPinned,publishedAtMs
+)
+
+@Serializable
 data class ForumTopicWriteRequest(val sessionId: String? = null, val title: String, val body: String)
 @Serializable
 data class ForumTopicApiRecord(
@@ -349,6 +360,7 @@ fun Application.module(
     val classAccessRepository = ClassAccessRepository(dataSource)
     val teacherAdministrationRepository = TeacherAdministrationRepository(dataSource)
     val forumRepository = ClassForumRepository(dataSource)
+    val announcementRepository = ClassAnnouncementRepository(dataSource)
 
     install(ContentNegotiation) { json() }
     install(Authentication) {
@@ -1181,6 +1193,26 @@ fun Application.module(
                     } catch (_: IllegalArgumentException) {
                         call.respond(HttpStatusCode.BadRequest, ApiError("invalid_audio_source_id"))
                     }
+                }
+            }
+
+            route("/api/v1/classes/{classId}/announcements") {
+                get {
+                    val principal=call.principal<DarsyarPrincipal>()
+                    if(principal==null){call.respond(HttpStatusCode.Unauthorized,ApiError("unauthorized"));return@get}
+                    try {
+                        call.respond(announcementRepository.list(principal.userId,principal.roles,call.parameters["classId"] ?: "").map{it.toApiRecord()})
+                    } catch(_:IllegalArgumentException){call.respond(HttpStatusCode.BadRequest,ApiError("invalid_class_id"))}
+                }
+                post {
+                    val principal=call.principal<DarsyarPrincipal>()
+                    if(principal==null){call.respond(HttpStatusCode.Unauthorized,ApiError("unauthorized"));return@post}
+                    val request=try{call.receive<ClassAnnouncementWriteRequest>()}catch(_:Exception){call.respond(HttpStatusCode.BadRequest,ApiError("invalid_request"));return@post}
+                    try {
+                        val created=announcementRepository.create(principal.userId,principal.roles,call.parameters["classId"] ?: "",request.title,request.body)
+                        call.respond(HttpStatusCode.Created,created.toApiRecord())
+                    } catch(_:SecurityException){call.respond(HttpStatusCode.Forbidden,ApiError("announcement_publish_forbidden"))}
+                    catch(_:IllegalArgumentException){call.respond(HttpStatusCode.BadRequest,ApiError("invalid_announcement"))}
                 }
             }
 
