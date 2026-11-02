@@ -130,7 +130,7 @@ class ClassForumRepository(private val dataSource: DataSource) {
                 }
                 c.prepareStatement("UPDATE forum_topics SET updated_at=now() WHERE id=?").use { it.setObject(1,topic);it.executeUpdate() }
                 val recipients=linkedSetOf<UUID>()
-                recipients+=context.owner
+                recipients+=context.owner\n                recipients+=context.author
                 c.prepareStatement("SELECT author_user_id FROM forum_posts WHERE topic_id=? AND deleted_at IS NULL").use {
                     it.setObject(1,topic);it.executeQuery().use { rs -> while(rs.next()) recipients+=rs.getObject(1,UUID::class.java) }
                 }
@@ -198,7 +198,7 @@ class ClassForumRepository(private val dataSource: DataSource) {
     }
 }
 
-private data class ForumTopicContext(val owner:UUID,val locked:Boolean,val classId:String,val title:String)
+private data class ForumTopicContext(val owner:UUID,val author:UUID,val locked:Boolean,val classId:String,val title:String)
 
 private fun Connection.requireClassAccess(clazz:UUID,user:UUID,roles:Set<AppRole>):UUID {
     val sql="""
@@ -216,7 +216,7 @@ private fun Connection.requireClassAccess(clazz:UUID,user:UUID,roles:Set<AppRole
 
 private fun Connection.requireTopicAccess(topic:UUID,user:UUID,roles:Set<AppRole>,lock:Boolean=false):ForumTopicContext {
     val sql="""
-        SELECT c.owner_user_id,t.is_locked,c.id::text,t.title FROM forum_topics t
+        SELECT c.owner_user_id,t.author_user_id,t.is_locked,c.id::text,t.title FROM forum_topics t
         JOIN teaching_classes c ON c.id=t.class_id
         WHERE t.id=? AND t.deleted_at IS NULL AND c.deleted_at IS NULL
         AND ((? OR c.owner_user_id=?) OR (c.is_published AND c.is_hidden=false AND
@@ -227,7 +227,7 @@ private fun Connection.requireTopicAccess(topic:UUID,user:UUID,roles:Set<AppRole
     return prepareStatement(sql).use { st ->
         st.setObject(1,topic);st.setBoolean(2,AppRole.SUPER_ADMIN in roles);st.setObject(3,user)
         st.setBoolean(4,AppRole.STUDENT in roles);st.setObject(5,user)
-        st.executeQuery().use { rs -> if(rs.next()) ForumTopicContext(rs.getObject(1,UUID::class.java),rs.getBoolean(2),rs.getString(3),rs.getString(4)) else throw SecurityException("Forum topic access denied.") }
+        st.executeQuery().use { rs -> if(rs.next()) ForumTopicContext(rs.getObject(1,UUID::class.java),rs.getObject(2,UUID::class.java),rs.getBoolean(3),rs.getString(4),rs.getString(5)) else throw SecurityException("Forum topic access denied.") }
     }
 }
 
