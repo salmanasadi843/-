@@ -222,7 +222,7 @@ fun BackendNotificationsDialog(onDismiss:()->Unit) {
     val context=LocalContext.current
     val scope=rememberCoroutineScope()
     var notifications by remember { mutableStateOf<List<BackendNotificationDto>>(emptyList()) }
-    var busy by remember { mutableStateOf(true) }
+    var busy by remember { mutableStateOf(false) }
     var markingId by remember { mutableStateOf<String?>(null) }
     var error by remember { mutableStateOf<String?>(null) }
 
