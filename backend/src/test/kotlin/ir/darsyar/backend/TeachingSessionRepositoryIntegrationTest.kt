@@ -136,6 +136,18 @@ class TeachingSessionRepositoryIntegrationTest {
                     UpdateTeachingSession(null, "تغییر غیرمجاز", "", "", null, 0, "", "", null, null, null, "", true, null, 0)
                 )
             }
+            assertFailsWith<SecurityException> {
+                repository.move(otherTeacher.toString(), setOf(AppRole.TEACHER), published.id, privateClass.id)
+            }
+            val moved = repository.move(owner.toString(), setOf(AppRole.TEACHER), published.id, privateClass.id)
+            assertNotNull(moved)
+            assertEquals(privateClass.id, moved.classId)
+            assertEquals(null, moved.courseId)
+            assertEquals("متن اصلی", moved.originalTranscript)
+            assertEquals("متن ویرایش‌شده", moved.transcript)
+            assertEquals("خلاصه", moved.aiSummary)
+            assertEquals("کلیدواژه‌ها", moved.aiKeyPoints)
+
             val updated = repository.update(
                 admin.toString(), setOf(AppRole.SUPER_ADMIN), published.id,
                 UpdateTeachingSession(courseId, "ویرایش مدیر", "", "", 123456L, 9000L,
@@ -162,7 +174,7 @@ class TeachingSessionRepositoryIntegrationTest {
             assertTrue(repository.listVisible(admin.toString(), setOf(AppRole.SUPER_ADMIN)).any { it.id == published.id })
             ds.connection.use { connection ->
                 connection.prepareStatement("SELECT count(*) FROM audit_log WHERE entity_type = 'session'").use { st ->
-                    st.executeQuery().use { rs -> check(rs.next()); assertEquals(6, rs.getInt(1)) }
+                    st.executeQuery().use { rs -> check(rs.next()); assertEquals(7, rs.getInt(1)) }
                 }
             }
         }
