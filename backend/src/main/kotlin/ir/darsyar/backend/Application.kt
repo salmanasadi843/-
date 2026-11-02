@@ -341,6 +341,25 @@ private fun UserNotificationRecord.toApiRecord() = NotificationApiRecord(
 data class ApiError(val error: String)
 
 @Serializable
+data class AiAnswerWriteRequest(
+    val question: String,
+    val selectedText: String? = null
+)
+
+@Serializable
+data class AiCitationApiRecord(
+    val startOffset: Int,
+    val endOffset: Int,
+    val excerpt: String
+)
+
+@Serializable
+data class AiAnswerApiRecord(
+    val answer: String,
+    val citations: List<AiCitationApiRecord> = emptyList()
+)
+
+@Serializable
 data class MeApiResponse(val userId: String, val roles: List<String>)
 
 @Serializable
@@ -437,6 +456,7 @@ fun Application.module(
     val teacherAdministrationRepository = TeacherAdministrationRepository(dataSource)
     val forumRepository = ClassForumRepository(dataSource)
     val announcementRepository = ClassAnnouncementRepository(dataSource)
+    val aiAnswerService: AiAnswerService = DisabledAiAnswerService
 
     install(ContentNegotiation) { json() }
     install(Authentication) {
@@ -521,6 +541,55 @@ fun Application.module(
                             principal.roles.map { it.name.lowercase() }
                         )
                     )
+                }
+            }
+            post("/api/v1/classes/{classId}/sessions/{sessionId}/ai/answer") {
+                val principal = call.principal<DarsyarPrincipal>()
+                if (principal == null) {
+                    call.respond(HttpStatusCode.Unauthorized, ApiError("unauthorized"))
+                    return@post
+                }
+                val classId = call.parameters["classId"].orEmpty()
+                val sessionId = call.parameters["sessionId"].orEmpty()
+                if (runCatching { java.util.UUID.fromString(classId) }.isFailure ||
+                    runCatching { java.util.UUID.fromString(sessionId) }.isFailure
+                ) {
+                    call.respond(HttpStatusCode.BadRequest, ApiError("invalid_session_reference"))
+                    return@post
+                }
+                val request = try { call.receive<AiAnswerWriteRequest>() }
+                catch (_: Exception) {
+                    call.respond(HttpStatusCode.BadRequest, ApiError("invalid_ai_request"))
+                    return@post
+                }
+                if (request.question.isBlank() || request.question.length > 4_000 ||
+                    (request.selectedText?.length ?: 0) > 12_000
+                ) {
+                    call.respond(HttpStatusCode.BadRequest, ApiError("invalid_ai_request"))
+                    return@post
+                }
+                val session = sessionRepository.findVisible(principal.userId, principal.roles, classId, sessionId)
+                if (session == null) {
+                    call.respond(HttpStatusCode.NotFound, ApiError("session_not_found"))
+                    return@post
+                }
+                if (!aiAnswerService.isAvailable()) {
+                    call.respond(HttpStatusCode.ServiceUnavailable, ApiError("ai_service_unavailable"))
+                    return@post
+                }
+                try {
+                    val result = aiAnswerService.answer(
+                        transcript = session.transcript,
+                        question = request.question.trim(),
+                        selectedText = request.selectedText?.trim()?.takeIf { it.isNotEmpty() }
+                    )
+                    call.respond(AiAnswerApiRecord(result.answer, result.citations.map {
+                        AiCitationApiRecord(it.startOffset, it.endOffset, it.excerpt)
+                    }))
+                } catch (_: AiProviderUnavailableException) {
+                    call.respond(HttpStatusCode.ServiceUnavailable, ApiError("ai_service_unavailable"))
+                } catch (_: Exception) {
+                    call.respond(HttpStatusCode.BadGateway, ApiError("ai_request_failed"))
                 }
             }
             get("/api/v1/me/notes") {
