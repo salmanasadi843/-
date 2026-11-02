@@ -959,7 +959,7 @@ export default function App() {
           </section>
           <section className="access-manager">
             <div className="section-head"><h3>یادداشت‌های شخصی من</h3><span className="muted">{sessionNotes.length} یادداشت · فقط برای شما</span></div>
-            {sessionNotes.map(note => <article className="code-row" key={note.id}>
+            {sessionNotes.map(note => <article className={`code-row ${activeNoteId === note.id ? "personal-note-active" : ""}`} key={note.id}>
               <div>
                 {note.quotedText && <blockquote className="pre">{note.quotedText}</blockquote>}
                 <p className="pre">{note.noteText}</p>
