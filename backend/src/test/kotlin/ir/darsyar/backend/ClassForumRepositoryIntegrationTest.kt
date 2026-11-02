@@ -66,6 +66,22 @@ class ClassForumRepositoryIntegrationTest {
             }
             studentInbox.forEach { assertTrue(repo.markNotificationRead(student.toString(),it.id)) }
             assertEquals(0,repo.listNotifications(student.toString(),true).size)
+
+            // Authors may edit their own topic and replies; the owning teacher may moderate content.
+            val editedTopic=repo.updateTopic(student.toString(),setOf(AppRole.STUDENT),topic.id,
+                "پرسش ویرایش‌شده","متن اصلاح‌شده پرسش")
+            assertEquals("پرسش ویرایش‌شده",editedTopic.title)
+            val editedReply=repo.updatePost(owner.toString(),setOf(AppRole.TEACHER),reply.id,
+                "پاسخ ویرایش‌شده توسط استاد")
+            assertEquals("پاسخ ویرایش‌شده توسط استاد",editedReply.body)
+            assertFailsWith<SecurityException> {
+                repo.updatePost(stranger.toString(),setOf(AppRole.STUDENT),reply.id,"تغییر غیرمجاز")
+            }
+            assertTrue(repo.deletePost(owner.toString(),setOf(AppRole.TEACHER),reply.id))
+            assertEquals(0,repo.listPosts(student.toString(),setOf(AppRole.STUDENT),topic.id).size)
+            assertTrue(repo.deleteTopic(student.toString(),setOf(AppRole.STUDENT),topic.id))
+            assertEquals(0,repo.listTopics(owner.toString(),setOf(AppRole.TEACHER),clazz.id).size)
+
         }
     }
 }
