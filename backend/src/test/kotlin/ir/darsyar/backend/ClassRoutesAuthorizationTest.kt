@@ -262,4 +262,35 @@ class ClassRoutesAuthorizationTest {
         assertEquals(HttpStatusCode.Unauthorized, response.status)
     }
 
+
+    @Test
+    fun `personal notes saved state forum and notifications require authentication`() = testApplication {
+        application { module(unusedDataSource(), verifier(), usersWith(AppRole.STUDENT)) }
+
+        val classId = "11111111-1111-4111-8111-111111111111"
+        val sessionId = "22222222-2222-4222-8222-222222222222"
+
+        assertEquals(HttpStatusCode.Unauthorized,
+            client.get("/api/v1/classes/$classId/sessions/$sessionId/notes").status)
+        assertEquals(HttpStatusCode.Unauthorized,
+            client.post("/api/v1/classes/$classId/sessions/$sessionId/notes") {
+                contentType(ContentType.Application.Json)
+                setBody("""{"quotedText":"متن","noteText":"یادداشت"}""")
+            }.status)
+        assertEquals(HttpStatusCode.Unauthorized,
+            client.get("/api/v1/classes/$classId/sessions/$sessionId/state").status)
+        assertEquals(HttpStatusCode.Unauthorized,
+            client.put("/api/v1/classes/$classId/sessions/$sessionId/state") {
+                contentType(ContentType.Application.Json)
+                setBody("""{"isFavorite":true,"lastPlaybackPositionMs":0}""")
+            }.status)
+        assertEquals(HttpStatusCode.Unauthorized,
+            client.get("/api/v1/classes/$classId/forum/topics").status)
+        assertEquals(HttpStatusCode.Unauthorized,
+            client.get("/api/v1/notifications?unreadOnly=false").status)
+        assertEquals(HttpStatusCode.Unauthorized,
+            client.get("/api/v1/me/notes").status)
+    }
+
+
 }
