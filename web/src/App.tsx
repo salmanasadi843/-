@@ -36,6 +36,11 @@ export default function App() {
   const [forumBody, setForumBody] = useState("");
   const [replyBody, setReplyBody] = useState("");
   const [replyParentId, setReplyParentId] = useState<string | null>(null);
+  const [editingTopic, setEditingTopic] = useState(false);
+  const [editTopicTitle, setEditTopicTitle] = useState("");
+  const [editTopicBody, setEditTopicBody] = useState("");
+  const [editingPostId, setEditingPostId] = useState<string | null>(null);
+  const [editPostBody, setEditPostBody] = useState("");
   const [notifications, setNotifications] = useState<UserNotification[]>([]);
   const [showNotifications, setShowNotifications] = useState(false);
   const [audioSources, setAudioSources] = useState<AudioSource[]>([]);
@@ -246,6 +251,60 @@ export default function App() {
     } catch(e) { setError(message(e)); }
     finally { setBusy(false); }
   }
+
+  const canEditForumAuthorContent = (authorUserId: string) =>
+    isAdmin || selectedClass?.ownerUserId === me?.userId || authorUserId === me?.userId;
+
+  async function saveForumTopic() {
+    if (!user || !activeTopic || !canEditForumAuthorContent(activeTopic.authorUserId)) return;
+    setBusy(true); setError(""); setNotice("");
+    try {
+      const updated = await api.updateForumTopic(activeTopic.id,
+        { title: editTopicTitle.trim(), body: editTopicBody.trim() }, await user.getIdToken());
+      setForumTopics(current => current.map(item => item.id === updated.id ? updated : item));
+      setActiveTopic(updated); setEditingTopic(false);
+      setNotice("بحث ویرایش شد.");
+    } catch(e) { setError(message(e)); }
+    finally { setBusy(false); }
+  }
+
+  async function deleteForumTopic() {
+    if (!user || !activeTopic || !canEditForumAuthorContent(activeTopic.authorUserId)) return;
+    if (!window.confirm("این بحث و پاسخ‌های آن از تالار حذف شود؟ امکان بازیابی از این صفحه وجود ندارد.")) return;
+    setBusy(true); setError(""); setNotice("");
+    try {
+      await api.deleteForumTopic(activeTopic.id, await user.getIdToken());
+      setForumTopics(current => current.filter(item => item.id !== activeTopic.id));
+      setActiveTopic(null); setForumPosts([]); setEditingTopic(false);
+      setNotice("بحث حذف شد.");
+    } catch(e) { setError(message(e)); }
+    finally { setBusy(false); }
+  }
+
+  async function saveForumPost(post: ForumPost) {
+    if (!user || !canEditForumAuthorContent(post.authorUserId)) return;
+    setBusy(true); setError(""); setNotice("");
+    try {
+      const updated = await api.updateForumPost(post.id, editPostBody.trim(), await user.getIdToken());
+      setForumPosts(current => current.map(item => item.id === updated.id ? updated : item));
+      setEditingPostId(null); setEditPostBody("");
+      setNotice("پاسخ ویرایش شد.");
+    } catch(e) { setError(message(e)); }
+    finally { setBusy(false); }
+  }
+
+  async function deleteForumPost(post: ForumPost) {
+    if (!user || !canEditForumAuthorContent(post.authorUserId)) return;
+    if (!window.confirm("این پاسخ از تالار حذف شود؟")) return;
+    setBusy(true); setError(""); setNotice("");
+    try {
+      await api.deleteForumPost(post.id, await user.getIdToken());
+      setForumPosts(current => current.filter(item => item.id !== post.id));
+      setNotice("پاسخ حذف شد.");
+    } catch(e) { setError(message(e)); }
+    finally { setBusy(false); }
+  }
+
   async function moderateForumTopic(topic: ForumTopic, patch: Partial<Pick<ForumTopic,"isPinned"|"isLocked">>) {
     if (!user || !canManageSelectedClass) return;
     setBusy(true); setError("");
@@ -679,12 +738,23 @@ export default function App() {
               {!forumTopics.length && <p className="muted">هنوز بحثی در این تالار ایجاد نشده است.</p>}
             </div>
             {activeTopic && <article className="forum-thread">
-              <div className="section-head"><div><h4>{activeTopic.title}</h4><span className="muted">ایجادکننده: {activeTopic.authorName}</span></div>{canManageSelectedClass && <span><button className="ghost" disabled={busy} onClick={() => void moderateForumTopic(activeTopic,{isPinned:!activeTopic.isPinned})}>{activeTopic.isPinned ? "برداشتن سنجاق" : "سنجاق بحث"}</button><button className="ghost" disabled={busy} onClick={() => void moderateForumTopic(activeTopic,{isLocked:!activeTopic.isLocked})}>{activeTopic.isLocked ? "بازکردن بحث" : "بستن بحث"}</button></span>}</div>
-              <p className="pre forum-topic-body">{activeTopic.body}</p>
+              <div className="section-head"><div><h4>{activeTopic.title}</h4><span className="muted">ایجادکننده: {activeTopic.authorName}{activeTopic.updatedAtMs > activeTopic.createdAtMs ? " · ویرایش‌شده" : ""}</span></div><span>
+                {canEditForumAuthorContent(activeTopic.authorUserId) && <><button className="ghost" disabled={busy} onClick={() => {setEditTopicTitle(activeTopic.title);setEditTopicBody(activeTopic.body);setEditingTopic(true);}}>ویرایش بحث</button><button className="ghost danger-text" disabled={busy} onClick={() => void deleteForumTopic()}>حذف بحث</button></>}
+                {canManageSelectedClass && <><button className="ghost" disabled={busy} onClick={() => void moderateForumTopic(activeTopic,{isPinned:!activeTopic.isPinned})}>{activeTopic.isPinned ? "برداشتن سنجاق" : "سنجاق بحث"}</button><button className="ghost" disabled={busy} onClick={() => void moderateForumTopic(activeTopic,{isLocked:!activeTopic.isLocked})}>{activeTopic.isLocked ? "بازکردن بحث" : "بستن بحث"}</button></>}
+              </span></div>
+              {editingTopic ? <form className="editor-form" onSubmit={e => {e.preventDefault();void saveForumTopic();}}>
+                <label>عنوان بحث<input value={editTopicTitle} onChange={e => setEditTopicTitle(e.target.value)} maxLength={200} required /></label>
+                <label>متن بحث<textarea value={editTopicBody} onChange={e => setEditTopicBody(e.target.value)} rows={4} maxLength={20000} required /></label>
+                <div><button disabled={busy || !editTopicTitle.trim() || !editTopicBody.trim()}>ذخیره تغییرات</button><button type="button" className="ghost" onClick={() => setEditingTopic(false)}>انصراف</button></div>
+              </form> : <p className="pre forum-topic-body">{activeTopic.body}</p>}
               <h4>پاسخ‌ها ({forumPosts.length})</h4>
               {forumPosts.map(post => <div key={post.id} className={post.parentPostId ? "forum-post nested" : "forum-post"}>
-                <div className="forum-post-meta"><strong>{post.authorName}</strong><small>{new Date(post.createdAtMs).toLocaleString("fa-IR")}</small></div>
-                <p className="pre">{post.body}</p>
+                <div className="forum-post-meta"><strong>{post.authorName}</strong><small>{new Date(post.createdAtMs).toLocaleString("fa-IR")}{post.updatedAtMs > post.createdAtMs ? " · ویرایش‌شده" : ""}</small></div>
+                {editingPostId === post.id ? <form className="editor-form" onSubmit={e => {e.preventDefault();void saveForumPost(post);}}>
+                  <textarea value={editPostBody} onChange={e => setEditPostBody(e.target.value)} rows={3} maxLength={20000} required />
+                  <div><button disabled={busy || !editPostBody.trim()}>ذخیره پاسخ</button><button type="button" className="ghost" onClick={() => setEditingPostId(null)}>انصراف</button></div>
+                </form> : <p className="pre">{post.body}</p>}
+                {canEditForumAuthorContent(post.authorUserId) && editingPostId !== post.id && <><button className="ghost" disabled={busy} onClick={() => {setEditingPostId(post.id);setEditPostBody(post.body);}}>ویرایش</button><button className="ghost danger-text" disabled={busy} onClick={() => void deleteForumPost(post)}>حذف</button></>}
                 {!activeTopic.isLocked && <button className="ghost" onClick={() => {setReplyParentId(post.id);setReplyBody("");}}>پاسخ به این پیام</button>}
               </div>)}
               {!activeTopic.isLocked ? <form className="editor-form forum-reply-form" onSubmit={createForumReply}>
