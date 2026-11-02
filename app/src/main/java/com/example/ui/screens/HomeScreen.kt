@@ -258,6 +258,31 @@ fun HomeScreen(
             contentPadding = PaddingValues(16.dp, 8.dp, 16.dp, 24.dp),
             verticalArrangement = Arrangement.spacedBy(14.dp)
         ) {
+            if (BackendEndpointConfig.isConfigured) {
+                item {
+                    Card(
+                        modifier = Modifier.fillMaxWidth().clickable(onClick = onNavigateToBackendBrowse),
+                        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.secondaryContainer)
+                    ) {
+                        Row(
+                            Modifier.fillMaxWidth().padding(16.dp),
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.spacedBy(12.dp)
+                        ) {
+                            Icon(Icons.Default.Cloud, contentDescription = null, tint = MaterialTheme.colorScheme.onSecondaryContainer)
+                            Column(Modifier.weight(1f)) {
+                                Text("تالار گفتگو و اعلان‌ها", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
+                                Text(
+                                    "گفتگوهای کلاس، اطلاعیه‌های استاد و مرور کلاس‌های آنلاین",
+                                    style = MaterialTheme.typography.bodySmall,
+                                    color = MaterialTheme.colorScheme.onSecondaryContainer
+                                )
+                            }
+                            Text("ورود", color = MaterialTheme.colorScheme.primary, fontWeight = FontWeight.Bold)
+                        }
+                    }
+                }
+            }
             if (isTeacher) {
                 if (isPrimaryTeacher) {
                     item {
