@@ -16,6 +16,12 @@ export default function App() {
   const [browseFolderId, setBrowseFolderId] = useState("all");
   const [showFolderForm, setShowFolderForm] = useState(false);
   const [classes, setClasses] = useState<ClassRecord[]>([]);
+  const [publicClasses, setPublicClasses] = useState<ClassRecord[]>([]);
+  const [publicClass, setPublicClass] = useState<ClassRecord | null>(null);
+  const [publicSessions, setPublicSessions] = useState<SessionSummary[]>([]);
+  const [publicDetail, setPublicDetail] = useState<SessionDetail | null>(null);
+  const [publicLoading, setPublicLoading] = useState(false);
+  const [publicError, setPublicError] = useState("");
   const [selectedTeacher, setSelectedTeacher] = useState("all");
   const [selectedClass, setSelectedClass] = useState<ClassRecord | null>(null);
   const [sessions, setSessions] = useState<SessionSummary[]>([]);
@@ -94,6 +100,32 @@ export default function App() {
     void load();
     return () => { cancelled = true; };
   }, [user]);
+
+  useEffect(() => {
+    let cancelled = false;
+    void api.publicClasses().then(items => {
+      if (!cancelled) setPublicClasses(items);
+    }).catch(e => {
+      if (!cancelled) setPublicError(message(e));
+    });
+    return () => { cancelled = true; };
+  }, []);
+
+  async function openPublicClass(item: ClassRecord) {
+    setPublicClass(item); setPublicDetail(null); setPublicSessions([]);
+    setPublicLoading(true); setPublicError("");
+    try { setPublicSessions(await api.publicSessions(item.id)); }
+    catch (e) { setPublicError(message(e)); }
+    finally { setPublicLoading(false); }
+  }
+
+  async function openPublicSession(item: SessionSummary) {
+    if (!publicClass) return;
+    setPublicLoading(true); setPublicError(""); setPublicDetail(null);
+    try { setPublicDetail(await api.publicSession(publicClass.id, item.id)); }
+    catch (e) { setPublicError(message(e)); }
+    finally { setPublicLoading(false); }
+  }
 
   const isAdmin = me?.roles.includes("super_admin") ?? false;
   const canCreateClass = isAdmin || (me?.roles.includes("teacher") ?? false);
@@ -603,13 +635,39 @@ export default function App() {
     <p className="muted">این نسخه به سرور عملیاتی متصل نیست و تا زمان تنظیم متغیرها، اطلاعات واقعی نمایش داده نمی‌شود.</p>
   </section></main>;
 
-  if (!user) return <main className="center"><form className="panel narrow" onSubmit={login}>
-    <Brand /><h1>ورود به درس‌یار</h1><p className="muted">با حساب کاربری فعلی درس‌یار وارد شوید.</p>
-    <label>ایمیل<input type="email" autoComplete="username" value={email} onChange={e => setEmail(e.target.value)} required /></label>
-    <label>گذرواژه<input type="password" autoComplete="current-password" value={password} onChange={e => setPassword(e.target.value)} required /></label>
-    {error && <p className="error">{error}</p>}
-    <button disabled={busy}>{busy ? "در حال ورود…" : "ورود"}</button>
-  </form></main>;
+  if (!user) return <main className="center"><div className="entry-layout">
+    <form className="panel narrow" onSubmit={login}>
+      <Brand /><h1>ورود به درس‌یار</h1><p className="muted">با حساب کاربری فعلی درس‌یار وارد شوید.</p>
+      <label>ایمیل<input type="email" autoComplete="username" value={email} onChange={e => setEmail(e.target.value)} required /></label>
+      <label>گذرواژه<input type="password" autoComplete="current-password" value={password} onChange={e => setPassword(e.target.value)} required /></label>
+      {error && <p className="error">{error}</p>}
+      <button disabled={busy}>{busy ? "در حال ورود…" : "ورود"}</button>
+    </form>
+    <section className="panel narrow public-catalog">
+      <h2>کلاس‌های عمومی</h2>
+      <p className="muted">برای مشاهده این کلاس‌ها و جلسه‌های منتشرشده، نیازی به عضویت یا ورود نیست.</p>
+      {publicError && <p className="error">{publicError}</p>}
+      {publicClass ? <>
+        <button className="ghost" onClick={() => {setPublicClass(null);setPublicSessions([]);setPublicDetail(null);}}>بازگشت به فهرست کلاس‌ها</button>
+        <h3>{publicClass.title}</h3>
+        {publicClass.description && <p>{publicClass.description}</p>}
+        {publicLoading && <p className="muted">در حال دریافت…</p>}
+        {publicDetail ? <>
+          <button className="ghost" onClick={() => setPublicDetail(null)}>بازگشت به جلسه‌ها</button>
+          <h3>{publicDetail.title}</h3>
+          {publicDetail.aiSummary && <><h4>خلاصه</h4><p>{publicDetail.aiSummary}</p></>}
+          {publicDetail.aiKeyPoints && <><h4>نکات کلیدی</h4><p>{publicDetail.aiKeyPoints}</p></>}
+          <h4>متن جلسه</h4><pre className="transcript">{publicDetail.transcript}</pre>
+        </> : publicSessions.map(session => <button className="list-item" key={session.id} onClick={() => void openPublicSession(session)}>{session.title}</button>)}
+        {!publicLoading && !publicSessions.length && !publicDetail && <p className="muted">هنوز جلسه عمومی منتشرشده‌ای در این کلاس نیست.</p>}
+      </> : <>
+        {publicClasses.map(item => <button className="list-item" key={item.id} onClick={() => void openPublicClass(item)}>
+          <strong>{item.title}</strong>{item.description && <small>{item.description}</small>}
+        </button>)}
+        {!publicClasses.length && !publicError && <p className="muted">فعلاً کلاس عمومی منتشرشده‌ای وجود ندارد.</p>}
+      </>}
+    </section>
+  </div></main>;
 
   return <main className="shell">
     <header className="topbar"><Brand /><div className="account"><div className="notification-wrap"><button className="ghost notification-button" onClick={() => {setShowNotifications(v => !v);if(!showNotifications) void refreshNotifications();}}>اعلان‌ها {notifications.filter(n => !n.isRead).length ? <b className="notification-count">{notifications.filter(n => !n.isRead).length}</b> : null}</button>{showNotifications && <section className="notification-popover"><div className="section-head"><strong>اعلان‌ها</strong><button className="ghost" onClick={() => void refreshNotifications()}>تازه‌سازی</button></div>{notifications.slice(0,30).map(n => <button key={n.id} className={n.isRead ? "notification-item read" : "notification-item"} onClick={() => void openNotification(n)}><span>{n.message}</span><small>{new Date(n.createdAtMs).toLocaleString("fa-IR")}</small></button>)}{!notifications.length && <p className="muted">اعلانی ندارید.</p>}</section>}</div><span>{user.email}</span><button className="ghost" onClick={() => void signOut(auth!)}>خروج</button></div></header>
