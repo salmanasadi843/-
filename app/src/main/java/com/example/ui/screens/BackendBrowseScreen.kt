@@ -9,7 +9,8 @@ import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.Cloud
 import androidx.compose.material.icons.filled.Person
 import androidx.compose.material.icons.filled.School
-import androidx.compose.material.icons.filled.MenuBook\nimport androidx.compose.material.icons.filled.Notifications
+import androidx.compose.material.icons.filled.MenuBook
+import androidx.compose.material.icons.filled.Notifications
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
@@ -34,7 +35,10 @@ fun BackendBrowseScreen(onBack: () -> Unit) {
     var selectedTeacherId by remember { mutableStateOf<String?>(null) }
     var selectedClass by remember { mutableStateOf<BackendClassDto?>(null) }
     var selectedSession by remember { mutableStateOf<BackendSessionDto?>(null) }
-    var busy by remember { mutableStateOf(false) }\n    var accountId by remember { mutableStateOf("") }\n    var accountRoles by remember { mutableStateOf<List<String>>(emptyList()) }\n    var showNotifications by remember { mutableStateOf(false) }
+    var busy by remember { mutableStateOf(false) }
+    var accountId by remember { mutableStateOf("") }
+    var accountRoles by remember { mutableStateOf<List<String>>(emptyList()) }
+    var showNotifications by remember { mutableStateOf(false) }
     var status by remember { mutableStateOf("در حال آماده‌سازی اتصال…") }
 
     fun withFreshToken(action: suspend (String) -> Unit) {
@@ -69,6 +73,8 @@ fun BackendBrowseScreen(onBack: () -> Unit) {
                 val snapshot = repository.loadSnapshot(token)
                 snapshot to repository.loadTeachers(token)
             }
+            accountId = result.first.account.userId
+            accountRoles = result.first.account.roles
             classes = result.first.classes
             teachers = result.second
             selectedTeacherId = null
@@ -118,6 +124,9 @@ fun BackendBrowseScreen(onBack: () -> Unit) {
                     }
                 },
                 actions = {
+                    IconButton(onClick = { showNotifications = true }) {
+                        Icon(Icons.Default.Notifications, contentDescription = "اعلان‌ها")
+                    }
                     IconButton(onClick = { loadDirectory() }, enabled = !busy) {
                         Icon(Icons.Default.Cloud, contentDescription = "دریافت دوباره")
                     }
@@ -238,6 +247,14 @@ fun BackendBrowseScreen(onBack: () -> Unit) {
                             Text("مشاهده", color = MaterialTheme.colorScheme.primary, style = MaterialTheme.typography.labelMedium)
                         }
                     }
+                }
+                item {
+                    BackendForumPanel(
+                        classId = clazz.id,
+                        sessionId = selectedSession?.id,
+                        canModerate = "super_admin" in accountRoles || ("teacher" in accountRoles && clazz.ownerUserId == accountId),
+                        onStatus = { status = it }
+                    )
                 }
             }
 
