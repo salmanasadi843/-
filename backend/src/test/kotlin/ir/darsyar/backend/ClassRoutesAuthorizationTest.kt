@@ -328,7 +328,7 @@ class ClassRoutesAuthorizationTest {
         ) {
             header(HttpHeaders.Authorization, "Bearer test-token")
             contentType(ContentType.Application.Json)
-            setBody(kotlinx.serialization.json.Json.encodeToString(AiAnswerWriteRequest(oversizedQuestion)))
+            setBody("{\"question\":\"" + oversizedQuestion + "\"}")
         }
         assertEquals(HttpStatusCode.BadRequest, response.status)
     }
@@ -342,7 +342,7 @@ class ClassRoutesAuthorizationTest {
         ) {
             header(HttpHeaders.Authorization, "Bearer test-token")
             contentType(ContentType.Application.Json)
-            setBody(kotlinx.serialization.json.Json.encodeToString(AiAnswerWriteRequest("سؤال", oversizedSelection)))
+            setBody("{\"question\":\"سؤال\",\"selectedText\":\"" + oversizedSelection + "\"}")
         }
         assertEquals(HttpStatusCode.BadRequest, response.status)
     }
