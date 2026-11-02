@@ -145,7 +145,16 @@ class TeachingClassRepositoryIntegrationTest {
             // Nested records remain attached to the class while it is in the recovery area.
             val nestedCourseId = UUID.randomUUID()
             val nestedSessionId = UUID.randomUUID()
+            val publicSessionId = UUID.randomUUID()
+            val unpublishedPublicSessionId = UUID.randomUUID()
             dataSource.connection.use { connection ->
+                connection.prepareStatement(
+                    "INSERT INTO teaching_sessions(id, class_id, title, transcript, original_transcript, is_published) VALUES (?, ?::uuid, 'Public session', 'public text', 'original public text', true), (?, ?::uuid, 'Unpublished session', 'secret text', 'secret original', false)"
+                ).use { st ->
+                    st.setObject(1, publicSessionId); st.setString(2, publicClass.id)
+                    st.setObject(3, unpublishedPublicSessionId); st.setString(4, publicClass.id)
+                    st.executeUpdate()
+                }
                 connection.prepareStatement(
                     "INSERT INTO teaching_courses(id, class_id, title) VALUES (?, ?::uuid, 'Nested course')"
                 ).use { st ->
@@ -194,6 +203,13 @@ class TeachingClassRepositoryIntegrationTest {
                     st.executeQuery().use { rs -> assertTrue(rs.next()); assertEquals(5, rs.getInt(1)) }
                 }
             }
+            val publicSessionRepository = TeachingSessionRepository(dataSource)
+            assertEquals(listOf(publicSessionId.toString()), publicSessionRepository.listAnonymousPublic(publicClass.id).map { it.id })
+            assertEquals("public text", publicSessionRepository.findAnonymousPublic(publicClass.id, publicSessionId.toString())?.transcript)
+            assertTrue(publicSessionRepository.findAnonymousPublic(publicClass.id, unpublishedPublicSessionId.toString()) == null)
+            assertTrue(publicSessionRepository.findAnonymousPublic(privateClass.id, nestedSessionId.toString()) == null)
+            assertTrue(publicSessionRepository.findAnonymousPublic(publicClass.id, nestedSessionId.toString()) == null)
+
             assertEquals(true, repository.setDeleted(admin.toString(), setOf(AppRole.SUPER_ADMIN), privateClass.id, false))
             assertEquals(false, repository.setDeleted(admin.toString(), setOf(AppRole.SUPER_ADMIN), privateClass.id, false))
             assertTrue(repository.listVisible(ownerA.toString(), setOf(AppRole.TEACHER)).any { it.id == privateClass.id })
