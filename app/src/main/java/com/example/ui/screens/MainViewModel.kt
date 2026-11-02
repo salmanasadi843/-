@@ -997,7 +997,7 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
             val moved = lecture.copy(
                 classId = targetClass.id,
                 courseId = null,
-                courseName = targetClass.name,
+                courseName = "",
                 professorName = targetClass.teacherName.ifBlank { lecture.professorName },
                 sortOrder = 0,
                 lastEditedMillis = System.currentTimeMillis()
