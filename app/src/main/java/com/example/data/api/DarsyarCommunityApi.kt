@@ -131,10 +131,10 @@ class DarsyarCommunityRepository(private val api:DarsyarCommunityApi) {
     }
     suspend fun sessionNotes(token:String,classId:String,sessionId:String)=
         checked(api.sessionNotes(classId,sessionId,"Bearer $token"),"session/notes")
-    suspend fun createSessionNote(token:String,classId:String,sessionId:String,quotedText:String,noteText:String)=
-        checked(api.createSessionNote(classId,sessionId,SessionNoteWriteDto(quotedText,noteText),"Bearer $token"),"session/notes/create")
-    suspend fun updateSessionNote(token:String,noteId:String,quotedText:String,noteText:String)=
-        checked(api.updateSessionNote(noteId,SessionNoteWriteDto(quotedText,noteText),"Bearer $token"),"session/notes/update")
+    suspend fun createSessionNote(token:String,classId:String,sessionId:String,quotedText:String,noteText:String,startOffset:Int?=null,endOffset:Int?=null)=
+        checked(api.createSessionNote(classId,sessionId,SessionNoteWriteDto(quotedText,noteText,startOffset,endOffset),"Bearer $token"),"session/notes/create")
+    suspend fun updateSessionNote(token:String,noteId:String,quotedText:String,noteText:String,startOffset:Int?=null,endOffset:Int?=null)=
+        checked(api.updateSessionNote(noteId,SessionNoteWriteDto(quotedText,noteText,startOffset,endOffset),"Bearer $token"),"session/notes/update")
     suspend fun deleteSessionNote(token:String,noteId:String) {
         val response=api.deleteSessionNote(noteId,"Bearer $token")
         if(!response.isSuccessful) throw BackendHttpException(response.code(),"session/notes/delete")
