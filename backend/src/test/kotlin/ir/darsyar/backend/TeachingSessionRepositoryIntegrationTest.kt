@@ -52,6 +52,10 @@ class TeachingSessionRepositoryIntegrationTest {
                 owner.toString(),
                 CreateTeachingClass(owner.toString(), "Private", "", "", "private", true)
             )
+            val foreignClass = classes.create(
+                otherTeacher.toString(),
+                CreateTeachingClass(otherTeacher.toString(), "Other teacher class", "", "", "private", true)
+            )
             ds.connection.use { connection ->
                 connection.prepareStatement(
                     "INSERT INTO class_memberships(class_id, student_user_id, status) VALUES (?, ?, 'active')"
@@ -139,10 +143,15 @@ class TeachingSessionRepositoryIntegrationTest {
             assertFailsWith<SecurityException> {
                 repository.move(otherTeacher.toString(), setOf(AppRole.TEACHER), published.id, privateClass.id)
             }
+            assertFailsWith<SecurityException> {
+                repository.move(owner.toString(), setOf(AppRole.TEACHER), published.id, foreignClass.id)
+            }
             val moved = repository.move(owner.toString(), setOf(AppRole.TEACHER), published.id, privateClass.id)
             assertNotNull(moved)
+            assertEquals(published.id, moved.id)
             assertEquals(privateClass.id, moved.classId)
             assertEquals(null, moved.courseId)
+            assertEquals(123456L, moved.dateMs)
             assertEquals("متن اصلی", moved.originalTranscript)
             assertEquals("متن ویرایش‌شده", moved.transcript)
             assertEquals("خلاصه", moved.aiSummary)
@@ -150,7 +159,7 @@ class TeachingSessionRepositoryIntegrationTest {
 
             val updated = repository.update(
                 admin.toString(), setOf(AppRole.SUPER_ADMIN), published.id,
-                UpdateTeachingSession(courseId, "ویرایش مدیر", "", "", 123456L, 9000L,
+                UpdateTeachingSession(null, "ویرایش مدیر", "", "", 123456L, 9000L,
                     "متن ویرایش‌شده", "متن اصلی", "خلاصه", "کلیدواژه‌ها",
                     """{"items":[]}""", "اصول,فقه", true, 123456L, 2)
             )
