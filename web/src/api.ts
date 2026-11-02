@@ -65,6 +65,10 @@ export type SessionNote = {
   id: string; userId: string; sessionId: string; quotedText: string; noteText: string;
   startOffset: number | null; endOffset: number | null; createdAtMs: number; updatedAtMs: number;
 };
+export type GlobalSessionNote = SessionNote & {
+  classId: string; classTitle: string; sessionTitle: string; courseName: string;
+  teacherName: string; dateMs: number | null;
+};
 const base = (import.meta.env.VITE_DARSYAR_API_BASE_URL || "").replace(/\/+$/, "");
 async function requestPublic<T>(path: string): Promise<T> {
   if (!base) throw new Error("نشانی سرور تنظیم نشده است.");
@@ -97,6 +101,7 @@ export const api = {
   publicSession: (classId: string, sessionId: string) =>
     requestPublic<SessionDetail>(`/api/v1/public/classes/${encodeURIComponent(classId)}/sessions/${encodeURIComponent(sessionId)}`),
   me: (token: string) => request<Me>("/api/v1/me", token),
+  myNotes: (token: string) => request<GlobalSessionNote[]>("/api/v1/me/notes", token),
   teachers: (token: string) => request<Teacher[]>("/api/v1/teachers", token),
   classes: (token: string) => request<ClassRecord[]>("/api/v1/classes", token),
   teacherFolders: (token: string) => request<TeacherFolder[]>("/api/v1/teacher-folders", token),
