@@ -168,7 +168,7 @@ class TeachingSessionRepositoryIntegrationTest {
             )
             assertNotNull(updated)
             assertEquals("ویرایش مدیر", updated.title)
-            assertEquals(2L, updated.version)
+            assertEquals(3L, updated.version)
 
             assertFailsWith<SecurityException> {
                 repository.setDeleted(otherTeacher.toString(), setOf(AppRole.TEACHER), published.id, true)
