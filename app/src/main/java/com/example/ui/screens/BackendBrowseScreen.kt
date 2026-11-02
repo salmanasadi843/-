@@ -1,6 +1,9 @@
 package com.example.ui.screens
 
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.text.BasicTextField
+import androidx.compose.foundation.relocation.BringIntoViewRequester
+import androidx.compose.foundation.relocation.bringIntoViewRequester
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
@@ -16,7 +19,13 @@ import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.text.AnnotatedString
+import androidx.compose.ui.text.SpanStyle
+import androidx.compose.ui.text.buildAnnotatedString
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.input.TextFieldValue
+import androidx.compose.ui.text.TextRange
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.unit.dp
 import com.example.data.api.*
 import kotlinx.coroutines.Dispatchers
@@ -39,6 +48,12 @@ fun BackendBrowseScreen(onBack: () -> Unit) {
     var sessionNotes by remember { mutableStateOf<List<BackendSessionNoteDto>>(emptyList()) }
     var noteQuote by remember { mutableStateOf("") }
     var noteDraft by remember { mutableStateOf("") }
+    var noteStartOffset by remember { mutableStateOf<Int?>(null) }
+    var noteEndOffset by remember { mutableStateOf<Int?>(null) }
+    var activeNoteId by remember { mutableStateOf<String?>(null) }
+    var transcriptSelection by remember { mutableStateOf(TextRange.Zero) }
+    val originalTranscriptRequester = remember { BringIntoViewRequester() }
+    val editedTranscriptRequester = remember { BringIntoViewRequester() }
     var editingNoteId by remember { mutableStateOf<String?>(null) }
     var playbackPositionDraft by remember { mutableStateOf(0f) }
     var busy by remember { mutableStateOf(false) }
@@ -125,7 +140,8 @@ fun BackendBrowseScreen(onBack: () -> Unit) {
             selectedSession = result.first
             selectedSessionState = result.second
             sessionNotes = result.third
-            noteQuote = ""; noteDraft = ""; editingNoteId = null
+            noteQuote = ""; noteDraft = ""; noteStartOffset = null; noteEndOffset = null
+            activeNoteId = null; transcriptSelection = TextRange.Zero; editingNoteId = null
             playbackPositionDraft = result.second.lastPlaybackPositionMs.toFloat()
             status = "جزئیات جلسه، وضعیت مطالعه و یادداشت‌های شخصی دریافت شد."
         }
@@ -134,16 +150,23 @@ fun BackendBrowseScreen(onBack: () -> Unit) {
     fun savePersonalNote() {
         val detail = selectedSession ?: return
         if (noteDraft.isBlank()) return
+        val matchedStart = noteQuote.takeIf { it.isNotBlank() }?.let { quote ->
+            val original = detail.originalTranscript.indexOf(quote)
+            if (original >= 0) original else detail.transcript.indexOf(quote).takeIf { it >= 0 }
+        }
+        val start = noteStartOffset ?: matchedStart
+        val end = noteEndOffset ?: start?.plus(noteQuote.length)
         withFreshToken { token ->
             withContext(Dispatchers.IO) {
                 val repository = DarsyarCommunityApiFactory.create()
-                if (editingNoteId == null) repository.createSessionNote(token, detail.classId, detail.id, noteQuote, noteDraft)
-                else repository.updateSessionNote(token, editingNoteId!!, noteQuote, noteDraft)
+                if (editingNoteId == null) repository.createSessionNote(token, detail.classId, detail.id, noteQuote, noteDraft, start, end)
+                else repository.updateSessionNote(token, editingNoteId!!, noteQuote, noteDraft, start, end)
             }
             sessionNotes = withContext(Dispatchers.IO) {
                 DarsyarCommunityApiFactory.create().sessionNotes(token, detail.classId, detail.id)
             }
-            noteQuote = ""; noteDraft = ""; editingNoteId = null
+            noteQuote = ""; noteDraft = ""; noteStartOffset = null; noteEndOffset = null
+            activeNoteId = null; transcriptSelection = TextRange.Zero; editingNoteId = null
             status = "یادداشت شخصی ذخیره شد."
         }
     }
@@ -155,7 +178,8 @@ fun BackendBrowseScreen(onBack: () -> Unit) {
             sessionNotes = withContext(Dispatchers.IO) {
                 DarsyarCommunityApiFactory.create().sessionNotes(token, detail.classId, detail.id)
             }
-            if (editingNoteId == noteId) { editingNoteId = null; noteQuote = ""; noteDraft = "" }
+            if (editingNoteId == noteId) { editingNoteId = null; noteQuote = ""; noteDraft = ""; noteStartOffset = null; noteEndOffset = null }
+            if (activeNoteId == noteId) activeNoteId = null
             status = "یادداشت حذف شد."
         }
     }
@@ -393,7 +417,9 @@ fun BackendBrowseScreen(onBack: () -> Unit) {
                                 Text("هنوز یادداشتی برای این جلسه ثبت نکرده‌اید.", style = MaterialTheme.typography.bodySmall)
                             }
                             sessionNotes.forEach { note ->
-                                Card(Modifier.fillMaxWidth()) {
+                                Card(Modifier.fillMaxWidth(), colors = CardDefaults.cardColors(
+                                    containerColor = if (activeNoteId == note.id) MaterialTheme.colorScheme.tertiaryContainer else MaterialTheme.colorScheme.surface
+                                )) {
                                     Column(Modifier.padding(10.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
                                         if (note.quotedText.isNotBlank()) {
                                             Text("عبارت مرتبط: ${note.quotedText}", style = MaterialTheme.typography.bodySmall, fontWeight = FontWeight.Medium)
@@ -401,9 +427,19 @@ fun BackendBrowseScreen(onBack: () -> Unit) {
                                         Text(note.noteText, style = MaterialTheme.typography.bodyMedium)
                                         Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                                             TextButton(onClick = {
+                                                activeNoteId = note.id
+                                                val originalMatch = detail.originalTranscript.indexOf(note.quotedText)
+                                                scope.launch {
+                                                    if (originalMatch >= 0) originalTranscriptRequester.bringIntoView()
+                                                    else editedTranscriptRequester.bringIntoView()
+                                                }
+                                            }, enabled = note.quotedText.isNotBlank()) { Text("رفتن به متن") }
+                                            TextButton(onClick = {
                                                 editingNoteId = note.id
                                                 noteQuote = note.quotedText
                                                 noteDraft = note.noteText
+                                                noteStartOffset = note.startOffset
+                                                noteEndOffset = note.endOffset
                                             }) { Text("ویرایش") }
                                             TextButton(enabled = !busy, onClick = { deletePersonalNote(note.id) }) { Text("حذف") }
                                         }
@@ -411,7 +447,7 @@ fun BackendBrowseScreen(onBack: () -> Unit) {
                                 }
                             }
                             OutlinedTextField(
-                                value = noteQuote, onValueChange = { noteQuote = it },
+                                value = noteQuote, onValueChange = { noteQuote = it; noteStartOffset = null; noteEndOffset = null },
                                 modifier = Modifier.fillMaxWidth(), minLines = 2,
                                 label = { Text("عبارت مرتبط از متن درس (اختیاری)") }
                             )
@@ -425,7 +461,7 @@ fun BackendBrowseScreen(onBack: () -> Unit) {
                                     Text(if (editingNoteId == null) "ذخیره یادداشت" else "ذخیره ویرایش")
                                 }
                                 if (editingNoteId != null) {
-                                    TextButton(onClick = { editingNoteId = null; noteQuote = ""; noteDraft = "" }) { Text("انصراف") }
+                                    TextButton(onClick = { editingNoteId = null; noteQuote = ""; noteDraft = ""; noteStartOffset = null; noteEndOffset = null }) { Text("انصراف") }
                                 }
                             }
                             HorizontalDivider()
@@ -437,12 +473,58 @@ fun BackendBrowseScreen(onBack: () -> Unit) {
                                 Text("کلیدواژه‌ها و نکات", fontWeight = FontWeight.SemiBold)
                                 Text(it, style = MaterialTheme.typography.bodyMedium)
                             }
-                            detail.originalTranscript.takeIf { it.isNotBlank() }?.let {
+                            detail.originalTranscript.takeIf { it.isNotBlank() }?.let { transcript ->
                                 Text("متن اصلی", fontWeight = FontWeight.SemiBold)
-                                Text(it, style = MaterialTheme.typography.bodySmall)
+                                val anchor = sessionNotes.firstOrNull { it.id == activeNoteId }
+                                val start = anchor?.let { note ->
+                                    if (note.startOffset != null && note.endOffset != null && transcript.substringOrNull(note.startOffset, note.endOffset) == note.quotedText) note.startOffset
+                                    else transcript.indexOf(note.quotedText).takeIf { it >= 0 }
+                                } ?: -1
+                                val annotated = buildAnnotatedString {
+                                    append(transcript)
+                                    if (start >= 0 && anchor != null) addStyle(SpanStyle(background = MaterialTheme.colorScheme.tertiaryContainer), start, (start + anchor.quotedText.length).coerceAtMost(transcript.length))
+                                }
+                                BasicTextField(
+                                    value = TextFieldValue(annotated, selection = transcriptSelection),
+                                    onValueChange = { value ->
+                                        transcriptSelection = value.selection
+                                        if (!value.selection.collapsed) {
+                                            val a = value.selection.min.coerceIn(0, transcript.length)
+                                            val b = value.selection.max.coerceIn(a, transcript.length)
+                                            noteQuote = transcript.substring(a, b); noteStartOffset = a; noteEndOffset = b
+                                        }
+                                    },
+                                    readOnly = true,
+                                    modifier = Modifier.fillMaxWidth().bringIntoViewRequester(originalTranscriptRequester),
+                                    textStyle = MaterialTheme.typography.bodySmall.copy(color = MaterialTheme.colorScheme.onSurface)
+                                )
+                                Text("برای پیوست‌کردن عبارت، آن را لمس طولانی کنید و دستگیره‌های انتخاب را تنظیم کنید.", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
                             }
                             Text("متن ویرایش‌شده", fontWeight = FontWeight.SemiBold)
-                            Text(detail.transcript.ifBlank { "متنی برای این جلسه ثبت نشده است." }, style = MaterialTheme.typography.bodySmall)
+                            val edited = detail.transcript.ifBlank { "متنی برای این جلسه ثبت نشده است." }
+                            val editedAnchor = sessionNotes.firstOrNull { it.id == activeNoteId }
+                            val editedStart = editedAnchor?.let { note ->
+                                if (note.startOffset != null && note.endOffset != null && edited.substringOrNull(note.startOffset, note.endOffset) == note.quotedText) note.startOffset
+                                else edited.indexOf(note.quotedText).takeIf { it >= 0 }
+                            } ?: -1
+                            val editedAnnotated = buildAnnotatedString {
+                                append(edited)
+                                if (editedStart >= 0 && editedAnchor != null) addStyle(SpanStyle(background = MaterialTheme.colorScheme.tertiaryContainer), editedStart, (editedStart + editedAnchor.quotedText.length).coerceAtMost(edited.length))
+                            }
+                            BasicTextField(
+                                value = TextFieldValue(editedAnnotated, selection = transcriptSelection),
+                                onValueChange = { value ->
+                                    transcriptSelection = value.selection
+                                    if (!value.selection.collapsed) {
+                                        val a = value.selection.min.coerceIn(0, edited.length)
+                                        val b = value.selection.max.coerceIn(a, edited.length)
+                                        noteQuote = edited.substring(a, b); noteStartOffset = a; noteEndOffset = b
+                                    }
+                                },
+                                readOnly = true,
+                                modifier = Modifier.fillMaxWidth().bringIntoViewRequester(editedTranscriptRequester),
+                                textStyle = MaterialTheme.typography.bodySmall.copy(color = MaterialTheme.colorScheme.onSurface)
+                            )
                         }
                     }
                 }
@@ -467,3 +549,7 @@ fun BackendBrowseScreen(onBack: () -> Unit) {
         }
     )
 }
+
+
+private fun String.substringOrNull(start: Int, end: Int): String? =
+    if (start >= 0 && end >= start && end <= length) substring(start, end) else null
