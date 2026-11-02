@@ -31,6 +31,8 @@ export default function App() {
   const [editingSession, setEditingSession] = useState(false);
   const [deletedClasses, setDeletedClasses] = useState<ClassRecord[]>([]);
   const [showDeletedClasses, setShowDeletedClasses] = useState(false);
+  const [deletedSessions, setDeletedSessions] = useState<SessionSummary[]>([]);
+  const [showDeletedSessions, setShowDeletedSessions] = useState(false);
   const [classTitle, setClassTitle] = useState("");
   const [classDescription, setClassDescription] = useState("");
   const [classTerm, setClassTerm] = useState("");
@@ -270,6 +272,31 @@ export default function App() {
     } catch (e) { setError(message(e)); }
     finally { setBusy(false); }
   }
+  async function loadDeletedSessions() {
+    if (!user || !canCreateClass) return;
+    setBusy(true); setError("");
+    try {
+      setDeletedSessions(await api.deletedSessions(await user.getIdToken()));
+      setShowDeletedSessions(true);
+    } catch (e) { setError(message(e)); }
+    finally { setBusy(false); }
+  }
+  async function restoreDeletedSession(sessionId: string) {
+    if (!user || !canCreateClass) return;
+    const target = deletedSessions.find(item => item.id === sessionId);
+    if (!target) return;
+    setBusy(true); setError("");
+    try {
+      const token = await user.getIdToken();
+      await api.restoreSession(sessionId, token);
+      setDeletedSessions(await api.deletedSessions(token));
+      if (selectedClass?.id === target.classId) {
+        setSessions(await api.sessions(target.classId, token));
+      }
+      setNotice("جلسه بازیابی شد.");
+    } catch (e) { setError(message(e)); }
+    finally { setBusy(false); }
+  }
   async function editSelectedSession() {
     if (!detail || !canManageSelectedClass) return;
     setSessionTitle(detail.title); setSessionTranscript(detail.transcript); setSessionCourseId(detail.courseId ?? "");
@@ -385,8 +412,9 @@ export default function App() {
       </aside>
       <section className="panel content">
         <div className="section-head"><h2>کلاس‌ها</h2><span className="muted">{visibleClasses.length} کلاس</span></div>
-        {canCreateClass && <div className="toolbar"><button className="action" onClick={() => {setEditingClass(false);setShowClassForm(v => !v);setError("");}}>{showClassForm ? "بستن فرم" : "＋ ایجاد کلاس"}</button>{isAdmin && <button className="ghost" onClick={() => void (showDeletedClasses ? setShowDeletedClasses(false) : loadDeletedClasses())}>{showDeletedClasses ? "بستن بازیابی" : "بازیابی کلاس‌های حذف‌شده"}</button>}{isAdmin && selectedTeacher === "all" && <span className="muted">برای ساخت کلاس، ابتدا استاد موردنظر را انتخاب کنید.</span>}</div>}
+        {canCreateClass && <div className="toolbar"><button className="action" onClick={() => {setEditingClass(false);setShowClassForm(v => !v);setError("");}}>{showClassForm ? "بستن فرم" : "＋ ایجاد کلاس"}</button>{isAdmin && <button className="ghost" onClick={() => void (showDeletedClasses ? setShowDeletedClasses(false) : loadDeletedClasses())}>{showDeletedClasses ? "بستن بازیابی کلاس‌ها" : "بازیابی کلاس‌های حذف‌شده"}</button>}<button className="ghost" onClick={() => void (showDeletedSessions ? setShowDeletedSessions(false) : loadDeletedSessions())}>{showDeletedSessions ? "بستن بازیابی جلسه‌ها" : "بازیابی جلسه‌های حذف‌شده"}</button>{isAdmin && selectedTeacher === "all" && <span className="muted">برای ساخت کلاس، ابتدا استاد موردنظر را انتخاب کنید.</span>}</div>}
         {showDeletedClasses && isAdmin && <section className="access-manager"><div className="section-head"><h3>کلاس‌های حذف‌شده</h3><span className="muted">{deletedClasses.length} کلاس</span></div>{deletedClasses.map(c => <div className="code-row" key={c.id}><span><strong>{c.title}</strong><small>{teachers.find(t => t.userId === c.ownerUserId)?.displayName ?? "استاد"}</small></span><button className="ghost" disabled={busy} onClick={() => void restoreDeletedClass(c.id)}>بازیابی</button></div>)}{!deletedClasses.length && <p className="muted">کلاس حذف‌شده‌ای وجود ندارد.</p>}</section>}
+        {showDeletedSessions && <section className="access-manager"><div className="section-head"><h3>جلسه‌های حذف‌شده</h3><span className="muted">{deletedSessions.length} جلسه</span></div>{deletedSessions.map(s => <div className="code-row" key={s.id}><span><strong>{s.title}</strong><small>{classes.find(c => c.id === s.classId)?.title ?? "کلاس بازیابی‌شده"}</small></span><button className="ghost" disabled={busy} onClick={() => void restoreDeletedSession(s.id)}>بازیابی</button></div>)}{!deletedSessions.length && <p className="muted">جلسه حذف‌شده‌ای برای بازیابی وجود ندارد. جلسه‌های کلاس‌های حذف‌شده پس از بازیابی کلاس در این فهرست ظاهر می‌شوند.</p>}</section>}
         {showClassForm && <form className="editor-form" onSubmit={createClass}>
           <h3>{editingClass ? "ویرایش کلاس" : "کلاس جدید"}</h3>
           <label>عنوان کلاس<input value={classTitle} onChange={e => setClassTitle(e.target.value)} required /></label>
