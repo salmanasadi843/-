@@ -1711,6 +1711,33 @@ fun Application.module(
                     }
                 }
                 
+                post("/move") {
+                    val principal = call.principal<DarsyarPrincipal>()
+                    if (principal == null) {
+                        call.respond(HttpStatusCode.Unauthorized, ApiError("unauthorized"))
+                        return@post
+                    }
+                    val request = try { call.receive<MoveSessionRequest>() }
+                    catch (_: Exception) {
+                        call.respond(HttpStatusCode.BadRequest, ApiError("invalid_request"))
+                        return@post
+                    }
+                    try {
+                        val moved = sessionRepository.move(
+                            principal.userId, principal.roles,
+                            call.parameters["sessionId"] ?: "", request.targetClassId
+                        )
+                        if (moved == null) call.respond(HttpStatusCode.NotFound, ApiError("session_not_found"))
+                        else call.respond(moved.toApiRecord())
+                    } catch (_: SecurityException) {
+                        call.respond(HttpStatusCode.Forbidden, ApiError("session_move_forbidden"))
+                    } catch (_: IllegalArgumentException) {
+                        call.respond(HttpStatusCode.BadRequest, ApiError("invalid_session_move"))
+                    } catch (_: java.sql.SQLException) {
+                        call.respond(HttpStatusCode.BadRequest, ApiError("session_move_failed"))
+                    }
+                }
+
                 delete {
                     val principal = call.principal<DarsyarPrincipal>()
                     if (principal == null) {
