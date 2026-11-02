@@ -33,7 +33,7 @@ class ClassForumRepositoryIntegrationTest {
                 }
             }
             val clazz=TeachingClassRepository(ds).create(owner.toString(),
-                CreateTeachingClass(owner.toString(),"تالار آزمایشی","","","public",true))
+                CreateTeachingClass(owner.toString(),"تالار آزمایشی","","","private",true))
             ds.connection.use { c ->
                 c.prepareStatement("INSERT INTO class_memberships(class_id,student_user_id,status,joined_at) VALUES (?,?,'active',now())").use {
                     it.setObject(1,UUID.fromString(clazz.id));it.setObject(2,student);it.executeUpdate()
@@ -43,7 +43,7 @@ class ClassForumRepositoryIntegrationTest {
             val announcement=announcements.create(owner.toString(),setOf(AppRole.TEACHER),clazz.id,
                 "تغییر برنامه کلاس","جلسه آینده نیم ساعت دیرتر برگزار می‌شود.")
             assertEquals(announcement.id,announcements.list(student.toString(),setOf(AppRole.STUDENT),clazz.id).single().id)
-            assertEquals(1,announcements.list(stranger.toString(),setOf(AppRole.STUDENT),clazz.id).size)
+            assertEquals(0,announcements.list(stranger.toString(),setOf(AppRole.STUDENT),clazz.id).size)
             val repo=ClassForumRepository(ds)
             val topic=repo.createTopic(student.toString(),setOf(AppRole.STUDENT),clazz.id,null,
                 "پرسش درباره درس","لطفاً این نکته را توضیح دهید.")
