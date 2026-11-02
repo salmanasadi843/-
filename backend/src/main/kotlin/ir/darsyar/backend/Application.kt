@@ -220,6 +220,39 @@ data class AudioSourceApiRecord(
 )
 
 @Serializable
+data class ForumTopicWriteRequest(val sessionId: String? = null, val title: String, val body: String)
+@Serializable
+data class ForumTopicApiRecord(
+    val id: String, val classId: String, val sessionId: String?, val authorUserId: String,
+    val authorName: String, val title: String, val body: String, val isPinned: Boolean,
+    val isLocked: Boolean, val replyCount: Int, val createdAtMs: Long, val updatedAtMs: Long
+)
+@Serializable
+data class ForumReplyWriteRequest(val parentPostId: String? = null, val body: String)
+@Serializable
+data class ForumPostApiRecord(
+    val id: String, val topicId: String, val parentPostId: String?, val authorUserId: String,
+    val authorName: String, val body: String, val createdAtMs: Long, val updatedAtMs: Long
+)
+@Serializable
+data class ForumModerationRequest(val isPinned: Boolean, val isLocked: Boolean)
+@Serializable
+data class NotificationApiRecord(
+    val id: String, val notificationType: String, val message: String, val classId: String?,
+    val topicId: String?, val postId: String?, val actorUserId: String?, val isRead: Boolean,
+    val createdAtMs: Long
+)
+private fun ForumTopicRecord.toApiRecord() = ForumTopicApiRecord(
+    id,classId,sessionId,authorUserId,authorName,title,body,isPinned,isLocked,replyCount,createdAtMs,updatedAtMs
+)
+private fun ForumPostRecord.toApiRecord() = ForumPostApiRecord(
+    id,topicId,parentPostId,authorUserId,authorName,body,createdAtMs,updatedAtMs
+)
+private fun UserNotificationRecord.toApiRecord() = NotificationApiRecord(
+    id,notificationType,message,classId,topicId,postId,actorUserId,isRead,createdAtMs
+)
+
+@Serializable
 data class ApiError(val error: String)
 
 @Serializable
@@ -314,7 +347,8 @@ fun Application.module(
     val audioSourceRepository = TeachingAudioSourceRepository(dataSource)
     val courseRepository = TeachingCourseRepository(dataSource)
     val classAccessRepository = ClassAccessRepository(dataSource)
-    val teacherAdministrationRepository = TeacherAdministrationRepository(dataSource)\n    val forumRepository = ClassForumRepository(dataSource)
+    val teacherAdministrationRepository = TeacherAdministrationRepository(dataSource)
+    val forumRepository = ClassForumRepository(dataSource)
 
     install(ContentNegotiation) { json() }
     install(Authentication) {
