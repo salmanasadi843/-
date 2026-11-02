@@ -880,6 +880,7 @@ export default function App() {
           <button disabled={busy || !classTitle.trim() || (isAdmin && selectedTeacher === "all")}>{busy ? "در حال ذخیره…" : editingClass ? "ذخیره تغییرات" : "ذخیره کلاس"}</button>
         </form>}
 <div className="folder-filter"><button className={browseFolderId === "all" ? "choice active" : "choice"} onClick={() => setBrowseFolderId("all")}>همه پوشه‌ها</button><button className={browseFolderId === "none" ? "choice active" : "choice"} onClick={() => setBrowseFolderId("none")}>بدون پوشه</button>{visibleFolders.filter(folder => !folder.isHidden).map(folder => <button key={folder.id} className={browseFolderId === folder.id ? "choice active" : "choice"} onClick={() => setBrowseFolderId(folder.id)}>{folder.name}</button>)}</div>
+        {selectedTeacher !== "all" && <section className="teacher-class-group selected-teacher-heading"><div className="section-head"><h3>استاد: {teachers.find(teacher => teacher.userId === selectedTeacher)?.displayName ?? "استاد انتخاب‌شده"}</h3><span className="muted">کلاس‌های این استاد</span></div></section>}
         {selectedTeacher === "all" ? <div className="teacher-class-groups">
           {teachers.map(teacher => {
             const teacherClasses = visibleClasses.filter(c => c.ownerUserId === teacher.userId);
