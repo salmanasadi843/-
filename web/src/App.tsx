@@ -969,7 +969,7 @@ export default function App() {
           </section>
           {detail.aiSummary && <><h3>خلاصه هوشمند</h3><p className="pre">{detail.aiSummary}</p></>}
           {detail.aiKeyPoints && <><h3>نکات کلیدی</h3><p className="pre">{detail.aiKeyPoints}</p></>}
-          {detail.originalTranscript && <><h3>متن اصلی</h3><p className="pre">{detail.originalTranscript}</p></>}
+          {detail.originalTranscript && <><h3>متن اصلی</h3><p className="pre" onMouseUp={() => { const selected = window.getSelection()?.toString().trim(); if (selected) setNoteQuote(selected); }}>{detail.originalTranscript}</p><p className="muted">برای پیوست‌کردن بخشی از متن به یادداشت، آن را انتخاب کنید.</p></>}
           {detail.transcript && detail.transcript !== detail.originalTranscript && <><h3>متن ویرایش‌شده</h3><p className="pre" onMouseUp={() => { const selected = window.getSelection()?.toString().trim(); if (selected) setNoteQuote(selected); }}>{detail.transcript}</p><p className="muted">برای پیوست‌کردن بخشی از متن به یادداشت، آن را انتخاب کنید.</p></>}
         </article>}
       </section>
