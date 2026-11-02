@@ -225,6 +225,30 @@ private fun UserSessionNoteRecord.toApiRecord() = SessionNoteApiRecord(
 )
 
 @Serializable
+data class SessionNoteSummaryApiRecord(
+    val id: String,
+    val userId: String,
+    val sessionId: String,
+    val classId: String,
+    val classTitle: String,
+    val sessionTitle: String,
+    val courseName: String,
+    val teacherName: String,
+    val dateMs: Long?,
+    val quotedText: String,
+    val noteText: String,
+    val startOffset: Int?,
+    val endOffset: Int?,
+    val createdAtMs: Long,
+    val updatedAtMs: Long
+)
+
+private fun UserSessionNoteSummaryRecord.toSummaryApiRecord() = SessionNoteSummaryApiRecord(
+    id, userId, sessionId, classId, classTitle, sessionTitle, courseName, teacherName,
+    dateMs, quotedText, noteText, startOffset, endOffset, createdAtMs, updatedAtMs
+)
+
+@Serializable
 data class SessionStateWriteRequest(
     val isFavorite: Boolean,
     val lastPlaybackPositionMs: Long = 0
@@ -496,6 +520,17 @@ fun Application.module(
                             principal.userId,
                             principal.roles.map { it.name.lowercase() }
                         )
+                    )
+                }
+            }
+            get("/api/v1/me/notes") {
+                val principal = call.principal<DarsyarPrincipal>()
+                if (principal == null) {
+                    call.respond(HttpStatusCode.Unauthorized, ApiError("unauthorized"))
+                } else {
+                    call.respond(
+                        sessionNoteRepository.listAllVisible(principal.userId, principal.roles)
+                            .map { it.toSummaryApiRecord() }
                     )
                 }
             }
