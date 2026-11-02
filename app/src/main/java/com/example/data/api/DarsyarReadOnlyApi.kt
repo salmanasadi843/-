@@ -4,6 +4,10 @@ import com.squareup.moshi.Moshi
 import com.squareup.moshi.kotlin.reflect.KotlinJsonAdapterFactory
 import com.squareup.moshi.JsonClass
 import retrofit2.Response
+import retrofit2.http.Body
+import retrofit2.http.DELETE
+import retrofit2.http.PATCH
+import retrofit2.http.POST
 import retrofit2.Retrofit
 import retrofit2.converter.moshi.MoshiConverterFactory
 import retrofit2.http.GET
@@ -42,6 +46,30 @@ interface DarsyarReadOnlyApi {
     suspend fun getTeachers(
         @Header("Authorization") authorization: String
     ): Response<List<BackendTeacherDto>>
+
+    @GET("api/v1/teacher-folders")
+    suspend fun getTeacherFolders(
+        @Header("Authorization") authorization: String
+    ): Response<List<BackendTeacherFolderDto>>
+
+    @POST("api/v1/teacher-folders")
+    suspend fun createTeacherFolder(
+        @Header("Authorization") authorization: String,
+        @Body request: BackendTeacherFolderWriteRequest
+    ): Response<BackendTeacherFolderDto>
+
+    @PATCH("api/v1/teacher-folders/{folderId}")
+    suspend fun updateTeacherFolder(
+        @retrofit2.http.Path("folderId") folderId: String,
+        @Header("Authorization") authorization: String,
+        @Body request: BackendTeacherFolderWriteRequest
+    ): Response<BackendTeacherFolderDto>
+
+    @DELETE("api/v1/teacher-folders/{folderId}")
+    suspend fun deleteTeacherFolder(
+        @retrofit2.http.Path("folderId") folderId: String,
+        @Header("Authorization") authorization: String
+    ): Response<Unit>
 
     @GET("api/v1/classes/{classId}/courses")
     suspend fun getCourses(
@@ -87,6 +115,26 @@ data class BackendClassDto(
     val isHidden: Boolean,
     val sortOrder: Int,
     val folderId: String?
+)
+
+@JsonClass(generateAdapter = true)
+data class BackendTeacherFolderDto(
+    val id: String,
+    val ownerUserId: String,
+    val parentFolderId: String?,
+    val name: String,
+    val sortOrder: Int,
+    val isHidden: Boolean,
+    val version: Long
+)
+
+@JsonClass(generateAdapter = true)
+data class BackendTeacherFolderWriteRequest(
+    val ownerUserId: String? = null,
+    val parentFolderId: String? = null,
+    val name: String,
+    val sortOrder: Int = 0,
+    val isHidden: Boolean = false
 )
 
 @JsonClass(generateAdapter = true)
