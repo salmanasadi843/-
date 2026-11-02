@@ -259,6 +259,7 @@ fun BackendBrowseScreen(onBack: () -> Unit) {
                     BackendForumPanel(
                         classId = clazz.id,
                         sessionId = selectedSession?.id,
+                        currentUserId = accountId,
                         canModerate = "super_admin" in accountRoles || ("teacher" in accountRoles && clazz.ownerUserId == accountId),
                         onStatus = { status = it }
                     )
