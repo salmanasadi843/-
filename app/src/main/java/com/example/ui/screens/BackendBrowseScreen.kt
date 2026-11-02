@@ -36,6 +36,10 @@ fun BackendBrowseScreen(onBack: () -> Unit) {
     var selectedClass by remember { mutableStateOf<BackendClassDto?>(null) }
     var selectedSession by remember { mutableStateOf<BackendSessionDto?>(null) }
     var selectedSessionState by remember { mutableStateOf<BackendSessionStateDto?>(null) }
+    var sessionNotes by remember { mutableStateOf<List<BackendSessionNoteDto>>(emptyList()) }
+    var noteQuote by remember { mutableStateOf("") }
+    var noteDraft by remember { mutableStateOf("") }
+    var editingNoteId by remember { mutableStateOf<String?>(null) }
     var playbackPositionDraft by remember { mutableStateOf(0f) }
     var busy by remember { mutableStateOf(false) }
     var accountId by remember { mutableStateOf("") }
@@ -113,13 +117,46 @@ fun BackendBrowseScreen(onBack: () -> Unit) {
         withFreshToken { token ->
             val result = withContext(Dispatchers.IO) {
                 val detail = DarsyarReadOnlyApiFactory.create().loadSessionDetail(token, session.classId, session.id)
-                val state = DarsyarCommunityApiFactory.create().sessionState(token, session.classId, session.id)
-                detail to state
+                val community = DarsyarCommunityApiFactory.create()
+                val state = community.sessionState(token, session.classId, session.id)
+                val notes = community.sessionNotes(token, session.classId, session.id)
+                Triple(detail, state, notes)
             }
             selectedSession = result.first
             selectedSessionState = result.second
+            sessionNotes = result.third
+            noteQuote = ""; noteDraft = ""; editingNoteId = null
             playbackPositionDraft = result.second.lastPlaybackPositionMs.toFloat()
-            status = "جزئیات جلسه و وضعیت مطالعه شخصی دریافت شد."
+            status = "جزئیات جلسه، وضعیت مطالعه و یادداشت‌های شخصی دریافت شد."
+        }
+    }
+
+    fun savePersonalNote() {
+        val detail = selectedSession ?: return
+        if (noteDraft.isBlank()) return
+        withFreshToken { token ->
+            withContext(Dispatchers.IO) {
+                val repository = DarsyarCommunityApiFactory.create()
+                if (editingNoteId == null) repository.createSessionNote(token, detail.classId, detail.id, noteQuote, noteDraft)
+                else repository.updateSessionNote(token, editingNoteId!!, noteQuote, noteDraft)
+            }
+            sessionNotes = withContext(Dispatchers.IO) {
+                DarsyarCommunityApiFactory.create().sessionNotes(token, detail.classId, detail.id)
+            }
+            noteQuote = ""; noteDraft = ""; editingNoteId = null
+            status = "یادداشت شخصی ذخیره شد."
+        }
+    }
+
+    fun deletePersonalNote(noteId: String) {
+        val detail = selectedSession ?: return
+        withFreshToken { token ->
+            withContext(Dispatchers.IO) { DarsyarCommunityApiFactory.create().deleteSessionNote(token, noteId) }
+            sessionNotes = withContext(Dispatchers.IO) {
+                DarsyarCommunityApiFactory.create().sessionNotes(token, detail.classId, detail.id)
+            }
+            if (editingNoteId == noteId) { editingNoteId = null; noteQuote = ""; noteDraft = "" }
+            status = "یادداشت حذف شد."
         }
     }
 
@@ -350,6 +387,48 @@ fun BackendBrowseScreen(onBack: () -> Unit) {
                                     modifier = Modifier.fillMaxWidth()
                                 ) { Text("ذخیره پیشرفت شنیدن") }
                             }
+                            HorizontalDivider()
+                            Text("یادداشت‌های شخصی من (${sessionNotes.size})", fontWeight = FontWeight.SemiBold)
+                            if (sessionNotes.isEmpty()) {
+                                Text("هنوز یادداشتی برای این جلسه ثبت نکرده‌اید.", style = MaterialTheme.typography.bodySmall)
+                            }
+                            sessionNotes.forEach { note ->
+                                Card(Modifier.fillMaxWidth()) {
+                                    Column(Modifier.padding(10.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                                        if (note.quotedText.isNotBlank()) {
+                                            Text("عبارت مرتبط: ${note.quotedText}", style = MaterialTheme.typography.bodySmall, fontWeight = FontWeight.Medium)
+                                        }
+                                        Text(note.noteText, style = MaterialTheme.typography.bodyMedium)
+                                        Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                                            TextButton(onClick = {
+                                                editingNoteId = note.id
+                                                noteQuote = note.quotedText
+                                                noteDraft = note.noteText
+                                            }) { Text("ویرایش") }
+                                            TextButton(enabled = !busy, onClick = { deletePersonalNote(note.id) }) { Text("حذف") }
+                                        }
+                                    }
+                                }
+                            }
+                            OutlinedTextField(
+                                value = noteQuote, onValueChange = { noteQuote = it },
+                                modifier = Modifier.fillMaxWidth(), minLines = 2,
+                                label = { Text("عبارت مرتبط از متن درس (اختیاری)") }
+                            )
+                            OutlinedTextField(
+                                value = noteDraft, onValueChange = { noteDraft = it },
+                                modifier = Modifier.fillMaxWidth(), minLines = 3,
+                                label = { Text(if (editingNoteId == null) "یادداشت شخصی" else "ویرایش یادداشت") }
+                            )
+                            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                                Button(onClick = { savePersonalNote() }, enabled = !busy && noteDraft.isNotBlank()) {
+                                    Text(if (editingNoteId == null) "ذخیره یادداشت" else "ذخیره ویرایش")
+                                }
+                                if (editingNoteId != null) {
+                                    TextButton(onClick = { editingNoteId = null; noteQuote = ""; noteDraft = "" }) { Text("انصراف") }
+                                }
+                            }
+                            HorizontalDivider()
                             detail.aiSummary?.takeIf { it.isNotBlank() }?.let {
                                 Text("خلاصه هوشمند", fontWeight = FontWeight.SemiBold)
                                 Text(it, style = MaterialTheme.typography.bodyMedium)
