@@ -96,6 +96,24 @@ class DarsyarReadOnlyRepositoryTest {
         var requestedClassIdForSessionDetail: String? = null
         var requestedSessionIdForSessionDetail: String? = null
 
+        override suspend fun getPublicClasses(): Response<List<BackendClassDto>> = Response.success(emptyList())
+
+        override suspend fun getPublicSessions(classId: String): Response<List<BackendSessionSummaryDto>> =
+            Response.success(emptyList())
+
+        override suspend fun getPublicSessionDetail(
+            classId: String,
+            sessionId: String
+        ): Response<BackendSessionDto> = Response.success(
+            BackendSessionDto(
+                id = sessionId, classId = classId, courseId = null, title = "Public session",
+                courseName = "", professorName = "", dateMs = null, audioDurationMs = 0,
+                transcript = "public transcript", originalTranscript = "public original",
+                aiSummary = null, aiKeyPoints = null, aiQuizJson = null, tags = "",
+                isPublished = true, lastEditedMs = null, sortOrder = 0, version = 1
+            )
+        )
+
         override suspend fun getMe(authorization: String): Response<BackendMeDto> {
             authorizationForMe = authorization
             return Response.success(BackendMeDto("internal-user-1", listOf("student")))
