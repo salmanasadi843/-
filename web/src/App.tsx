@@ -136,8 +136,10 @@ export default function App() {
         api.courses(item.id, token),
         canManage ? api.accessCodes(item.id, token) : Promise.resolve([] as AccessCode[]),
         canManage ? api.classMembers(item.id, token) : Promise.resolve([] as ClassMember[]),
+        api.forumTopics(item.id, token),
+        api.classAnnouncements(item.id, token),
       ]);
-      setSessions(sessionList); setCourses(courseList); setClassAccessCodes(codes); setClassMembers(members);
+      setSessions(sessionList); setCourses(courseList); setClassAccessCodes(codes); setClassMembers(members); setForumTopics(topics); setAnnouncements(notices);
     }
     catch (e) { setError(message(e)); }
     finally { setBusy(false); }
