@@ -22,6 +22,7 @@ export default function App() {
   const [publicDetail, setPublicDetail] = useState<SessionDetail | null>(null);
   const [publicLoading, setPublicLoading] = useState(false);
   const [publicError, setPublicError] = useState("");
+  const [publicHighlight, setPublicHighlight] = useState<{ start: number; end: number } | null>(null);
   const [selectedTeacher, setSelectedTeacher] = useState("all");
   const [selectedClass, setSelectedClass] = useState<ClassRecord | null>(null);
   const [sessions, setSessions] = useState<SessionSummary[]>([]);
@@ -129,7 +130,7 @@ export default function App() {
   }, []);
 
   async function openPublicClass(item: ClassRecord) {
-    setPublicClass(item); setPublicDetail(null); setPublicSessions([]);
+    setPublicClass(item); setPublicDetail(null); setPublicSessions([]); setPublicHighlight(null);
     setPublicLoading(true); setPublicError("");
     try { setPublicSessions(await api.publicSessions(item.id)); }
     catch (e) { setPublicError(message(e)); }
@@ -138,7 +139,7 @@ export default function App() {
 
   async function openPublicSession(item: SessionSummary) {
     if (!publicClass) return;
-    setPublicLoading(true); setPublicError(""); setPublicDetail(null);
+    setPublicLoading(true); setPublicError(""); setPublicDetail(null); setPublicHighlight(null);
     try { setPublicDetail(await api.publicSession(publicClass.id, item.id)); }
     catch (e) { setPublicError(message(e)); }
     finally { setPublicLoading(false); }
@@ -374,6 +375,26 @@ export default function App() {
     setEditingNoteId(note.id); setNoteQuote(note.quotedText); setNoteDraft(note.noteText);
     setNoteOffsets(note.startOffset != null && note.endOffset != null ? { start: note.startOffset, end: note.endOffset } : null);
     setActiveNoteId(note.id);
+  }
+  function capturePublicTranscriptSelection(event: MouseEvent<HTMLPreElement>) {
+    const root = event.currentTarget;
+    const selection = window.getSelection();
+    if (!selection || selection.isCollapsed || selection.rangeCount === 0) return;
+    const range = selection.getRangeAt(0);
+    if (!root.contains(range.startContainer) || !root.contains(range.endContainer)) return;
+    const before = range.cloneRange();
+    before.selectNodeContents(root);
+    before.setEnd(range.startContainer, range.startOffset);
+    const raw = range.toString();
+    const quote = raw.trim();
+    if (!quote) return;
+    const start = before.toString().length + (raw.length - raw.trimStart().length);
+    setPublicHighlight({ start, end: start + quote.length });
+  }
+  function publicTranscriptWithHighlight() {
+    const text = publicDetail?.transcript ?? "";
+    if (!publicHighlight || publicHighlight.start < 0 || publicHighlight.end > text.length) return text;
+    return <>{text.slice(0, publicHighlight.start)}<mark className="guest-temporary-highlight">{text.slice(publicHighlight.start, publicHighlight.end)}</mark>{text.slice(publicHighlight.end)}</>;
   }
   function captureTranscriptSelection(event: MouseEvent<HTMLParagraphElement>) {
     const root = event.currentTarget;
@@ -892,7 +913,11 @@ export default function App() {
           <h3>{publicDetail.title}</h3>
           {publicDetail.aiSummary && <><h4>خلاصه</h4><p>{publicDetail.aiSummary}</p></>}
           {publicDetail.aiKeyPoints && <><h4>نکات کلیدی</h4><p>{publicDetail.aiKeyPoints}</p></>}
-          <h4>متن جلسه</h4><pre className="transcript">{publicDetail.transcript}</pre>
+          <h4>متن جلسه</h4>
+          <p className="muted">می‌توانید بخشی از متن را انتخاب کنید تا در همین نشست به‌صورت موقت هایلایت شود؛ این هایلایت ذخیره نمی‌شود.</p>
+          <pre className="transcript" onMouseUp={capturePublicTranscriptSelection}>{publicTranscriptWithHighlight()}</pre>
+          {publicHighlight && <button type="button" className="ghost" onClick={() => setPublicHighlight(null)}>پاک‌کردن هایلایت موقت</button>}
+          <p className="muted">برای پرسیدن سؤال از هوش مصنوعی، ذخیره هایلایت، یادداشت و نشانک، ابتدا وارد حساب کاربری شوید.</p>
         </> : publicSessions.map(session => <button className="list-item" key={session.id} onClick={() => void openPublicSession(session)}>{session.title}</button>)}
         {!publicLoading && !publicSessions.length && !publicDetail && <p className="muted">هنوز جلسه عمومی منتشرشده‌ای در این کلاس نیست.</p>}
       </> : <>
