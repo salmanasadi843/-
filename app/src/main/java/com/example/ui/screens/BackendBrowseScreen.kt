@@ -27,9 +27,11 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.TextFieldValue
 import androidx.compose.ui.text.TextRange
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.window.Dialog
 import com.example.data.api.*
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.withContext
 
 /** Read-only preview of the future server-backed teacher → class → session hierarchy. */
@@ -46,6 +48,10 @@ fun BackendBrowseScreen(onBack: () -> Unit) {
     var selectedSession by remember { mutableStateOf<BackendSessionDto?>(null) }
     var selectedSessionState by remember { mutableStateOf<BackendSessionStateDto?>(null) }
     var sessionNotes by remember { mutableStateOf<List<BackendSessionNoteDto>>(emptyList()) }
+    var myNotes by remember { mutableStateOf<List<BackendGlobalSessionNoteDto>>(emptyList()) }
+    var myNotesSearch by remember { mutableStateOf("") }
+    var showMyNotesDialog by remember { mutableStateOf(false) }
+    var pendingGlobalNoteFocusId by remember { mutableStateOf<String?>(null) }
     var noteQuote by remember { mutableStateOf("") }
     var noteDraft by remember { mutableStateOf("") }
     var noteStartOffset by remember { mutableStateOf<Int?>(null) }
@@ -112,6 +118,43 @@ fun BackendBrowseScreen(onBack: () -> Unit) {
             sessions = emptyList()
             selectedSession = null
             status = "فهرست استادان و کلاس‌های قابل مشاهده دریافت شد."
+        }
+    }
+
+    fun loadMyNotes() {
+        withFreshToken { token ->
+            myNotes = withContext(Dispatchers.IO) { DarsyarCommunityApiFactory.create().myNotes(token) }
+            showMyNotesDialog = true
+            status = "یادداشت‌های شخصی شما دریافت شد."
+        }
+    }
+
+    fun openGlobalNote(note: BackendGlobalSessionNoteDto) {
+        showMyNotesDialog = false
+        withFreshToken { token ->
+            val clazz = classes.firstOrNull { it.id == note.classId }
+                ?: throw IllegalStateException("کلاس این یادداشت دیگر در فهرست قابل‌دسترسی نیست.")
+            val result = withContext(Dispatchers.IO) {
+                val readApi = DarsyarReadOnlyApiFactory.create()
+                val sessionList = readApi.loadSessions(token, clazz.id)
+                val session = sessionList.firstOrNull { it.id == note.sessionId }
+                    ?: throw IllegalStateException("جلسهٔ این یادداشت دیگر در دسترس نیست.")
+                val detail = readApi.loadSessionDetail(token, clazz.id, session.id)
+                val community = DarsyarCommunityApiFactory.create()
+                val state = community.sessionState(token, clazz.id, session.id)
+                val notes = community.sessionNotes(token, clazz.id, session.id)
+                Triple(sessionList, session, Triple(detail, state, notes))
+            }
+            sessions = result.first
+            selectedTeacherId = clazz.ownerUserId
+            selectedClass = clazz
+            selectedSession = result.third.first
+            selectedSessionState = result.third.second
+            sessionNotes = result.third.third
+            playbackPositionDraft = selectedSessionState!!.lastPlaybackPositionMs.toFloat()
+            activeNoteId = note.id
+            pendingGlobalNoteFocusId = note.id
+            status = "جلسه و یادداشت مرتبط باز شد."
         }
     }
 
@@ -201,6 +244,19 @@ fun BackendBrowseScreen(onBack: () -> Unit) {
 
     LaunchedEffect(Unit) { loadDirectory() }
 
+    LaunchedEffect(pendingGlobalNoteFocusId, selectedSession, sessionNotes) {
+        val noteId = pendingGlobalNoteFocusId ?: return@LaunchedEffect
+        val note = sessionNotes.firstOrNull { it.id == noteId } ?: return@LaunchedEffect
+        val detail = selectedSession ?: return@LaunchedEffect
+        delay(180)
+        val originalMatch = detail.originalTranscript.indexOf(note.quotedText)
+        if (note.quotedText.isNotBlank()) {
+            if (originalMatch >= 0) originalTranscriptRequester.bringIntoView()
+            else editedTranscriptRequester.bringIntoView()
+        }
+        pendingGlobalNoteFocusId = null
+    }
+
     Scaffold(
         topBar = {
             TopAppBar(
@@ -216,6 +272,7 @@ fun BackendBrowseScreen(onBack: () -> Unit) {
                     }
                 },
                 actions = {
+                    TextButton(onClick = { loadMyNotes() }, enabled = !busy) { Text("یادداشت‌های من") }
                     IconButton(onClick = { showNotifications = true }) {
                         BadgedBox(badge = {
                             if (unreadNotificationCount > 0) {
@@ -527,6 +584,59 @@ fun BackendBrowseScreen(onBack: () -> Unit) {
                                 textStyle = MaterialTheme.typography.bodySmall.copy(color = MaterialTheme.colorScheme.onSurface)
                             )
                         }
+                    }
+                }
+            }
+        }
+    }
+    if (showMyNotesDialog) {
+        Dialog(onDismissRequest = { showMyNotesDialog = false }) {
+            Surface(
+                modifier = Modifier.fillMaxWidth().heightIn(max = 680.dp),
+                shape = MaterialTheme.shapes.large,
+                tonalElevation = 6.dp
+            ) {
+                Column(Modifier.fillMaxWidth().padding(16.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        Text("یادداشت‌های من", style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Bold, modifier = Modifier.weight(1f))
+                        TextButton(onClick = { showMyNotesDialog = false }) { Text("بستن") }
+                    }
+                    Text("${myNotes.size} یادداشت در کلاس‌ها و جلسه‌های قابل‌دسترسی", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                    OutlinedTextField(
+                        value = myNotesSearch,
+                        onValueChange = { myNotesSearch = it },
+                        modifier = Modifier.fillMaxWidth(),
+                        singleLine = true,
+                        label = { Text("جست‌وجو در یادداشت‌ها") }
+                    )
+                    val filteredNotes = myNotes.filter { note ->
+                        listOf(note.noteText, note.quotedText, note.classTitle, note.sessionTitle, note.courseName, note.teacherName)
+                            .any { it.contains(myNotesSearch.trim(), ignoreCase = true) }
+                    }
+                    if (filteredNotes.isEmpty()) {
+                        Text(if (myNotes.isEmpty()) "هنوز یادداشتی ثبت نکرده‌اید." else "نتیجه‌ای برای جست‌وجو پیدا نشد.", style = MaterialTheme.typography.bodyMedium)
+                    } else {
+                        LazyColumn(
+                            modifier = Modifier.weight(1f, fill = false),
+                            verticalArrangement = Arrangement.spacedBy(8.dp)
+                        ) {
+                            items(filteredNotes, key = { it.id }) { note ->
+                                Card(Modifier.fillMaxWidth()) {
+                                    Column(Modifier.fillMaxWidth().padding(12.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                                        Text(note.classTitle, fontWeight = FontWeight.SemiBold)
+                                        Text("${note.teacherName} · ${note.sessionTitle}", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                                        if (note.quotedText.isNotBlank()) Text("«${note.quotedText}»", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.primary)
+                                        Text(note.noteText, style = MaterialTheme.typography.bodyMedium)
+                                        Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.End) {
+                                            TextButton(onClick = { openGlobalNote(note) }, enabled = !busy) { Text("رفتن به جلسه و متن") }
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    }
+                    Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.End) {
+                        TextButton(onClick = { loadMyNotes() }, enabled = !busy) { Text("تازه‌سازی") }
                     }
                 }
             }
