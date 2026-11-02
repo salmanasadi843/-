@@ -103,6 +103,55 @@ fun BackendForumPanel(classId:String, sessionId:String?, canModerate:Boolean, on
 }
 
 @Composable
+fun BackendAnnouncementsPanel(classId:String,canManage:Boolean,onStatus:(String)->Unit) {
+    val context=LocalContext.current
+    val scope=rememberCoroutineScope()
+    var items by remember(classId) { mutableStateOf<List<BackendAnnouncementDto>>(emptyList()) }
+    var title by remember { mutableStateOf("") }
+    var body by remember { mutableStateOf("") }
+    var busy by remember { mutableStateOf(false) }
+    var error by remember { mutableStateOf<String?>(null) }
+    fun load() {
+        if(busy) return
+        busy=true
+        AuthPreferences.getFirebaseIdToken(context) { result -> result.fold(onSuccess={token->scope.launch {
+            try { items=withContext(Dispatchers.IO){DarsyarCommunityApiFactory.create().announcements(token,classId)} }
+            catch(e:Exception){error=e.localizedMessage ?: "دریافت اعلان‌ها ناموفق بود"}
+            finally {busy=false}
+        }},onFailure={error=it.localizedMessage ?: "دریافت توکن ناموفق بود";busy=false}) }
+    }
+    LaunchedEffect(classId) { load() }
+    Column(Modifier.fillMaxWidth().padding(top=16.dp),verticalArrangement=Arrangement.spacedBy(8.dp)) {
+        Text("اعلان‌های رسمی کلاس",style=MaterialTheme.typography.titleMedium,fontWeight=FontWeight.Bold)
+        if(canManage) {
+            OutlinedTextField(value=title,onValueChange={title=it},modifier=Modifier.fillMaxWidth(),label={Text("عنوان اعلان")},singleLine=true)
+            OutlinedTextField(value=body,onValueChange={body=it},modifier=Modifier.fillMaxWidth(),label={Text("متن اعلان")},minLines=2)
+            Button(enabled=!busy && title.isNotBlank() && body.isNotBlank(),onClick={
+                busy=true;error=null
+                AuthPreferences.getFirebaseIdToken(context) { result -> result.fold(onSuccess={token->scope.launch {
+                    try {
+                        val created=withContext(Dispatchers.IO){DarsyarCommunityApiFactory.create().createAnnouncement(token,classId,title.trim(),body.trim())}
+                        items=listOf(created)+items;title="";body="";onStatus("اعلان برای اعضای کلاس منتشر شد.")
+                    } catch(e:Exception){error=e.localizedMessage ?: "انتشار اعلان ناموفق بود"}
+                    finally {busy=false}
+                }},onFailure={error=it.localizedMessage ?: "دریافت توکن ناموفق بود";busy=false}) }
+            },modifier=Modifier.fillMaxWidth()) { Text("انتشار اعلان") }
+        }
+        error?.let { Text(it,color=MaterialTheme.colorScheme.error,style=MaterialTheme.typography.bodySmall) }
+        if(items.isEmpty() && !busy) Text("هنوز اعلانی منتشر نشده است.",style=MaterialTheme.typography.bodySmall)
+        items.forEach { item ->
+            Card(Modifier.fillMaxWidth(),colors=CardDefaults.cardColors(containerColor=MaterialTheme.colorScheme.surfaceVariant)) {
+                Column(Modifier.padding(12.dp),verticalArrangement=Arrangement.spacedBy(5.dp)) {
+                    Text(item.title,fontWeight=FontWeight.SemiBold)
+                    Text(item.body,style=MaterialTheme.typography.bodySmall)
+                    Text(item.authorName+" · "+java.text.DateFormat.getDateTimeInstance().format(java.util.Date(item.publishedAtMs)),style=MaterialTheme.typography.labelSmall)
+                }
+            }
+        }
+    }
+}
+
+@Composable
 fun BackendNotificationsDialog(onDismiss:()->Unit) {
     val context=LocalContext.current
     val scope=rememberCoroutineScope()
