@@ -1,5 +1,5 @@
 import { FormEvent, MouseEvent, useEffect, useMemo, useState } from "react";
-import { onAuthStateChanged, signInWithEmailAndPassword, signOut, User } from "firebase/auth";
+import { onAuthStateChanged, sendPasswordResetEmail, signInWithEmailAndPassword, signOut, User } from "firebase/auth";
 import { api, AccessCode, AudioSource, ClassAnnouncement, ClassMember, ClassRecord, CourseRecord, ForumPost, ForumTopic, Me, SessionDetail, SessionNote, GlobalSessionNote, SessionState, SessionSummary, Teacher, TeacherFolder, UserNotification } from "./api";
 import { auth, firebaseConfigured } from "./firebase";
 
@@ -170,10 +170,26 @@ export default function App() {
 
   async function login(event: FormEvent) {
     event.preventDefault(); if (!auth) return;
-    setBusy(true); setError("");
+    setBusy(true); setError(""); setNotice("");
     try { await signInWithEmailAndPassword(auth, email.trim(), password); setPassword(""); }
     catch (e) { setError(message(e)); }
     finally { setBusy(false); }
+  }
+
+  async function resetPassword() {
+    if (!auth || !email.trim()) {
+      setError("ابتدا ایمیل حساب کاربری را وارد کنید.");
+      return;
+    }
+    setBusy(true); setError(""); setNotice("");
+    try {
+      await sendPasswordResetEmail(auth, email.trim());
+      setNotice("اگر این ایمیل در درس‌یار ثبت شده باشد، پیوند بازنشانی گذرواژه برای آن ارسال می‌شود.");
+    } catch (e) {
+      setError(message(e));
+    } finally {
+      setBusy(false);
+    }
   }
   async function openClass(item: ClassRecord) {
     if (!user) return;
@@ -799,7 +815,9 @@ export default function App() {
       <label>ایمیل<input type="email" autoComplete="username" value={email} onChange={e => setEmail(e.target.value)} required /></label>
       <label>گذرواژه<input type="password" autoComplete="current-password" value={password} onChange={e => setPassword(e.target.value)} required /></label>
       {error && <p className="error">{error}</p>}
+      {notice && <p className="success">{notice}</p>}
       <button disabled={busy}>{busy ? "در حال ورود…" : "ورود"}</button>
+      <button type="button" className="ghost" disabled={busy} onClick={() => void resetPassword()}>فراموشی گذرواژه</button>
     </form>
     <section className="panel narrow public-catalog">
       <h2>کلاس‌های عمومی</h2>
