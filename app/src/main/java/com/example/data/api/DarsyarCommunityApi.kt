@@ -9,6 +9,10 @@ import retrofit2.converter.moshi.MoshiConverterFactory
 import retrofit2.http.*
 
 interface DarsyarCommunityApi {
+    @GET("api/v1/classes/{classId}/announcements")
+    suspend fun announcements(@Path("classId") classId:String,@Header("Authorization") auth:String):Response<List<BackendAnnouncementDto>>
+    @POST("api/v1/classes/{classId}/announcements")
+    suspend fun createAnnouncement(@Path("classId") classId:String,@Body body:AnnouncementWriteDto,@Header("Authorization") auth:String):Response<BackendAnnouncementDto>
     @GET("api/v1/classes/{classId}/forum/topics")
     suspend fun topics(@Path("classId") classId:String,@Header("Authorization") auth:String):Response<List<BackendForumTopicDto>>
     @POST("api/v1/classes/{classId}/forum/topics")
@@ -25,6 +29,13 @@ interface DarsyarCommunityApi {
     suspend fun markRead(@Path("notificationId") id:String,@Header("Authorization") auth:String):Response<Unit>
 }
 
+@JsonClass(generateAdapter=true)
+data class BackendAnnouncementDto(
+    val id:String,val classId:String,val authorUserId:String,val authorName:String,
+    val title:String,val body:String,val isPinned:Boolean,val publishedAtMs:Long
+)
+@JsonClass(generateAdapter=true)
+data class AnnouncementWriteDto(val title:String,val body:String)
 @JsonClass(generateAdapter=true)
 data class BackendForumTopicDto(
     val id:String,val classId:String,val sessionId:String?,val authorUserId:String,val authorName:String,
@@ -53,6 +64,9 @@ class DarsyarCommunityRepository(private val api:DarsyarCommunityApi) {
         if(response.isSuccessful) response.body() ?: throw IllegalStateException("پاسخ خالی از سرور")
         else throw BackendHttpException(response.code(),endpoint)
 
+    suspend fun announcements(token:String,classId:String)=checked(api.announcements(classId,"Bearer $token"),"announcements")
+    suspend fun createAnnouncement(token:String,classId:String,title:String,body:String)=
+        checked(api.createAnnouncement(classId,AnnouncementWriteDto(title,body),"Bearer $token"),"announcements/create")
     suspend fun topics(token:String,classId:String)=checked(api.topics(classId,"Bearer $token"),"forum/topics")
     suspend fun createTopic(token:String,classId:String,sessionId:String?,title:String,body:String)=
         checked(api.createTopic(classId,ForumTopicWriteDto(sessionId,title,body),"Bearer $token"),"forum/topics")
