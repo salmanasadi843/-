@@ -11,6 +11,7 @@ export default function App() {
   const [teachers, setTeachers] = useState<Teacher[]>([]);
   const [folders, setFolders] = useState<TeacherFolder[]>([]);
   const [folderName, setFolderName] = useState("");
+  const [parentFolderId, setParentFolderId] = useState("");
   const [selectedFolderId, setSelectedFolderId] = useState("");
   const [browseFolderId, setBrowseFolderId] = useState("all");
   const [showFolderForm, setShowFolderForm] = useState(false);
@@ -85,6 +86,21 @@ export default function App() {
   const canManageSelectedClass = !!selectedClass &&
     (isAdmin || selectedClass.ownerUserId === me?.userId) &&
     (isAdmin || (me?.roles.includes("teacher") ?? false));
+  const renderFolderRows = (parentId: string | null, depth = 0) =>
+    visibleFolders.filter(folder => folder.parentFolderId === parentId).map(folder => (
+      <div key={folder.id}>
+        <div className="folder-row" style={{ paddingInlineStart: depth * 18 }}>
+          <span>{depth > 0 ? "↳ " : ""}{folder.name}{folder.isHidden ? " · مخفی" : ""}</span>
+          <span>
+            <button className="ghost" onClick={() => {setBrowseFolderId(folder.id);setSelectedClass(null);setDetail(null);}}>نمایش کلاس‌ها</button>
+            <button className="ghost" disabled={busy} onClick={() => void renameTeacherFolder(folder)}>تغییر نام</button>
+            <button className="ghost" disabled={busy} onClick={() => void toggleFolderHidden(folder)}>{folder.isHidden ? "نمایش" : "مخفی"}</button>
+            <button className="ghost danger-text" disabled={busy} onClick={() => void removeTeacherFolder(folder)}>حذف</button>
+          </span>
+        </div>
+        {renderFolderRows(folder.id, depth + 1)}
+      </div>
+    ));
 
   async function login(event: FormEvent) {
     event.preventDefault(); if (!auth) return;
@@ -177,8 +193,8 @@ export default function App() {
     if (!user || !folderOwnerId || !folderName.trim()) return;
     setBusy(true); setError("");
     try {
-      const created = await api.createTeacherFolder({ ...(isAdmin ? { ownerUserId: folderOwnerId } : {}), name: folderName.trim(), sortOrder: visibleFolders.length }, await user.getIdToken());
-      setFolders(current => [...current, created]); setFolderName(""); setShowFolderForm(false); setNotice("پوشه استاد ایجاد شد.");
+      const created = await api.createTeacherFolder({ ...(isAdmin ? { ownerUserId: folderOwnerId } : {}), parentFolderId: parentFolderId || null, name: folderName.trim(), sortOrder: visibleFolders.length }, await user.getIdToken());
+      setFolders(current => [...current, created]); setFolderName(""); setParentFolderId(""); setShowFolderForm(false); setNotice("پوشه استاد ایجاد شد.");
     } catch (e) { setError(message(e)); }
     finally { setBusy(false); }
   }
@@ -401,11 +417,8 @@ export default function App() {
         {teachers.map(t => <button key={t.userId} className={selectedTeacher === t.userId ? "choice active" : "choice"} onClick={() => {setSelectedTeacher(t.userId);setBrowseFolderId("all");setSelectedClass(null);setDetail(null);}}>{t.displayName}</button>)}
         {(folderOwnerId || (!isAdmin && me?.roles.includes("teacher"))) && <section className="folder-manager">
           <div className="section-head"><h2>پوشه‌های استاد</h2><button className="ghost" onClick={() => setShowFolderForm(v => !v)}>{showFolderForm ? "بستن" : "＋ پوشه"}</button></div>
-          {showFolderForm && <form onSubmit={createTeacherFolder} className="folder-form"><input value={folderName} onChange={e => setFolderName(e.target.value)} placeholder="نام پوشه جدید" required /><button disabled={busy || !folderName.trim()}>ایجاد</button></form>}
-          {visibleFolders.map(folder => <div className="folder-row" key={folder.id}>
-            <span>{folder.name}{folder.isHidden ? " · مخفی" : ""}</span>
-            <span><button className="ghost" onClick={() => {setBrowseFolderId(folder.id);setSelectedClass(null);setDetail(null);}}>نمایش کلاس‌ها</button><button className="ghost" disabled={busy} onClick={() => void renameTeacherFolder(folder)}>تغییر نام</button><button className="ghost" disabled={busy} onClick={() => void toggleFolderHidden(folder)}>{folder.isHidden ? "نمایش" : "مخفی"}</button><button className="ghost danger-text" disabled={busy} onClick={() => void removeTeacherFolder(folder)}>حذف</button></span>
-          </div>)}
+          {showFolderForm && <form onSubmit={createTeacherFolder} className="folder-form"><input value={folderName} onChange={e => setFolderName(e.target.value)} placeholder="نام پوشه جدید" required /><select value={parentFolderId} onChange={e => setParentFolderId(e.target.value)}><option value="">پوشه اصلی</option>{visibleFolders.filter(folder => !folder.isHidden).map(folder => <option key={folder.id} value={folder.id}>{folder.name}</option>)}</select><button disabled={busy || !folderName.trim()}>ایجاد</button></form>}
+          {renderFolderRows(null)}
           {!visibleFolders.length && <p className="muted">پوشه‌ای برای این استاد ثبت نشده است.</p>}
         </section>}
         {isAdmin && selectedTeacher === "all" && <p className="muted">برای مدیریت پوشه‌ها، یک استاد را انتخاب کنید.</p>}
