@@ -996,9 +996,10 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
 
             val moved = lecture.copy(
                 classId = targetClass.id,
+                // Keep the descriptive course title; clear only the class-bound course relation.
                 courseId = null,
-                courseName = "",
-                professorName = targetClass.teacherName.ifBlank { lecture.professorName },
+                courseName = lecture.courseName,
+                professorName = lecture.professorName,
                 sortOrder = 0,
                 lastEditedMillis = System.currentTimeMillis()
             )
