@@ -142,6 +142,105 @@ class ClassForumRepository(private val dataSource: DataSource) {
         }
     }
 
+
+    fun updateTopic(actor:String,roles:Set<AppRole>,topicId:String,title:String,body:String):ForumTopicRecord {
+        require(title.trim().length in 3..200 && body.trim().isNotEmpty() && body.length<=20000) { "Invalid forum topic." }
+        val user=UUID.fromString(actor);val topic=UUID.fromString(topicId)
+        dataSource.connection.use { c ->
+            c.autoCommit=false
+            try {
+                val context=c.requireTopicAccess(topic,user,roles,lock=true)
+                if(AppRole.SUPER_ADMIN !in roles && user!=context.owner && user!=context.author)
+                    throw SecurityException("Forum topic editing is not allowed.")
+                val updated=c.prepareStatement("""
+                    UPDATE forum_topics SET title=?,body=?,updated_at=now()
+                    WHERE id=? AND deleted_at IS NULL
+                    RETURNING id::text,class_id::text,session_id::text,author_user_id::text,
+                    (SELECT COALESCE(NULLIF(display_name,''),'کاربر') FROM app_users WHERE id=author_user_id) author_name,
+                    title,body,is_pinned,is_locked,
+                    (SELECT count(*)::int FROM forum_posts p WHERE p.topic_id=forum_topics.id AND p.deleted_at IS NULL) reply_count,
+                    (extract(epoch from created_at)*1000)::bigint created_ms,
+                    (extract(epoch from updated_at)*1000)::bigint updated_ms
+                """.trimIndent()).use { st ->
+                    st.setString(1,title.trim());st.setString(2,body.trim());st.setObject(3,topic)
+                    st.executeQuery().use { rs -> check(rs.next());rs.topic() }
+                }
+                c.commit();return updated
+            } catch(e:Throwable){c.rollback();throw e} finally {c.autoCommit=true}
+        }
+    }
+
+    fun deleteTopic(actor:String,roles:Set<AppRole>,topicId:String):Boolean {
+        val user=UUID.fromString(actor);val topic=UUID.fromString(topicId)
+        dataSource.connection.use { c ->
+            c.autoCommit=false
+            try {
+                val context=try { c.requireTopicAccess(topic,user,roles,lock=true) }
+                    catch(_:SecurityException){ c.rollback();return false }
+                if(AppRole.SUPER_ADMIN !in roles && user!=context.owner && user!=context.author)
+                    throw SecurityException("Forum topic deletion is not allowed.")
+                val changed=c.prepareStatement("UPDATE forum_topics SET deleted_at=now(),updated_at=now() WHERE id=? AND deleted_at IS NULL").use {
+                    it.setObject(1,topic);it.executeUpdate()==1
+                }
+                c.commit();return changed
+            } catch(e:Throwable){c.rollback();throw e} finally {c.autoCommit=true}
+        }
+    }
+
+    fun updatePost(actor:String,roles:Set<AppRole>,postId:String,body:String):ForumPostRecord {
+        require(body.trim().isNotEmpty() && body.length<=20000) { "Reply is empty or too long." }
+        val user=UUID.fromString(actor);val post=UUID.fromString(postId)
+        dataSource.connection.use { c ->
+            c.autoCommit=false
+            try {
+                val topicId=c.prepareStatement("SELECT topic_id FROM forum_posts WHERE id=? AND deleted_at IS NULL").use {
+                    it.setObject(1,post);it.executeQuery().use { rs -> if(rs.next()) rs.getObject(1,UUID::class.java) else throw IllegalArgumentException("Reply not found.") }
+                }
+                val context=c.requireTopicAccess(topicId,user,roles,lock=true)
+                val updated=c.prepareStatement("""
+                    UPDATE forum_posts p SET body=?,updated_at=now()
+                    WHERE p.id=? AND p.topic_id=? AND p.deleted_at IS NULL
+                      AND (p.author_user_id=? OR ? OR ?)
+                    RETURNING p.id::text,p.topic_id::text,p.parent_post_id::text,p.author_user_id::text,
+                    (SELECT COALESCE(NULLIF(display_name,''),'کاربر') FROM app_users WHERE id=p.author_user_id) author_name,
+                    p.body,(extract(epoch from p.created_at)*1000)::bigint created_ms,
+                    (extract(epoch from p.updated_at)*1000)::bigint updated_ms
+                """.trimIndent()).use { st ->
+                    st.setString(1,body.trim());st.setObject(2,post);st.setObject(3,topicId)
+                    st.setObject(4,user);st.setBoolean(5,user==context.owner);st.setBoolean(6,AppRole.SUPER_ADMIN in roles)
+                    st.executeQuery().use { rs -> if(rs.next()) rs.post() else throw SecurityException("Reply editing is not allowed.") }
+                }
+                c.prepareStatement("UPDATE forum_topics SET updated_at=now() WHERE id=?").use { it.setObject(1,topicId);it.executeUpdate() }
+                c.commit();return updated
+            } catch(e:Throwable){c.rollback();throw e} finally {c.autoCommit=true}
+        }
+    }
+
+    fun deletePost(actor:String,roles:Set<AppRole>,postId:String):Boolean {
+        val user=UUID.fromString(actor);val post=UUID.fromString(postId)
+        dataSource.connection.use { c ->
+            c.autoCommit=false
+            try {
+                val topicId=c.prepareStatement("SELECT topic_id FROM forum_posts WHERE id=? AND deleted_at IS NULL").use {
+                    it.setObject(1,post);it.executeQuery().use { rs -> if(rs.next()) rs.getObject(1,UUID::class.java) else {c.rollback();return false} }
+                }
+                val context=c.requireTopicAccess(topicId,user,roles,lock=true)
+                val changed=c.prepareStatement("""
+                    UPDATE forum_posts SET deleted_at=now(),updated_at=now()
+                    WHERE id=? AND topic_id=? AND deleted_at IS NULL
+                      AND (author_user_id=? OR ? OR ?)
+                """.trimIndent()).use { st ->
+                    st.setObject(1,post);st.setObject(2,topicId);st.setObject(3,user)
+                    st.setBoolean(4,user==context.owner);st.setBoolean(5,AppRole.SUPER_ADMIN in roles)
+                    st.executeUpdate()==1
+                }
+                if(!changed) throw SecurityException("Reply deletion is not allowed.")
+                c.prepareStatement("UPDATE forum_topics SET updated_at=now() WHERE id=?").use { it.setObject(1,topicId);it.executeUpdate() }
+                c.commit();return true
+            } catch(e:Throwable){c.rollback();throw e} finally {c.autoCommit=true}
+        }
+    }
+
     fun moderateTopic(actor:String,roles:Set<AppRole>,topicId:String,pinned:Boolean,locked:Boolean):Boolean {
         val user=UUID.fromString(actor);val topic=UUID.fromString(topicId)
         dataSource.connection.use { c ->
