@@ -314,7 +314,7 @@ fun Application.module(
     val audioSourceRepository = TeachingAudioSourceRepository(dataSource)
     val courseRepository = TeachingCourseRepository(dataSource)
     val classAccessRepository = ClassAccessRepository(dataSource)
-    val teacherAdministrationRepository = TeacherAdministrationRepository(dataSource)
+    val teacherAdministrationRepository = TeacherAdministrationRepository(dataSource)\n    val forumRepository = ClassForumRepository(dataSource)
 
     install(ContentNegotiation) { json() }
     install(Authentication) {
@@ -1147,6 +1147,78 @@ fun Application.module(
                     } catch (_: IllegalArgumentException) {
                         call.respond(HttpStatusCode.BadRequest, ApiError("invalid_audio_source_id"))
                     }
+                }
+            }
+
+            route("/api/v1/classes/{classId}/forum/topics") {
+                get {
+                    val principal=call.principal<DarsyarPrincipal>()
+                    if(principal==null){call.respond(HttpStatusCode.Unauthorized,ApiError("unauthorized"));return@get}
+                    try { call.respond(forumRepository.listTopics(principal.userId,principal.roles,call.parameters["classId"] ?: "").map{it.toApiRecord()}) }
+                    catch(_:IllegalArgumentException){call.respond(HttpStatusCode.BadRequest,ApiError("invalid_class_id"))}
+                    catch(_:SecurityException){call.respond(HttpStatusCode.Forbidden,ApiError("forum_access_forbidden"))}
+                }
+                post {
+                    val principal=call.principal<DarsyarPrincipal>()
+                    if(principal==null){call.respond(HttpStatusCode.Unauthorized,ApiError("unauthorized"));return@post}
+                    val request=try{call.receive<ForumTopicWriteRequest>()}catch(_:Exception){call.respond(HttpStatusCode.BadRequest,ApiError("invalid_request"));return@post}
+                    try {
+                        val created=forumRepository.createTopic(principal.userId,principal.roles,call.parameters["classId"] ?: "",request.sessionId,request.title,request.body)
+                        call.respond(HttpStatusCode.Created,created.toApiRecord())
+                    } catch(_:SecurityException){call.respond(HttpStatusCode.Forbidden,ApiError("forum_access_forbidden"))}
+                    catch(_:IllegalArgumentException){call.respond(HttpStatusCode.BadRequest,ApiError("invalid_forum_topic"))}
+                }
+            }
+
+            route("/api/v1/forum/topics/{topicId}/posts") {
+                get {
+                    val principal=call.principal<DarsyarPrincipal>()
+                    if(principal==null){call.respond(HttpStatusCode.Unauthorized,ApiError("unauthorized"));return@get}
+                    try{call.respond(forumRepository.listPosts(principal.userId,principal.roles,call.parameters["topicId"] ?: "").map{it.toApiRecord()})}
+                    catch(_:SecurityException){call.respond(HttpStatusCode.Forbidden,ApiError("forum_access_forbidden"))}
+                    catch(_:IllegalArgumentException){call.respond(HttpStatusCode.BadRequest,ApiError("invalid_topic_id"))}
+                }
+                post {
+                    val principal=call.principal<DarsyarPrincipal>()
+                    if(principal==null){call.respond(HttpStatusCode.Unauthorized,ApiError("unauthorized"));return@post}
+                    val request=try{call.receive<ForumReplyWriteRequest>()}catch(_:Exception){call.respond(HttpStatusCode.BadRequest,ApiError("invalid_request"));return@post}
+                    try{
+                        val created=forumRepository.createReply(principal.userId,principal.roles,call.parameters["topicId"] ?: "",request.parentPostId,request.body)
+                        call.respond(HttpStatusCode.Created,created.toApiRecord())
+                    }catch(_:SecurityException){call.respond(HttpStatusCode.Forbidden,ApiError("forum_access_forbidden"))}
+                    catch(_:IllegalStateException){call.respond(HttpStatusCode.Conflict,ApiError("forum_topic_locked"))}
+                    catch(_:IllegalArgumentException){call.respond(HttpStatusCode.BadRequest,ApiError("invalid_forum_reply"))}
+                }
+            }
+
+            route("/api/v1/forum/topics/{topicId}/moderation") {
+                patch {
+                    val principal=call.principal<DarsyarPrincipal>()
+                    if(principal==null){call.respond(HttpStatusCode.Unauthorized,ApiError("unauthorized"));return@patch}
+                    val request=try{call.receive<ForumModerationRequest>()}catch(_:Exception){call.respond(HttpStatusCode.BadRequest,ApiError("invalid_request"));return@patch}
+                    try{
+                        val updated=forumRepository.moderateTopic(principal.userId,principal.roles,call.parameters["topicId"] ?: "",request.isPinned,request.isLocked)
+                        if(updated) call.respond(HttpStatusCode.NoContent) else call.respond(HttpStatusCode.NotFound,ApiError("forum_topic_not_found"))
+                    }catch(_:SecurityException){call.respond(HttpStatusCode.Forbidden,ApiError("forum_moderation_forbidden"))}
+                    catch(_:IllegalArgumentException){call.respond(HttpStatusCode.BadRequest,ApiError("invalid_topic_id"))}
+                }
+            }
+
+            route("/api/v1/notifications") {
+                get {
+                    val principal=call.principal<DarsyarPrincipal>()
+                    if(principal==null){call.respond(HttpStatusCode.Unauthorized,ApiError("unauthorized"));return@get}
+                    val unreadOnly=call.request.queryParameters["unreadOnly"]?.toBooleanStrictOrNull() ?: false
+                    try{call.respond(forumRepository.listNotifications(principal.userId,unreadOnly).map{it.toApiRecord()})}
+                    catch(_:IllegalArgumentException){call.respond(HttpStatusCode.BadRequest,ApiError("invalid_user_id"))}
+                }
+                post("/{notificationId}/read") {
+                    val principal=call.principal<DarsyarPrincipal>()
+                    if(principal==null){call.respond(HttpStatusCode.Unauthorized,ApiError("unauthorized"));return@post}
+                    try{
+                        val updated=forumRepository.markNotificationRead(principal.userId,call.parameters["notificationId"] ?: "")
+                        if(updated) call.respond(HttpStatusCode.NoContent) else call.respond(HttpStatusCode.NotFound,ApiError("notification_not_found"))
+                    }catch(_:IllegalArgumentException){call.respond(HttpStatusCode.BadRequest,ApiError("invalid_notification_id"))}
                 }
             }
 
