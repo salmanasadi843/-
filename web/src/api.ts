@@ -18,6 +18,10 @@ export type UserNotification = {
 };
 export type Me = { userId: string; roles: string[] };
 export type Teacher = { userId: string; displayName: string };
+export type TeacherApplication = {
+  userId: string; displayName: string; email: string | null;
+  teachingField: string | null; institutionName: string | null; approvalStatus: string;
+};
 export type CourseRecord = { id: string; classId: string; title: string; teacherName: string; description: string; createdAtMs: number | null; sortOrder: number; version: number };
 export type TeacherFolder = { id: string; ownerUserId: string; parentFolderId: string | null; name: string; sortOrder: number; isHidden: boolean; version: number };
 export type ClassRecord = {
@@ -101,6 +105,12 @@ export const api = {
   publicSession: (classId: string, sessionId: string) =>
     requestPublic<SessionDetail>(`/api/v1/public/classes/${encodeURIComponent(classId)}/sessions/${encodeURIComponent(sessionId)}`),
   me: (token: string) => request<Me>("/api/v1/me", token),
+  submitTeacherApplication: (data: { teachingField?: string | null; institutionName?: string | null }, token: string) =>
+    request<TeacherApplication>("/api/v1/teacher-applications", token, { method: "POST", body: JSON.stringify(data) }),
+  pendingTeacherApplications: (token: string) =>
+    request<TeacherApplication[]>("/api/v1/admin/teacher-applications", token),
+  decideTeacherApplication: (userId: string, decision: "approved" | "rejected", token: string) =>
+    request<TeacherApplication>(`/api/v1/admin/teacher-applications/${encodeURIComponent(userId)}`, token, { method: "PATCH", body: JSON.stringify({ decision }) }),
   myNotes: (token: string) => request<GlobalSessionNote[]>("/api/v1/me/notes", token),
   teachers: (token: string) => request<Teacher[]>("/api/v1/teachers", token),
   classes: (token: string) => request<ClassRecord[]>("/api/v1/classes", token),
