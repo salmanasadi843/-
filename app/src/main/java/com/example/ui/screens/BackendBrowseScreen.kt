@@ -1,5 +1,6 @@
 package com.example.ui.screens
 
+import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.text.BasicTextField
 import androidx.compose.foundation.relocation.BringIntoViewRequester
@@ -32,7 +33,7 @@ import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 
 /** Read-only preview of the future server-backed teacher → class → session hierarchy. */
-@OptIn(ExperimentalMaterial3Api::class)
+@OptIn(ExperimentalMaterial3Api::class, ExperimentalFoundationApi::class)
 @Composable
 fun BackendBrowseScreen(onBack: () -> Unit) {
     val context = LocalContext.current
@@ -166,7 +167,7 @@ fun BackendBrowseScreen(onBack: () -> Unit) {
                 DarsyarCommunityApiFactory.create().sessionNotes(token, detail.classId, detail.id)
             }
             noteQuote = ""; noteDraft = ""; noteStartOffset = null; noteEndOffset = null
-            activeNoteId = null; transcriptSelection = TextRange.Zero; editingNoteId = null
+            activeNoteId = null; originalTranscriptSelection = TextRange.Zero; editedTranscriptSelection = TextRange.Zero; editingNoteId = null
             status = "یادداشت شخصی ذخیره شد."
         }
     }
