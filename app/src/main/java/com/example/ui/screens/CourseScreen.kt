@@ -41,9 +41,6 @@ fun ClassSessionsScreen(
     var classOwnerUid by remember { mutableStateOf("") }
     val currentOwnerUid = AuthPreferences.currentUid(context).orEmpty()
     var showDeleteDialog by remember { mutableStateOf<LectureEntity?>(null) }
-    var sessionToMove by remember { mutableStateOf<LectureEntity?>(null) }
-    var moveError by remember { mutableStateOf<String?>(null) }
-    val allClasses by viewModel.repository.allClasses.collectAsState(initial = emptyList())
     var moveSessionDialog by remember { mutableStateOf<LectureEntity?>(null) }
     val destinationClasses = remember(allClasses, classId, currentOwnerUid) {
         allClasses.filter {
@@ -166,9 +163,6 @@ fun ClassSessionsScreen(
                         }
                         if (canManageSessions) {
                             Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                                TextButton(onClick = { sessionToMove = lecture; moveError = null }) {
-                                    Text("انتقال")
-                                }
                                 IconButton(
                                     enabled = sessions.indexOfFirst { it.id == lecture.id } > 0,
                                     onClick = {
@@ -246,47 +240,6 @@ fun ClassSessionsScreen(
             confirmButton = {},
             dismissButton = {
                 TextButton(onClick = { moveSessionDialog = null }) { Text("انصراف") }
-            }
-        )
-    }
-
-    sessionToMove?.let { lecture ->
-        val destinations = allClasses
-            .filter { it.id > 0L && it.ownerUid == currentOwnerUid && it.id != classId }
-            .sortedBy { it.name }
-        AlertDialog(
-            onDismissRequest = { sessionToMove = null; moveError = null },
-            title = { Text("انتقال جلسه به کلاس دیگر") },
-            text = {
-                Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                    Text("جلسه «${lecture.title}» بدون حذف متن، صوت، خلاصه و تاریخ به کلاس انتخاب‌شده منتقل می‌شود.")
-                    if (destinations.isEmpty()) {
-                        Text("کلاس مقصد دیگری برای این حساب وجود ندارد.")
-                    } else {
-                        destinations.forEach { destination ->
-                            TextButton(
-                                modifier = Modifier.fillMaxWidth(),
-                                onClick = {
-                                    viewModel.moveLectureToClass(
-                                        lectureId = lecture.id,
-                                        targetClassId = destination.id,
-                                        onMoved = { sessionToMove = null; moveError = null },
-                                        onFailure = { moveError = it }
-                                    )
-                                }
-                            ) {
-                                Text(destination.name, modifier = Modifier.fillMaxWidth())
-                            }
-                        }
-                    }
-                    moveError?.let {
-                        Text(it, color = MaterialTheme.colorScheme.error, style = MaterialTheme.typography.bodySmall)
-                    }
-                }
-            },
-            confirmButton = {},
-            dismissButton = {
-                TextButton(onClick = { sessionToMove = null; moveError = null }) { Text("انصراف") }
             }
         )
     }
