@@ -266,4 +266,5 @@ fun BackendBrowseScreen(onBack: () -> Unit) {
             }
         }
     }
+    if (showNotifications) BackendNotificationsDialog(onDismiss = { showNotifications = false })
 }
