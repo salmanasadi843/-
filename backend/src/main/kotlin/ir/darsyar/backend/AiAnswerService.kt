@@ -17,3 +17,20 @@ object DisabledAiAnswerService : AiAnswerService {
     override fun answer(transcript: String, question: String, selectedText: String?): AiAnswerResult =
         throw AiProviderUnavailableException()
 }
+
+
+/**
+ * Accept only bounded answers whose citations point to exact substrings of the
+ * server-loaded transcript. Provider output is untrusted input.
+ */
+internal fun AiAnswerResult.isGroundedIn(transcript: String): Boolean =
+    answer.isNotBlank() &&
+        answer.length <= 20_000 &&
+        citations.size <= 30 &&
+        citations.all { citation ->
+            citation.startOffset >= 0 &&
+                citation.endOffset > citation.startOffset &&
+                citation.endOffset <= transcript.length &&
+                citation.excerpt.length <= 1_000 &&
+                citation.excerpt == transcript.substring(citation.startOffset, citation.endOffset)
+        }
