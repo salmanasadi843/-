@@ -1,4 +1,4 @@
-import { FormEvent, useEffect, useMemo, useState } from "react";
+import { FormEvent, MouseEvent, useEffect, useMemo, useState } from "react";
 import { onAuthStateChanged, signInWithEmailAndPassword, signOut, User } from "firebase/auth";
 import { api, AccessCode, AudioSource, ClassAnnouncement, ClassMember, ClassRecord, CourseRecord, ForumPost, ForumTopic, Me, SessionDetail, SessionNote, SessionState, SessionSummary, Teacher, TeacherFolder, UserNotification } from "./api";
 import { auth, firebaseConfigured } from "./firebase";
@@ -54,6 +54,8 @@ export default function App() {
   const [sessionNotes, setSessionNotes] = useState<SessionNote[]>([]);
   const [noteQuote, setNoteQuote] = useState("");
   const [noteDraft, setNoteDraft] = useState("");
+  const [noteOffsets, setNoteOffsets] = useState<{ start: number; end: number } | null>(null);
+  const [activeNoteId, setActiveNoteId] = useState<string | null>(null);
   const [editingNoteId, setEditingNoteId] = useState<string | null>(null);
   const [playbackPositionMs, setPlaybackPositionMs] = useState(0);
   const [audioTitle, setAudioTitle] = useState("");
@@ -203,7 +205,7 @@ export default function App() {
       setSessionState(savedState);
       setPlaybackPositionMs(savedState.lastPlaybackPositionMs);
       setSessionNotes(notes);
-      setNoteQuote(""); setNoteDraft(""); setEditingNoteId(null);
+      setNoteQuote(""); setNoteDraft(""); setNoteOffsets(null); setActiveNoteId(null); setEditingNoteId(null);
     }
     catch (e) { setError(message(e)); }
     finally { setBusy(false); }
@@ -230,17 +232,54 @@ export default function App() {
     setBusy(true); setError(""); setNotice("");
     try {
       const token = await user.getIdToken();
-      const data = { quotedText: noteQuote.trim(), noteText: noteDraft.trim() };
+      const data = { quotedText: noteQuote.trim(), noteText: noteDraft.trim(), startOffset: noteOffsets?.start ?? null, endOffset: noteOffsets?.end ?? null };
       if (editingNoteId) await api.updateSessionNote(editingNoteId, data, token);
       else await api.createSessionNote(selectedClass.id, detail.id, data, token);
       setSessionNotes(await api.sessionNotes(selectedClass.id, detail.id, token));
-      setNoteQuote(""); setNoteDraft(""); setEditingNoteId(null);
+      setNoteQuote(""); setNoteDraft(""); setNoteOffsets(null); setActiveNoteId(null); setEditingNoteId(null);
       setNotice("یادداشت شخصی ذخیره شد.");
     } catch (e) { setError(message(e)); }
     finally { setBusy(false); }
   }
   function editPersonalNote(note: SessionNote) {
     setEditingNoteId(note.id); setNoteQuote(note.quotedText); setNoteDraft(note.noteText);
+    setNoteOffsets(note.startOffset != null && note.endOffset != null ? { start: note.startOffset, end: note.endOffset } : null);
+    setActiveNoteId(note.id);
+  }
+  function captureTranscriptSelection(event: MouseEvent<HTMLParagraphElement>) {
+    const root = event.currentTarget;
+    const selection = window.getSelection();
+    if (!selection || selection.isCollapsed || selection.rangeCount === 0) return;
+    const range = selection.getRangeAt(0);
+    if (!root.contains(range.startContainer) || !root.contains(range.endContainer)) return;
+    const before = range.cloneRange();
+    before.selectNodeContents(root);
+    before.setEnd(range.startContainer, range.startOffset);
+    const raw = range.toString();
+    const quote = raw.trim();
+    if (!quote) return;
+    const start = before.toString().length + (raw.length - raw.trimStart().length);
+    setNoteQuote(quote);
+    setNoteOffsets({ start, end: start + quote.length });
+    setActiveNoteId(null);
+  }
+  function focusPersonalNote(note: SessionNote) {
+    setActiveNoteId(note.id);
+    if (!detail || !note.quotedText) return;
+    const matches = (text: string) => note.startOffset != null && note.endOffset != null && text.slice(note.startOffset, note.endOffset) === note.quotedText
+      ? note.startOffset : text.indexOf(note.quotedText);
+    const target = matches(detail.originalTranscript ?? "") >= 0 ? "original-transcript"
+      : matches(detail.transcript ?? "") >= 0 ? "edited-transcript" : null;
+    if (target) requestAnimationFrame(() => document.getElementById(target)?.scrollIntoView({ behavior: "smooth", block: "center" }));
+  }
+  function transcriptWithHighlight(text: string) {
+    const note = sessionNotes.find(item => item.id === activeNoteId);
+    if (!note?.quotedText) return text;
+    const start = note.startOffset != null && note.endOffset != null && text.slice(note.startOffset, note.endOffset) === note.quotedText
+      ? note.startOffset : text.indexOf(note.quotedText);
+    if (start < 0) return text;
+    const end = start + note.quotedText.length;
+    return <>{text.slice(0, start)}<mark className="note-anchor-highlight">{text.slice(start, end)}</mark>{text.slice(end)}</>;
   }
   async function deletePersonalNote(noteId: string) {
     if (!user) return;
@@ -248,7 +287,7 @@ export default function App() {
     try {
       await api.deleteSessionNote(noteId, await user.getIdToken());
       setSessionNotes(current => current.filter(note => note.id !== noteId));
-      if (editingNoteId === noteId) { setEditingNoteId(null); setNoteQuote(""); setNoteDraft(""); }
+      if (editingNoteId === noteId) { setEditingNoteId(null); setNoteQuote(""); setNoteDraft(""); setNoteOffsets(null); }
       setNotice("یادداشت حذف شد.");
     } catch (e) { setError(message(e)); }
     finally { setBusy(false); }
@@ -926,17 +965,19 @@ export default function App() {
                 <p className="pre">{note.noteText}</p>
               </div>
               <span>
+                <button className="ghost" type="button" onClick={() => focusPersonalNote(note)}>رفتن به متن</button>
                 <button className="ghost" type="button" onClick={() => editPersonalNote(note)}>ویرایش</button>
                 <button className="ghost danger-text" type="button" disabled={busy} onClick={() => void deletePersonalNote(note.id)}>حذف</button>
               </span>
             </article>)}
             <form className="editor-form" onSubmit={savePersonalNote}>
               <h4>{editingNoteId ? "ویرایش یادداشت" : "افزودن یادداشت شخصی"}</h4>
-              <label>عبارت مرتبط از متن درس (اختیاری)<textarea value={noteQuote} onChange={e => setNoteQuote(e.target.value)} rows={2} maxLength={10000} placeholder="عبارت یا بخش مهم درس را اینجا وارد کنید…" /></label>
+              <label>عبارت مرتبط از متن درس (اختیاری)<textarea value={noteQuote} onChange={e => { setNoteQuote(e.target.value); setNoteOffsets(null); }} rows={2} maxLength={10000} placeholder="عبارت یا بخش مهم درس را اینجا وارد کنید…" /></label>
+              {noteOffsets && <small className="muted">جایگاه عبارت در متن ذخیره می‌شود ({noteOffsets.start} تا {noteOffsets.end}).</small>}
               <label>یادداشت شما<textarea value={noteDraft} onChange={e => setNoteDraft(e.target.value)} rows={3} maxLength={20000} placeholder="نکته، پرسش یا توضیح خود را بنویسید…" required /></label>
               <span>
                 <button disabled={busy || !noteDraft.trim()}>{busy ? "در حال ذخیره…" : editingNoteId ? "ذخیره ویرایش" : "ذخیره یادداشت"}</button>
-                {editingNoteId && <button type="button" className="ghost" onClick={() => { setEditingNoteId(null); setNoteQuote(""); setNoteDraft(""); }}>انصراف</button>}
+                {editingNoteId && <button type="button" className="ghost" onClick={() => { setEditingNoteId(null); setNoteQuote(""); setNoteDraft(""); setNoteOffsets(null); setActiveNoteId(null); }}>انصراف</button>}
               </span>
             </form>
           </section>
@@ -969,8 +1010,8 @@ export default function App() {
           </section>
           {detail.aiSummary && <><h3>خلاصه هوشمند</h3><p className="pre">{detail.aiSummary}</p></>}
           {detail.aiKeyPoints && <><h3>نکات کلیدی</h3><p className="pre">{detail.aiKeyPoints}</p></>}
-          {detail.originalTranscript && <><h3>متن اصلی</h3><p className="pre" onMouseUp={() => { const selected = window.getSelection()?.toString().trim(); if (selected) setNoteQuote(selected); }}>{detail.originalTranscript}</p><p className="muted">برای پیوست‌کردن بخشی از متن به یادداشت، آن را انتخاب کنید.</p></>}
-          {detail.transcript && detail.transcript !== detail.originalTranscript && <><h3>متن ویرایش‌شده</h3><p className="pre" onMouseUp={() => { const selected = window.getSelection()?.toString().trim(); if (selected) setNoteQuote(selected); }}>{detail.transcript}</p><p className="muted">برای پیوست‌کردن بخشی از متن به یادداشت، آن را انتخاب کنید.</p></>}
+          {detail.originalTranscript && <><h3>متن اصلی</h3><p id="original-transcript" className="pre" onMouseUp={captureTranscriptSelection}>{transcriptWithHighlight(detail.originalTranscript)}</p><p className="muted">بخشی از متن را انتخاب کنید تا همراه یادداشت ذخیره شود.</p></>}
+          {detail.transcript && detail.transcript !== detail.originalTranscript && <><h3>متن ویرایش‌شده</h3><p id="edited-transcript" className="pre" onMouseUp={captureTranscriptSelection}>{transcriptWithHighlight(detail.transcript)}</p><p className="muted">بخشی از متن را انتخاب کنید تا همراه یادداشت ذخیره شود.</p></>}
         </article>}
       </section>
     </div>
