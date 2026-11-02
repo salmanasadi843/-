@@ -106,8 +106,8 @@ private fun FormattedHandoutContent(
     headingScale: Float,
     modifier: Modifier = Modifier
 ) {
-    val numberPattern = Regex("""^([0-9۰-۹]+(?:[ـ.-][0-9۰-۹]+)*[.)]?)\\s+(.+)$""")
-    val letterPattern = Regex("""^([الفبپتثجچحخدذرزژسشصضطظعغفقکگلمنوهی])[).ـ]\\s*(.+)$""")
+    val numberPattern = Regex("""^([0-9۰-۹]+(?:[ـ.-][0-9۰-۹]+)*[.)]?)\s+(.+)$""")
+    val letterPattern = Regex("""^([الفبپتثجچحخدذرزژسشصضطظعغفقکگلمنوهی])[).ـ]\s*(.+)$""")
 
     Column(modifier = modifier) {
         content.lines().forEach { rawLine ->
@@ -116,14 +116,14 @@ private fun FormattedHandoutContent(
                 Spacer(Modifier.height(7.dp))
             } else {
                 val markdownLevel = line.takeWhile { it == '#' }.length
-                val cleanLine = line.removePrefix("#").trim().removeSurrounding("**")
+                val cleanLine = line.dropWhile { it == '#' }.trim().removeSurrounding("**")
                 val numbered = numberPattern.matchEntire(cleanLine)
                 val lettered = letterPattern.matchEntire(cleanLine)
 
                 when {
                     markdownLevel > 0 -> {
                         Text(
-                            text = cleanLine.removePrefix("#").trim(),
+                            text = cleanLine,
                             color = Color.Black,
                             fontSize = (when (markdownLevel) {
                                 1 -> 25f
@@ -138,7 +138,7 @@ private fun FormattedHandoutContent(
                     }
                     numbered != null -> {
                         val prefix = numbered.groupValues[1]
-                        val level = Regex("[ـ.-]").findAll(prefix).count() + 1
+                        val level = prefix.trimEnd('.', ')').split(Regex("[ـ.-]")).size
                         Text(
                             text = cleanLine,
                             color = Color.Black,
