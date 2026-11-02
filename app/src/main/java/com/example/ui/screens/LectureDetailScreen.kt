@@ -104,6 +104,7 @@ private fun FormattedHandoutContent(
     content: String,
     bodyFontSize: Float,
     headingScale: Float,
+    lineSpacingScale: Float,
     modifier: Modifier = Modifier
 ) {
     val numberPattern = Regex("""^([0-9۰-۹]+(?:[ـ.-][0-9۰-۹]+)*[.)]?)\s+(.+)$""")
@@ -171,7 +172,7 @@ private fun FormattedHandoutContent(
                             text = cleanLine,
                             color = MaterialTheme.colorScheme.onSurface,
                             fontSize = bodyFontSize.sp,
-                            lineHeight = (bodyFontSize * 1.7f).sp
+                            lineHeight = (bodyFontSize * 1.7f * lineSpacingScale).sp
                         )
                     }
                 }
@@ -621,6 +622,9 @@ fun TranscriptTab(
     var handoutHeadingScale by remember(lecture.id) {
         mutableStateOf(handoutPrefs.getFloat("heading_scale", 1f).coerceIn(0.8f, 1.4f))
     }
+    var handoutLineSpacing by remember(lecture.id) {
+        mutableStateOf(handoutPrefs.getFloat("line_spacing", 1f).coerceIn(0.85f, 1.3f))
+    }
 
     Column(
         modifier = Modifier
@@ -785,12 +789,23 @@ fun TranscriptTab(
                         },
                         valueRange = 0.8f..1.4f
                     )
+                    Text("فاصله خطوط: ${(handoutLineSpacing * 100).toInt()}٪", fontWeight = FontWeight.SemiBold)
+                    Slider(
+                        value = handoutLineSpacing,
+                        onValueChange = {
+                            handoutLineSpacing = it
+                            handoutPrefs.edit().putFloat("line_spacing", it).apply()
+                        },
+                        valueRange = 0.85f..1.3f
+                    )
                     TextButton(onClick = {
                         handoutBodyFontSize = 17f
                         handoutHeadingScale = 1f
+                        handoutLineSpacing = 1f
                         handoutPrefs.edit()
                             .putFloat("body_font_size", 17f)
                             .putFloat("heading_scale", 1f)
+                            .putFloat("line_spacing", 1f)
                             .apply()
                     }) {
                         Text("بازگشت به اندازه پیش‌فرض")
@@ -809,6 +824,7 @@ fun TranscriptTab(
                     ?: "هنوز خلاصه‌ای برای این جلسه تولید نشده است.",
                 bodyFontSize = handoutBodyFontSize,
                 headingScale = handoutHeadingScale,
+                lineSpacingScale = handoutLineSpacing,
                 modifier = Modifier.padding(16.dp)
             )
         }
