@@ -1032,7 +1032,7 @@ fun Application.module(
                         return@get
                     }
                     try {
-                        call.respond(sessionRepository.listDeleted(principal.userId, principal.roles).map { it.toApiRecord() })
+                        call.respond(sessionRepository.listDeleted(principal.userId, principal.roles).map { it.toSummaryApiRecord() })
                     } catch (_: SecurityException) {
                         call.respond(HttpStatusCode.Forbidden, ApiError("session_recovery_forbidden"))
                     } catch (_: IllegalArgumentException) {
