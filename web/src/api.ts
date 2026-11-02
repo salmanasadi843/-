@@ -135,9 +135,9 @@ export const api = {
     request<SessionState>(`/api/v1/classes/${encodeURIComponent(classId)}/sessions/${encodeURIComponent(sessionId)}/state`, token, { method: "PUT", body: JSON.stringify(data) }),
   sessionNotes: (classId: string, sessionId: string, token: string) =>
     request<SessionNote[]>(`/api/v1/classes/${encodeURIComponent(classId)}/sessions/${encodeURIComponent(sessionId)}/notes`, token),
-  createSessionNote: (classId: string, sessionId: string, data: { quotedText?: string; noteText: string }, token: string) =>
+  createSessionNote: (classId: string, sessionId: string, data: { quotedText?: string; noteText: string; startOffset?: number | null; endOffset?: number | null }, token: string) =>
     request<SessionNote>(`/api/v1/classes/${encodeURIComponent(classId)}/sessions/${encodeURIComponent(sessionId)}/notes`, token, { method: "POST", body: JSON.stringify(data) }),
-  updateSessionNote: (noteId: string, data: { quotedText?: string; noteText: string }, token: string) =>
+  updateSessionNote: (noteId: string, data: { quotedText?: string; noteText: string; startOffset?: number | null; endOffset?: number | null }, token: string) =>
     request<SessionNote>(`/api/v1/session-notes/${encodeURIComponent(noteId)}`, token, { method: "PATCH", body: JSON.stringify(data) }),
   deleteSessionNote: (noteId: string, token: string) =>
     request<void>(`/api/v1/session-notes/${encodeURIComponent(noteId)}`, token, { method: "DELETE" }),
