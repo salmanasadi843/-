@@ -15,6 +15,24 @@ data class UserSessionNoteRecord(
     val updatedAtMs: Long
 )
 
+data class UserSessionNoteSummaryRecord(
+    val id: String,
+    val userId: String,
+    val sessionId: String,
+    val classId: String,
+    val classTitle: String,
+    val sessionTitle: String,
+    val courseName: String,
+    val teacherName: String,
+    val dateMs: Long?,
+    val quotedText: String,
+    val noteText: String,
+    val startOffset: Int?,
+    val endOffset: Int?,
+    val createdAtMs: Long,
+    val updatedAtMs: Long
+)
+
 /** Personal annotations never modify the shared transcript or another user's notes. */
 class UserSessionNoteRepository(
     private val dataSource: DataSource,
@@ -37,6 +55,71 @@ class UserSessionNoteRepository(
                 st.setObject(2, UUID.fromString(visible.id))
                 st.executeQuery().use { rs ->
                     return buildList { while (rs.next()) add(rs.toNote()) }
+                }
+            }
+        }
+    }
+
+    /** Lists only the current user's notes in sessions that remain visible to them. */
+    fun listAllVisible(userId: String, roles: Set<AppRole>): List<UserSessionNoteSummaryRecord> {
+        val admin = AppRole.SUPER_ADMIN in roles
+        val student = AppRole.STUDENT in roles
+        val actor = UUID.fromString(userId)
+        val sql = """
+            SELECT n.id::text, n.user_id::text, n.session_id::text,
+                   s.class_id::text, c.title AS class_title, s.title AS session_title,
+                   s.course_name, COALESCE(NULLIF(c.teacher_name, ''), 'استاد') AS teacher_name,
+                   s.date_ms, n.quoted_text, n.note_text, n.start_offset, n.end_offset,
+                   (extract(epoch from n.created_at) * 1000)::bigint AS created_at_ms,
+                   (extract(epoch from n.updated_at) * 1000)::bigint AS updated_at_ms
+            FROM user_session_notes n
+            JOIN teaching_sessions s ON s.id = n.session_id
+            JOIN teaching_classes c ON c.id = s.class_id
+            WHERE n.user_id = ? AND n.deleted_at IS NULL
+              AND s.deleted_at IS NULL AND c.deleted_at IS NULL
+              AND (
+                ? OR c.owner_user_id = ? OR (
+                  s.is_published = true AND c.is_published = true AND c.is_hidden = false
+                  AND (
+                    c.visibility = 'public' OR (? AND EXISTS (
+                      SELECT 1 FROM class_memberships m
+                      WHERE m.class_id = c.id AND m.student_user_id = ?
+                        AND m.status = 'active'
+                    ))
+                  )
+                )
+              )
+            ORDER BY n.updated_at DESC, n.id
+        """.trimIndent()
+        dataSource.connection.use { c ->
+            c.prepareStatement(sql).use { st ->
+                st.setObject(1, actor)
+                st.setBoolean(2, admin)
+                st.setObject(3, actor)
+                st.setBoolean(4, student)
+                st.setObject(5, actor)
+                st.executeQuery().use { rs ->
+                    return buildList {
+                        while (rs.next()) add(
+                            UserSessionNoteSummaryRecord(
+                                id = rs.getString("id"),
+                                userId = rs.getString("user_id"),
+                                sessionId = rs.getString("session_id"),
+                                classId = rs.getString("class_id"),
+                                classTitle = rs.getString("class_title"),
+                                sessionTitle = rs.getString("session_title"),
+                                courseName = rs.getString("course_name"),
+                                teacherName = rs.getString("teacher_name"),
+                                dateMs = rs.getObject("date_ms")?.let { rs.getLong("date_ms") },
+                                quotedText = rs.getString("quoted_text"),
+                                noteText = rs.getString("note_text"),
+                                startOffset = rs.getObject("start_offset")?.let { rs.getInt("start_offset") },
+                                endOffset = rs.getObject("end_offset")?.let { rs.getInt("end_offset") },
+                                createdAtMs = rs.getLong("created_at_ms"),
+                                updatedAtMs = rs.getLong("updated_at_ms")
+                            )
+                        )
+                    }
                 }
             }
         }
