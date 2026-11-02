@@ -117,31 +117,37 @@ class TeachingClassRepository(private val dataSource: DataSource) {
         val admin = AppRole.SUPER_ADMIN in roles
         val student = AppRole.STUDENT in roles
         val sql = """
-            SELECT c.owner_user_id::text AS user_id,
+            SELECT u.id::text AS user_id,
                    COALESCE(
                      NULLIF(MAX(NULLIF(c.teacher_name, '')), ''),
                      NULLIF(u.display_name, ''),
                      'استاد'
                    ) AS display_name
-            FROM teaching_classes c
-            JOIN app_users u ON u.id = c.owner_user_id
-            WHERE c.deleted_at IS NULL
+            FROM app_users u
+            JOIN app_roles r ON r.user_id = u.id AND r.role_name = 'teacher'
+            LEFT JOIN teaching_classes c
+              ON c.owner_user_id = u.id AND c.deleted_at IS NULL
+            WHERE u.status = 'active'
               AND (
-                ? OR c.owner_user_id = ? OR (
-                  c.is_hidden = false AND c.is_published = true AND (
-                    c.visibility = 'public' OR (
-                      ? AND EXISTS (
-                        SELECT 1 FROM class_memberships m
-                        WHERE m.class_id = c.id
-                          AND m.student_user_id = ?::uuid
-                          AND m.status = 'active'
+                ? OR (
+                  c.id IS NOT NULL AND (
+                    c.owner_user_id = ? OR (
+                      c.is_hidden = false AND c.is_published = true AND (
+                        c.visibility = 'public' OR (
+                          ? AND EXISTS (
+                            SELECT 1 FROM class_memberships m
+                            WHERE m.class_id = c.id
+                              AND m.student_user_id = ?::uuid
+                              AND m.status = 'active'
+                          )
+                        )
                       )
                     )
                   )
                 )
               )
-            GROUP BY c.owner_user_id, u.display_name
-            ORDER BY display_name, c.owner_user_id
+            GROUP BY u.id, u.display_name
+            ORDER BY display_name, u.id
         """.trimIndent()
         dataSource.connection.use { connection ->
             connection.prepareStatement(sql).use { statement ->
