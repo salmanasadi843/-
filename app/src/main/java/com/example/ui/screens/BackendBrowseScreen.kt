@@ -39,6 +39,7 @@ fun BackendBrowseScreen(onBack: () -> Unit) {
     var accountId by remember { mutableStateOf("") }
     var accountRoles by remember { mutableStateOf<List<String>>(emptyList()) }
     var showNotifications by remember { mutableStateOf(false) }
+    var unreadNotificationCount by remember { mutableIntStateOf(0) }
     var status by remember { mutableStateOf("در حال آماده‌سازی اتصال…") }
 
     fun withFreshToken(action: suspend (String) -> Unit) {
@@ -71,12 +72,17 @@ fun BackendBrowseScreen(onBack: () -> Unit) {
             val result = withContext(Dispatchers.IO) {
                 val repository = DarsyarReadOnlyApiFactory.create()
                 val snapshot = repository.loadSnapshot(token)
-                snapshot to repository.loadTeachers(token)
+                val directory = repository.loadTeachers(token)
+                val unreadCount = runCatching {
+                    DarsyarCommunityApiFactory.create().notifications(token, unreadOnly = true).size
+                }.getOrDefault(0)
+                Triple(snapshot, directory, unreadCount)
             }
             accountId = result.first.account.userId
             accountRoles = result.first.account.roles
             classes = result.first.classes
             teachers = result.second
+            unreadNotificationCount = result.third
             selectedTeacherId = null
             selectedClass = null
             sessions = emptyList()
@@ -125,7 +131,13 @@ fun BackendBrowseScreen(onBack: () -> Unit) {
                 },
                 actions = {
                     IconButton(onClick = { showNotifications = true }) {
-                        Icon(Icons.Default.Notifications, contentDescription = "اعلان‌ها")
+                        BadgedBox(badge = {
+                            if (unreadNotificationCount > 0) {
+                                Badge { Text(if (unreadNotificationCount > 99) "۹۹+" else unreadNotificationCount.toString()) }
+                            }
+                        }) {
+                            Icon(Icons.Default.Notifications, contentDescription = "اعلان‌ها")
+                        }
                     }
                     IconButton(onClick = { loadDirectory() }, enabled = !busy) {
                         Icon(Icons.Default.Cloud, contentDescription = "دریافت دوباره")
@@ -291,5 +303,8 @@ fun BackendBrowseScreen(onBack: () -> Unit) {
             }
         }
     }
-    if (showNotifications) BackendNotificationsDialog(onDismiss = { showNotifications = false })
+    if (showNotifications) BackendNotificationsDialog(
+        onDismiss = { showNotifications = false },
+        onUnreadCountChanged = { unreadNotificationCount = it }
+    )
 }
