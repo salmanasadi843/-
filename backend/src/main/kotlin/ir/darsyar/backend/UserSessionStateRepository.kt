@@ -1,6 +1,5 @@
 package ir.darsyar.backend
 
-import java.sql.Timestamp
 import java.util.UUID
 import javax.sql.DataSource
 
