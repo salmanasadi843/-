@@ -20,6 +20,49 @@ class DarsyarReadOnlyRepositoryTest {
     }
 
     @Test
+    fun teacherFolderOperationsUseBearerTokenAndBackendIds() = runBlocking {
+        val fake = FakeApi()
+        val repository = DarsyarReadOnlyRepository(fake)
+        val folders = repository.loadTeacherFolders("folder-token")
+        assertEquals("Bearer folder-token", fake.authorizationForFolders)
+        assertEquals("folder-1", folders.single().id)
+
+        val request = BackendTeacherFolderWriteRequest(name = "پوشه جدید", sortOrder = 3)
+        val created = repository.createTeacherFolder("folder-token", request)
+        assertEquals("Bearer folder-token", fake.authorizationForCreateFolder)
+        assertEquals("پوشه جدید", fake.createdFolderRequest?.name)
+        assertEquals("folder-created", created.id)
+
+        val updated = repository.updateTeacherFolder("folder-token", "folder-1", request.copy(name = "اصلاح‌شده"))
+        assertEquals("Bearer folder-token", fake.authorizationForUpdateFolder)
+        assertEquals("folder-1", fake.updatedFolderId)
+        assertEquals("اصلاح‌شده", fake.updatedFolderRequest?.name)
+        assertEquals("folder-1", updated.id)
+
+        repository.deleteTeacherFolder("folder-token", "folder-1")
+        assertEquals("Bearer folder-token", fake.authorizationForDeleteFolder)
+        assertEquals("folder-1", fake.deletedFolderId)
+    }
+
+    @Test
+    fun blankFolderArgumentsAreRejectedBeforeRequest() = runBlocking {
+        val fake = FakeApi()
+        val repository = DarsyarReadOnlyRepository(fake)
+        assertThrows(IllegalArgumentException::class.java) {
+            runBlocking { repository.loadTeacherFolders(" ") }
+        }
+        assertThrows(IllegalArgumentException::class.java) {
+            runBlocking { repository.updateTeacherFolder("token", " ", BackendTeacherFolderWriteRequest(name = "x")) }
+        }
+        assertThrows(IllegalArgumentException::class.java) {
+            runBlocking { repository.deleteTeacherFolder("token", " ") }
+        }
+        assertEquals(null, fake.authorizationForFolders)
+        assertEquals(null, fake.authorizationForUpdateFolder)
+        assertEquals(null, fake.authorizationForDeleteFolder)
+    }
+
+    @Test
     fun teacherDirectoryUsesBearerTokenAndReturnsOnlyApiDisplayNames() = runBlocking {
         val fake = FakeApi()
         val teachers = DarsyarReadOnlyRepository(fake).loadTeachers("fresh-token")
@@ -88,6 +131,14 @@ class DarsyarReadOnlyRepositoryTest {
         var authorizationForMe: String? = null
         var authorizationForClasses: String? = null
         var authorizationForTeachers: String? = null
+        var authorizationForFolders: String? = null
+        var authorizationForCreateFolder: String? = null
+        var authorizationForUpdateFolder: String? = null
+        var authorizationForDeleteFolder: String? = null
+        var createdFolderRequest: BackendTeacherFolderWriteRequest? = null
+        var updatedFolderId: String? = null
+        var updatedFolderRequest: BackendTeacherFolderWriteRequest? = null
+        var deletedFolderId: String? = null
         var authorizationForCourses: String? = null
         var authorizationForSessions: String? = null
         var requestedClassIdForCourses: String? = null
@@ -117,6 +168,45 @@ class DarsyarReadOnlyRepositoryTest {
         override suspend fun getMe(authorization: String): Response<BackendMeDto> {
             authorizationForMe = authorization
             return Response.success(BackendMeDto("internal-user-1", listOf("student")))
+        }
+
+        private fun folder(id: String, name: String) = BackendTeacherFolderDto(
+            id = id, ownerUserId = "teacher-1", parentFolderId = null,
+            name = name, sortOrder = 0, isHidden = false, version = 1
+        )
+
+        override suspend fun getTeacherFolders(authorization: String): Response<List<BackendTeacherFolderDto>> {
+            authorizationForFolders = authorization
+            return Response.success(listOf(folder("folder-1", "پوشه")))
+        }
+
+        override suspend fun createTeacherFolder(
+            authorization: String,
+            request: BackendTeacherFolderWriteRequest
+        ): Response<BackendTeacherFolderDto> {
+            authorizationForCreateFolder = authorization
+            createdFolderRequest = request
+            return Response.success(folder("folder-created", request.name))
+        }
+
+        override suspend fun updateTeacherFolder(
+            folderId: String,
+            authorization: String,
+            request: BackendTeacherFolderWriteRequest
+        ): Response<BackendTeacherFolderDto> {
+            authorizationForUpdateFolder = authorization
+            updatedFolderId = folderId
+            updatedFolderRequest = request
+            return Response.success(folder(folderId, request.name))
+        }
+
+        override suspend fun deleteTeacherFolder(
+            folderId: String,
+            authorization: String
+        ): Response<Unit> {
+            authorizationForDeleteFolder = authorization
+            deletedFolderId = folderId
+            return Response.success(Unit)
         }
 
         override suspend fun getTeachers(authorization: String): Response<List<BackendTeacherDto>> {

@@ -14,8 +14,8 @@ import retrofit2.http.GET
 import retrofit2.http.Header
 
 /**
- * Read-only staging API contract. No write endpoint is exposed by this client.
- * Authorization is supplied per call so Firebase token refresh remains owned by FirebaseAuth.
+ * Authenticated Darsyar API contract. Authorization is supplied per call so Firebase token
+ * refresh remains owned by FirebaseAuth; backend authorization remains authoritative.
  */
 interface DarsyarReadOnlyApi {
     @GET("api/v1/public/classes")
@@ -219,6 +219,42 @@ class DarsyarReadOnlyRepository(
         val response = api.getSessions(classId, "Bearer $firebaseIdToken")
         if (!response.isSuccessful) throw BackendHttpException(response.code(), "/api/v1/classes/{classId}/sessions")
         return response.body() ?: throw IllegalStateException("Backend returned an empty sessions response.")
+    }
+
+    suspend fun loadTeacherFolders(firebaseIdToken: String): List<BackendTeacherFolderDto> {
+        require(firebaseIdToken.isNotBlank()) { "Firebase ID token is required." }
+        val response = api.getTeacherFolders("Bearer $firebaseIdToken")
+        if (!response.isSuccessful) throw BackendHttpException(response.code(), "/api/v1/teacher-folders")
+        return response.body() ?: throw IllegalStateException("Backend returned an empty teacher folders response.")
+    }
+
+    suspend fun createTeacherFolder(
+        firebaseIdToken: String,
+        request: BackendTeacherFolderWriteRequest
+    ): BackendTeacherFolderDto {
+        require(firebaseIdToken.isNotBlank()) { "Firebase ID token is required." }
+        val response = api.createTeacherFolder("Bearer $firebaseIdToken", request)
+        if (!response.isSuccessful) throw BackendHttpException(response.code(), "/api/v1/teacher-folders")
+        return response.body() ?: throw IllegalStateException("Backend returned an empty teacher folder response.")
+    }
+
+    suspend fun updateTeacherFolder(
+        firebaseIdToken: String,
+        folderId: String,
+        request: BackendTeacherFolderWriteRequest
+    ): BackendTeacherFolderDto {
+        require(firebaseIdToken.isNotBlank()) { "Firebase ID token is required." }
+        require(folderId.isNotBlank()) { "Folder ID is required." }
+        val response = api.updateTeacherFolder(folderId, "Bearer $firebaseIdToken", request)
+        if (!response.isSuccessful) throw BackendHttpException(response.code(), "/api/v1/teacher-folders/{folderId}")
+        return response.body() ?: throw IllegalStateException("Backend returned an empty teacher folder response.")
+    }
+
+    suspend fun deleteTeacherFolder(firebaseIdToken: String, folderId: String) {
+        require(firebaseIdToken.isNotBlank()) { "Firebase ID token is required." }
+        require(folderId.isNotBlank()) { "Folder ID is required." }
+        val response = api.deleteTeacherFolder(folderId, "Bearer $firebaseIdToken")
+        if (!response.isSuccessful) throw BackendHttpException(response.code(), "/api/v1/teacher-folders/{folderId}")
     }
 
     suspend fun loadTeachers(firebaseIdToken: String): List<BackendTeacherDto> {
