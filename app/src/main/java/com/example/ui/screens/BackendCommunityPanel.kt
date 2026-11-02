@@ -1,6 +1,8 @@
 package com.example.ui.screens
 
 import androidx.compose.foundation.layout.*
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Modifier
@@ -221,8 +223,12 @@ fun BackendNotificationsDialog(onDismiss:()->Unit) {
     val scope=rememberCoroutineScope()
     var notifications by remember { mutableStateOf<List<BackendNotificationDto>>(emptyList()) }
     var busy by remember { mutableStateOf(true) }
+    var markingId by remember { mutableStateOf<String?>(null) }
     var error by remember { mutableStateOf<String?>(null) }
-    LaunchedEffect(Unit) {
+
+    fun loadNotifications() {
+        if(busy || markingId!=null) return
+        busy=true;error=null
         AuthPreferences.getFirebaseIdToken(context) { result ->
             result.fold(onSuccess={token->scope.launch {
                 try { notifications=withContext(Dispatchers.IO){DarsyarCommunityApiFactory.create().notifications(token)} }
@@ -231,25 +237,49 @@ fun BackendNotificationsDialog(onDismiss:()->Unit) {
             }},onFailure={error=it.localizedMessage ?: "دریافت توکن ناموفق بود";busy=false})
         }
     }
-    AlertDialog(onDismissRequest=onDismiss,title={Text("اعلان‌ها")},text={
-        Column(verticalArrangement=Arrangement.spacedBy(8.dp)) {
-            if(busy) CircularProgressIndicator()
-            error?.let { Text(it,color=MaterialTheme.colorScheme.error) }
-            if(!busy && notifications.isEmpty()) Text("اعلانی ندارید.")
-            notifications.take(30).forEach { item ->
-                Card(Modifier.fillMaxWidth(),colors=CardDefaults.cardColors(containerColor=if(item.isRead) MaterialTheme.colorScheme.surfaceVariant else MaterialTheme.colorScheme.secondaryContainer)) {
-                    Column(Modifier.padding(10.dp)) {
-                        Text(item.message,style=MaterialTheme.typography.bodyMedium)
-                        Text(java.text.DateFormat.getDateTimeInstance().format(java.util.Date(item.createdAtMs)),style=MaterialTheme.typography.labelSmall)
-                        if(!item.isRead) TextButton(onClick={
-                            AuthPreferences.getFirebaseIdToken(context) { result -> result.onSuccess { token -> scope.launch {
-                                runCatching { withContext(Dispatchers.IO){DarsyarCommunityApiFactory.create().markRead(token,item.id)} }
-                                notifications=notifications.map { n -> if(n.id==item.id) n.copy(isRead=true) else n }
-                            } } }
-                        }) { Text("خواندم") }
+
+    LaunchedEffect(Unit) { loadNotifications() }
+
+    AlertDialog(
+        onDismissRequest=onDismiss,
+        title={Row(verticalAlignment=androidx.compose.ui.Alignment.CenterVertically) {
+            Text("اعلان‌ها")
+            Spacer(Modifier.weight(1f))
+            TextButton(enabled=!busy && markingId==null,onClick={loadNotifications()}) { Text("تازه‌سازی") }
+        }},
+        text={
+            Column(Modifier.heightIn(max=480.dp).verticalScroll(rememberScrollState()),verticalArrangement=Arrangement.spacedBy(8.dp)) {
+                if(busy) LinearProgressIndicator(Modifier.fillMaxWidth())
+                error?.let { Text(it,color=MaterialTheme.colorScheme.error) }
+                if(!busy && notifications.isEmpty() && error==null) Text("اعلانی ندارید.")
+                notifications.take(50).forEach { item ->
+                    Card(
+                        Modifier.fillMaxWidth(),
+                        colors=CardDefaults.cardColors(containerColor=if(item.isRead) MaterialTheme.colorScheme.surfaceVariant else MaterialTheme.colorScheme.secondaryContainer)
+                    ) {
+                        Column(Modifier.padding(10.dp),verticalArrangement=Arrangement.spacedBy(5.dp)) {
+                            Text(item.message,style=MaterialTheme.typography.bodyMedium)
+                            Text(java.text.DateFormat.getDateTimeInstance().format(java.util.Date(item.createdAtMs)),style=MaterialTheme.typography.labelSmall)
+                            if(!item.isRead) TextButton(enabled=markingId==null,onClick={
+                                markingId=item.id;error=null
+                                AuthPreferences.getFirebaseIdToken(context) { result -> result.fold(
+                                    onSuccess={token->scope.launch {
+                                        try {
+                                            withContext(Dispatchers.IO){DarsyarCommunityApiFactory.create().markRead(token,item.id)}
+                                            notifications=notifications.map { n -> if(n.id==item.id) n.copy(isRead=true) else n }
+                                        } catch(e:Exception) {
+                                            error=e.localizedMessage ?: "علامت‌گذاری اعلان ناموفق بود"
+                                        } finally { markingId=null }
+                                    }},
+                                    onFailure={error=it.localizedMessage ?: "دریافت توکن ناموفق بود";markingId=null}
+                                ) }
+                            }) { Text(if(markingId==item.id) "در حال ثبت…" else "خواندم") }
+                        }
                     }
                 }
+                if(notifications.size>50) Text("۵۰ اعلان اخیر نمایش داده شده است.",style=MaterialTheme.typography.labelSmall)
             }
-        }
-    },confirmButton={TextButton(onClick=onDismiss){Text("بستن")}})
+        },
+        confirmButton={TextButton(onClick=onDismiss){Text("بستن")}}
+    )
 }
