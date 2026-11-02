@@ -137,10 +137,18 @@ export const api = {
     request<ForumTopic[]>(`/api/v1/classes/${encodeURIComponent(classId)}/forum/topics`, token),
   createForumTopic: (classId: string, data: { sessionId?: string | null; title: string; body: string }, token: string) =>
     request<ForumTopic>(`/api/v1/classes/${encodeURIComponent(classId)}/forum/topics`, token, { method: "POST", body: JSON.stringify(data) }),
+  updateForumTopic: (topicId: string, data: { title: string; body: string }, token: string) =>
+    request<ForumTopic>(`/api/v1/forum/topics/${encodeURIComponent(topicId)}`, token, { method: "PATCH", body: JSON.stringify(data) }),
+  deleteForumTopic: (topicId: string, token: string) =>
+    request<void>(`/api/v1/forum/topics/${encodeURIComponent(topicId)}`, token, { method: "DELETE" }),
   forumPosts: (topicId: string, token: string) =>
     request<ForumPost[]>(`/api/v1/forum/topics/${encodeURIComponent(topicId)}/posts`, token),
   createForumReply: (topicId: string, data: { parentPostId?: string | null; body: string }, token: string) =>
     request<ForumPost>(`/api/v1/forum/topics/${encodeURIComponent(topicId)}/posts`, token, { method: "POST", body: JSON.stringify(data) }),
+  updateForumPost: (postId: string, body: string, token: string) =>
+    request<ForumPost>(`/api/v1/forum/posts/${encodeURIComponent(postId)}`, token, { method: "PATCH", body: JSON.stringify({ body }) }),
+  deleteForumPost: (postId: string, token: string) =>
+    request<void>(`/api/v1/forum/posts/${encodeURIComponent(postId)}`, token, { method: "DELETE" }),
   moderateForumTopic: (topicId: string, data: { isPinned: boolean; isLocked: boolean }, token: string) =>
     request<void>(`/api/v1/forum/topics/${encodeURIComponent(topicId)}/moderation`, token, { method: "PATCH", body: JSON.stringify(data) }),
   notifications: (unreadOnly: boolean, token: string) =>
