@@ -77,7 +77,7 @@ class UserSessionNoteRepository(
         validate(quotedText, noteText, startOffset, endOffset)
         val user = UUID.fromString(userId)
         val id = UUID.fromString(noteId)
-        dataSource.connection.use { c ->
+        return dataSource.connection.use { c ->
             val session = c.prepareStatement(
                 "SELECT session_id FROM user_session_notes WHERE id = ? AND user_id = ? AND deleted_at IS NULL"
             ).use { st ->
