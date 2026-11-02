@@ -58,6 +58,12 @@ export type AudioSource = {
   storageKey: string | null; title: string | null; sortOrder: number; isActive: boolean;
 };
 const base = (import.meta.env.VITE_DARSYAR_API_BASE_URL || "").replace(/\/+$/, "");
+async function requestPublic<T>(path: string): Promise<T> {
+  if (!base) throw new Error("نشانی سرور تنظیم نشده است.");
+  const response = await fetch(`${base}${path}`, { headers: { Accept: "application/json" } });
+  if (!response.ok) throw new Error(`خطا در دریافت محتوای عمومی (${response.status})`);
+  return response.json() as Promise<T>;
+}
 async function request<T>(path: string, token: string, options: RequestInit = {}): Promise<T> {
   if (!base) throw new Error("نشانی سرور تنظیم نشده است.");
   const response = await fetch(`${base}${path}`, {
@@ -78,6 +84,10 @@ async function request<T>(path: string, token: string, options: RequestInit = {}
   return response.json() as Promise<T>;
 }
 export const api = {
+  publicClasses: () => requestPublic<ClassRecord[]>("/api/v1/public/classes"),
+  publicSessions: (classId: string) => requestPublic<SessionSummary[]>(`/api/v1/public/classes/${encodeURIComponent(classId)}/sessions`),
+  publicSession: (classId: string, sessionId: string) =>
+    requestPublic<SessionDetail>(`/api/v1/public/classes/${encodeURIComponent(classId)}/sessions/${encodeURIComponent(sessionId)}`),
   me: (token: string) => request<Me>("/api/v1/me", token),
   teachers: (token: string) => request<Teacher[]>("/api/v1/teachers", token),
   classes: (token: string) => request<ClassRecord[]>("/api/v1/classes", token),
