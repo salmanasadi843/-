@@ -102,6 +102,8 @@ import com.example.ui.theme.TagPillText
 @Composable
 private fun FormattedHandoutContent(
     content: String,
+    bodyFontSize: Float,
+    headingScale: Float,
     modifier: Modifier = Modifier
 ) {
     val numberPattern = Regex("""^([0-9۰-۹]+(?:[ـ.-][0-9۰-۹]+)*[.)]?)\\s+(.+)$""")
@@ -123,12 +125,12 @@ private fun FormattedHandoutContent(
                         Text(
                             text = cleanLine.removePrefix("#").trim(),
                             color = Color.Black,
-                            fontSize = when (markdownLevel) {
-                                1 -> 25.sp
-                                2 -> 22.sp
-                                3 -> 19.sp
-                                else -> 17.sp
-                            },
+                            fontSize = (when (markdownLevel) {
+                                1 -> 25f
+                                2 -> 22f
+                                3 -> 19f
+                                else -> 17f
+                            } * headingScale).sp,
                             fontWeight = FontWeight.Bold,
                             lineHeight = 32.sp,
                             modifier = Modifier.padding(top = 10.dp, bottom = 5.dp)
@@ -140,12 +142,12 @@ private fun FormattedHandoutContent(
                         Text(
                             text = cleanLine,
                             color = Color.Black,
-                            fontSize = when (level) {
-                                1 -> 24.sp
-                                2 -> 21.sp
-                                3 -> 18.sp
-                                else -> 16.sp
-                            },
+                            fontSize = (when (level) {
+                                1 -> 24f
+                                2 -> 21f
+                                3 -> 18f
+                                else -> 16f
+                            } * headingScale).sp,
                             fontWeight = FontWeight.Bold,
                             lineHeight = 30.sp,
                             modifier = Modifier.padding(
@@ -158,7 +160,7 @@ private fun FormattedHandoutContent(
                         Text(
                             text = cleanLine,
                             color = Color.Black,
-                            fontSize = 16.sp,
+                            fontSize = (16f * headingScale).sp,
                             fontWeight = FontWeight.SemiBold,
                             lineHeight = 27.sp,
                             modifier = Modifier.padding(top = 5.dp, bottom = 2.dp)
@@ -168,8 +170,8 @@ private fun FormattedHandoutContent(
                         Text(
                             text = cleanLine,
                             color = MaterialTheme.colorScheme.onSurface,
-                            fontSize = 17.sp,
-                            lineHeight = 29.sp
+                            fontSize = bodyFontSize.sp,
+                            lineHeight = (bodyFontSize * 1.7f).sp
                         )
                     }
                 }
@@ -219,6 +221,16 @@ fun LectureDetailScreen(
     var showExportDialog by remember { mutableStateOf(false) }
     var exportOriginalTranscript by remember { mutableStateOf(false) }
     var chatInputText by remember { mutableStateOf("") }
+    var showHandoutTypographySettings by remember { mutableStateOf(false) }
+    val handoutPrefs = remember(context) {
+        context.getSharedPreferences("darsyar_handout_display", Context.MODE_PRIVATE)
+    }
+    var handoutBodyFontSize by remember {
+        mutableStateOf(handoutPrefs.getFloat("body_font_size", 17f).coerceIn(14f, 24f))
+    }
+    var handoutHeadingScale by remember {
+        mutableStateOf(handoutPrefs.getFloat("heading_scale", 1f).coerceIn(0.8f, 1.4f))
+    }
 
     if (lecture == null) {
         Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
@@ -732,11 +744,60 @@ fun TranscriptTab(
 
         // خلاصه دقیقاً بعد از متن اصلی قرار می‌گیرد.
         Spacer(Modifier.height(28.dp))
-        Text(
-            text = "خلاصه بحث",
-            style = MaterialTheme.typography.titleLarge,
-            fontWeight = FontWeight.Bold
-        )
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.SpaceBetween,
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            Text(
+                text = "خلاصه بحث",
+                style = MaterialTheme.typography.titleLarge,
+                fontWeight = FontWeight.Bold
+            )
+            TextButton(onClick = {
+                showHandoutTypographySettings = !showHandoutTypographySettings
+            }) {
+                Text(if (showHandoutTypographySettings) "بستن تنظیمات قلم" else "تنظیم اندازه قلم")
+            }
+        }
+        AnimatedVisibility(visible = showHandoutTypographySettings) {
+            Card(
+                modifier = Modifier.fillMaxWidth(),
+                shape = RoundedCornerShape(12.dp),
+                colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant)
+            ) {
+                Column(modifier = Modifier.padding(12.dp)) {
+                    Text("اندازه متن: ${handoutBodyFontSize.toInt()}", fontWeight = FontWeight.SemiBold)
+                    Slider(
+                        value = handoutBodyFontSize,
+                        onValueChange = {
+                            handoutBodyFontSize = it
+                            handoutPrefs.edit().putFloat("body_font_size", it).apply()
+                        },
+                        valueRange = 14f..24f
+                    )
+                    Text("اندازه عنوان‌ها: ${(handoutHeadingScale * 100).toInt()}٪", fontWeight = FontWeight.SemiBold)
+                    Slider(
+                        value = handoutHeadingScale,
+                        onValueChange = {
+                            handoutHeadingScale = it
+                            handoutPrefs.edit().putFloat("heading_scale", it).apply()
+                        },
+                        valueRange = 0.8f..1.4f
+                    )
+                    TextButton(onClick = {
+                        handoutBodyFontSize = 17f
+                        handoutHeadingScale = 1f
+                        handoutPrefs.edit()
+                            .putFloat("body_font_size", 17f)
+                            .putFloat("heading_scale", 1f)
+                            .apply()
+                    }) {
+                        Text("بازگشت به اندازه پیش‌فرض")
+                    }
+                }
+            }
+        }
         Spacer(Modifier.height(8.dp))
         Surface(
             modifier = Modifier.fillMaxWidth(),
@@ -746,6 +807,8 @@ fun TranscriptTab(
             FormattedHandoutContent(
                 content = lecture.aiSummary?.takeIf { it.isNotBlank() }
                     ?: "هنوز خلاصه‌ای برای این جلسه تولید نشده است.",
+                bodyFontSize = handoutBodyFontSize,
+                headingScale = handoutHeadingScale,
                 modifier = Modifier.padding(16.dp)
             )
         }
