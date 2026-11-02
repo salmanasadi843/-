@@ -191,7 +191,7 @@ export default function App() {
       </div>
     ));
 
-  const renderAdminTeacherFolders = (ownerId: string, parentId: string | null = null, depth = 0): JSX.Element[] =>
+  const renderAdminTeacherFolders = (ownerId: string, parentId: string | null = null, depth = 0) =>
     folders.filter(folder => folder.ownerUserId === ownerId && folder.parentFolderId === parentId).map(folder => (
       <div key={folder.id}>
         <div className="folder-row" style={{ paddingInlineStart: depth * 18 }}>
