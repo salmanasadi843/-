@@ -20,9 +20,9 @@ fun BackendForumPanel(classId:String, sessionId:String?, currentUserId:String, c
     val context=LocalContext.current
     val scope= rememberCoroutineScope()
     var topics by remember(classId) { mutableStateOf<List<BackendForumTopicDto>>(emptyList()) }
-    var selected by remember { mutableStateOf<BackendForumTopicDto?>(null) }
+    var selected by remember(classId) { mutableStateOf<BackendForumTopicDto?>(null) }
     var highlightedPostId by remember(classId) { mutableStateOf<String?>(null) }
-    var posts by remember { mutableStateOf<List<BackendForumPostDto>>(emptyList()) }
+    var posts by remember(classId) { mutableStateOf<List<BackendForumPostDto>>(emptyList()) }
     var title by remember { mutableStateOf("") }
     var body by remember { mutableStateOf("") }
     var reply by remember { mutableStateOf("") }
