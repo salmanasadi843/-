@@ -1,6 +1,6 @@
 import { FormEvent, useEffect, useMemo, useState } from "react";
 import { onAuthStateChanged, signInWithEmailAndPassword, signOut, User } from "firebase/auth";
-import { api, AccessCode, ClassMember, ClassRecord, CourseRecord, Me, SessionDetail, SessionSummary, Teacher, TeacherFolder } from "./api";
+import { api, AccessCode, AudioSource, ClassMember, ClassRecord, CourseRecord, Me, SessionDetail, SessionSummary, Teacher, TeacherFolder } from "./api";
 import { auth, firebaseConfigured } from "./firebase";
 
 export default function App() {
@@ -26,6 +26,10 @@ export default function App() {
   const [showCourseForm, setShowCourseForm] = useState(false);
   const [sessionCourseId, setSessionCourseId] = useState("");
   const [detail, setDetail] = useState<SessionDetail | null>(null);
+  const [audioSources, setAudioSources] = useState<AudioSource[]>([]);
+  const [audioTitle, setAudioTitle] = useState("");
+  const [audioUrl, setAudioUrl] = useState("");
+  const [audioKind, setAudioKind] = useState<"direct_url" | "hosted_page" | "external_link">("direct_url");
   const [showClassForm, setShowClassForm] = useState(false);
   const [showSessionForm, setShowSessionForm] = useState(false);
   const [editingClass, setEditingClass] = useState(false);
@@ -111,7 +115,7 @@ export default function App() {
   }
   async function openClass(item: ClassRecord) {
     if (!user) return;
-    setSelectedClass(item); setDetail(null); setSessions([]); setCourses([]); setClassAccessCodes([]); setClassMembers([]); setNewlyCreatedCode(""); setShowSessionForm(false); setBusy(true); setError("");
+    setSelectedClass(item); setDetail(null); setAudioSources([]); setSessions([]); setCourses([]); setClassAccessCodes([]); setClassMembers([]); setNewlyCreatedCode(""); setShowSessionForm(false); setBusy(true); setError("");
     try {
       const token = await user.getIdToken();
       const canManage = me?.roles.includes("super_admin") || (me?.roles.includes("teacher") && item.ownerUserId === me.userId);
@@ -129,10 +133,45 @@ export default function App() {
   async function openSession(item: SessionSummary) {
     if (!user || !selectedClass) return;
     setBusy(true); setError(""); setDetail(null);
-    try { setDetail(await api.session(selectedClass.id, item.id, await user.getIdToken())); }
+    try {
+      const token = await user.getIdToken();
+      const [sessionDetail, sources] = await Promise.all([
+        api.session(selectedClass.id, item.id, token),
+        api.audioSources(item.id, token),
+      ]);
+      setDetail(sessionDetail);
+      setAudioSources(sources);
+    }
     catch (e) { setError(message(e)); }
     finally { setBusy(false); }
   }
+  async function addAudioSource(event: FormEvent) {
+    event.preventDefault();
+    if (!user || !detail || !canManageSelectedClass || !audioUrl.trim()) return;
+    setBusy(true); setError(""); setNotice("");
+    try {
+      const created = await api.createAudioSource(detail.id, {
+        sourceKind: audioKind, sourceUrl: audioUrl.trim(),
+        title: audioTitle.trim() || undefined, sortOrder: audioSources.length,
+      }, await user.getIdToken());
+      setAudioSources(current => [...current, created]);
+      setAudioTitle(""); setAudioUrl("");
+      setNotice("پیوند صوتی جلسه اضافه شد.");
+    } catch (e) { setError(message(e)); }
+    finally { setBusy(false); }
+  }
+  async function removeAudioSource(sourceId: string) {
+    if (!user || !detail || !canManageSelectedClass) return;
+    if (!window.confirm("این پیوند از فهرست جلسه غیرفعال شود؟ فایل یا منبع اصلی حذف نمی‌شود.")) return;
+    setBusy(true); setError(""); setNotice("");
+    try {
+      await api.deactivateAudioSource(detail.id, sourceId, await user.getIdToken());
+      setAudioSources(current => current.filter(source => source.id !== sourceId));
+      setNotice("پیوند صوتی از جلسه برداشته شد.");
+    } catch (e) { setError(message(e)); }
+    finally { setBusy(false); }
+  }
+
   async function redeemCode(event: FormEvent) {
     event.preventDefault();
     if (!user || !accessCode.trim()) return;
@@ -502,6 +541,25 @@ export default function App() {
         </div>}
         {detail && <article className="detail">
           <div className="toolbar"><h2>{detail.title}</h2>{canManageSelectedClass && <><button className="ghost" onClick={() => void editSelectedSession()}>ویرایش جلسه</button><button className="ghost danger-text" disabled={busy} onClick={() => void removeSelectedSession()}>حذف جلسه</button></>}</div>
+          <section className="access-manager">
+            <div className="section-head"><h3>فایل‌ها و پیوندهای صوتی</h3><span className="muted">{audioSources.length} منبع</span></div>
+            {audioSources.map(source => <div className="code-row" key={source.id}>
+              <span><strong>{source.title || "منبع صوتی جلسه"}</strong><small>{source.sourceKind === "direct_url" ? "پخش مستقیم" : source.sourceKind === "hosted_page" ? "صفحه میزبان" : "پیوند خارجی"}</small></span>
+              <span>
+                {source.sourceUrl && <a href={source.sourceUrl} target="_blank" rel="noreferrer">بازکردن</a>}
+                {canManageSelectedClass && <button className="ghost danger-text" disabled={busy} onClick={() => void removeAudioSource(source.id)}>برداشتن</button>}
+              </span>
+              {source.sourceKind === "direct_url" && source.sourceUrl && <audio controls preload="none" src={source.sourceUrl} />}
+            </div>)}
+            {!audioSources.length && <p className="muted">برای این جلسه پیوند صوتی ثبت نشده است.</p>}
+            {canManageSelectedClass && <form className="editor-form" onSubmit={addAudioSource}>
+              <h3>افزودن پیوند صوتی (بدون بارگذاری فایل)</h3>
+              <label>عنوان پیوند<input value={audioTitle} onChange={e => setAudioTitle(e.target.value)} placeholder="مثلاً صوت جلسه اول" /></label>
+              <label>نشانی اینترنتی صوت یا صفحه میزبان<input type="url" dir="ltr" value={audioUrl} onChange={e => setAudioUrl(e.target.value)} placeholder="https://…" required /></label>
+              <label>نوع پیوند<select value={audioKind} onChange={e => setAudioKind(e.target.value as typeof audioKind)}><option value="direct_url">پخش مستقیم صوت</option><option value="hosted_page">صفحه میزبان صوت</option><option value="external_link">پیوند خارجی</option></select></label>
+              <button disabled={busy || !audioUrl.trim()}>{busy ? "در حال ذخیره…" : "افزودن پیوند"}</button>
+            </form>}
+          </section>
           {detail.aiSummary && <><h3>خلاصه هوشمند</h3><p className="pre">{detail.aiSummary}</p></>}
           {detail.aiKeyPoints && <><h3>نکات کلیدی</h3><p className="pre">{detail.aiKeyPoints}</p></>}
           {detail.originalTranscript && <><h3>متن اصلی</h3><p className="pre">{detail.originalTranscript}</p></>}
