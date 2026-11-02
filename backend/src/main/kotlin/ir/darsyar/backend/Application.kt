@@ -199,6 +199,25 @@ data class SessionApiRecord(
 )
 
 @Serializable
+data class SessionStateWriteRequest(
+    val isFavorite: Boolean,
+    val lastPlaybackPositionMs: Long = 0
+)
+
+@Serializable
+data class SessionStateApiRecord(
+    val userId: String,
+    val sessionId: String,
+    val isFavorite: Boolean,
+    val lastPlaybackPositionMs: Long,
+    val updatedAtMs: Long
+)
+
+private fun UserSessionStateRecord.toApiRecord() = SessionStateApiRecord(
+    userId, sessionId, isFavorite, lastPlaybackPositionMs, updatedAtMs
+)
+
+@Serializable
 data class AudioSourceWriteRequest(
     val sourceKind: String? = null,
     val sourceUrl: String? = null,
@@ -360,6 +379,7 @@ fun Application.module(
     val classRepository = TeachingClassRepository(dataSource)
     val folderRepository = TeacherFolderRepository(dataSource)
     val sessionRepository = TeachingSessionRepository(dataSource)
+    val sessionStateRepository = UserSessionStateRepository(dataSource, sessionRepository)
     val audioSourceRepository = TeachingAudioSourceRepository(dataSource)
     val courseRepository = TeachingCourseRepository(dataSource)
     val classAccessRepository = ClassAccessRepository(dataSource)
@@ -1116,6 +1136,50 @@ fun Application.module(
                         call.respond(HttpStatusCode.Forbidden, ApiError("session_recovery_forbidden"))
                     } catch (_: IllegalArgumentException) {
                         call.respond(HttpStatusCode.BadRequest, ApiError("invalid_user_id"))
+                    }
+                }
+            }
+
+            route("/api/v1/classes/{classId}/sessions/{sessionId}/state") {
+                get {
+                    val principal = call.principal<DarsyarPrincipal>()
+                    if (principal == null) {
+                        call.respond(HttpStatusCode.Unauthorized, ApiError("unauthorized"))
+                        return@get
+                    }
+                    try {
+                        val state = sessionStateRepository.get(
+                            principal.userId, principal.roles,
+                            call.parameters["classId"] ?: "", call.parameters["sessionId"] ?: ""
+                        )
+                        if (state == null) call.respond(HttpStatusCode.NotFound, ApiError("session_not_found"))
+                        else call.respond(state.toApiRecord())
+                    } catch (_: IllegalArgumentException) {
+                        call.respond(HttpStatusCode.BadRequest, ApiError("invalid_session_reference"))
+                    }
+                }
+                put {
+                    val principal = call.principal<DarsyarPrincipal>()
+                    if (principal == null) {
+                        call.respond(HttpStatusCode.Unauthorized, ApiError("unauthorized"))
+                        return@put
+                    }
+                    val request = try { call.receive<SessionStateWriteRequest>() }
+                    catch (_: Exception) {
+                        call.respond(HttpStatusCode.BadRequest, ApiError("invalid_request"))
+                        return@put
+                    }
+                    try {
+                        val state = sessionStateRepository.put(
+                            principal.userId, principal.roles,
+                            call.parameters["classId"] ?: "", call.parameters["sessionId"] ?: "",
+                            request.isFavorite, request.lastPlaybackPositionMs
+                        )
+                        call.respond(state.toApiRecord())
+                    } catch (_: NoSuchElementException) {
+                        call.respond(HttpStatusCode.NotFound, ApiError("session_not_found"))
+                    } catch (_: IllegalArgumentException) {
+                        call.respond(HttpStatusCode.BadRequest, ApiError("invalid_session_state"))
                     }
                 }
             }
