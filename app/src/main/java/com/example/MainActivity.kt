@@ -23,6 +23,7 @@ import androidx.compose.ui.unit.LayoutDirection
 import androidx.lifecycle.viewmodel.compose.viewModel
 import com.example.ui.screens.AddEditLectureScreen
 import com.example.ui.screens.BackendBrowseScreen
+import com.example.ui.screens.PublicCatalogScreen
 import com.example.ui.screens.AuthPreferences
 import com.example.ui.screens.AuthScreen
 import com.example.ui.screens.ClassScreen
@@ -74,6 +75,7 @@ fun OstadYarApp(
 ) {
     val context = LocalContext.current
     var authenticated by remember { mutableStateOf(AuthPreferences.isLoggedIn(context)) }
+    var guestBrowsing by remember { mutableStateOf(false) }
     var userRole by remember { mutableStateOf(AuthPreferences.currentRole(context)) }
     val currentScreen by viewModel.currentScreen.collectAsState()
 
@@ -102,9 +104,19 @@ fun OstadYarApp(
         }
     }
 
+    if (guestBrowsing && !authenticated) {
+        BackHandler(enabled = true) { guestBrowsing = false }
+        PublicCatalogScreen(
+            onBack = { guestBrowsing = false },
+            onLogin = { guestBrowsing = false }
+        )
+        return
+    }
+
     if (!authenticated) {
         BackHandler(enabled = false) { }
         AuthScreen(
+            onBrowsePublic = { guestBrowsing = true },
             onAuthenticated = { role ->
                 userRole = role
                 viewModel.setUserRole(role)
