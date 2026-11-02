@@ -218,7 +218,7 @@ fun BackendAnnouncementsPanel(classId:String,canManage:Boolean,onStatus:(String)
 }
 
 @Composable
-fun BackendNotificationsDialog(onDismiss:()->Unit) {
+fun BackendNotificationsDialog(onDismiss:()->Unit, onUnreadCountChanged:(Int)->Unit = {}) {
     val context=LocalContext.current
     val scope=rememberCoroutineScope()
     var notifications by remember { mutableStateOf<List<BackendNotificationDto>>(emptyList()) }
@@ -231,7 +231,10 @@ fun BackendNotificationsDialog(onDismiss:()->Unit) {
         busy=true;error=null
         AuthPreferences.getFirebaseIdToken(context) { result ->
             result.fold(onSuccess={token->scope.launch {
-                try { notifications=withContext(Dispatchers.IO){DarsyarCommunityApiFactory.create().notifications(token)} }
+                try {
+                    notifications=withContext(Dispatchers.IO){DarsyarCommunityApiFactory.create().notifications(token)}
+                    onUnreadCountChanged(notifications.count { !it.isRead })
+                }
                 catch(e:Exception){error=e.localizedMessage ?: "دریافت اعلان‌ها ناموفق بود"}
                 finally {busy=false}
             }},onFailure={error=it.localizedMessage ?: "دریافت توکن ناموفق بود";busy=false})
@@ -267,6 +270,7 @@ fun BackendNotificationsDialog(onDismiss:()->Unit) {
                                         try {
                                             withContext(Dispatchers.IO){DarsyarCommunityApiFactory.create().markRead(token,item.id)}
                                             notifications=notifications.map { n -> if(n.id==item.id) n.copy(isRead=true) else n }
+                                            onUnreadCountChanged(notifications.count { !it.isRead })
                                         } catch(e:Exception) {
                                             error=e.localizedMessage ?: "علامت‌گذاری اعلان ناموفق بود"
                                         } finally { markingId=null }
