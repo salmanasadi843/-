@@ -1,6 +1,7 @@
 package com.example.ui.screens
 
 import androidx.compose.foundation.layout.*
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.*
@@ -218,7 +219,7 @@ fun BackendAnnouncementsPanel(classId:String,canManage:Boolean,onStatus:(String)
 }
 
 @Composable
-fun BackendNotificationsDialog(onDismiss:()->Unit, onUnreadCountChanged:(Int)->Unit = {}) {
+fun BackendNotificationsDialog(onDismiss:()->Unit, onUnreadCountChanged:(Int)->Unit = {}, onOpenNotification:(BackendNotificationDto)->Unit = {}) {
     val context=LocalContext.current
     val scope=rememberCoroutineScope()
     var notifications by remember { mutableStateOf<List<BackendNotificationDto>>(emptyList()) }
@@ -257,7 +258,23 @@ fun BackendNotificationsDialog(onDismiss:()->Unit, onUnreadCountChanged:(Int)->U
                 if(!busy && notifications.isEmpty() && error==null) Text("اعلانی ندارید.")
                 notifications.take(50).forEach { item ->
                     Card(
-                        Modifier.fillMaxWidth(),
+                        Modifier.fillMaxWidth().clickable(enabled=markingId==null) {
+                            if (!item.isRead) {
+                                markingId=item.id
+                                AuthPreferences.getFirebaseIdToken(context) { result -> result.fold(
+                                    onSuccess={token->scope.launch {
+                                        try {
+                                            withContext(Dispatchers.IO){DarsyarCommunityApiFactory.create().markRead(token,item.id)}
+                                            notifications=notifications.map { n -> if(n.id==item.id) n.copy(isRead=true) else n }
+                                            onUnreadCountChanged(notifications.count { !it.isRead })
+                                        } catch(e:Exception) {
+                                            error=e.localizedMessage ?: "علامت‌گذاری اعلان ناموفق بود"
+                                        } finally { markingId=null; onOpenNotification(item) }
+                                    }},
+                                    onFailure={error=it.localizedMessage ?: "دریافت توکن ناموفق بود";markingId=null;onOpenNotification(item)}
+                                ) }
+                            } else onOpenNotification(item)
+                        },
                         colors=CardDefaults.cardColors(containerColor=if(item.isRead) MaterialTheme.colorScheme.surfaceVariant else MaterialTheme.colorScheme.secondaryContainer)
                     ) {
                         Column(Modifier.padding(10.dp),verticalArrangement=Arrangement.spacedBy(5.dp)) {
