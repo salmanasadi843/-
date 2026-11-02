@@ -247,6 +247,11 @@ data class ForumPostApiRecord(
 )
 @Serializable
 data class ForumModerationRequest(val isPinned: Boolean, val isLocked: Boolean)
+
+@Serializable
+data class ForumTopicUpdateRequest(val title: String, val body: String)
+@Serializable
+data class ForumPostUpdateRequest(val body: String)
 @Serializable
 data class NotificationApiRecord(
     val id: String, val notificationType: String, val message: String, val classId: String?,
@@ -1254,6 +1259,53 @@ fun Application.module(
                     }catch(_:SecurityException){call.respond(HttpStatusCode.Forbidden,ApiError("forum_access_forbidden"))}
                     catch(_:IllegalStateException){call.respond(HttpStatusCode.Conflict,ApiError("forum_topic_locked"))}
                     catch(_:IllegalArgumentException){call.respond(HttpStatusCode.BadRequest,ApiError("invalid_forum_reply"))}
+                }
+            }
+
+
+            route("/api/v1/forum/topics/{topicId}") {
+                patch {
+                    val principal=call.principal<DarsyarPrincipal>()
+                    if(principal==null){call.respond(HttpStatusCode.Unauthorized,ApiError("unauthorized"));return@patch}
+                    val request=try{call.receive<ForumTopicUpdateRequest>()}catch(_:Exception){call.respond(HttpStatusCode.BadRequest,ApiError("invalid_request"));return@patch}
+                    try {
+                        val updated=forumRepository.updateTopic(principal.userId,principal.roles,call.parameters["topicId"] ?: "",request.title,request.body)
+                        call.respond(updated.toApiRecord())
+                    } catch(_:SecurityException){call.respond(HttpStatusCode.Forbidden,ApiError("forum_topic_edit_forbidden"))}
+                    catch(_:IllegalArgumentException){call.respond(HttpStatusCode.BadRequest,ApiError("invalid_forum_topic"))}
+                }
+                delete {
+                    val principal=call.principal<DarsyarPrincipal>()
+                    if(principal==null){call.respond(HttpStatusCode.Unauthorized,ApiError("unauthorized"));return@delete}
+                    try {
+                        val deleted=forumRepository.deleteTopic(principal.userId,principal.roles,call.parameters["topicId"] ?: "")
+                        if(deleted) call.respond(HttpStatusCode.NoContent)
+                        else call.respond(HttpStatusCode.NotFound,ApiError("forum_topic_not_found"))
+                    } catch(_:SecurityException){call.respond(HttpStatusCode.Forbidden,ApiError("forum_topic_delete_forbidden"))}
+                    catch(_:IllegalArgumentException){call.respond(HttpStatusCode.BadRequest,ApiError("invalid_topic_id"))}
+                }
+            }
+
+            route("/api/v1/forum/posts/{postId}") {
+                patch {
+                    val principal=call.principal<DarsyarPrincipal>()
+                    if(principal==null){call.respond(HttpStatusCode.Unauthorized,ApiError("unauthorized"));return@patch}
+                    val request=try{call.receive<ForumPostUpdateRequest>()}catch(_:Exception){call.respond(HttpStatusCode.BadRequest,ApiError("invalid_request"));return@patch}
+                    try {
+                        val updated=forumRepository.updatePost(principal.userId,principal.roles,call.parameters["postId"] ?: "",request.body)
+                        call.respond(updated.toApiRecord())
+                    } catch(_:SecurityException){call.respond(HttpStatusCode.Forbidden,ApiError("forum_post_edit_forbidden"))}
+                    catch(_:IllegalArgumentException){call.respond(HttpStatusCode.BadRequest,ApiError("invalid_forum_post"))}
+                }
+                delete {
+                    val principal=call.principal<DarsyarPrincipal>()
+                    if(principal==null){call.respond(HttpStatusCode.Unauthorized,ApiError("unauthorized"));return@delete}
+                    try {
+                        val deleted=forumRepository.deletePost(principal.userId,principal.roles,call.parameters["postId"] ?: "")
+                        if(deleted) call.respond(HttpStatusCode.NoContent)
+                        else call.respond(HttpStatusCode.NotFound,ApiError("forum_post_not_found"))
+                    } catch(_:SecurityException){call.respond(HttpStatusCode.Forbidden,ApiError("forum_post_delete_forbidden"))}
+                    catch(_:IllegalArgumentException){call.respond(HttpStatusCode.BadRequest,ApiError("invalid_post_id"))}
                 }
             }
 
