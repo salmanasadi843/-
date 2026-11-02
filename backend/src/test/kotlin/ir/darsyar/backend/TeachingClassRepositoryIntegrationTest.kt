@@ -144,6 +144,21 @@ class TeachingClassRepositoryIntegrationTest {
                 adminDirectory.single { it.userId == teacherWithoutClasses.toString() }.displayName
             )
 
+            // A regular teacher remains read-only for another teacher's class,
+            // while the super-admin can manage that same class.
+            assertFailsWith<SecurityException> {
+                repository.update(
+                    ownerB.toString(), setOf(AppRole.TEACHER), publicClass.id,
+                    UpdateTeachingClass("Unauthorized edit", "", "", "public", true, false, 0)
+                )
+            }
+            val adminUpdatedClass = repository.update(
+                admin.toString(), setOf(AppRole.SUPER_ADMIN), publicClass.id,
+                UpdateTeachingClass("Admin managed class", "", "", "public", true, false, 0)
+            )
+            assertEquals("Admin managed class", adminUpdatedClass?.title)
+            assertEquals(ownerA.toString(), adminUpdatedClass?.ownerUserId)
+
             val studentView = repository.listVisible(student.toString(), setOf(AppRole.STUDENT))
             assertEquals(
                 setOf(publicClass.id, privateClass.id),
