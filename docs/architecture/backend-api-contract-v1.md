@@ -122,7 +122,8 @@
 
 - `GET/POST /api/v1/sessions/{sessionId}/audio-sources`
 - `PATCH/DELETE /api/v1/audio-sources/{sourceId}`
-- `PUT /api/v1/me/sessions/{sessionId}/state` — علاقه‌مندی و موقعیت پخش شخصی.
+- `GET /api/v1/classes/{classId}/sessions/{sessionId}/state` — دریافت علاقه‌مندی و موقعیت پخش شخصی کاربر؛ فقط برای جلسه‌ای که کاربر مجاز به مشاهده آن است.
+- `PUT /api/v1/classes/{classId}/sessions/{sessionId}/state` — ذخیره هم‌زمان علاقه‌مندی و موقعیت پخش شخصی؛ داده برای هر کاربر جداست و موقعیت باید بین صفر تا هفت روز باشد.
 
 ### مدیر اصلی
 
