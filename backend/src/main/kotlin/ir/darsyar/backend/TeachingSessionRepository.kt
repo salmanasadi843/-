@@ -45,8 +45,6 @@ data class CreateTeachingSession(
     val sortOrder: Int = 0
 )
 
-data class MoveTeachingSession(val targetClassId: String)
-
 data class UpdateTeachingSession(
     val courseId: String?,
     val title: String,
