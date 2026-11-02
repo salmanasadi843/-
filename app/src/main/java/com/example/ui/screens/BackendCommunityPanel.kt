@@ -16,11 +16,12 @@ import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 
 @Composable
-fun BackendForumPanel(classId:String, sessionId:String?, currentUserId:String, canModerate:Boolean, onStatus:(String)->Unit, initialTopicId:String?=null) {
+fun BackendForumPanel(classId:String, sessionId:String?, currentUserId:String, canModerate:Boolean, onStatus:(String)->Unit, initialTopicId:String?=null, initialPostId:String?=null) {
     val context=LocalContext.current
     val scope= rememberCoroutineScope()
     var topics by remember(classId) { mutableStateOf<List<BackendForumTopicDto>>(emptyList()) }
     var selected by remember { mutableStateOf<BackendForumTopicDto?>(null) }
+    var highlightedPostId by remember(classId) { mutableStateOf<String?>(null) }
     var posts by remember { mutableStateOf<List<BackendForumPostDto>>(emptyList()) }
     var title by remember { mutableStateOf("") }
     var body by remember { mutableStateOf("") }
@@ -47,10 +48,10 @@ fun BackendForumPanel(classId:String, sessionId:String?, currentUserId:String, c
             }},onFailure={e->busy=false;error=e.localizedMessage ?: "دریافت توکن ناموفق بود"})
         }
     }
-    LaunchedEffect(classId, initialTopicId) { run { token,repo ->
+    LaunchedEffect(classId, initialTopicId, initialPostId) { run { token,repo ->
         topics=repo.topics(token,classId)
         val target=initialTopicId?.let { id -> topics.firstOrNull { it.id==id } }
-        if(target!=null) { selected=target;posts=repo.posts(token,target.id);parentId=null }
+        if(target!=null) { selected=target;posts=repo.posts(token,target.id);parentId=null;highlightedPostId=initialPostId }
     } }
 
     Column(Modifier.fillMaxWidth().padding(top=18.dp),verticalArrangement=Arrangement.spacedBy(10.dp)) {
@@ -108,7 +109,10 @@ fun BackendForumPanel(classId:String, sessionId:String?, currentUserId:String, c
                 }}) { Text(if(topic.isLocked) "بازکردن" else "بستن بحث") }
             }
             posts.forEach { post ->
-                Card(Modifier.fillMaxWidth().padding(start=if(post.parentPostId==null) 0.dp else 18.dp)) {
+                Card(
+                    Modifier.fillMaxWidth().padding(start=if(post.parentPostId==null) 0.dp else 18.dp),
+                    colors=CardDefaults.cardColors(containerColor=if(post.id==highlightedPostId) MaterialTheme.colorScheme.tertiaryContainer else MaterialTheme.colorScheme.surface)
+                ) {
                     Column(Modifier.padding(10.dp)) {
                         Text(post.authorName,fontWeight=FontWeight.SemiBold,style=MaterialTheme.typography.labelMedium)
                         if(editingPostId==post.id) {
