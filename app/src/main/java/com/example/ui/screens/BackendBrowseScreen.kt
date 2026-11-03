@@ -575,7 +575,7 @@ fun BackendBrowseScreen(onBack: () -> Unit) {
                                 FilterChip(
                                     selected = selectedFolderId == folder.id,
                                     onClick = { selectedFolderId = if (selectedFolderId == folder.id) null else folder.id },
-                                    label = { Text(folder.name) }
+                                    label = { Text(if (folder.parentFolderId == null) folder.name else "↳ ${folder.name}") }
                                 )
                                 TextButton(onClick = {
                                     editingFolder = folder
