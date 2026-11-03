@@ -159,7 +159,7 @@ class TeachingClassRepositoryIntegrationTest {
             assertTrue(adminFolders.any { it.id == hiddenFolder.id })
 
             val teacherView = repository.listVisible(ownerB.toString(), setOf(AppRole.TEACHER))
-            assertEquals(setOf(adminCreatedClass.id), teacherView.map { it.id }.toSet())
+            assertEquals(setOf(publicClass.id, adminCreatedClass.id), teacherView.map { it.id }.toSet())
 
             val teacherDirectory = repository.listVisibleTeachers(ownerB.toString(), setOf(AppRole.TEACHER))
             assertEquals(listOf(ownerA.toString()), teacherDirectory.map { it.userId })
