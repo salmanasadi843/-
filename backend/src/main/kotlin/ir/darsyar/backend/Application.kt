@@ -1531,7 +1531,6 @@ fun Application.module(
                     } catch(_:SecurityException){call.respond(HttpStatusCode.Forbidden,ApiError("announcement_publish_forbidden"))}
                     catch(_:IllegalArgumentException){call.respond(HttpStatusCode.BadRequest,ApiError("invalid_announcement"))}
                 }
-            }
                 delete("/{announcementId}") {
                     val principal=call.principal<DarsyarPrincipal>()
                     if(principal==null){call.respond(HttpStatusCode.Unauthorized,ApiError("unauthorized"));return@delete}
