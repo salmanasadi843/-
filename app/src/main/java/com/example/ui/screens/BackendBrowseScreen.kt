@@ -665,7 +665,7 @@ fun BackendBrowseScreen(onBack: () -> Unit) {
                         }
                     }
                 }
-                val canSeeHiddenFolders = "super_admin" in accountRoles
+                val canSeeHiddenFolders = "super_admin" in accountRoles || ("teacher" in accountRoles && teacherId == accountId)
                 val visibleFolderIds = teacherFolders.filter {
                     it.ownerUserId == teacherId && (canSeeHiddenFolders || !it.isHidden)
                 }.map { it.id }.toSet()
