@@ -37,7 +37,7 @@ import kotlinx.coroutines.launch
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.withContext
 
-/** Read-only preview of the future server-backed teacher → class → session hierarchy. */
+/** Server-backed preview for teacher → class → session browsing and authorized management. */
 @OptIn(ExperimentalMaterial3Api::class, ExperimentalFoundationApi::class)
 @Composable
 fun BackendBrowseScreen(onBack: () -> Unit) {
