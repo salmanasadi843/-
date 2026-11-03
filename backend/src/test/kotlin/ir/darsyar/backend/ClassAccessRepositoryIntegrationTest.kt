@@ -30,16 +30,18 @@ class ClassAccessRepositoryIntegrationTest {
             connectionInitSql = "SET search_path TO $schema"
         }
         HikariDataSource(config).use { ds ->
+            val admin = UUID.randomUUID()
             val owner = UUID.randomUUID()
             val otherTeacher = UUID.randomUUID()
             val studentA = UUID.randomUUID()
             val studentB = UUID.randomUUID()
             ds.connection.use { connection ->
-                connection.prepareStatement("INSERT INTO app_users(id) VALUES (?), (?), (?), (?)").use { st ->
-                    st.setObject(1, owner)
-                    st.setObject(2, otherTeacher)
-                    st.setObject(3, studentA)
-                    st.setObject(4, studentB)
+                connection.prepareStatement("INSERT INTO app_users(id) VALUES (?), (?), (?), (?), (?)").use { st ->
+                    st.setObject(1, admin)
+                    st.setObject(2, owner)
+                    st.setObject(3, otherTeacher)
+                    st.setObject(4, studentA)
+                    st.setObject(5, studentB)
                     st.executeUpdate()
                 }
             }
@@ -80,6 +82,25 @@ class ClassAccessRepositoryIntegrationTest {
             assertFailsWith<SecurityException> {
                 repository.redeem(otherTeacher.toString(), setOf(AppRole.TEACHER), created.code)
             }
+
+            // The super-admin can manage access codes and memberships across teachers.
+            val adminCode = repository.createCode(
+                admin.toString(), setOf(AppRole.SUPER_ADMIN), classRecord.id, maxUses = 1
+            )
+            assertEquals(adminCode.id, repository.listCodes(
+                admin.toString(), setOf(AppRole.SUPER_ADMIN), classRecord.id
+            ).single { it.id == adminCode.id }.id)
+            val adminJoin = repository.redeem(studentB.toString(), setOf(AppRole.STUDENT), adminCode.code)
+            assertEquals("active", adminJoin.membership.status)
+            assertTrue(repository.listMembers(
+                admin.toString(), setOf(AppRole.SUPER_ADMIN), classRecord.id
+            ).any { it.studentUserId == studentB.toString() && it.status == "active" })
+            assertTrue(repository.revokeMembership(
+                admin.toString(), setOf(AppRole.SUPER_ADMIN), classRecord.id, studentB.toString()
+            ))
+            assertTrue(TeachingClassRepository(ds).listVisible(
+                studentB.toString(), setOf(AppRole.STUDENT)
+            ).none { it.id == classRecord.id })
 
             val listedCodes = repository.listCodes(owner.toString(), setOf(AppRole.TEACHER), classRecord.id)
             val listedCreatedCode = listedCodes.single { it.id == created.id }
@@ -124,7 +145,7 @@ class ClassAccessRepositoryIntegrationTest {
 
             ds.connection.use { connection ->
                 connection.prepareStatement("SELECT count(*) FROM audit_log WHERE entity_type IN ('class_access_code','class_membership')").use { st ->
-                    st.executeQuery().use { rs -> check(rs.next()); assertEquals(5, rs.getInt(1)) }
+                    st.executeQuery().use { rs -> check(rs.next()); assertEquals(8, rs.getInt(1)) }
                 }
                 connection.prepareStatement("SELECT code_hash FROM class_access_codes WHERE id = ?").use { st ->
                     st.setObject(1, UUID.fromString(created.id))
