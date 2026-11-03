@@ -168,7 +168,62 @@ class DarsyarReadOnlyRepositoryTest {
         assertEquals(null, fake.authorizationForSessionDetail)
     }
 
+    @Test
+    fun teacherApplicationEndpointsUseBearerTokenAndExactDecision() = runBlocking {
+        val fake = FakeApi()
+        val repository = DarsyarReadOnlyRepository(fake)
+
+        val submitted = repository.submitTeacherApplication(
+            "student-token",
+            BackendTeacherApplicationWriteRequest(teachingField = "فقه", institutionName = "حوزه")
+        )
+        assertEquals("Bearer student-token", fake.authorizationForSubmitApplication)
+        assertEquals("فقه", fake.submittedApplicationRequest?.teachingField)
+        assertEquals("pending", submitted.approvalStatus)
+
+        val pending = repository.loadPendingTeacherApplications("admin-token")
+        assertEquals("Bearer admin-token", fake.authorizationForPendingApplications)
+        assertEquals("teacher-2", pending.single().userId)
+
+        val approved = repository.decideTeacherApplication("admin-token", "teacher-2", "approved")
+        assertEquals("Bearer admin-token", fake.authorizationForDecision)
+        assertEquals("teacher-2", fake.decidedUserId)
+        assertEquals("approved", fake.decisionRequest?.decision)
+        assertEquals("approved", approved.approvalStatus)
+    }
+
+    @Test
+    fun teacherApplicationRejectsBlankTokenDetailsAndInvalidDecisionBeforeRequest() = runBlocking {
+        val fake = FakeApi()
+        val repository = DarsyarReadOnlyRepository(fake)
+
+        assertThrows(IllegalArgumentException::class.java) {
+            runBlocking { repository.submitTeacherApplication(" ", BackendTeacherApplicationWriteRequest(teachingField = "فقه")) }
+        }
+        assertThrows(IllegalArgumentException::class.java) {
+            runBlocking { repository.submitTeacherApplication("token", BackendTeacherApplicationWriteRequest()) }
+        }
+        assertThrows(IllegalArgumentException::class.java) {
+            runBlocking { repository.loadPendingTeacherApplications(" ") }
+        }
+        assertThrows(IllegalArgumentException::class.java) {
+            runBlocking { repository.decideTeacherApplication("token", "teacher-2", "invalid") }
+        }
+        assertThrows(IllegalArgumentException::class.java) {
+            runBlocking { repository.decideTeacherApplication("token", " ", "approved") }
+        }
+        assertEquals(null, fake.authorizationForSubmitApplication)
+        assertEquals(null, fake.authorizationForPendingApplications)
+        assertEquals(null, fake.authorizationForDecision)
+    }
+
     private class FakeApi : DarsyarReadOnlyApi {
+        var authorizationForSubmitApplication: String? = null
+        var submittedApplicationRequest: BackendTeacherApplicationWriteRequest? = null
+        var authorizationForPendingApplications: String? = null
+        var authorizationForDecision: String? = null
+        var decidedUserId: String? = null
+        var decisionRequest: BackendTeacherApplicationDecisionRequest? = null
         var authorizationForMe: String? = null
         var authorizationForClasses: String? = null
         var authorizationForTeachers: String? = null
@@ -336,6 +391,38 @@ class DarsyarReadOnlyRepositoryTest {
                 sortOrder = 0, version = 1
             )
             )
+        }
+
+        override suspend fun submitTeacherApplication(
+            authorization: String,
+            request: BackendTeacherApplicationWriteRequest
+        ): Response<BackendTeacherApplicationDto> {
+            authorizationForSubmitApplication = authorization
+            submittedApplicationRequest = request
+            return Response.success(BackendTeacherApplicationDto("student-1", "", null,
+                request.teachingField, request.institutionName, "pending"))
+        }
+
+        override suspend fun getPendingTeacherApplications(
+            authorization: String
+        ): Response<List<BackendTeacherApplicationDto>> {
+            authorizationForPendingApplications = authorization
+            return Response.success(listOf(BackendTeacherApplicationDto(
+                "teacher-2", "استاد دوم", "teacher@example.test", "فقه", null, "pending"
+            )))
+        }
+
+        override suspend fun decideTeacherApplication(
+            userId: String,
+            authorization: String,
+            request: BackendTeacherApplicationDecisionRequest
+        ): Response<BackendTeacherApplicationDto> {
+            authorizationForDecision = authorization
+            decidedUserId = userId
+            decisionRequest = request
+            return Response.success(BackendTeacherApplicationDto(
+                userId, "استاد دوم", "teacher@example.test", "فقه", null, request.decision
+            ))
         }
 
         override suspend fun getTeachers(authorization: String): Response<List<BackendTeacherDto>> {
