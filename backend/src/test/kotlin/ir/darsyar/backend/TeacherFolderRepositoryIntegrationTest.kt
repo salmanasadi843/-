@@ -96,6 +96,16 @@ class TeacherFolderRepositoryIntegrationTest {
             assertEquals("اصول اصلاح‌شده", adminUpdate?.name)
             assertTrue(repo.listVisible(admin.toString(), setOf(AppRole.SUPER_ADMIN)).any { it.id == root.id })
 
+            // The class must be moved out before its containing folder can be deleted.
+            ds.connection.use { connection ->
+                connection.prepareStatement(
+                    "UPDATE teaching_classes SET folder_id = NULL WHERE owner_user_id = ? AND folder_id = ?::uuid"
+                ).use { statement ->
+                    statement.setObject(1, owner)
+                    statement.setString(2, child.id)
+                    statement.executeUpdate()
+                }
+            }
             assertTrue(repo.delete(owner.toString(), ownerRoles, child.id))
             assertTrue(repo.delete(owner.toString(), ownerRoles, root.id))
             assertTrue(repo.delete(otherTeacher.toString(), ownerRoles, otherRoot.id))
