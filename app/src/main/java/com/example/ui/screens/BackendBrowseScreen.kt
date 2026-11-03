@@ -78,6 +78,8 @@ fun BackendBrowseScreen(onBack: () -> Unit) {
     var classVisibilityDraft by remember { mutableStateOf("private") }
     var classPublishedDraft by remember { mutableStateOf(false) }
     var classHiddenDraft by remember { mutableStateOf(false) }
+    var movingSession by remember { mutableStateOf<BackendSessionSummaryDto?>(null) }
+    var moveTargetClassId by remember { mutableStateOf("") }
 
     fun withFreshToken(action: suspend (String) -> Unit) {
         if (busy) return
@@ -260,6 +262,27 @@ fun BackendBrowseScreen(onBack: () -> Unit) {
             activeNoteId = null; originalTranscriptSelection = TextRange.Zero; editedTranscriptSelection = TextRange.Zero; editingNoteId = null
             playbackPositionDraft = result.second.lastPlaybackPositionMs.toFloat()
             status = "جزئیات جلسه، وضعیت مطالعه و یادداشت‌های شخصی دریافت شد."
+        }
+    }
+
+    fun moveSelectedSession() {
+        val session = movingSession ?: return
+        if (moveTargetClassId.isBlank() || moveTargetClassId == session.classId) {
+            status = "کلاس مقصد را انتخاب کنید."
+            return
+        }
+        withFreshToken { token ->
+            val moved = withContext(Dispatchers.IO) {
+                DarsyarReadOnlyApiFactory.create().moveSession(token, session.id, moveTargetClassId)
+            }
+            sessions = sessions.filterNot { it.id == session.id }
+            if (selectedSession?.id == session.id) {
+                selectedSession = null
+                selectedSessionState = null
+                sessionNotes = emptyList()
+            }
+            movingSession = null
+            status = "جلسه به کلاس مقصد منتقل شد: ${moved.title}"
         }
     }
 
@@ -477,6 +500,15 @@ fun BackendBrowseScreen(onBack: () -> Unit) {
                                 Text(session.title, fontWeight = FontWeight.SemiBold)
                                 if (session.courseName.isNotBlank()) Text("درس: ${session.courseName}", style = MaterialTheme.typography.bodySmall)
                             }
+                            if ("super_admin" in accountRoles || ("teacher" in accountRoles && selectedClass?.ownerUserId == accountId)) {
+                                TextButton(
+                                    onClick = {
+                                        movingSession = session
+                                        moveTargetClassId = classes.firstOrNull { it.id != session.classId }?.id.orEmpty()
+                                    },
+                                    enabled = !busy && classes.any { it.id != session.classId }
+                                ) { Text("انتقال") }
+                            }
                             Text("مشاهده", color = MaterialTheme.colorScheme.primary, style = MaterialTheme.typography.labelMedium)
                         }
                     }
@@ -666,6 +698,50 @@ fun BackendBrowseScreen(onBack: () -> Unit) {
                 }
             }
         }
+    }
+    if (movingSession != null) {
+        val availableTargets = classes.filter { it.id != movingSession?.classId }
+        AlertDialog(
+            onDismissRequest = { if (!busy) movingSession = null },
+            title = { Text("انتقال جلسه به کلاس دیگر") },
+            text = {
+                Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                    Text("جلسه: ${movingSession?.title.orEmpty()}", style = MaterialTheme.typography.bodyMedium)
+                    if (availableTargets.isEmpty()) {
+                        Text("کلاس مقصد دیگری در دسترس نیست.")
+                    } else {
+                        availableTargets.forEach { target ->
+                            Row(
+                                modifier = Modifier.fillMaxWidth().clickable { moveTargetClassId = target.id },
+                                verticalAlignment = Alignment.CenterVertically
+                            ) {
+                                RadioButton(
+                                    selected = moveTargetClassId == target.id,
+                                    onClick = { moveTargetClassId = target.id }
+                                )
+                                Column(Modifier.weight(1f)) {
+                                    Text(target.title, fontWeight = FontWeight.Medium)
+                                    Text(
+                                        if (target.ownerUserId == accountId) "کلاس شما" else "کلاس استاد دیگر",
+                                        style = MaterialTheme.typography.labelSmall,
+                                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                                    )
+                                }
+                            }
+                        }
+                    }
+                }
+            },
+            confirmButton = {
+                TextButton(
+                    onClick = { moveSelectedSession() },
+                    enabled = !busy && moveTargetClassId.isNotBlank() && availableTargets.any { it.id == moveTargetClassId }
+                ) { Text("انتقال") }
+            },
+            dismissButton = {
+                TextButton(onClick = { movingSession = null }, enabled = !busy) { Text("انصراف") }
+            }
+        )
     }
     if (editingClass != null) {
         AlertDialog(
