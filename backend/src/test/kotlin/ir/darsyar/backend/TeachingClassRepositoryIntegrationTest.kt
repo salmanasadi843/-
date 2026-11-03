@@ -159,6 +159,20 @@ class TeachingClassRepositoryIntegrationTest {
             assertEquals("Admin managed class", adminUpdatedClass?.title)
             assertEquals(ownerA.toString(), adminUpdatedClass?.ownerUserId)
 
+            // The class owner can move the class back into one of their folders;
+            // the class identity and owner remain unchanged.
+            val movedIntoFolder = repository.update(
+                ownerA.toString(), setOf(AppRole.TEACHER), publicClass.id,
+                UpdateTeachingClass(
+                    adminUpdatedClass!!.title, adminUpdatedClass.description, adminUpdatedClass.term,
+                    adminUpdatedClass.visibility, adminUpdatedClass.isPublished,
+                    adminUpdatedClass.isHidden, adminUpdatedClass.sortOrder, ownerFolder.id
+                )
+            )
+            assertEquals(ownerFolder.id, movedIntoFolder?.folderId)
+            assertEquals(publicClass.id, movedIntoFolder?.id)
+            assertEquals(ownerA.toString(), movedIntoFolder?.ownerUserId)
+
             val studentView = repository.listVisible(student.toString(), setOf(AppRole.STUDENT))
             assertEquals(
                 setOf(publicClass.id, privateClass.id),
