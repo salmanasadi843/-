@@ -101,6 +101,47 @@ class DarsyarReadOnlyRepositoryTest {
     }
 
     @Test
+    fun sessionMoveAndReorderUseBearerTokenAndExactIdentifiers() = runBlocking {
+        val fake = FakeApi()
+        val repository = DarsyarReadOnlyRepository(fake)
+
+        val reordered = repository.reorderSession("fresh-token", "session-7", "up")
+        assertEquals("session-7", reordered.id)
+        assertEquals("Bearer fresh-token", fake.authorizationForReorder)
+        assertEquals("session-7", fake.reorderedSessionId)
+        assertEquals("up", fake.reorderRequest?.direction)
+
+        val moved = repository.moveSession("admin-token", "session-7", "class-target")
+        assertEquals("session-7", moved.id)
+        assertEquals("class-target", moved.classId)
+        assertEquals("Bearer admin-token", fake.authorizationForMove)
+        assertEquals("session-7", fake.movedSessionId)
+        assertEquals("class-target", fake.moveRequest?.targetClassId)
+    }
+
+    @Test
+    fun invalidSessionMoveAndReorderArgumentsAreRejectedBeforeRequest() = runBlocking {
+        val fake = FakeApi()
+        val repository = DarsyarReadOnlyRepository(fake)
+
+        assertThrows(IllegalArgumentException::class.java) {
+            runBlocking { repository.reorderSession("token", "session-7", "sideways") }
+        }
+        assertThrows(IllegalArgumentException::class.java) {
+            runBlocking { repository.reorderSession(" ", "session-7", "up") }
+        }
+        assertThrows(IllegalArgumentException::class.java) {
+            runBlocking { repository.moveSession("token", " ", "class-target") }
+        }
+        assertThrows(IllegalArgumentException::class.java) {
+            runBlocking { repository.moveSession("token", "session-7", " ") }
+        }
+
+        assertEquals(null, fake.authorizationForReorder)
+        assertEquals(null, fake.authorizationForMove)
+    }
+
+    @Test
     fun blankSessionDetailArgumentsAreRejectedBeforeRequest() = runBlocking {
         val fake = FakeApi()
         val repository = DarsyarReadOnlyRepository(fake)
@@ -146,6 +187,12 @@ class DarsyarReadOnlyRepositoryTest {
         var authorizationForSessionDetail: String? = null
         var requestedClassIdForSessionDetail: String? = null
         var requestedSessionIdForSessionDetail: String? = null
+        var authorizationForReorder: String? = null
+        var reorderedSessionId: String? = null
+        var reorderRequest: BackendReorderSessionRequest? = null
+        var authorizationForMove: String? = null
+        var movedSessionId: String? = null
+        var moveRequest: BackendMoveSessionRequest? = null
 
         override suspend fun getPublicClasses(): Response<List<BackendClassDto>> = Response.success(emptyList())
 
@@ -251,7 +298,11 @@ class DarsyarReadOnlyRepositoryTest {
             sessionId: String,
             authorization: String,
             request: BackendReorderSessionRequest
-        ): Response<BackendSessionDto> = Response.success(
+        ): Response<BackendSessionDto> {
+            authorizationForReorder = authorization
+            reorderedSessionId = sessionId
+            reorderRequest = request
+            return Response.success(
             BackendSessionDto(
                 id = sessionId, classId = "class-1", courseId = null, title = "Reordered",
                 courseName = "", professorName = "", dateMs = null, audioDurationMs = 0,
@@ -259,13 +310,18 @@ class DarsyarReadOnlyRepositoryTest {
                 aiQuizJson = null, tags = "", isPublished = true, lastEditedMs = null,
                 sortOrder = 0, version = 1
             )
-        )
+            )
+        }
 
         override suspend fun moveSession(
             sessionId: String,
             authorization: String,
             request: BackendMoveSessionRequest
-        ): Response<BackendSessionDto> = Response.success(
+        ): Response<BackendSessionDto> {
+            authorizationForMove = authorization
+            movedSessionId = sessionId
+            moveRequest = request
+            return Response.success(
             BackendSessionDto(
                 id = sessionId, classId = request.targetClassId, courseId = null, title = "Moved",
                 courseName = "", professorName = "", dateMs = null, audioDurationMs = 0,
@@ -273,7 +329,8 @@ class DarsyarReadOnlyRepositoryTest {
                 aiQuizJson = null, tags = "", isPublished = true, lastEditedMs = null,
                 sortOrder = 0, version = 1
             )
-        )
+            )
+        }
 
         override suspend fun getTeachers(authorization: String): Response<List<BackendTeacherDto>> {
             authorizationForTeachers = authorization
