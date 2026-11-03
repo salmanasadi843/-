@@ -16,6 +16,7 @@
 .forum-topic-body{padding:12px;background:#b8862e0a;border-radius:10px}
 .forum-post{margin:10px 0;padding:13px;border:1px solid var(--border,#e5e1d8);border-radius:12px}
 .forum-post.nested{margin-inline-start:28px;border-inline-start:3px solid #b8862e}
+.forum-post.notification-target{border-color:#b8862e;background:#b8862e18;box-shadow:0 0 0 2px #b8862e30;transition:background .3s ease}
 .forum-post-meta{display:flex;justify-content:space-between;gap:10px;align-items:center}
 .forum-post p{margin:10px 0}
 @media(max-width:600px){.notification-popover{position:fixed;top:72px;inset-inline:6vw;width:88vw}.forum-panel{padding:12px}.forum-post.nested{margin-inline-start:12px}}
