@@ -275,9 +275,10 @@ fun BackendNotificationsDialog(onDismiss:()->Unit, onUnreadCountChanged:(Int)->U
                                             withContext(Dispatchers.IO){DarsyarCommunityApiFactory.create().markRead(token,item.id)}
                                             notifications=notifications.map { n -> if(n.id==item.id) n.copy(isRead=true) else n }
                                             onUnreadCountChanged(notifications.count { !it.isRead })
+                                            onOpenNotification(item)
                                         } catch(e:Exception) {
                                             error=e.localizedMessage ?: "علامت‌گذاری اعلان ناموفق بود"
-                                        } finally { markingId=null; onOpenNotification(item) }
+                                        } finally { markingId=null }
                                     }},
                                     onFailure={error=it.localizedMessage ?: "دریافت توکن ناموفق بود";markingId=null;onOpenNotification(item)}
                                 ) }
