@@ -49,6 +49,13 @@ interface DarsyarReadOnlyApi {
         @Body request: BackendClassWriteRequest
     ): Response<BackendClassDto>
 
+    @POST("api/v1/sessions/{sessionId}/move")
+    suspend fun moveSession(
+        @retrofit2.http.Path("sessionId") sessionId: String,
+        @Header("Authorization") authorization: String,
+        @Body request: BackendMoveSessionRequest
+    ): Response<BackendSessionDto>
+
     @GET("api/v1/teachers")
     suspend fun getTeachers(
         @Header("Authorization") authorization: String
@@ -186,6 +193,9 @@ data class BackendSessionSummaryDto(
 )
 
 @JsonClass(generateAdapter = true)
+data class BackendMoveSessionRequest(val targetClassId: String)
+
+@JsonClass(generateAdapter = true)
 data class BackendSessionDto(
     val id: String,
     val classId: String,
@@ -251,6 +261,23 @@ class DarsyarReadOnlyRepository(
         val response = api.updateClass(classId, "Bearer $firebaseIdToken", request)
         if (!response.isSuccessful) throw BackendHttpException(response.code(), "/api/v1/classes/{classId}")
         return response.body() ?: throw IllegalStateException("Backend returned an empty class response.")
+    }
+
+    /** Moves a session atomically; the backend enforces owner/super-admin permissions. */
+    suspend fun moveSession(
+        firebaseIdToken: String,
+        sessionId: String,
+        targetClassId: String
+    ): BackendSessionDto {
+        require(firebaseIdToken.isNotBlank()) { "Firebase ID token is required." }
+        require(sessionId.isNotBlank() && targetClassId.isNotBlank()) { "Session and target class IDs are required." }
+        val response = api.moveSession(
+            sessionId,
+            "Bearer $firebaseIdToken",
+            BackendMoveSessionRequest(targetClassId)
+        )
+        if (!response.isSuccessful) throw BackendHttpException(response.code(), "/api/v1/sessions/{sessionId}/move")
+        return response.body() ?: throw IllegalStateException("Backend returned an empty moved session response.")
     }
 
     suspend fun loadTeacherFolders(firebaseIdToken: String): List<BackendTeacherFolderDto> {
