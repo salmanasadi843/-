@@ -1532,6 +1532,20 @@ fun Application.module(
                     catch(_:IllegalArgumentException){call.respond(HttpStatusCode.BadRequest,ApiError("invalid_announcement"))}
                 }
             }
+                delete("/{announcementId}") {
+                    val principal=call.principal<DarsyarPrincipal>()
+                    if(principal==null){call.respond(HttpStatusCode.Unauthorized,ApiError("unauthorized"));return@delete}
+                    try {
+                        val deleted=announcementRepository.delete(
+                            principal.userId,principal.roles,
+                            call.parameters["classId"] ?: "",call.parameters["announcementId"] ?: ""
+                        )
+                        if(deleted) call.respond(HttpStatusCode.NoContent)
+                        else call.respond(HttpStatusCode.NotFound,ApiError("announcement_not_found"))
+                    } catch(_:SecurityException){call.respond(HttpStatusCode.Forbidden,ApiError("announcement_delete_forbidden"))}
+                    catch(_:IllegalArgumentException){call.respond(HttpStatusCode.BadRequest,ApiError("invalid_announcement_id"))}
+                }
+            }
 
             route("/api/v1/classes/{classId}/forum/topics") {
                 get {
