@@ -21,6 +21,12 @@ class AccessPolicyTest {
         assertFalse(AccessPolicy.canReadClass(AppRole.TEACHER, "teacher-b", publishedClass.copy(published = false)))
     }
 
+    @Test fun anotherTeacherCannotReadPrivateClassButOwnerCanReadOwn() {
+        val privateClass = publishedClass.copy(isPublic = false)
+        assertFalse(AccessPolicy.canReadClass(AppRole.TEACHER, "teacher-b", privateClass))
+        assertTrue(AccessPolicy.canReadClass(AppRole.TEACHER, "teacher-a", privateClass.copy(published = false)))
+    }
+
     @Test fun studentNeedsPublicPublicationOrActiveMembership() {
         assertTrue(AccessPolicy.canReadClass(AppRole.STUDENT, "student-a", publishedClass))
         assertFalse(AccessPolicy.canReadClass(AppRole.STUDENT, "student-a", publishedClass.copy(isPublic = false)))
