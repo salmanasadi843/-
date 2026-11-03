@@ -79,6 +79,12 @@ class ClassForumRepositoryIntegrationTest {
             assertTrue(studentInbox.any { it.notificationType=="class_announcement" })
             assertFalse(repo.listNotifications(owner.toString(),true).any { it.actorUserId==owner.toString() })
             assertFailsWith<SecurityException> {
+                announcements.delete(otherTeacher.toString(),setOf(AppRole.TEACHER),clazz.id,announcement.id)
+            }
+            assertTrue(announcements.delete(admin.toString(),setOf(AppRole.SUPER_ADMIN),clazz.id,announcement.id))
+            assertEquals(0,announcements.list(student.toString(),setOf(AppRole.STUDENT),clazz.id).size)
+            assertFalse(announcements.delete(admin.toString(),setOf(AppRole.SUPER_ADMIN),clazz.id,announcement.id))
+            assertFailsWith<SecurityException> {
                 repo.moderateTopic(otherTeacher.toString(),setOf(AppRole.TEACHER),topic.id,true,false)
             }
             assertTrue(repo.moderateTopic(admin.toString(),setOf(AppRole.SUPER_ADMIN),topic.id,true,false))
