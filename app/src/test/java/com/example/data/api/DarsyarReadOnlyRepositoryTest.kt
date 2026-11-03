@@ -209,6 +209,72 @@ class DarsyarReadOnlyRepositoryTest {
             return Response.success(Unit)
         }
 
+        override suspend fun updateClass(
+            classId: String,
+            authorization: String,
+            request: BackendClassWriteRequest
+        ): Response<BackendClassDto> = Response.success(
+            BackendClassDto(
+                id = classId, ownerUserId = "teacher-1", title = request.title,
+                description = request.description, term = request.term,
+                visibility = request.visibility, isPublished = request.isPublished,
+                isHidden = request.isHidden, sortOrder = request.sortOrder, folderId = request.folderId
+            )
+        )
+
+        override suspend fun updateSession(
+            sessionId: String,
+            authorization: String,
+            request: BackendSessionWriteRequest
+        ): Response<BackendSessionDto> = Response.success(
+            BackendSessionDto(
+                id = sessionId, classId = "class-1", courseId = request.courseId,
+                title = request.title, courseName = request.courseName, professorName = request.professorName,
+                dateMs = request.dateMs, audioDurationMs = request.audioDurationMs,
+                transcript = request.transcript, originalTranscript = request.originalTranscript,
+                aiSummary = request.aiSummary, aiKeyPoints = request.aiKeyPoints, aiQuizJson = request.aiQuizJson,
+                tags = request.tags, isPublished = request.isPublished, lastEditedMs = request.lastEditedMs,
+                sortOrder = request.sortOrder, version = 1
+            )
+        )
+
+        override suspend fun getDeletedSessions(authorization: String): Response<List<BackendSessionSummaryDto>> =
+            Response.success(emptyList())
+
+        override suspend fun deleteSession(sessionId: String, authorization: String): Response<Unit> =
+            Response.success(Unit)
+
+        override suspend fun restoreSession(sessionId: String, authorization: String): Response<Unit> =
+            Response.success(Unit)
+
+        override suspend fun reorderSession(
+            sessionId: String,
+            authorization: String,
+            request: BackendReorderSessionRequest
+        ): Response<BackendSessionDto> = Response.success(
+            BackendSessionDto(
+                id = sessionId, classId = "class-1", courseId = null, title = "Reordered",
+                courseName = "", professorName = "", dateMs = null, audioDurationMs = 0,
+                transcript = "", originalTranscript = "", aiSummary = null, aiKeyPoints = null,
+                aiQuizJson = null, tags = "", isPublished = true, lastEditedMs = null,
+                sortOrder = 0, version = 1
+            )
+        )
+
+        override suspend fun moveSession(
+            sessionId: String,
+            authorization: String,
+            request: BackendMoveSessionRequest
+        ): Response<BackendSessionDto> = Response.success(
+            BackendSessionDto(
+                id = sessionId, classId = request.targetClassId, courseId = null, title = "Moved",
+                courseName = "", professorName = "", dateMs = null, audioDurationMs = 0,
+                transcript = "", originalTranscript = "", aiSummary = null, aiKeyPoints = null,
+                aiQuizJson = null, tags = "", isPublished = true, lastEditedMs = null,
+                sortOrder = 0, version = 1
+            )
+        )
+
         override suspend fun getTeachers(authorization: String): Response<List<BackendTeacherDto>> {
             authorizationForTeachers = authorization
             return Response.success(listOf(BackendTeacherDto("teacher-1", "استاد الف")))
