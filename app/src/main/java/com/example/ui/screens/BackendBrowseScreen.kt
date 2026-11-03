@@ -445,17 +445,26 @@ fun BackendBrowseScreen(onBack: () -> Unit) {
             return
         }
         withFreshToken { token ->
-            val moved = withContext(Dispatchers.IO) {
-                DarsyarReadOnlyApiFactory.create().moveSession(token, session.id, moveTargetClassId)
+            val result = withContext(Dispatchers.IO) {
+                val repository = DarsyarReadOnlyApiFactory.create()
+                val moved = repository.moveSession(token, session.id, moveTargetClassId)
+                // Reload the source list from the server instead of relying on a local removal.
+                val refreshedSourceSessions = if (selectedClass?.id == session.classId) {
+                    repository.loadSessions(token, session.classId)
+                } else null
+                moved to refreshedSourceSessions
             }
-            sessions = sessions.filterNot { it.id == session.id }
+            val moved = result.first
+            result.second?.let { sessions = it }
             if (selectedSession?.id == session.id) {
                 selectedSession = null
                 selectedSessionState = null
                 sessionNotes = emptyList()
+                activeNoteId = null
             }
             movingSession = null
-            status = "جلسه به کلاس مقصد منتقل شد: ${moved.title}"
+            moveTargetClassId = ""
+            status = "جلسه «${moved.title}» به کلاس مقصد منتقل شد. برای مشاهدهٔ آن، کلاس مقصد را باز کنید."
         }
     }
 
