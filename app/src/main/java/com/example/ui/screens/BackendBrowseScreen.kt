@@ -588,6 +588,34 @@ fun BackendBrowseScreen(onBack: () -> Unit) {
                     color = MaterialTheme.colorScheme.onSurfaceVariant
                 )
             }
+            item { Text("۱. استاد", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold) }
+            if (teachers.isEmpty() && !busy) {
+                item { Text("استادی با کلاس قابل مشاهده پیدا نشد.", style = MaterialTheme.typography.bodySmall) }
+            }
+            items(teachers, key = { it.userId }) { teacher ->
+                Card(
+                    Modifier.fillMaxWidth().clickable {
+                        selectedTeacherId = teacher.userId
+                        selectedFolderId = null
+                        selectedClass = null
+                        sessions = emptyList()
+                        selectedSession = null
+                    },
+                    colors = CardDefaults.cardColors(
+                        containerColor = if (selectedTeacherId == teacher.userId) MaterialTheme.colorScheme.primaryContainer else MaterialTheme.colorScheme.surface
+                    )
+                ) {
+                    Row(Modifier.fillMaxWidth().padding(14.dp), verticalAlignment = Alignment.CenterVertically) {
+                        Icon(Icons.Default.Person, contentDescription = null, tint = MaterialTheme.colorScheme.primary)
+                        Spacer(Modifier.width(10.dp))
+                        Column(Modifier.weight(1f)) {
+                            Text(teacher.displayName.ifBlank { "استاد" }, fontWeight = FontWeight.SemiBold)
+                            Text("${classes.count { it.ownerUserId == teacher.userId }} کلاس", style = MaterialTheme.typography.bodySmall)
+                        }
+                    }
+                }
+            }
+
             if (selectedTeacherId != null) {
                 val folderOwnerId = selectedTeacherId
                 val canManageTeacherFolders = "super_admin" in accountRoles ||
@@ -632,33 +660,6 @@ fun BackendBrowseScreen(onBack: () -> Unit) {
                                     }, enabled = !busy) { Text("ویرایش") }
                                 }
                             }
-                    }
-                }
-            }
-            item { Text("۱. استاد", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold) }
-            if (teachers.isEmpty() && !busy) {
-                item { Text("استادی با کلاس قابل مشاهده پیدا نشد.", style = MaterialTheme.typography.bodySmall) }
-            }
-            items(teachers, key = { it.userId }) { teacher ->
-                Card(
-                    Modifier.fillMaxWidth().clickable {
-                        selectedTeacherId = teacher.userId
-                        selectedFolderId = null
-                        selectedClass = null
-                        sessions = emptyList()
-                        selectedSession = null
-                    },
-                    colors = CardDefaults.cardColors(
-                        containerColor = if (selectedTeacherId == teacher.userId) MaterialTheme.colorScheme.primaryContainer else MaterialTheme.colorScheme.surface
-                    )
-                ) {
-                    Row(Modifier.fillMaxWidth().padding(14.dp), verticalAlignment = Alignment.CenterVertically) {
-                        Icon(Icons.Default.Person, contentDescription = null, tint = MaterialTheme.colorScheme.primary)
-                        Spacer(Modifier.width(10.dp))
-                        Column(Modifier.weight(1f)) {
-                            Text(teacher.displayName.ifBlank { "استاد" }, fontWeight = FontWeight.SemiBold)
-                            Text("${classes.count { it.ownerUserId == teacher.userId }} کلاس", style = MaterialTheme.typography.bodySmall)
-                        }
                     }
                 }
             }
