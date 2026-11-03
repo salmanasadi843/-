@@ -635,7 +635,7 @@ fun TranscriptTab(
         if (searchQuery.isNotBlank() && transcriptLayout != null) {
             val offset = findFirstSearchOffset(displayedTranscript, searchQuery)
             if (offset != null) {
-                val line = transcriptLayout!!.getLineForOffset(offset.coerceIn(0, transcriptLayout!!.layoutInput.text.length))
+                val line = transcriptLayout!!.getLineForOffset(offset.coerceIn(0, displayedTranscript.length))
                 val target = (transcriptTopPx + transcriptLayout!!.getLineTop(line)).roundToInt()
                 scrollState.animateScrollTo(target.coerceAtLeast(0))
             }
@@ -1372,7 +1372,7 @@ private fun findFirstSearchOffset(content: String, query: String): Int? {
             originalIndexes += index
         }
     }
-    val terms = normalizeSearchForHighlight(query).split(Regex("\\\\s+"))
+    val terms = normalizeSearchForHighlight(query).split(Regex("\\s+"))
         .filter { it.length >= 2 }.distinct()
     val firstNormalizedIndex = terms.mapNotNull { term ->
         normalized.indexOf(term).takeIf { it >= 0 }
