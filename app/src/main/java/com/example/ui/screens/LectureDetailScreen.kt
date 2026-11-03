@@ -617,9 +617,12 @@ fun TranscriptTab(
         mutableStateOf(if (searchQuery.isNotBlank() && !containsSearchTerm(originalText, searchQuery) && containsSearchTerm(correctedText, searchQuery)) 1 else 0)
     }
     val displayedTranscript = if (selectedTextTab == 0) originalText else correctedText
-    val highlightedTranscript = remember(displayedTranscript, searchQuery) {
-        highlightSearchTerms(displayedTranscript, searchQuery, MaterialTheme.colorScheme.tertiaryContainer, MaterialTheme.colorScheme.onTertiaryContainer)
-    }
+    val highlightedTranscript = highlightSearchTerms(
+        displayedTranscript,
+        searchQuery,
+        MaterialTheme.colorScheme.tertiaryContainer,
+        MaterialTheme.colorScheme.onTertiaryContainer
+    )
     val hasText = originalText.isNotBlank() || correctedText.isNotBlank()
     val tags = lecture.tags.split(",").map { it.trim() }.filter { it.isNotBlank() }
     val context = LocalContext.current
