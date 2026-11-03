@@ -56,6 +56,13 @@ interface DarsyarReadOnlyApi {
         @Body request: BackendSessionWriteRequest
     ): Response<BackendSessionDto>
 
+    @POST("api/v1/sessions/{sessionId}/reorder")
+    suspend fun reorderSession(
+        @retrofit2.http.Path("sessionId") sessionId: String,
+        @Header("Authorization") authorization: String,
+        @Body request: BackendReorderSessionRequest
+    ): Response<BackendSessionDto>
+
     @POST("api/v1/sessions/{sessionId}/move")
     suspend fun moveSession(
         @retrofit2.http.Path("sessionId") sessionId: String,
@@ -219,6 +226,9 @@ data class BackendSessionWriteRequest(
 )
 
 @JsonClass(generateAdapter = true)
+data class BackendReorderSessionRequest(val direction: String)
+
+@JsonClass(generateAdapter = true)
 data class BackendMoveSessionRequest(val targetClassId: String)
 
 @JsonClass(generateAdapter = true)
@@ -300,6 +310,20 @@ class DarsyarReadOnlyRepository(
         val response = api.updateSession(sessionId, "Bearer $firebaseIdToken", request)
         if (!response.isSuccessful) throw BackendHttpException(response.code(), "/api/v1/sessions/{sessionId}")
         return response.body() ?: throw IllegalStateException("Backend returned an empty updated session response.")
+    }
+
+    /** Swaps a session with its adjacent sibling in the same class. */
+    suspend fun reorderSession(firebaseIdToken: String, sessionId: String, direction: String): BackendSessionDto {
+        require(firebaseIdToken.isNotBlank()) { "Firebase ID token is required." }
+        require(sessionId.isNotBlank()) { "Session ID is required." }
+        require(direction == "up" || direction == "down") { "Direction must be up or down." }
+        val response = api.reorderSession(
+            sessionId,
+            "Bearer $firebaseIdToken",
+            BackendReorderSessionRequest(direction)
+        )
+        if (!response.isSuccessful) throw BackendHttpException(response.code(), "/api/v1/sessions/{sessionId}/reorder")
+        return response.body() ?: throw IllegalStateException("Backend returned an empty reordered session response.")
     }
 
     /** Moves a session atomically; the backend enforces owner/super-admin permissions. */
