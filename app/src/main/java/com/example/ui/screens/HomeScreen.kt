@@ -245,7 +245,7 @@ fun HomeScreen(
                     IconButton(onClick = viewModel::openClasses) { Icon(Icons.Default.School, "کلاس‌ها") }
                     if (BackendEndpointConfig.isConfigured) {
                         IconButton(onClick = onNavigateToBackendBrowse) {
-                            Icon(Icons.Default.Cloud, contentDescription = "تالار گفتگو و اعلان‌ها")
+                            Icon(Icons.Default.Cloud, contentDescription = "مرور کلاس‌های استادان")
                         }
                     }
                     IconButton(onClick = { viewModel.navigateTo(Screen.Settings) }) { Icon(Icons.Default.Settings, "تنظیمات") }
@@ -271,9 +271,9 @@ fun HomeScreen(
                         ) {
                             Icon(Icons.Default.Cloud, contentDescription = null, tint = MaterialTheme.colorScheme.onSecondaryContainer)
                             Column(Modifier.weight(1f)) {
-                                Text("تالار گفتگو و اعلان‌ها", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
+                                Text("مرور کلاس‌های استادان", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
                                 Text(
-                                    "گفتگوهای کلاس، اطلاعیه‌های استاد و مرور کلاس‌های آنلاین",
+                                    "مشاهده استادان، کلاس‌ها و جلسه‌ها؛ همراه با اعضا، اعلان‌ها و تالار گفتگو",
                                     style = MaterialTheme.typography.bodySmall,
                                     color = MaterialTheme.colorScheme.onSecondaryContainer
                                 )
