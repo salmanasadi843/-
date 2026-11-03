@@ -99,6 +99,11 @@ export default function App() {
   const [loadingTeacherApplications, setLoadingTeacherApplications] = useState(false);
 
   useEffect(() => {
+    if (!highlightedForumPostId || !forumPosts.some(post => post.id === highlightedForumPostId)) return;
+    document.getElementById(`forum-post-${highlightedForumPostId}`)?.scrollIntoView({ behavior: "smooth", block: "center" });
+  }, [highlightedForumPostId, forumPosts]);
+
+  useEffect(() => {
     if (!auth) return;
     return onAuthStateChanged(auth, setUser);
   }, []);
