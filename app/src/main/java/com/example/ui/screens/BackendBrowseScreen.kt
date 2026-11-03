@@ -138,7 +138,7 @@ fun BackendBrowseScreen(onBack: () -> Unit) {
                 }.getOrDefault(0)
                 listOf(snapshot, directory, unreadCount, folders)
             }
-            val snapshot = result[0] as BackendSnapshotDto
+            val snapshot = result[0] as BackendReadOnlySnapshot
             val directory = result[1] as List<BackendTeacherDto>
             val unreadCount = result[2] as Int
             val folders = result[3] as List<BackendTeacherFolderDto>
