@@ -206,7 +206,7 @@ fun HomeScreen(
         AdvancedSearchScreen(
             viewModel = viewModel,
             userRole = userRole,
-            onOpenLecture = onNavigateToDetail,
+            onOpenLecture = onNavigateToSearchResult,
             onBack = { showAdvancedSearch = false }
         )
         return
