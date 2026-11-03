@@ -37,13 +37,13 @@ Build verification: `npm run build`. GitHub Actions runs the same production bui
 ## Remaining work before product parity or deployment
 
 - Public guest browsing is implemented for published, visible public classes and their published sessions through separate anonymous read-only API routes. Private, hidden, unpublished or deleted content remains excluded. The Android guest experience is not enabled yet; its current backend browse screen is an authenticated staging preview.
-- Teacher application submission/review screens and account creation/password reset.
-- Student-facing learning progress, bookmarks and personal session state.
-- Search, transcript navigation/highlighting, notes/questions and AI study tools.
-- Speech-to-text workflows and richer audio integration; this increment stores external links only and does not upload audio.
+- Account creation/registration is not implemented in the web client. Existing-account email/password sign-in and password-reset flow are implemented.
+- Teacher application submission and super-admin review screens are implemented in the web client and staging backend; they are not a remaining web-screen task.
+- Basic personal study state is implemented: favorite/bookmark flag, saved playback position, and personal notes with quoted text and offsets. Broader learning analytics/progress dashboards remain pending.
+- Full-text search, transcript search/navigation and highlighting workflows, and AI study tools remain pending. Public guest transcript selection currently provides only a temporary, non-persistent highlight.
+- Speech-to-text workflows and richer audio integration remain pending; this increment stores external audio links only and does not upload audio.
 - Forum enhancements still pending: file attachments, richer user-mention picker, notification preferences and push delivery; current mentions use an explicit user UUID syntax. Topic/reply edit and delete controls are implemented in the staging clients.
-- Full Android Room/Firestore synchronization and safe migration workflows.
-- End-to-end tests against a disposable staging environment, security review and production operations runbook.
+- Automated web component/end-to-end tests against a disposable staging environment, full Android Room/Firestore synchronization and safe migration workflows, security review and production operations runbook remain pending.
 
 ## Backend and hosting status
 
