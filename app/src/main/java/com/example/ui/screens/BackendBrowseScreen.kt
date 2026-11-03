@@ -347,11 +347,7 @@ fun BackendBrowseScreen(onBack: () -> Unit) {
             selectedSession = selectedSession?.let { detail ->
                 if (detail.id == reordered.id) detail.copy(sortOrder = reordered.sortOrder, version = reordered.version) else detail
             }
-            status = if (refreshed.none { it.id != session.id && it.sortOrder == session.sortOrder }) {
-                "ترتیب جلسه‌ها به‌روزرسانی شد."
-            } else {
-                "ترتیب جلسه‌ها ذخیره شد."
-            }
+            status = "ترتیب جلسه‌ها به‌روزرسانی شد."
         }
     }
 
@@ -606,7 +602,7 @@ fun BackendBrowseScreen(onBack: () -> Unit) {
                                         movingSession = session
                                         moveTargetClassId = classes.firstOrNull { it.id != session.classId && ("super_admin" in accountRoles || it.ownerUserId == accountId) }?.id.orEmpty()
                                     },
-                                    enabled = !busy && classes.any { it.id != session.classId }
+                                    enabled = !busy && classes.any { it.id != session.classId && ("super_admin" in accountRoles || it.ownerUserId == accountId) }
                                 ) { Text("انتقال") }
                             }
                             Text("مشاهده", color = MaterialTheme.colorScheme.primary, style = MaterialTheme.typography.labelMedium)
