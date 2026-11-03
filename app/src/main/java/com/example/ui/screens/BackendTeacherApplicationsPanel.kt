@@ -101,45 +101,53 @@ fun BackendTeacherApplicationsPanel(
                 style = MaterialTheme.typography.bodySmall,
                 color = MaterialTheme.colorScheme.onSurfaceVariant
             )
-            OutlinedTextField(
-                value = teachingField,
-                onValueChange = { teachingField = it },
-                modifier = Modifier.fillMaxWidth(),
-                singleLine = true,
-                label = { Text("حوزه تدریس") },
-                enabled = !busy
-            )
-            OutlinedTextField(
-                value = institutionName,
-                onValueChange = { institutionName = it },
-                modifier = Modifier.fillMaxWidth(),
-                singleLine = true,
-                label = { Text("نام مؤسسه یا مرکز آموزشی (اختیاری)") },
-                enabled = !busy
-            )
-            Button(
-                onClick = {
-                    withToken { token ->
-                        val result = withContext(Dispatchers.IO) {
-                            DarsyarReadOnlyApiFactory.create().submitTeacherApplication(
-                                token,
-                                BackendTeacherApplicationWriteRequest(
-                                    teachingField = teachingField.trim().ifBlank { null },
-                                    institutionName = institutionName.trim().ifBlank { null }
+            if ("teacher" in accountRoles) {
+                Text(
+                    "حساب شما در حال حاضر دسترسی استاد دارد؛ نیازی به ثبت درخواست جدید نیست.",
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = MaterialTheme.colorScheme.primary
+                )
+            } else {
+                OutlinedTextField(
+                    value = teachingField,
+                    onValueChange = { teachingField = it },
+                    modifier = Modifier.fillMaxWidth(),
+                    singleLine = true,
+                    label = { Text("حوزه تدریس") },
+                    enabled = !busy
+                )
+                OutlinedTextField(
+                    value = institutionName,
+                    onValueChange = { institutionName = it },
+                    modifier = Modifier.fillMaxWidth(),
+                    singleLine = true,
+                    label = { Text("نام مؤسسه یا مرکز آموزشی (اختیاری)") },
+                    enabled = !busy
+                )
+                Button(
+                    onClick = {
+                        withToken { token ->
+                            val result = withContext(Dispatchers.IO) {
+                                DarsyarReadOnlyApiFactory.create().submitTeacherApplication(
+                                    token,
+                                    BackendTeacherApplicationWriteRequest(
+                                        teachingField = teachingField.trim().ifBlank { null },
+                                        institutionName = institutionName.trim().ifBlank { null }
+                                    )
                                 )
-                            )
+                            }
+                            currentApplication = result
+                            onStatus("درخواست شما در سامانه جدید ثبت شد؛ وضعیت: ${result.approvalStatus}.")
                         }
-                        currentApplication = result
-                        onStatus("درخواست شما در سامانه جدید ثبت شد؛ وضعیت: ${result.approvalStatus}.")
-                    }
-                },
-                enabled = !busy && (teachingField.isNotBlank() || institutionName.isNotBlank())
-            ) {
-                if (busy) CircularProgressIndicator(Modifier.width(18.dp).height(18.dp), strokeWidth = 2.dp)
-                else Text("ثبت درخواست استاد")
-            }
-            currentApplication?.let {
-                Text("آخرین وضعیت درخواست: ${it.approvalStatus}", style = MaterialTheme.typography.bodyMedium)
+                    },
+                    enabled = !busy && (teachingField.isNotBlank() || institutionName.isNotBlank())
+                ) {
+                    if (busy) CircularProgressIndicator(Modifier.width(18.dp).height(18.dp), strokeWidth = 2.dp)
+                    else Text("ثبت درخواست استاد")
+                }
+                currentApplication?.let {
+                    Text("آخرین وضعیت درخواست: ${it.approvalStatus}", style = MaterialTheme.typography.bodyMedium)
+                }
             }
 
             if (isSuperAdmin) {
