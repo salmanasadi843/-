@@ -138,6 +138,10 @@ fun OstadYarApp(
                 userRole = userRole,
                 onNavigateToAdd = { viewModel.openClasses() },
                 onNavigateToDetail = { lectureId -> viewModel.navigateTo(Screen.Detail(lectureId)) },
+                onNavigateToSearchResult = { lectureId, query ->
+                    pendingSearchQuery = query
+                    viewModel.navigateTo(Screen.Detail(lectureId))
+                },
                 onNavigateToAiSummary = { lectureId -> viewModel.navigateTo(Screen.Detail(lectureId)) },
                 onNavigateToBackendBrowse = { viewModel.navigateTo(Screen.BackendBrowse) }
             )
