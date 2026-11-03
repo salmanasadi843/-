@@ -48,6 +48,10 @@ class TeachingSessionRepositoryIntegrationTest {
                     it.setObject(1, owner)
                     it.executeUpdate()
                 }
+                connection.prepareStatement("INSERT INTO app_roles(user_id,role_name) VALUES (?,'teacher')").use {
+                    it.setObject(1, otherTeacher)
+                    it.executeUpdate()
+                }
             }
             val classes = TeachingClassRepository(ds)
             val publicClass = classes.create(
