@@ -24,7 +24,7 @@ import java.util.Locale
 fun AdvancedSearchScreen(
     viewModel: MainViewModel,
     userRole: UserRole,
-    onOpenLecture: (Long) -> Unit,
+    onOpenLecture: (Long, String) -> Unit,
     onBack: () -> Unit
 ) {
     BackHandler(onBack = onBack)
@@ -182,7 +182,7 @@ fun AdvancedSearchScreen(
                     val className = classes.firstOrNull { it.id == lecture.classId }?.name
                     val excerpt = makeSearchExcerpt(lecture, terms)
                     Card(
-                        modifier = Modifier.fillMaxWidth().clickable { onOpenLecture(lecture.id) },
+                        modifier = Modifier.fillMaxWidth().clickable { onOpenLecture(lecture.id, query.trim()) },
                         shape = RoundedCornerShape(16.dp),
                         colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface)
                     ) {
