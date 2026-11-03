@@ -54,7 +54,7 @@ fun BackendTeacherApplicationsPanel(
     fun withToken(action: suspend (String) -> Unit) {
         if (busy) return
         busy = true
-        com.example.data.auth.AuthPreferences.getFirebaseIdToken(context) { result ->
+        AuthPreferences.getFirebaseIdToken(context) { result ->
             result.fold(
                 onSuccess = { token ->
                     scope.launch {
