@@ -191,11 +191,12 @@ fun OstadYarApp(
             LectureDetailScreen(
                 lectureId = screen.lectureId,
                 viewModel = viewModel,
-                onNavigateBack = { viewModel.navigateBack() },
+                onNavigateBack = { pendingSearchQuery = ""; viewModel.navigateBack() },
                 onNavigateToEdit = { editId ->
                     if (userRole == UserRole.TEACHER) viewModel.navigateTo(Screen.AddEdit(editId))
                 },
-                isTeacher = userRole == UserRole.TEACHER
+                isTeacher = userRole == UserRole.TEACHER,
+                initialSearchQuery = pendingSearchQuery
             )
         }
 
