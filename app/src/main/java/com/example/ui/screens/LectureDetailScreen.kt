@@ -85,12 +85,15 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.layout.onGloballyPositioned
+import androidx.compose.ui.layout.positionInParent
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.SpanStyle
+import androidx.compose.ui.text.TextLayoutResult
 import androidx.compose.ui.text.buildAnnotatedString
 import androidx.compose.ui.text.withStyle
 import androidx.compose.ui.text.style.TextAlign
@@ -99,6 +102,7 @@ import androidx.compose.ui.unit.sp
 import com.example.data.local.LectureEntity
 import java.io.File
 import java.util.Locale
+import kotlin.math.roundToInt
 import com.example.ui.theme.TagPillBg
 import com.example.ui.theme.TagPillText
 
@@ -611,6 +615,8 @@ fun TranscriptTab(
     audioLinkContent: (@Composable () -> Unit)? = null
 ) {
     val scrollState = rememberScrollState()
+    var transcriptTopPx by remember(lecture.id) { mutableStateOf(0f) }
+    var transcriptLayout by remember(lecture.id) { mutableStateOf<TextLayoutResult?>(null) }
     val originalText = lecture.originalTranscript.ifBlank { lecture.transcript }
     val correctedText = lecture.transcript
     var selectedTextTab by remember(lecture.id, searchQuery) {
@@ -624,6 +630,17 @@ fun TranscriptTab(
         MaterialTheme.colorScheme.onTertiaryContainer
     )
     val hasText = originalText.isNotBlank() || correctedText.isNotBlank()
+
+    LaunchedEffect(lecture.id, searchQuery, selectedTextTab, transcriptLayout, transcriptTopPx) {
+        if (searchQuery.isNotBlank() && transcriptLayout != null) {
+            val offset = findFirstSearchOffset(displayedTranscript, searchQuery)
+            if (offset != null) {
+                val line = transcriptLayout!!.getLineForOffset(offset.coerceIn(0, transcriptLayout!!.layoutInput.text.length))
+                val target = (transcriptTopPx + transcriptLayout!!.getLineTop(line)).roundToInt()
+                scrollState.animateScrollTo(target.coerceAtLeast(0))
+            }
+        }
+    }
     val tags = lecture.tags.split(",").map { it.trim() }.filter { it.isNotBlank() }
     val context = LocalContext.current
     var showHandoutTypographySettings by remember(lecture.id) { mutableStateOf(false) }
@@ -762,13 +779,16 @@ fun TranscriptTab(
             }
         } else {
             Surface(
-                modifier = Modifier.fillMaxWidth(),
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .onGloballyPositioned { coordinates -> transcriptTopPx = coordinates.positionInParent().y },
                 shape = RoundedCornerShape(18.dp),
                 color = MaterialTheme.colorScheme.surface
             ) {
                 Text(
                     text = highlightedTranscript,
                     modifier = Modifier.padding(horizontal = 18.dp, vertical = 20.dp),
+                    onTextLayout = { transcriptLayout = it },
                     style = MaterialTheme.typography.bodyLarge.copy(lineHeight = 32.sp),
                     textAlign = TextAlign.Start
                 )
@@ -1342,6 +1362,23 @@ private fun normalizeSearchForHighlight(value: String): String =
         .replace(Regex("[\\u200C\\u200F\\u202A-\\u202E]"), " ")
         .replace(Regex("\\s+"), " ")
         .trim()
+
+private fun findFirstSearchOffset(content: String, query: String): Int? {
+    val normalized = StringBuilder()
+    val originalIndexes = mutableListOf<Int>()
+    content.forEachIndexed { index, char ->
+        normalizeSearchForHighlight(char.toString()).forEach { normalizedChar ->
+            normalized.append(normalizedChar)
+            originalIndexes += index
+        }
+    }
+    val terms = normalizeSearchForHighlight(query).split(Regex("\\\\s+"))
+        .filter { it.length >= 2 }.distinct()
+    val firstNormalizedIndex = terms.mapNotNull { term ->
+        normalized.indexOf(term).takeIf { it >= 0 }
+    }.minOrNull() ?: return null
+    return originalIndexes.getOrNull(firstNormalizedIndex)
+}
 
 private fun containsSearchTerm(content: String, query: String): Boolean {
     val normalized = normalizeSearchForHighlight(content)
