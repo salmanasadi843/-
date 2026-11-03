@@ -1262,13 +1262,14 @@ fun BackendBrowseScreen(onBack: () -> Unit) {
                             label = { Text("بدون پوشه") }
                         )
                         teacherFolders.filter {
-                            (it.ownerUserId == editingClass?.ownerUserId || "super_admin" in accountRoles) &&
-                                ("super_admin" in accountRoles || !it.isHidden)
-                        }.forEach { folder ->
+                            it.ownerUserId == editingClass?.ownerUserId &&
+                                ("super_admin" in accountRoles || ("teacher" in accountRoles && editingClass?.ownerUserId == accountId) || !it.isHidden)
+                        }.sortedWith(compareBy<BackendTeacherFolderDto> { folderDepth(it) }.thenBy { it.sortOrder })
+                            .forEach { folder ->
                                 FilterChip(
                                     selected = classFolderDraft == folder.id,
                                     onClick = { classFolderDraft = folder.id },
-                                    label = { Text(folder.name) }
+                                    label = { Text(("　".repeat(folderDepth(folder))) + (if (folderDepth(folder) > 0) "↳ " else "") + folder.name) }
                                 )
                             }
                     }
