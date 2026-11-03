@@ -42,6 +42,23 @@ interface DarsyarReadOnlyApi {
         @Header("Authorization") authorization: String
     ): Response<List<BackendClassDto>>
 
+    @GET("api/v1/classes/deleted")
+    suspend fun getDeletedClasses(
+        @Header("Authorization") authorization: String
+    ): Response<List<BackendClassDto>>
+
+    @DELETE("api/v1/classes/{classId}")
+    suspend fun deleteClass(
+        @retrofit2.http.Path("classId") classId: String,
+        @Header("Authorization") authorization: String
+    ): Response<Unit>
+
+    @POST("api/v1/classes/{classId}/restore")
+    suspend fun restoreClass(
+        @retrofit2.http.Path("classId") classId: String,
+        @Header("Authorization") authorization: String
+    ): Response<Unit>
+
     @PATCH("api/v1/classes/{classId}")
     suspend fun updateClass(
         @retrofit2.http.Path("classId") classId: String,
@@ -301,6 +318,25 @@ class DarsyarReadOnlyRepository(
         val response = api.getSessions(classId, "Bearer $firebaseIdToken")
         if (!response.isSuccessful) throw BackendHttpException(response.code(), "/api/v1/classes/{classId}/sessions")
         return response.body() ?: throw IllegalStateException("Backend returned an empty sessions response.")
+    }
+
+    suspend fun loadDeletedClasses(firebaseIdToken: String): List<BackendClassDto> {
+        require(firebaseIdToken.isNotBlank()) { "Firebase ID token is required." }
+        val response = api.getDeletedClasses("Bearer $firebaseIdToken")
+        if (!response.isSuccessful) throw BackendHttpException(response.code(), "/api/v1/classes/deleted")
+        return response.body() ?: throw IllegalStateException("Backend returned an empty deleted classes response.")
+    }
+
+    suspend fun deleteClass(firebaseIdToken: String, classId: String) {
+        require(firebaseIdToken.isNotBlank() && classId.isNotBlank()) { "Token and class ID are required." }
+        val response = api.deleteClass(classId, "Bearer $firebaseIdToken")
+        if (!response.isSuccessful) throw BackendHttpException(response.code(), "/api/v1/classes/{classId}")
+    }
+
+    suspend fun restoreClass(firebaseIdToken: String, classId: String) {
+        require(firebaseIdToken.isNotBlank() && classId.isNotBlank()) { "Token and class ID are required." }
+        val response = api.restoreClass(classId, "Bearer $firebaseIdToken")
+        if (!response.isSuccessful) throw BackendHttpException(response.code(), "/api/v1/classes/{classId}/restore")
     }
 
     /** Class mutations are authorized and audited by the backend (owner or super-admin). */
