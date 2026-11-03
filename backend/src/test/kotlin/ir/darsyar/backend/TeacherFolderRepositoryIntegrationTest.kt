@@ -54,6 +54,23 @@ class TeacherFolderRepositoryIntegrationTest {
             val otherRoot = repo.create(otherTeacher.toString(), ownerRoles,
                 CreateTeacherFolder(otherTeacher.toString(), null, "پوشه استاد دیگر"))
 
+            ds.connection.use { connection ->
+                connection.prepareStatement(
+                    """
+                    INSERT INTO teaching_classes(owner_user_id, folder_id, title, visibility, is_published, is_hidden)
+                    VALUES (?, ?, 'کلاس عمومی', 'public', true, false)
+                    """.trimIndent()
+                ).use { statement ->
+                    statement.setObject(1, owner)
+                    statement.setObject(2, child.id)
+                    statement.executeUpdate()
+                }
+            }
+            val studentFolders = repo.listVisible(student.toString(), setOf(AppRole.STUDENT))
+            assertTrue(studentFolders.any { it.id == root.id }, "Student must receive the parent folder of a visible nested class.")
+            assertTrue(studentFolders.any { it.id == child.id }, "Student must receive the folder containing the visible class.")
+            assertTrue(studentFolders.none { it.id == otherRoot.id }, "Student must not receive unrelated empty teacher folders.")
+
             assertFailsWith<IllegalArgumentException> {
                 repo.create(owner.toString(), ownerRoles,
                     CreateTeacherFolder(owner.toString(), otherRoot.id, "پوشه نامعتبر"))
