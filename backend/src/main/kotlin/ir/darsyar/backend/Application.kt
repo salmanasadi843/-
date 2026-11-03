@@ -1262,6 +1262,51 @@ fun Application.module(
             }
 
             route("/api/v1/sessions") {
+                patch("/{sessionId}") {
+                    val principal = call.principal<DarsyarPrincipal>()
+                    if (principal == null) {
+                        call.respond(HttpStatusCode.Unauthorized, ApiError("unauthorized"))
+                        return@patch
+                    }
+                    val request = try { call.receive<SessionWriteRequest>() }
+                    catch (_: Exception) {
+                        call.respond(HttpStatusCode.BadRequest, ApiError("invalid_request"))
+                        return@patch
+                    }
+                    try {
+                        val updated = sessionRepository.update(
+                            principal.userId,
+                            principal.roles,
+                            call.parameters["sessionId"] ?: "",
+                            UpdateTeachingSession(
+                                courseId = request.courseId,
+                                title = request.title,
+                                courseName = request.courseName,
+                                professorName = request.professorName,
+                                dateMs = request.dateMs,
+                                audioDurationMs = request.audioDurationMs,
+                                transcript = request.transcript,
+                                originalTranscript = request.originalTranscript,
+                                aiSummary = request.aiSummary,
+                                aiKeyPoints = request.aiKeyPoints,
+                                aiQuizJson = request.aiQuizJson,
+                                tags = request.tags,
+                                isPublished = request.isPublished,
+                                lastEditedMs = request.lastEditedMs,
+                                sortOrder = request.sortOrder
+                            )
+                        )
+                        if (updated == null) call.respond(HttpStatusCode.NotFound, ApiError("session_not_found"))
+                        else call.respond(updated.toApiRecord())
+                    } catch (_: SecurityException) {
+                        call.respond(HttpStatusCode.Forbidden, ApiError("session_management_forbidden"))
+                    } catch (_: IllegalArgumentException) {
+                        call.respond(HttpStatusCode.BadRequest, ApiError("invalid_session_data"))
+                    } catch (_: java.sql.SQLException) {
+                        call.respond(HttpStatusCode.BadRequest, ApiError("invalid_session_relation_or_json"))
+                    }
+                }
+
                 get("/deleted") {
                     val principal = call.principal<DarsyarPrincipal>()
                     if (principal == null) {
