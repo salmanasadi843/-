@@ -666,6 +666,12 @@ export default function App() {
     try { setNotifications(await api.notifications(false, await user.getIdToken())); }
     catch(e) { setError(message(e)); }
   }
+  useEffect(() => {
+    if (!showNotifications || !user) return;
+    const timer = window.setInterval(() => { void refreshNotifications(); }, 60_000);
+    return () => window.clearInterval(timer);
+  }, [showNotifications, user]);
+
   async function openNotification(item: UserNotification) {
     if (!user) return;
     setBusy(true); setError("");
