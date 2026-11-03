@@ -49,6 +49,13 @@ interface DarsyarReadOnlyApi {
         @Body request: BackendClassWriteRequest
     ): Response<BackendClassDto>
 
+    @PATCH("api/v1/sessions/{sessionId}")
+    suspend fun updateSession(
+        @retrofit2.http.Path("sessionId") sessionId: String,
+        @Header("Authorization") authorization: String,
+        @Body request: BackendSessionWriteRequest
+    ): Response<BackendSessionDto>
+
     @POST("api/v1/sessions/{sessionId}/move")
     suspend fun moveSession(
         @retrofit2.http.Path("sessionId") sessionId: String,
@@ -193,6 +200,25 @@ data class BackendSessionSummaryDto(
 )
 
 @JsonClass(generateAdapter = true)
+data class BackendSessionWriteRequest(
+    val courseId: String? = null,
+    val title: String,
+    val courseName: String = "",
+    val professorName: String = "",
+    val dateMs: Long? = null,
+    val audioDurationMs: Long = 0,
+    val transcript: String = "",
+    val originalTranscript: String = "",
+    val aiSummary: String? = null,
+    val aiKeyPoints: String? = null,
+    val aiQuizJson: String? = null,
+    val tags: String = "",
+    val isPublished: Boolean = true,
+    val lastEditedMs: Long? = null,
+    val sortOrder: Int = 0
+)
+
+@JsonClass(generateAdapter = true)
 data class BackendMoveSessionRequest(val targetClassId: String)
 
 @JsonClass(generateAdapter = true)
@@ -261,6 +287,19 @@ class DarsyarReadOnlyRepository(
         val response = api.updateClass(classId, "Bearer $firebaseIdToken", request)
         if (!response.isSuccessful) throw BackendHttpException(response.code(), "/api/v1/classes/{classId}")
         return response.body() ?: throw IllegalStateException("Backend returned an empty class response.")
+    }
+
+    /** Updates session content; the backend enforces owner/super-admin permissions. */
+    suspend fun updateSession(
+        firebaseIdToken: String,
+        sessionId: String,
+        request: BackendSessionWriteRequest
+    ): BackendSessionDto {
+        require(firebaseIdToken.isNotBlank()) { "Firebase ID token is required." }
+        require(sessionId.isNotBlank()) { "Session ID is required." }
+        val response = api.updateSession(sessionId, "Bearer $firebaseIdToken", request)
+        if (!response.isSuccessful) throw BackendHttpException(response.code(), "/api/v1/sessions/{sessionId}")
+        return response.body() ?: throw IllegalStateException("Backend returned an empty updated session response.")
     }
 
     /** Moves a session atomically; the backend enforces owner/super-admin permissions. */
