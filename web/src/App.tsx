@@ -115,10 +115,10 @@ export default function App() {
       setBusy(true); setError("");
       try {
         const token = await user.getIdToken();
-        const [profile, teacherList, classList, folderList] = await Promise.all([
-          api.me(token), api.teachers(token), api.classes(token), api.teacherFolders(token),
+        const [profile, teacherList, classList, folderList, inbox] = await Promise.all([
+          api.me(token), api.teachers(token), api.classes(token), api.teacherFolders(token), api.notifications(false, token),
         ]);
-        if (!cancelled) { setMe(profile); setTeachers(teacherList); setClasses(classList); setFolders(folderList); }
+        if (!cancelled) { setMe(profile); setTeachers(teacherList); setClasses(classList); setFolders(folderList); setNotifications(inbox); }
       } catch (e) { if (!cancelled) setError(message(e)); }
       finally { if (!cancelled) setBusy(false); }
     }
