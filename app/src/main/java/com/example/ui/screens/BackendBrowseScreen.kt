@@ -80,6 +80,15 @@ fun BackendBrowseScreen(onBack: () -> Unit) {
     var classHiddenDraft by remember { mutableStateOf(false) }
     var movingSession by remember { mutableStateOf<BackendSessionSummaryDto?>(null) }
     var moveTargetClassId by remember { mutableStateOf("") }
+    var editingSession by remember { mutableStateOf<BackendSessionDto?>(null) }
+    var sessionTitleDraft by remember { mutableStateOf("") }
+    var sessionCourseDraft by remember { mutableStateOf("") }
+    var sessionProfessorDraft by remember { mutableStateOf("") }
+    var sessionTranscriptDraft by remember { mutableStateOf("") }
+    var sessionSummaryDraft by remember { mutableStateOf("") }
+    var sessionKeyPointsDraft by remember { mutableStateOf("") }
+    var sessionTagsDraft by remember { mutableStateOf("") }
+    var sessionPublishedDraft by remember { mutableStateOf(false) }
 
     fun withFreshToken(action: suspend (String) -> Unit) {
         if (busy) return
@@ -262,6 +271,65 @@ fun BackendBrowseScreen(onBack: () -> Unit) {
             activeNoteId = null; originalTranscriptSelection = TextRange.Zero; editedTranscriptSelection = TextRange.Zero; editingNoteId = null
             playbackPositionDraft = result.second.lastPlaybackPositionMs.toFloat()
             status = "جزئیات جلسه، وضعیت مطالعه و یادداشت‌های شخصی دریافت شد."
+        }
+    }
+
+    fun beginEditSession(detail: BackendSessionDto) {
+        editingSession = detail
+        sessionTitleDraft = detail.title
+        sessionCourseDraft = detail.courseName
+        sessionProfessorDraft = detail.professorName
+        sessionTranscriptDraft = detail.transcript
+        sessionSummaryDraft = detail.aiSummary.orEmpty()
+        sessionKeyPointsDraft = detail.aiKeyPoints.orEmpty()
+        sessionTagsDraft = detail.tags
+        sessionPublishedDraft = detail.isPublished
+    }
+
+    fun saveSessionChanges() {
+        val current = editingSession ?: return
+        if (sessionTitleDraft.isBlank()) {
+            status = "عنوان جلسه نمی‌تواند خالی باشد."
+            return
+        }
+        withFreshToken { token ->
+            val updated = withContext(Dispatchers.IO) {
+                DarsyarReadOnlyApiFactory.create().updateSession(
+                    token,
+                    current.id,
+                    BackendSessionWriteRequest(
+                        courseId = current.courseId,
+                        title = sessionTitleDraft.trim(),
+                        courseName = sessionCourseDraft,
+                        professorName = sessionProfessorDraft,
+                        dateMs = current.dateMs,
+                        audioDurationMs = current.audioDurationMs,
+                        transcript = sessionTranscriptDraft,
+                        originalTranscript = current.originalTranscript,
+                        aiSummary = sessionSummaryDraft.ifBlank { null },
+                        aiKeyPoints = sessionKeyPointsDraft.ifBlank { null },
+                        aiQuizJson = current.aiQuizJson,
+                        tags = sessionTagsDraft,
+                        isPublished = sessionPublishedDraft,
+                        lastEditedMs = System.currentTimeMillis(),
+                        sortOrder = current.sortOrder
+                    )
+                )
+            }
+            selectedSession = updated
+            sessions = sessions.map {
+                if (it.id == updated.id) it.copy(
+                    title = updated.title,
+                    courseName = updated.courseName,
+                    professorName = updated.professorName,
+                    tags = updated.tags,
+                    isPublished = updated.isPublished,
+                    lastEditedMs = updated.lastEditedMs,
+                    version = updated.version
+                ) else it
+            }
+            editingSession = null
+            status = "محتوای جلسه ذخیره شد؛ متن اصلی بدون تغییر باقی ماند."
         }
     }
 
@@ -538,6 +606,13 @@ fun BackendBrowseScreen(onBack: () -> Unit) {
                     Card(Modifier.fillMaxWidth(), colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant)) {
                         Column(Modifier.padding(14.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
                             Text("محتوای جلسه انتخاب‌شده", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
+                            if ("super_admin" in accountRoles || ("teacher" in accountRoles && selectedClass?.ownerUserId == accountId)) {
+                                OutlinedButton(
+                                    onClick = { beginEditSession(detail) },
+                                    enabled = !busy,
+                                    modifier = Modifier.fillMaxWidth()
+                                ) { Text("ویرایش محتوای جلسه") }
+                            }
                             Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
                                 Text(
                                     if (selectedSessionState?.isFavorite == true) "این جلسه در علاقه‌مندی‌های شماست." else "این جلسه هنوز ذخیره نشده است.",
@@ -698,6 +773,85 @@ fun BackendBrowseScreen(onBack: () -> Unit) {
                 }
             }
         }
+    }
+    if (editingSession != null) {
+        AlertDialog(
+            onDismissRequest = { if (!busy) editingSession = null },
+            title = { Text("ویرایش محتوای جلسه") },
+            text = {
+                Column(
+                    modifier = Modifier.fillMaxWidth().heightIn(max = 600.dp),
+                    verticalArrangement = Arrangement.spacedBy(8.dp)
+                ) {
+                    OutlinedTextField(
+                        value = sessionTitleDraft,
+                        onValueChange = { sessionTitleDraft = it },
+                        label = { Text("عنوان جلسه") },
+                        singleLine = true,
+                        modifier = Modifier.fillMaxWidth()
+                    )
+                    OutlinedTextField(
+                        value = sessionCourseDraft,
+                        onValueChange = { sessionCourseDraft = it },
+                        label = { Text("عنوان درس / موضوع") },
+                        singleLine = true,
+                        modifier = Modifier.fillMaxWidth()
+                    )
+                    OutlinedTextField(
+                        value = sessionProfessorDraft,
+                        onValueChange = { sessionProfessorDraft = it },
+                        label = { Text("نام استاد") },
+                        singleLine = true,
+                        modifier = Modifier.fillMaxWidth()
+                    )
+                    OutlinedTextField(
+                        value = sessionTranscriptDraft,
+                        onValueChange = { sessionTranscriptDraft = it },
+                        label = { Text("متن ویرایش‌شده") },
+                        modifier = Modifier.fillMaxWidth(),
+                        minLines = 4,
+                        maxLines = 8
+                    )
+                    Text("متن اصلی جلسه تغییر نمی‌کند و به‌عنوان نسخه مرجع حفظ می‌شود.", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.primary)
+                    OutlinedTextField(
+                        value = sessionSummaryDraft,
+                        onValueChange = { sessionSummaryDraft = it },
+                        label = { Text("خلاصه هوشمند") },
+                        modifier = Modifier.fillMaxWidth(),
+                        minLines = 2,
+                        maxLines = 5
+                    )
+                    OutlinedTextField(
+                        value = sessionKeyPointsDraft,
+                        onValueChange = { sessionKeyPointsDraft = it },
+                        label = { Text("کلیدواژه‌ها و نکات") },
+                        modifier = Modifier.fillMaxWidth(),
+                        minLines = 2,
+                        maxLines = 5
+                    )
+                    OutlinedTextField(
+                        value = sessionTagsDraft,
+                        onValueChange = { sessionTagsDraft = it },
+                        label = { Text("برچسب‌ها") },
+                        modifier = Modifier.fillMaxWidth(),
+                        singleLine = true
+                    )
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        Checkbox(checked = sessionPublishedDraft, onCheckedChange = { sessionPublishedDraft = it })
+                        Text("انتشار جلسه")
+                    }
+                }
+            },
+            confirmButton = {
+                TextButton(
+                    onClick = { saveSessionChanges() },
+                    enabled = !busy && sessionTitleDraft.isNotBlank()
+                ) { Text("ذخیره تغییرات") }
+            },
+            dismissButton = {
+                TextButton(onClick = { editingSession = null }, enabled = !busy) { Text("انصراف") }
+            }
+        )
     }
     if (movingSession != null) {
         val availableTargets = classes.filter { it.id != movingSession?.classId && ("super_admin" in accountRoles || it.ownerUserId == accountId) }
