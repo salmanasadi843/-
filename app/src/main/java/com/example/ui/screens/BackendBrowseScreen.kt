@@ -817,6 +817,14 @@ fun BackendBrowseScreen(onBack: () -> Unit) {
                     }
                 }
                 item {
+                    BackendClassAccessPanel(
+                        classId = clazz.id,
+                        isPrivate = clazz.visibility == "private",
+                        canManage = "super_admin" in accountRoles || ("teacher" in accountRoles && clazz.ownerUserId == accountId),
+                        onStatus = { status = it }
+                    )
+                }
+                item {
                     BackendAnnouncementsPanel(
                         classId = clazz.id,
                         canManage = "super_admin" in accountRoles || ("teacher" in accountRoles && clazz.ownerUserId == accountId),
