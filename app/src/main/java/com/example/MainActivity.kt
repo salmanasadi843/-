@@ -79,6 +79,9 @@ fun OstadYarApp(
     var userRole by remember { mutableStateOf(AuthPreferences.currentRole(context)) }
     val currentScreen by viewModel.currentScreen.collectAsState()
     var pendingSearchQuery by remember { mutableStateOf("") }
+    LaunchedEffect(currentScreen) {
+        if (currentScreen !is Screen.Detail) pendingSearchQuery = ""
+    }
 
     LaunchedEffect(authenticated) {
         if (authenticated) {
