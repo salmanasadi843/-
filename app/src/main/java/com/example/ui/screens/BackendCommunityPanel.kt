@@ -16,7 +16,7 @@ import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 
 @Composable
-fun BackendForumPanel(classId:String, sessionId:String?, currentUserId:String, canModerate:Boolean, onStatus:(String)->Unit, initialTopicId:String?=null, initialPostId:String?=null) {
+fun BackendForumPanel(classId:String, sessionId:String?, currentUserId:String, canModerate:Boolean, onStatus:(String)->Unit, initialTopicId:String?=null, initialPostId:String?=null, initialOpenRequestId:Int=0) {
     val context=LocalContext.current
     val scope= rememberCoroutineScope()
     var topics by remember(classId) { mutableStateOf<List<BackendForumTopicDto>>(emptyList()) }
@@ -48,7 +48,7 @@ fun BackendForumPanel(classId:String, sessionId:String?, currentUserId:String, c
             }},onFailure={e->busy=false;error=e.localizedMessage ?: "دریافت توکن ناموفق بود"})
         }
     }
-    LaunchedEffect(classId, initialTopicId, initialPostId) { run { token,repo ->
+    LaunchedEffect(classId, initialTopicId, initialPostId, initialOpenRequestId) { run { token,repo ->
         topics=repo.topics(token,classId)
         val target=initialTopicId?.let { id -> topics.firstOrNull { it.id==id } }
         if(target!=null) { selected=target;posts=repo.posts(token,target.id);parentId=null;highlightedPostId=initialPostId }
