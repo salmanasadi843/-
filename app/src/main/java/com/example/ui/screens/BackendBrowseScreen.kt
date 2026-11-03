@@ -2,6 +2,8 @@ package com.example.ui.screens
 
 import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.horizontalScroll
+import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.text.BasicTextField
 import androidx.compose.foundation.relocation.BringIntoViewRequester
 import androidx.compose.foundation.relocation.bringIntoViewRequester
@@ -101,6 +103,30 @@ fun BackendBrowseScreen(onBack: () -> Unit) {
     var deletedSessions by remember { mutableStateOf<List<BackendSessionSummaryDto>>(emptyList()) }
     var confirmDeleteSession by remember { mutableStateOf<BackendSessionSummaryDto?>(null) }
 
+    fun folderDepth(folder: BackendTeacherFolderDto): Int {
+        var parentId = folder.parentFolderId
+        var depth = 0
+        val visited = mutableSetOf(folder.id)
+        while (parentId != null && visited.add(parentId)) {
+            val parent = teacherFolders.firstOrNull { it.id == parentId } ?: break
+            depth++
+            parentId = parent.parentFolderId
+        }
+        return depth
+    }
+
+    fun folderAndDescendantIds(rootId: String?): Set<String>? {
+        if (rootId == null) return null
+        val result = mutableSetOf(rootId)
+        var changed = true
+        while (changed) {
+            changed = false
+            teacherFolders.forEach { folder ->
+                if (folder.parentFolderId in result && result.add(folder.id)) changed = true
+            }
+        }
+        return result
+    }
     fun withFreshToken(action: suspend (String) -> Unit) {
         if (busy) return
         busy = true
@@ -564,7 +590,10 @@ fun BackendBrowseScreen(onBack: () -> Unit) {
                             showFolderDialog = true
                         }, enabled = !busy) { Text("پوشه جدید") }
                     }
-                    Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    Row(
+                        modifier = Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()),
+                        horizontalArrangement = Arrangement.spacedBy(8.dp)
+                    ) {
                         FilterChip(
                             selected = selectedFolderId == null,
                             onClick = { selectedFolderId = null },
@@ -575,7 +604,7 @@ fun BackendBrowseScreen(onBack: () -> Unit) {
                                 FilterChip(
                                     selected = selectedFolderId == folder.id,
                                     onClick = { selectedFolderId = if (selectedFolderId == folder.id) null else folder.id },
-                                    label = { Text(if (folder.parentFolderId == null) folder.name else "↳ ${folder.name}") }
+                                    label = { Text(("　".repeat(folderDepth(folder))) + (if (folderDepth(folder) > 0) "↳ " else "") + folder.name) }
                                 )
                                 TextButton(onClick = {
                                     editingFolder = folder
@@ -625,7 +654,10 @@ fun BackendBrowseScreen(onBack: () -> Unit) {
                         }
                     }
                 }
-                val teacherClasses = classes.filter { it.ownerUserId == teacherId && (selectedFolderId == null || it.folderId == selectedFolderId) }.sortedBy { it.sortOrder }
+                val selectedFolderTree = folderAndDescendantIds(selectedFolderId)
+                val teacherClasses = classes.filter {
+                    it.ownerUserId == teacherId && (selectedFolderTree == null || it.folderId in selectedFolderTree)
+                }.sortedBy { it.sortOrder }
                 if (teacherClasses.isEmpty()) item { Text("کلاسی برای این استاد ثبت نشده است.", style = MaterialTheme.typography.bodySmall) }
                 items(teacherClasses, key = { it.id }) { clazz ->
                     Card(
