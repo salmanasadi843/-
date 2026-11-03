@@ -631,6 +631,12 @@ fun BackendBrowseScreen(onBack: () -> Unit) {
                     color = MaterialTheme.colorScheme.onSurfaceVariant
                 )
             }
+            item {
+                BackendTeacherApplicationsPanel(
+                    accountRoles = accountRoles,
+                    onStatus = { status = it }
+                )
+            }
             item { Text("۱. استاد", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold) }
             if (teachers.isEmpty() && !busy) {
                 item { Text("استادی با کلاس قابل مشاهده پیدا نشد.", style = MaterialTheme.typography.bodySmall) }
