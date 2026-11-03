@@ -212,5 +212,7 @@ export const api = {
     request<ClassAnnouncement[]>(`/api/v1/classes/${encodeURIComponent(classId)}/announcements`, token),
   createClassAnnouncement: (classId: string, data: { title: string; body: string }, token: string) =>
     request<ClassAnnouncement>(`/api/v1/classes/${encodeURIComponent(classId)}/announcements`, token, { method: "POST", body: JSON.stringify(data) }),
+  deleteClassAnnouncement: (classId: string, announcementId: string, token: string) =>
+    request<void>(`/api/v1/classes/${encodeURIComponent(classId)}/announcements/${encodeURIComponent(announcementId)}`, token, { method: "DELETE" }),
 
 };
