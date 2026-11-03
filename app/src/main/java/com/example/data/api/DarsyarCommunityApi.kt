@@ -23,6 +23,8 @@ interface DarsyarCommunityApi {
     suspend fun announcements(@Path("classId") classId:String,@Header("Authorization") auth:String):Response<List<BackendAnnouncementDto>>
     @POST("api/v1/classes/{classId}/announcements")
     suspend fun createAnnouncement(@Path("classId") classId:String,@Body body:AnnouncementWriteDto,@Header("Authorization") auth:String):Response<BackendAnnouncementDto>
+    @DELETE("api/v1/classes/{classId}/announcements/{announcementId}")
+    suspend fun deleteAnnouncement(@Path("classId") classId:String,@Path("announcementId") announcementId:String,@Header("Authorization") auth:String):Response<Unit>
     @GET("api/v1/classes/{classId}/forum/topics")
     suspend fun topics(@Path("classId") classId:String,@Header("Authorization") auth:String):Response<List<BackendForumTopicDto>>
     @POST("api/v1/classes/{classId}/forum/topics")
@@ -154,6 +156,10 @@ class DarsyarCommunityRepository(private val api:DarsyarCommunityApi) {
     suspend fun announcements(token:String,classId:String)=checked(api.announcements(classId,"Bearer $token"),"announcements")
     suspend fun createAnnouncement(token:String,classId:String,title:String,body:String)=
         checked(api.createAnnouncement(classId,AnnouncementWriteDto(title,body),"Bearer $token"),"announcements/create")
+    suspend fun deleteAnnouncement(token:String,classId:String,announcementId:String) {
+        val response=api.deleteAnnouncement(classId,announcementId,"Bearer $token")
+        if(!response.isSuccessful) throw BackendHttpException(response.code(),"announcements/delete")
+    }
     suspend fun topics(token:String,classId:String)=checked(api.topics(classId,"Bearer $token"),"forum/topics")
     suspend fun createTopic(token:String,classId:String,sessionId:String?,title:String,body:String)=
         checked(api.createTopic(classId,ForumTopicWriteDto(sessionId,title,body),"Bearer $token"),"forum/topics")
