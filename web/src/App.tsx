@@ -678,8 +678,30 @@ export default function App() {
       if (clazz) {
         await openClass(clazz);
         if (item.topicId) {
-          const topic = (await api.forumTopics(clazz.id, await user.getIdToken())).find(t => t.id === item.topicId);
-          if (topic) await openForumTopic(topic, item.postId);
+          const token = await user.getIdToken();
+          const topic = (await api.forumTopics(clazz.id, token)).find(t => t.id === item.topicId);
+          if (topic) {
+            await openForumTopic(topic, item.postId);
+            if (topic.sessionId) {
+              const sessionList = await api.sessions(clazz.id, token);
+              const linkedSession = sessionList.find(session => session.id === topic.sessionId);
+              if (linkedSession) {
+                const [sessionDetail, sources, savedState, notes] = await Promise.all([
+                  api.session(clazz.id, linkedSession.id, token),
+                  api.audioSources(linkedSession.id, token),
+                  api.sessionState(clazz.id, linkedSession.id, token),
+                  api.sessionNotes(clazz.id, linkedSession.id, token),
+                ]);
+                setSessions(sessionList);
+                setDetail(sessionDetail);
+                setAudioSources(sources);
+                setSessionState(savedState);
+                setPlaybackPositionMs(savedState.lastPlaybackPositionMs);
+                setSessionNotes(notes);
+                setNoteQuote(""); setNoteDraft(""); setNoteOffsets(null); setActiveNoteId(null); setEditingNoteId(null);
+              }
+            }
+          }
         }
       }
     } catch(e) { setError(message(e)); }
