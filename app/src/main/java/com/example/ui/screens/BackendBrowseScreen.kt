@@ -46,6 +46,7 @@ fun BackendBrowseScreen(onBack: () -> Unit) {
     var teacherFolders by remember { mutableStateOf<List<BackendTeacherFolderDto>>(emptyList()) }
     var selectedFolderId by remember { mutableStateOf<String?>(null) }
     var folderNameDraft by remember { mutableStateOf("") }
+    var folderParentDraft by remember { mutableStateOf<String?>(null) }
     var editingFolder by remember { mutableStateOf<BackendTeacherFolderDto?>(null) }
     var showFolderDialog by remember { mutableStateOf(false) }
     var classFolderDraft by remember { mutableStateOf<String?>(null) }
@@ -559,6 +560,7 @@ fun BackendBrowseScreen(onBack: () -> Unit) {
                         TextButton(onClick = {
                             editingFolder = null
                             folderNameDraft = ""
+                            folderParentDraft = null
                             showFolderDialog = true
                         }, enabled = !busy) { Text("پوشه جدید") }
                     }
@@ -578,6 +580,7 @@ fun BackendBrowseScreen(onBack: () -> Unit) {
                                 TextButton(onClick = {
                                     editingFolder = folder
                                     folderNameDraft = folder.name
+                                    folderParentDraft = folder.parentFolderId
                                     showFolderDialog = true
                                 }, enabled = !busy) { Text("ویرایش") }
                             }
@@ -1086,6 +1089,24 @@ fun BackendBrowseScreen(onBack: () -> Unit) {
                         singleLine = true,
                         modifier = Modifier.fillMaxWidth()
                     )
+                    Text("پوشه مادر", style = MaterialTheme.typography.labelLarge)
+                    Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                        FilterChip(
+                            selected = folderParentDraft == null,
+                            onClick = { folderParentDraft = null },
+                            label = { Text("بدون والد") }
+                        )
+                        teacherFolders.filter {
+                            it.ownerUserId == (editingFolder?.ownerUserId ?: if ("super_admin" in accountRoles) selectedTeacherId ?: accountId else accountId) &&
+                                it.id != editingFolder?.id
+                        }.forEach { parent ->
+                            FilterChip(
+                                selected = folderParentDraft == parent.id,
+                                onClick = { folderParentDraft = parent.id },
+                                label = { Text(parent.name) }
+                            )
+                        }
+                    }
                     if (editingFolder != null) {
                         Row(verticalAlignment = Alignment.CenterVertically) {
                             Checkbox(
@@ -1106,7 +1127,7 @@ fun BackendBrowseScreen(onBack: () -> Unit) {
                         val api = DarsyarReadOnlyApiFactory.create()
                         val request = BackendTeacherFolderWriteRequest(
                             ownerUserId = current?.ownerUserId ?: if ("super_admin" in accountRoles) selectedTeacherId ?: accountId else accountId,
-                            parentFolderId = current?.parentFolderId,
+                            parentFolderId = folderParentDraft,
                             name = folderNameDraft.trim(),
                             sortOrder = current?.sortOrder ?: teacherFolders.size,
                             isHidden = current?.isHidden ?: false
