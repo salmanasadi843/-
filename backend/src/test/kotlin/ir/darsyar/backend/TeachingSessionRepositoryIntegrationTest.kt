@@ -97,6 +97,19 @@ class TeachingSessionRepositoryIntegrationTest {
                 owner.toString(), setOf(AppRole.TEACHER),
                 CreateTeachingSession(classId = privateClass.id, title = "خصوصی", isPublished = true)
             )
+
+            // Legacy sessions often share sort_order = 0; reordering must still work
+            // deterministically and must remain restricted to the owning teacher/admin.
+            assertFailsWith<SecurityException> {
+                repository.reorder(otherTeacher.toString(), setOf(AppRole.TEACHER), unpublished.id, "up")
+            }
+            val reordered = repository.reorder(owner.toString(), setOf(AppRole.TEACHER), unpublished.id, "up")
+            assertNotNull(reordered)
+            val privateOrder = repository.listVisible(owner.toString(), setOf(AppRole.TEACHER), privateClass.id)
+            assertTrue(
+                privateOrder.indexOfFirst { it.id == unpublished.id } <
+                    privateOrder.indexOfFirst { it.id == privatePublished.id }
+            )
             assertEquals("متن اصلی", published.originalTranscript)
             assertEquals("متن ویرایش‌شده", published.transcript)
             assertEquals("خلاصه", published.aiSummary)
