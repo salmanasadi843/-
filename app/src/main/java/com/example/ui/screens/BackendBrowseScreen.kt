@@ -8,6 +8,7 @@ import androidx.compose.foundation.relocation.bringIntoViewRequester
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.Cloud
@@ -333,6 +334,27 @@ fun BackendBrowseScreen(onBack: () -> Unit) {
         }
     }
 
+    fun reorderSessionInClass(session: BackendSessionSummaryDto, direction: String) {
+        if (!("super_admin" in accountRoles || ("teacher" in accountRoles && selectedClass?.ownerUserId == accountId))) return
+        withFreshToken { token ->
+            val reordered = withContext(Dispatchers.IO) {
+                DarsyarReadOnlyApiFactory.create().reorderSession(token, session.id, direction)
+            }
+            val refreshed = withContext(Dispatchers.IO) {
+                DarsyarReadOnlyApiFactory.create().loadSessions(token, session.classId)
+            }
+            sessions = refreshed.sortedWith(compareBy<BackendSessionSummaryDto> { it.sortOrder }.thenBy { it.dateMs ?: Long.MAX_VALUE }.thenBy { it.title })
+            selectedSession = selectedSession?.let { detail ->
+                if (detail.id == reordered.id) detail.copy(sortOrder = reordered.sortOrder, version = reordered.version) else detail
+            }
+            status = if (refreshed.none { it.id != session.id && it.sortOrder == session.sortOrder }) {
+                "ترتیب جلسه‌ها به‌روزرسانی شد."
+            } else {
+                "ترتیب جلسه‌ها ذخیره شد."
+            }
+        }
+    }
+
     fun moveSelectedSession() {
         val session = movingSession ?: return
         if (moveTargetClassId.isBlank() || moveTargetClassId == session.classId) {
@@ -554,7 +576,7 @@ fun BackendBrowseScreen(onBack: () -> Unit) {
                     }
                 }
                 if (sessions.isEmpty() && !busy) item { Text("جلسه‌ای برای این کلاس ثبت نشده است.", style = MaterialTheme.typography.bodySmall) }
-                items(sessions, key = { it.id }) { session ->
+                itemsIndexed(sessions, key = { _, session -> session.id }) { sessionIndex, session ->
                     Card(
                         Modifier.fillMaxWidth().clickable { openSession(session) },
                         colors = CardDefaults.cardColors(
@@ -569,6 +591,16 @@ fun BackendBrowseScreen(onBack: () -> Unit) {
                                 if (session.courseName.isNotBlank()) Text("درس: ${session.courseName}", style = MaterialTheme.typography.bodySmall)
                             }
                             if ("super_admin" in accountRoles || ("teacher" in accountRoles && selectedClass?.ownerUserId == accountId)) {
+                                Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                                    TextButton(
+                                        onClick = { reorderSessionInClass(session, "up") },
+                                        enabled = !busy && sessionIndex > 0
+                                    ) { Text("↑") }
+                                    TextButton(
+                                        onClick = { reorderSessionInClass(session, "down") },
+                                        enabled = !busy && sessionIndex < sessions.lastIndex
+                                    ) { Text("↓") }
+                                }
                                 TextButton(
                                     onClick = {
                                         movingSession = session
