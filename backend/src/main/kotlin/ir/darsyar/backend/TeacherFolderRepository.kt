@@ -38,11 +38,10 @@ class TeacherFolderRepository(private val dataSource: DataSource) {
         val teacher = AppRole.TEACHER in roles
         val student = AppRole.STUDENT in roles
         val sql = """
-            SELECT f.id::text, f.owner_user_id::text, f.parent_folder_id::text,
-                   f.name, f.sort_order, f.is_hidden, f.version
-            FROM teacher_folders f
-            WHERE f.deleted_at IS NULL AND (
-                ? OR f.owner_user_id = ?::uuid OR EXISTS (
+            WITH RECURSIVE visible_folder_tree(id, parent_folder_id) AS (
+                SELECT f.id, f.parent_folder_id
+                FROM teacher_folders f
+                WHERE EXISTS (
                     SELECT 1 FROM teaching_classes c
                     WHERE c.folder_id = f.id AND c.owner_user_id = f.owner_user_id
                       AND c.deleted_at IS NULL AND c.is_published = true AND c.is_hidden = false
@@ -54,14 +53,25 @@ class TeacherFolderRepository(private val dataSource: DataSource) {
                           ))
                       )
                 )
+                UNION
+                SELECT parent.id, parent.parent_folder_id
+                FROM teacher_folders parent
+                JOIN visible_folder_tree child ON child.parent_folder_id = parent.id
+                WHERE parent.deleted_at IS NULL
+            )
+            SELECT f.id::text, f.owner_user_id::text, f.parent_folder_id::text,
+                   f.name, f.sort_order, f.is_hidden, f.version
+            FROM teacher_folders f
+            WHERE f.deleted_at IS NULL AND (
+                ? OR f.owner_user_id = ?::uuid OR f.id IN (SELECT id FROM visible_folder_tree)
             ) AND (? OR f.owner_user_id = ?::uuid OR f.is_hidden = false)
             ORDER BY f.owner_user_id, f.parent_folder_id NULLS FIRST, f.sort_order, f.name
         """.trimIndent()
         dataSource.connection.use { connection ->
             connection.prepareStatement(sql).use { statement ->
-                statement.setBoolean(1, admin)
+                statement.setBoolean(1, student)
                 statement.setString(2, actorUserId)
-                statement.setBoolean(3, student)
+                statement.setBoolean(3, admin)
                 statement.setString(4, actorUserId)
                 statement.setBoolean(5, admin)
                 statement.setString(6, actorUserId)
