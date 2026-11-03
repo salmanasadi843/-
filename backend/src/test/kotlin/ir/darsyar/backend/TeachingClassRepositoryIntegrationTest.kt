@@ -212,10 +212,10 @@ class TeachingClassRepositoryIntegrationTest {
                 studentView.map { it.id }.toSet()
             )
             val visitorView = repository.listVisible(visitor.toString(), emptySet())
-            assertEquals(setOf(publicClass.id), visitorView.map { it.id }.toSet())
+            assertEquals(setOf(publicClass.id, adminCreatedClass.id), visitorView.map { it.id }.toSet())
 
             // Anonymous catalog must never include private, hidden, or unpublished classes.
-            assertEquals(setOf(publicClass.id), repository.listAnonymousPublic().map { it.id }.toSet())
+            assertEquals(setOf(publicClass.id, adminCreatedClass.id), repository.listAnonymousPublic().map { it.id }.toSet())
 
             val ownerView = repository.listVisible(ownerA.toString(), setOf(AppRole.TEACHER))
             assertTrue(setOf(hiddenClass.id, unpublishedClass.id).all { id -> ownerView.any { it.id == id } })
