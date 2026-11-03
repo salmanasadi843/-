@@ -877,6 +877,18 @@ export default function App() {
     finally { setBusy(false); }
   }
 
+  async function reorderSession(session: SessionSummary, direction: "up" | "down") {
+    if (!user || !canManageSelectedClass || !selectedClass) return;
+    setBusy(true); setError(""); setNotice("");
+    try {
+      const token = await user.getIdToken();
+      await api.reorderSession(session.id, direction, token);
+      setSessions(await api.sessions(selectedClass.id, token));
+      setNotice("ترتیب جلسه‌ها به‌روزرسانی شد.");
+    } catch (e) { setError(message(e)); }
+    finally { setBusy(false); }
+  }
+
   async function removeSelectedSession() {
     if (!user || !detail || !canManageSelectedClass) return;
     if (!window.confirm("این جلسه حذف شود؟ امکان بازیابی آن از طریق API وجود دارد.")) return;
@@ -1146,9 +1158,13 @@ export default function App() {
               {code.isActive && <button type="button" className="ghost danger-text" disabled={busy} onClick={() => void revokeClassAccessCode(code.id)}>غیرفعال‌کردن</button>}
             </div>)}
           </section>}
-          {sessions.map(s => <div key={s.id} className="session-row">
+          {sessions.map((s, index) => <div key={s.id} className="session-row">
             <button type="button" className="session-row-open" onClick={() => void openSession(s)}><span>{s.title}</span><span className="muted">{s.courseName}</span></button>
-            {canManageSelectedClass && <button type="button" className="ghost" disabled={busy} onClick={() => setMovingSessionId(current => current === s.id ? null : s.id)}>انتقال به کلاس دیگر</button>}
+            {canManageSelectedClass && <div className="session-row-actions">
+              <button type="button" className="ghost" disabled={busy || index === 0} aria-label="انتقال جلسه به بالا" title="انتقال به بالا" onClick={() => void reorderSession(s, "up")}>↑</button>
+              <button type="button" className="ghost" disabled={busy || index === sessions.length - 1} aria-label="انتقال جلسه به پایین" title="انتقال به پایین" onClick={() => void reorderSession(s, "down")}>↓</button>
+              <button type="button" className="ghost" disabled={busy} onClick={() => setMovingSessionId(current => current === s.id ? null : s.id)}>انتقال به کلاس دیگر</button>
+            </div>}
             {movingSessionId === s.id && canManageSelectedClass && <div className="session-move-targets">
               <span className="muted">کلاس مقصد:</span>
               {classes.filter(target => target.id !== selectedClass.id && (isAdmin || target.ownerUserId === me?.userId)).map(target =>
