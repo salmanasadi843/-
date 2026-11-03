@@ -53,6 +53,13 @@ class ClassForumRepositoryIntegrationTest {
                 "پرسش درباره درس","لطفاً این نکته را توضیح دهید.")
             assertEquals(1,repo.listTopics(owner.toString(),setOf(AppRole.TEACHER),clazz.id).size)
             assertEquals(1,repo.listTopics(student.toString(),setOf(AppRole.STUDENT),clazz.id).size)
+            // Mentions are delivered only to users who belong to this class.
+            repo.createReply(student.toString(),setOf(AppRole.STUDENT),topic.id,null,
+                "سلام @["+owner+"] و @["+stranger+"]")
+            val ownerInbox=repo.listNotifications(owner.toString(),true)
+            assertTrue(ownerInbox.any { it.notificationType=="forum_mention" && it.actorUserId==student.toString() })
+            assertFalse(repo.listNotifications(stranger.toString(),true).any { it.notificationType=="forum_mention" })
+            assertFalse(repo.markNotificationRead(stranger.toString(),ownerInbox.first().id))
             assertFailsWith<SecurityException> {
                 repo.listPosts(stranger.toString(),setOf(AppRole.STUDENT),topic.id)
             }
