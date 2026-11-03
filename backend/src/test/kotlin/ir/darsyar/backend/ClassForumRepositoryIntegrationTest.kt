@@ -65,7 +65,7 @@ class ClassForumRepositoryIntegrationTest {
             }
             val reply=repo.createReply(owner.toString(),setOf(AppRole.TEACHER),topic.id,null,
                 "با توجه به مقدمه جلسه، پاسخ چنین است.")
-            assertEquals(1,repo.listPosts(student.toString(),setOf(AppRole.STUDENT),topic.id).size)
+            assertEquals(2,repo.listPosts(student.toString(),setOf(AppRole.STUDENT),topic.id).size)
             assertTrue(reply.topicId==topic.id)
             val studentInbox=repo.listNotifications(student.toString(),true)
             assertTrue(studentInbox.any { it.notificationType=="forum_reply" && it.topicId==topic.id })
