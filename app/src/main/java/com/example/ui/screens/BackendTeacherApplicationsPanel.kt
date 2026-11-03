@@ -131,7 +131,6 @@ fun BackendTeacherApplicationsPanel(
                         }
                         currentApplication = result
                         onStatus("درخواست شما در سامانه جدید ثبت شد؛ وضعیت: ${result.approvalStatus}.")
-                        if (isSuperAdmin) refreshPending()
                     }
                 },
                 enabled = !busy && (teachingField.isNotBlank() || institutionName.isNotBlank())
