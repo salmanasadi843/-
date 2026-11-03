@@ -537,6 +537,18 @@ export default function App() {
     finally { setBusy(false); }
   }
 
+  async function deleteClassAnnouncement(item: ClassAnnouncement) {
+    if (!user || !selectedClass || !canManageSelectedClass) return;
+    if (!window.confirm("این اعلان از فهرست کلاس حذف شود؟")) return;
+    setBusy(true); setError(""); setNotice("");
+    try {
+      await api.deleteClassAnnouncement(selectedClass.id, item.id, await user.getIdToken());
+      setAnnouncements(current => current.filter(announcement => announcement.id !== item.id));
+      setNotice("اعلان حذف شد.");
+    } catch (e) { setError(message(e)); }
+    finally { setBusy(false); }
+  }
+
   async function openForumTopic(topic: ForumTopic, targetPostId: string | null = null) {
     if (!user) return;
     setBusy(true); setError("");
@@ -1184,6 +1196,7 @@ export default function App() {
             {announcements.map(item => <article className="announcement-item" key={item.id}>
               <strong>{item.title}</strong><p className="pre">{item.body}</p>
               <small>{item.authorName} · {new Date(item.publishedAtMs).toLocaleString("fa-IR")}</small>
+              {canManageSelectedClass && <button type="button" className="ghost danger-text" disabled={busy} onClick={() => void deleteClassAnnouncement(item)}>حذف اعلان</button>}
             </article>)}
             {!announcements.length && <p className="muted">هنوز اعلانی برای این کلاس منتشر نشده است.</p>}
           </section>
