@@ -18,7 +18,7 @@ Last reviewed: 2026-11-03
 
 ## Remaining work (only these gaps)
 
-1. Add Android API methods and DTOs for teacher application submission, listing pending applications, and admin decisions using the existing authenticated Firebase ID token.
+1. [x] Add Android API methods and DTOs for teacher application submission, listing pending applications, and admin decisions using the existing authenticated Firebase ID token. Repository tests were added; CI result is pending.
 2. Integrate those calls into Android UI without removing or corrupting existing local data. Show admin approval controls only when backend `/api/v1/me` confirms `super_admin`.
 3. Decide and document how the legacy Firebase `teacher_requests` flow is handled during transition; do not silently mix Firebase and backend approval states.
 4. Add API/repository and UI tests for student, teacher, and super-admin behavior; verify server authorization remains authoritative.
