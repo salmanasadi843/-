@@ -16,7 +16,7 @@ import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 
 @Composable
-fun BackendForumPanel(classId:String, sessionId:String?, currentUserId:String, canModerate:Boolean, onStatus:(String)->Unit, initialTopicId:String?=null, initialPostId:String?=null, initialOpenRequestId:Int=0) {
+fun BackendForumPanel(classId:String, sessionId:String?, currentUserId:String, canModerate:Boolean, onStatus:(String)->Unit, initialTopicId:String?=null, initialPostId:String?=null, initialOpenRequestId:Int=0, onOpenSession:(String)->Unit = {}) {
     val context=LocalContext.current
     val scope= rememberCoroutineScope()
     var topics by remember(classId) { mutableStateOf<List<BackendForumTopicDto>>(emptyList()) }
@@ -51,7 +51,7 @@ fun BackendForumPanel(classId:String, sessionId:String?, currentUserId:String, c
     LaunchedEffect(classId, initialTopicId, initialPostId, initialOpenRequestId) { run { token,repo ->
         topics=repo.topics(token,classId)
         val target=initialTopicId?.let { id -> topics.firstOrNull { it.id==id } }
-        if(target!=null) { selected=target;posts=repo.posts(token,target.id);parentId=null;highlightedPostId=initialPostId }
+        if(target!=null) { selected=target;posts=repo.posts(token,target.id);parentId=null;highlightedPostId=initialPostId;target.sessionId?.let(onOpenSession) }
     } }
 
     Column(Modifier.fillMaxWidth().padding(top=18.dp),verticalArrangement=Arrangement.spacedBy(10.dp)) {
