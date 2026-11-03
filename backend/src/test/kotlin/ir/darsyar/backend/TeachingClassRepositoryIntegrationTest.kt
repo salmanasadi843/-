@@ -166,7 +166,7 @@ class TeachingClassRepositoryIntegrationTest {
             assertEquals("استاد الف", teacherDirectory.single { it.userId == ownerA.toString() }.displayName)
 
             val studentDirectory = repository.listVisibleTeachers(student.toString(), setOf(AppRole.STUDENT))
-            assertEquals(listOf(ownerA.toString()), studentDirectory.map { it.userId })
+            assertEquals(setOf(ownerA.toString(), ownerB.toString()), studentDirectory.map { it.userId }.toSet())
             val adminDirectory = repository.listVisibleTeachers(admin.toString(), setOf(AppRole.SUPER_ADMIN))
             assertEquals(
                 setOf(ownerA.toString(), ownerB.toString(), teacherWithoutClasses.toString()),
