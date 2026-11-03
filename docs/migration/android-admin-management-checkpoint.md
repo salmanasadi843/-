@@ -25,6 +25,16 @@ Verified head: `2f1906f0a73121c77b4910d878931fd5223ed0ce` (all four CI workflows
 4. [ ] Add API/repository and UI tests for student, teacher, and super-admin behavior; verify server authorization remains authoritative.
 5. [x] Re-run Android and backend CI for commit `2f1906f0a73121c77b4910d878931fd5223ed0ce`; Build Android APK, Build Darsyar Web, Backend CI, and Legacy Inventory Validator Tests all completed successfully.
 
+## Latest verification
+
+- Head commit: `2f1906f0a73121c77b4910d878931fd5223ed0ce`.
+- `Build Android APK`: success.
+- `Build Darsyar Web`: success.
+- `Backend CI`: success.
+- `Legacy Inventory Validator Tests`: success.
+- Backend `TeacherAdministrationRepository.decideApplication` explicitly accepts `approved`, `rejected`, and `revoked`; the Android repository's allowed values match it.
+- PR #39 remains open and Draft. No deployment, migration, or merge was performed.
+
 ## Acceptance criteria
 
 - Admin can review and approve/reject/revoke teacher applications through the backend from Android and web.
