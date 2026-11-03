@@ -26,15 +26,17 @@ class ClassForumRepositoryIntegrationTest {
             maximumPoolSize=3;connectionInitSql="SET search_path TO $schema"
         }
         HikariDataSource(config).use { ds ->
-            val owner=UUID.randomUUID();val student=UUID.randomUUID();val stranger=UUID.randomUUID()
+            val admin=UUID.randomUUID();val owner=UUID.randomUUID();val otherTeacher=UUID.randomUUID()
+            val student=UUID.randomUUID();val stranger=UUID.randomUUID()
             ds.connection.use { c ->
-                c.prepareStatement("INSERT INTO app_users(id,display_name) VALUES (?, 'استاد'), (?, 'دانشجو'), (?, 'بیگانه')").use {
-                    it.setObject(1,owner);it.setObject(2,student);it.setObject(3,stranger);it.executeUpdate()
+                c.prepareStatement("INSERT INTO app_users(id,display_name) VALUES (?, 'مدیر'), (?, 'استاد'), (?, 'استاد دیگر'), (?, 'دانشجو'), (?, 'بیگانه')").use {
+                    it.setObject(1,admin);it.setObject(2,owner);it.setObject(3,otherTeacher)
+                    it.setObject(4,student);it.setObject(5,stranger);it.executeUpdate()
                 }
             }
             ds.connection.use { c ->
-                c.prepareStatement("INSERT INTO app_roles(user_id,role_name) VALUES (?,'teacher')").use {
-                    it.setObject(1,owner);it.executeUpdate()
+                c.prepareStatement("INSERT INTO app_roles(user_id,role_name) VALUES (?,'teacher'), (?,'teacher')").use {
+                    it.setObject(1,owner);it.setObject(2,otherTeacher);it.executeUpdate()
                 }
             }
             val clazz=TeachingClassRepository(ds).create(owner.toString(),
@@ -76,6 +78,10 @@ class ClassForumRepositoryIntegrationTest {
             assertTrue(studentInbox.any { it.notificationType=="forum_reply" && it.topicId==topic.id })
             assertTrue(studentInbox.any { it.notificationType=="class_announcement" })
             assertFalse(repo.listNotifications(owner.toString(),true).any { it.actorUserId==owner.toString() })
+            assertFailsWith<SecurityException> {
+                repo.moderateTopic(otherTeacher.toString(),setOf(AppRole.TEACHER),topic.id,true,false)
+            }
+            assertTrue(repo.moderateTopic(admin.toString(),setOf(AppRole.SUPER_ADMIN),topic.id,true,false))
             assertTrue(repo.moderateTopic(owner.toString(),setOf(AppRole.TEACHER),topic.id,true,true))
             assertFailsWith<IllegalStateException> {
                 repo.createReply(student.toString(),setOf(AppRole.STUDENT),topic.id,null,"پاسخ پس از بسته شدن")
