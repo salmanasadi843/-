@@ -42,6 +42,13 @@ interface DarsyarReadOnlyApi {
         @Header("Authorization") authorization: String
     ): Response<List<BackendClassDto>>
 
+    @PATCH("api/v1/classes/{classId}")
+    suspend fun updateClass(
+        @retrofit2.http.Path("classId") classId: String,
+        @Header("Authorization") authorization: String,
+        @Body request: BackendClassWriteRequest
+    ): Response<BackendClassDto>
+
     @GET("api/v1/teachers")
     suspend fun getTeachers(
         @Header("Authorization") authorization: String
@@ -115,6 +122,18 @@ data class BackendClassDto(
     val isHidden: Boolean,
     val sortOrder: Int,
     val folderId: String?
+)
+
+@JsonClass(generateAdapter = true)
+data class BackendClassWriteRequest(
+    val title: String,
+    val description: String = "",
+    val term: String = "",
+    val visibility: String = "private",
+    val isPublished: Boolean = false,
+    val isHidden: Boolean = false,
+    val sortOrder: Int = 0,
+    val folderId: String? = null
 )
 
 @JsonClass(generateAdapter = true)
@@ -219,6 +238,19 @@ class DarsyarReadOnlyRepository(
         val response = api.getSessions(classId, "Bearer $firebaseIdToken")
         if (!response.isSuccessful) throw BackendHttpException(response.code(), "/api/v1/classes/{classId}/sessions")
         return response.body() ?: throw IllegalStateException("Backend returned an empty sessions response.")
+    }
+
+    /** Class mutations are authorized and audited by the backend (owner or super-admin). */
+    suspend fun updateClass(
+        firebaseIdToken: String,
+        classId: String,
+        request: BackendClassWriteRequest
+    ): BackendClassDto {
+        require(firebaseIdToken.isNotBlank()) { "Firebase ID token is required." }
+        require(classId.isNotBlank()) { "Class ID is required." }
+        val response = api.updateClass(classId, "Bearer $firebaseIdToken", request)
+        if (!response.isSuccessful) throw BackendHttpException(response.code(), "/api/v1/classes/{classId}")
+        return response.body() ?: throw IllegalStateException("Backend returned an empty class response.")
     }
 
     suspend fun loadTeacherFolders(firebaseIdToken: String): List<BackendTeacherFolderDto> {
