@@ -313,3 +313,115 @@ fun BackendNotificationsDialog(onDismiss:()->Unit, onUnreadCountChanged:(Int)->U
         confirmButton={TextButton(onClick=onDismiss){Text("بستن")}}
     )
 }
+
+
+@Composable
+fun BackendClassAccessPanel(classId:String,isPrivate:Boolean,canManage:Boolean,onStatus:(String)->Unit) {
+    val context=LocalContext.current
+    val scope= rememberCoroutineScope()
+    val clipboard=androidx.compose.ui.platform.LocalClipboardManager.current
+    var members by remember(classId) { mutableStateOf<List<BackendMembershipDto>>(emptyList()) }
+    var codes by remember(classId) { mutableStateOf<List<BackendAccessCodeDto>>(emptyList()) }
+    var maxUses by remember(classId) { mutableStateOf("20") }
+    var createdCode by remember(classId) { mutableStateOf<String?>(null) }
+    var busy by remember(classId) { mutableStateOf(false) }
+    var error by remember(classId) { mutableStateOf<String?>(null) }
+
+    fun refresh(token:String) {
+        scope.launch {
+            try {
+                val repo=DarsyarCommunityApiFactory.create()
+                val loadedMembers=withContext(Dispatchers.IO) { repo.members(token,classId) }
+                val loadedCodes=if(isPrivate) withContext(Dispatchers.IO) { repo.accessCodes(token,classId) } else emptyList()
+                members=loadedMembers
+                codes=loadedCodes
+            } catch(e:Exception) { error=e.localizedMessage ?: "دریافت اعضا و کدهای ورود ناموفق بود" }
+            finally { busy=false }
+        }
+    }
+    LaunchedEffect(classId,canManage,isPrivate) {
+        if(canManage) {
+            busy=true; error=null
+            AuthPreferences.getFirebaseIdToken(context) { result ->
+                result.fold(onSuccess={token->refresh(token)},onFailure={error=it.localizedMessage ?: "دریافت توکن ناموفق بود";busy=false})
+            }
+        } else {
+            members=emptyList();codes=emptyList();createdCode=null
+        }
+    }
+
+    if(!canManage) return
+    Card(Modifier.fillMaxWidth(),colors=CardDefaults.cardColors(containerColor=MaterialTheme.colorScheme.surfaceVariant)) {
+        Column(Modifier.fillMaxWidth().padding(14.dp),verticalArrangement=Arrangement.spacedBy(8.dp)) {
+            Text("مدیریت اعضای کلاس",style=MaterialTheme.typography.titleMedium,fontWeight=FontWeight.Bold)
+            Text("\${members.count { it.status=="active" }} عضو فعال",style=MaterialTheme.typography.bodySmall)
+            if(members.isEmpty() && !busy) Text("هنوز عضوی برای این کلاس ثبت نشده است.",style=MaterialTheme.typography.bodySmall)
+            members.forEach { member ->
+                Row(Modifier.fillMaxWidth(),horizontalArrangement=Arrangement.SpaceBetween,verticalAlignment=androidx.compose.ui.Alignment.CenterVertically) {
+                    Column(Modifier.weight(1f)) {
+                        Text(member.studentUserId,style=MaterialTheme.typography.bodySmall)
+                        Text(member.status,style=MaterialTheme.typography.labelSmall)
+                    }
+                    if(member.status=="active") TextButton(enabled=!busy,onClick={
+                        busy=true;error=null
+                        AuthPreferences.getFirebaseIdToken(context) { result -> result.fold(onSuccess={token->scope.launch {
+                            try {
+                                withContext(Dispatchers.IO){DarsyarCommunityApiFactory.create().revokeMembership(token,classId,member.studentUserId)}
+                                members=withContext(Dispatchers.IO){DarsyarCommunityApiFactory.create().members(token,classId)}
+                                onStatus("عضویت دانشجو لغو شد.")
+                            } catch(e:Exception){error=e.localizedMessage ?: "لغو عضویت ناموفق بود"}
+                            finally {busy=false}
+                        }},onFailure={error=it.localizedMessage ?: "دریافت توکن ناموفق بود";busy=false}) }
+                    }) { Text("لغو عضویت") }
+                }
+            }
+            if(isPrivate) {
+                HorizontalDivider()
+                Text("کدهای ورود کلاس خصوصی",style=MaterialTheme.typography.titleSmall,fontWeight=FontWeight.Bold)
+                OutlinedTextField(value=maxUses,onValueChange={maxUses=it.filter(Char::isDigit).take(5)},modifier=Modifier.fillMaxWidth(),label={Text("حداکثر دفعات استفاده")},singleLine=true)
+                Button(enabled=!busy && (maxUses.toIntOrNull() ?: 0) in 1..10000,onClick={
+                    busy=true;error=null;createdCode=null
+                    AuthPreferences.getFirebaseIdToken(context) { result -> result.fold(onSuccess={token->scope.launch {
+                        try {
+                            val created=withContext(Dispatchers.IO){DarsyarCommunityApiFactory.create().createAccessCode(token,classId,maxUses.toInt())}
+                            createdCode=created.code
+                            codes=withContext(Dispatchers.IO){DarsyarCommunityApiFactory.create().accessCodes(token,classId)}
+                            onStatus("کد ورود جدید ساخته شد؛ آن را در اختیار دانشجویان قرار دهید.")
+                        } catch(e:Exception){error=e.localizedMessage ?: "ساخت کد ورود ناموفق بود"}
+                        finally {busy=false}
+                    }},onFailure={error=it.localizedMessage ?: "دریافت توکن ناموفق بود";busy=false}) }
+                },modifier=Modifier.fillMaxWidth()) { Text("ساخت کد ورود") }
+                createdCode?.let { code ->
+                    Card(colors=CardDefaults.cardColors(containerColor=MaterialTheme.colorScheme.tertiaryContainer)) {
+                        Column(Modifier.fillMaxWidth().padding(10.dp),verticalArrangement=Arrangement.spacedBy(6.dp)) {
+                            Text("کد جدید؛ فقط همین بار نمایش داده می‌شود.",style=MaterialTheme.typography.labelSmall)
+                            Text(code,style=MaterialTheme.typography.titleMedium)
+                            TextButton(onClick={clipboard.setText(androidx.compose.ui.text.AnnotatedString(code));onStatus("کد ورود کپی شد.")}) { Text("کپی کد") }
+                        }
+                    }
+                }
+                codes.forEach { code ->
+                    Row(Modifier.fillMaxWidth(),horizontalArrangement=Arrangement.SpaceBetween,verticalAlignment=androidx.compose.ui.Alignment.CenterVertically) {
+                        Column(Modifier.weight(1f)) {
+                            Text(if(code.isActive) "فعال" else "غیرفعال",fontWeight=FontWeight.SemiBold)
+                            Text("\${code.useCount} از \${code.maxUses ?: "نامحدود"} استفاده",style=MaterialTheme.typography.labelSmall)
+                        }
+                        if(code.isActive) TextButton(enabled=!busy,onClick={
+                            busy=true;error=null
+                            AuthPreferences.getFirebaseIdToken(context) { result -> result.fold(onSuccess={token->scope.launch {
+                                try {
+                                    withContext(Dispatchers.IO){DarsyarCommunityApiFactory.create().revokeAccessCode(token,code.id)}
+                                    codes=withContext(Dispatchers.IO){DarsyarCommunityApiFactory.create().accessCodes(token,classId)}
+                                    onStatus("کد ورود غیرفعال شد.")
+                                } catch(e:Exception){error=e.localizedMessage ?: "غیرفعال‌سازی کد ناموفق بود"}
+                                finally {busy=false}
+                            }},onFailure={error=it.localizedMessage ?: "دریافت توکن ناموفق بود";busy=false}) }
+                        }) { Text("غیرفعال‌کردن") }
+                    }
+                }
+            }
+            error?.let { Text(it,color=MaterialTheme.colorScheme.error,style=MaterialTheme.typography.bodySmall) }
+            if(busy) LinearProgressIndicator(Modifier.fillMaxWidth())
+        }
+    }
+}
