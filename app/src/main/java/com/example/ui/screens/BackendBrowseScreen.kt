@@ -504,7 +504,7 @@ fun BackendBrowseScreen(onBack: () -> Unit) {
                                 TextButton(
                                     onClick = {
                                         movingSession = session
-                                        moveTargetClassId = classes.firstOrNull { it.id != session.classId }?.id.orEmpty()
+                                        moveTargetClassId = classes.firstOrNull { it.id != session.classId && ("super_admin" in accountRoles || it.ownerUserId == accountId) }?.id.orEmpty()
                                     },
                                     enabled = !busy && classes.any { it.id != session.classId }
                                 ) { Text("انتقال") }
@@ -700,7 +700,7 @@ fun BackendBrowseScreen(onBack: () -> Unit) {
         }
     }
     if (movingSession != null) {
-        val availableTargets = classes.filter { it.id != movingSession?.classId }
+        val availableTargets = classes.filter { it.id != movingSession?.classId && ("super_admin" in accountRoles || it.ownerUserId == accountId) }
         AlertDialog(
             onDismissRequest = { if (!busy) movingSession = null },
             title = { Text("انتقال جلسه به کلاس دیگر") },
