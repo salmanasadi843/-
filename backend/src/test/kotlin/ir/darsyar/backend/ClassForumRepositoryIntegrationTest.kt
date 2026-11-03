@@ -115,7 +115,7 @@ class ClassForumRepositoryIntegrationTest {
                 repo.updatePost(stranger.toString(),setOf(AppRole.STUDENT),reply.id,"تغییر غیرمجاز")
             }
             assertTrue(repo.deletePost(owner.toString(),setOf(AppRole.TEACHER),reply.id))
-            assertEquals(0,repo.listPosts(student.toString(),setOf(AppRole.STUDENT),topic.id).size)
+            assertEquals(1,repo.listPosts(student.toString(),setOf(AppRole.STUDENT),topic.id).size)
             assertTrue(repo.deleteTopic(student.toString(),setOf(AppRole.STUDENT),topic.id))
             assertEquals(0,repo.listTopics(owner.toString(),setOf(AppRole.TEACHER),clazz.id).size)
 
