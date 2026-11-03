@@ -104,6 +104,24 @@ interface DarsyarReadOnlyApi {
         @Body request: BackendMoveSessionRequest
     ): Response<BackendSessionDto>
 
+    @POST("api/v1/teacher-applications")
+    suspend fun submitTeacherApplication(
+        @Header("Authorization") authorization: String,
+        @Body request: BackendTeacherApplicationWriteRequest
+    ): Response<BackendTeacherApplicationDto>
+
+    @GET("api/v1/admin/teacher-applications")
+    suspend fun getPendingTeacherApplications(
+        @Header("Authorization") authorization: String
+    ): Response<List<BackendTeacherApplicationDto>>
+
+    @PATCH("api/v1/admin/teacher-applications/{userId}")
+    suspend fun decideTeacherApplication(
+        @retrofit2.http.Path("userId") userId: String,
+        @Header("Authorization") authorization: String,
+        @Body request: BackendTeacherApplicationDecisionRequest
+    ): Response<BackendTeacherApplicationDto>
+
     @GET("api/v1/teachers")
     suspend fun getTeachers(
         @Header("Authorization") authorization: String
@@ -163,6 +181,27 @@ data class BackendMeDto(
 data class BackendTeacherDto(
     val userId: String,
     val displayName: String
+)
+
+@JsonClass(generateAdapter = true)
+data class BackendTeacherApplicationDto(
+    val userId: String,
+    val displayName: String,
+    val email: String?,
+    val teachingField: String?,
+    val institutionName: String?,
+    val approvalStatus: String
+)
+
+@JsonClass(generateAdapter = true)
+data class BackendTeacherApplicationWriteRequest(
+    val teachingField: String? = null,
+    val institutionName: String? = null
+)
+
+@JsonClass(generateAdapter = true)
+data class BackendTeacherApplicationDecisionRequest(
+    val decision: String
 )
 
 @JsonClass(generateAdapter = true)
@@ -449,6 +488,41 @@ class DarsyarReadOnlyRepository(
         require(folderId.isNotBlank()) { "Folder ID is required." }
         val response = api.deleteTeacherFolder(folderId, "Bearer $firebaseIdToken")
         if (!response.isSuccessful) throw BackendHttpException(response.code(), "/api/v1/teacher-folders/{folderId}")
+    }
+
+    suspend fun submitTeacherApplication(
+        firebaseIdToken: String,
+        request: BackendTeacherApplicationWriteRequest
+    ): BackendTeacherApplicationDto {
+        require(firebaseIdToken.isNotBlank()) { "Firebase ID token is required." }
+        require(!request.teachingField.isNullOrBlank() || !request.institutionName.isNullOrBlank()) {
+            "At least one teacher application detail is required."
+        }
+        val response = api.submitTeacherApplication("Bearer $firebaseIdToken", request)
+        if (!response.isSuccessful) throw BackendHttpException(response.code(), "/api/v1/teacher-applications")
+        return response.body() ?: throw IllegalStateException("Backend returned an empty teacher application response.")
+    }
+
+    suspend fun loadPendingTeacherApplications(firebaseIdToken: String): List<BackendTeacherApplicationDto> {
+        require(firebaseIdToken.isNotBlank()) { "Firebase ID token is required." }
+        val response = api.getPendingTeacherApplications("Bearer $firebaseIdToken")
+        if (!response.isSuccessful) throw BackendHttpException(response.code(), "/api/v1/admin/teacher-applications")
+        return response.body() ?: throw IllegalStateException("Backend returned an empty teacher applications response.")
+    }
+
+    suspend fun decideTeacherApplication(
+        firebaseIdToken: String,
+        userId: String,
+        decision: String
+    ): BackendTeacherApplicationDto {
+        require(firebaseIdToken.isNotBlank()) { "Firebase ID token is required." }
+        require(userId.isNotBlank()) { "Teacher user ID is required." }
+        require(decision in setOf("approved", "rejected", "revoked")) { "Unsupported teacher application decision." }
+        val response = api.decideTeacherApplication(
+            userId, "Bearer $firebaseIdToken", BackendTeacherApplicationDecisionRequest(decision)
+        )
+        if (!response.isSuccessful) throw BackendHttpException(response.code(), "/api/v1/admin/teacher-applications/{userId}")
+        return response.body() ?: throw IllegalStateException("Backend returned an empty teacher application decision response.")
     }
 
     suspend fun loadTeachers(firebaseIdToken: String): List<BackendTeacherDto> {
