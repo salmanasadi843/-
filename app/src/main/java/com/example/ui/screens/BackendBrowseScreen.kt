@@ -579,16 +579,24 @@ fun BackendBrowseScreen(onBack: () -> Unit) {
                     color = MaterialTheme.colorScheme.onSurfaceVariant
                 )
             }
-            if ("super_admin" in accountRoles || "teacher" in accountRoles) {
+            if (selectedTeacherId != null) {
+                val folderOwnerId = selectedTeacherId
+                val canManageTeacherFolders = "super_admin" in accountRoles ||
+                    ("teacher" in accountRoles && folderOwnerId == accountId)
+                val visibleTeacherFolders = teacherFolders.filter {
+                    it.ownerUserId == folderOwnerId && (canManageTeacherFolders || !it.isHidden)
+                }
                 item {
                     Row(verticalAlignment = Alignment.CenterVertically) {
                         Text("پوشه‌های استاد", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold, modifier = Modifier.weight(1f))
-                        TextButton(onClick = {
-                            editingFolder = null
-                            folderNameDraft = ""
-                            folderParentDraft = null
-                            showFolderDialog = true
-                        }, enabled = !busy) { Text("پوشه جدید") }
+                        if (canManageTeacherFolders) {
+                            TextButton(onClick = {
+                                editingFolder = null
+                                folderNameDraft = ""
+                                folderParentDraft = null
+                                showFolderDialog = true
+                            }, enabled = !busy) { Text("پوشه جدید") }
+                        }
                     }
                     Row(
                         modifier = Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()),
@@ -599,19 +607,21 @@ fun BackendBrowseScreen(onBack: () -> Unit) {
                             onClick = { selectedFolderId = null },
                             label = { Text("همه") }
                         )
-                        teacherFolders.filter { "super_admin" in accountRoles || it.ownerUserId == accountId }
+                        visibleTeacherFolders.sortedWith(compareBy<BackendTeacherFolderDto> { folderDepth(it) }.thenBy { it.sortOrder })
                             .forEach { folder ->
                                 FilterChip(
                                     selected = selectedFolderId == folder.id,
                                     onClick = { selectedFolderId = if (selectedFolderId == folder.id) null else folder.id },
                                     label = { Text(("　".repeat(folderDepth(folder))) + (if (folderDepth(folder) > 0) "↳ " else "") + folder.name) }
                                 )
-                                TextButton(onClick = {
-                                    editingFolder = folder
-                                    folderNameDraft = folder.name
-                                    folderParentDraft = folder.parentFolderId
-                                    showFolderDialog = true
-                                }, enabled = !busy) { Text("ویرایش") }
+                                if (canManageTeacherFolders) {
+                                    TextButton(onClick = {
+                                        editingFolder = folder
+                                        folderNameDraft = folder.name
+                                        folderParentDraft = folder.parentFolderId
+                                        showFolderDialog = true
+                                    }, enabled = !busy) { Text("ویرایش") }
+                                }
                             }
                     }
                 }
@@ -624,6 +634,7 @@ fun BackendBrowseScreen(onBack: () -> Unit) {
                 Card(
                     Modifier.fillMaxWidth().clickable {
                         selectedTeacherId = teacher.userId
+                        selectedFolderId = null
                         selectedClass = null
                         sessions = emptyList()
                         selectedSession = null
@@ -654,9 +665,15 @@ fun BackendBrowseScreen(onBack: () -> Unit) {
                         }
                     }
                 }
+                val canSeeHiddenFolders = "super_admin" in accountRoles
+                val visibleFolderIds = teacherFolders.filter {
+                    it.ownerUserId == teacherId && (canSeeHiddenFolders || !it.isHidden)
+                }.map { it.id }.toSet()
                 val selectedFolderTree = folderAndDescendantIds(selectedFolderId)
-                val teacherClasses = classes.filter {
-                    it.ownerUserId == teacherId && (selectedFolderTree == null || it.folderId in selectedFolderTree)
+                val teacherClasses = classes.filter { clazz ->
+                    val folderIsVisible = clazz.folderId == null || clazz.folderId in visibleFolderIds
+                    clazz.ownerUserId == teacherId && folderIsVisible &&
+                        (selectedFolderTree == null || clazz.folderId in selectedFolderTree)
                 }.sortedBy { it.sortOrder }
                 if (teacherClasses.isEmpty()) item { Text("کلاسی برای این استاد ثبت نشده است.", style = MaterialTheme.typography.bodySmall) }
                 items(teacherClasses, key = { it.id }) { clazz ->
@@ -1235,8 +1252,10 @@ fun BackendBrowseScreen(onBack: () -> Unit) {
                             onClick = { classFolderDraft = null },
                             label = { Text("بدون پوشه") }
                         )
-                        teacherFolders.filter { it.ownerUserId == editingClass?.ownerUserId || "super_admin" in accountRoles }
-                            .forEach { folder ->
+                        teacherFolders.filter {
+                            (it.ownerUserId == editingClass?.ownerUserId || "super_admin" in accountRoles) &&
+                                ("super_admin" in accountRoles || !it.isHidden)
+                        }.forEach { folder ->
                                 FilterChip(
                                     selected = classFolderDraft == folder.id,
                                     onClick = { classFolderDraft = folder.id },
