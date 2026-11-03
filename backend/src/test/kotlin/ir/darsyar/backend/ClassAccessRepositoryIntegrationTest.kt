@@ -43,6 +43,15 @@ class ClassAccessRepositoryIntegrationTest {
                     st.executeUpdate()
                 }
             }
+            ds.connection.use { connection ->
+                connection.prepareStatement(
+                    "INSERT INTO app_roles(user_id, role_name) VALUES (?, 'teacher'), (?, 'teacher')"
+                ).use { st ->
+                    st.setObject(1, owner)
+                    st.setObject(2, otherTeacher)
+                    st.executeUpdate()
+                }
+            }
             val classRecord = TeachingClassRepository(ds).create(
                 owner.toString(),
                 CreateTeachingClass(owner.toString(), "Private class", "", "", "private", true)
