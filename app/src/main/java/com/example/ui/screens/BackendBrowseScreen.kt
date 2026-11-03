@@ -103,6 +103,9 @@ fun BackendBrowseScreen(onBack: () -> Unit) {
     var showDeletedSessions by remember { mutableStateOf(false) }
     var deletedSessions by remember { mutableStateOf<List<BackendSessionSummaryDto>>(emptyList()) }
     var confirmDeleteSession by remember { mutableStateOf<BackendSessionSummaryDto?>(null) }
+    var deletedClasses by remember { mutableStateOf<List<BackendClassDto>>(emptyList()) }
+    var showDeletedClassesDialog by remember { mutableStateOf(false) }
+    var confirmDeleteClass by remember { mutableStateOf<BackendClassDto?>(null) }
 
     fun folderDepth(folder: BackendTeacherFolderDto): Int {
         var parentId = folder.parentFolderId
@@ -283,6 +286,45 @@ fun BackendBrowseScreen(onBack: () -> Unit) {
             selectedClass = selectedClass?.let { if (it.id == updated.id) updated else it }
             editingClass = null
             status = "تغییرات کلاس ذخیره شد."
+        }
+    }
+
+    fun deleteClassFromDirectory(clazz: BackendClassDto) {
+        withFreshToken { token ->
+            withContext(Dispatchers.IO) {
+                DarsyarReadOnlyApiFactory.create().deleteClass(token, clazz.id)
+            }
+            classes = classes.filterNot { it.id == clazz.id }
+            if (selectedClass?.id == clazz.id) {
+                selectedClass = null
+                selectedSession = null
+                sessions = emptyList()
+            }
+            editingClass = null
+            confirmDeleteClass = null
+            status = "کلاس به سطل بازیافت منتقل شد؛ جلسه‌ها و محتوای آن حفظ شده‌اند."
+        }
+    }
+
+    fun openDeletedClasses() {
+        withFreshToken { token ->
+            deletedClasses = withContext(Dispatchers.IO) {
+                DarsyarReadOnlyApiFactory.create().loadDeletedClasses(token)
+            }
+            showDeletedClassesDialog = true
+            status = "کلاس‌های حذف‌شده دریافت شدند."
+        }
+    }
+
+    fun restoreClassFromRecycleBin(clazz: BackendClassDto) {
+        withFreshToken { token ->
+            withContext(Dispatchers.IO) {
+                DarsyarReadOnlyApiFactory.create().restoreClass(token, clazz.id)
+            }
+            deletedClasses = deletedClasses.filterNot { it.id == clazz.id }
+            classes = classes + clazz.copy(isHidden = false)
+            status = "کلاس بازیابی شد."
+            if (deletedClasses.isEmpty()) showDeletedClassesDialog = false
         }
     }
 
@@ -671,6 +713,9 @@ fun BackendBrowseScreen(onBack: () -> Unit) {
                     Row(verticalAlignment = Alignment.CenterVertically) {
                         Text("۲. کلاس‌های استاد", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
                         Spacer(Modifier.weight(1f))
+                        if ("super_admin" in accountRoles || ("teacher" in accountRoles && teacherId == accountId)) {
+                            TextButton(onClick = { openDeletedClasses() }, enabled = !busy) { Text("کلاس‌های حذف‌شده") }
+                        }
                         TextButton(onClick = { selectedTeacherId = null; selectedClass = null; sessions = emptyList(); selectedSession = null }) {
                             Text("بازگشت")
                         }
@@ -975,6 +1020,48 @@ fun BackendBrowseScreen(onBack: () -> Unit) {
             },
             dismissButton = {
                 TextButton(onClick = { confirmDeleteSession = null }, enabled = !busy) { Text("انصراف") }
+            }
+        )
+    }
+    if (confirmDeleteClass != null) {
+        val target = confirmDeleteClass
+        AlertDialog(
+            onDismissRequest = { if (!busy) confirmDeleteClass = null },
+            title = { Text("انتقال کلاس به سطل بازیافت؟") },
+            text = { Text("کلاس «${target?.title.orEmpty()}» از فهرست فعال خارج می‌شود؛ جلسه‌ها و محتوای آن حذف دائمی نمی‌شوند و امکان بازیابی وجود دارد.") },
+            confirmButton = {
+                TextButton(onClick = { target?.let { deleteClassFromDirectory(it) } }, enabled = !busy) { Text("تأیید حذف") }
+            },
+            dismissButton = {
+                TextButton(onClick = { confirmDeleteClass = null }, enabled = !busy) { Text("انصراف") }
+            }
+        )
+    }
+    if (showDeletedClassesDialog) {
+        AlertDialog(
+            onDismissRequest = { if (!busy) showDeletedClassesDialog = false },
+            title = { Text("کلاس‌های حذف‌شده") },
+            text = {
+                if (deletedClasses.isEmpty()) {
+                    Text("کلاس حذف‌شده‌ای وجود ندارد.")
+                } else {
+                    Column(
+                        modifier = Modifier.fillMaxWidth().heightIn(max = 420.dp),
+                        verticalArrangement = Arrangement.spacedBy(8.dp)
+                    ) {
+                        deletedClasses.forEach { deleted ->
+                            Row(verticalAlignment = Alignment.CenterVertically) {
+                                Text(deleted.title, modifier = Modifier.weight(1f))
+                                TextButton(onClick = { restoreClassFromRecycleBin(deleted) }, enabled = !busy) {
+                                    Text("بازیابی")
+                                }
+                            }
+                        }
+                    }
+                }
+            },
+            confirmButton = {
+                TextButton(onClick = { showDeletedClassesDialog = false }, enabled = !busy) { Text("بستن") }
             }
         )
     }
@@ -1306,7 +1393,10 @@ fun BackendBrowseScreen(onBack: () -> Unit) {
                 }
             },
             dismissButton = {
-                TextButton(onClick = { editingClass = null }, enabled = !busy) { Text("انصراف") }
+                Row {
+                    TextButton(onClick = { confirmDeleteClass = editingClass }, enabled = !busy) { Text("حذف کلاس") }
+                    TextButton(onClick = { editingClass = null }, enabled = !busy) { Text("انصراف") }
+                }
             }
         )
     }
