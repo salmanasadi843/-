@@ -78,6 +78,8 @@ class TeachingSessionRepositoryIntegrationTest {
                 }
             }
             val repository = TeachingSessionRepository(ds)
+            val audioRepository = TeachingAudioSourceRepository(ds)
+            val forumRepository = ClassForumRepository(ds)
             val published = repository.create(
                 owner.toString(), setOf(AppRole.TEACHER),
                 CreateTeachingSession(
@@ -89,6 +91,23 @@ class TeachingSessionRepositoryIntegrationTest {
                     aiQuizJson = """{"items":[]}""", tags = "اصول,فقه", isPublished = true
                 )
             )
+            val audioSource = audioRepository.create(
+                owner.toString(), setOf(AppRole.TEACHER), published.id,
+                CreateTeachingAudioSource(
+                    sourceKind = "direct_url",
+                    sourceUrl = "https://media.example.test/preserved-session-audio.mp3",
+                    title = "صدای اصلی جلسه",
+                    sortOrder = 1
+                )
+            )
+            val topic = forumRepository.createTopic(
+                owner.toString(), setOf(AppRole.TEACHER), publicClass.id,
+                published.id, "بحث مرتبط با جلسه", "متن آغاز بحث"
+            )
+            forumRepository.createReply(
+                student.toString(), setOf(AppRole.STUDENT), topic.id, null, "پاسخ دانشجو"
+            )
+
             val unpublished = repository.create(
                 owner.toString(), setOf(AppRole.TEACHER),
                 CreateTeachingSession(classId = privateClass.id, title = "پیش‌نویس", isPublished = false)
@@ -172,6 +191,34 @@ class TeachingSessionRepositoryIntegrationTest {
             assertEquals("متن ویرایش‌شده", moved.transcript)
             assertEquals("خلاصه", moved.aiSummary)
             assertEquals("کلیدواژه‌ها", moved.aiKeyPoints)
+            // Moving the parent session must retain audio metadata and carry its
+            // session-linked forum discussion and notification into the new class.
+            val movedAudio = audioRepository.listVisible(
+                admin.toString(), setOf(AppRole.SUPER_ADMIN), published.id
+            )
+            assertEquals(listOf(audioSource.id), movedAudio.map { it.id })
+            assertEquals(published.id, movedAudio.single().sessionId)
+            ds.connection.use { connection ->
+                connection.prepareStatement(
+                    "SELECT class_id::text FROM forum_topics WHERE id = ?::uuid AND session_id = ?::uuid"
+                ).use { st ->
+                    st.setString(1, topic.id)
+                    st.setString(2, published.id)
+                    st.executeQuery().use { rs ->
+                        check(rs.next())
+                        assertEquals(privateClass.id, rs.getString(1))
+                    }
+                }
+                connection.prepareStatement(
+                    "SELECT class_id::text FROM user_notifications WHERE topic_id = ?::uuid"
+                ).use { st ->
+                    st.setString(1, topic.id)
+                    st.executeQuery().use { rs ->
+                        check(rs.next())
+                        assertEquals(privateClass.id, rs.getString(1))
+                    }
+                }
+            }
 
             val updated = repository.update(
                 admin.toString(), setOf(AppRole.SUPER_ADMIN), published.id,
