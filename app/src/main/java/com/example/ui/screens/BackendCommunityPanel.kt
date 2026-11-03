@@ -376,7 +376,7 @@ fun BackendClassAccessPanel(classId:String,isPrivate:Boolean,canManage:Boolean,o
     Card(Modifier.fillMaxWidth(),colors=CardDefaults.cardColors(containerColor=MaterialTheme.colorScheme.surfaceVariant)) {
         Column(Modifier.fillMaxWidth().padding(14.dp),verticalArrangement=Arrangement.spacedBy(8.dp)) {
             Text("مدیریت اعضای کلاس",style=MaterialTheme.typography.titleMedium,fontWeight=FontWeight.Bold)
-            Text("\${members.count { it.status=="active" }} عضو فعال",style=MaterialTheme.typography.bodySmall)
+            Text("${members.count { it.status == "active" }} عضو فعال",style=MaterialTheme.typography.bodySmall)
             if(members.isEmpty() && !busy) Text("هنوز عضوی برای این کلاس ثبت نشده است.",style=MaterialTheme.typography.bodySmall)
             members.forEach { member ->
                 Row(Modifier.fillMaxWidth(),horizontalArrangement=Arrangement.SpaceBetween,verticalAlignment=androidx.compose.ui.Alignment.CenterVertically) {
@@ -426,7 +426,7 @@ fun BackendClassAccessPanel(classId:String,isPrivate:Boolean,canManage:Boolean,o
                     Row(Modifier.fillMaxWidth(),horizontalArrangement=Arrangement.SpaceBetween,verticalAlignment=androidx.compose.ui.Alignment.CenterVertically) {
                         Column(Modifier.weight(1f)) {
                             Text(if(code.isActive) "فعال" else "غیرفعال",fontWeight=FontWeight.SemiBold)
-                            Text("\${code.useCount} از \${code.maxUses ?: "نامحدود"} استفاده",style=MaterialTheme.typography.labelSmall)
+                            Text("${code.useCount} از ${code.maxUses ?: "نامحدود"} استفاده",style=MaterialTheme.typography.labelSmall)
                         }
                         if(code.isActive) TextButton(enabled=!busy,onClick={
                             busy=true;error=null
