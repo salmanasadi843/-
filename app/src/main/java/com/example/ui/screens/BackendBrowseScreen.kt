@@ -842,7 +842,11 @@ fun BackendBrowseScreen(onBack: () -> Unit) {
                         canModerate = "super_admin" in accountRoles || ("teacher" in accountRoles && clazz.ownerUserId == accountId),
                         onStatus = { status = it },
                         onOpenSession = { sessionId ->
-                            sessions.firstOrNull { it.id == sessionId }?.let { linkedSession -> openSession(linkedSession) }
+                            scope.launch {
+                                while (busy) delay(50)
+                                sessions.firstOrNull { it.id == sessionId }?.let { linkedSession -> openSession(linkedSession) }
+                                    ?: run { status = "جلسه مرتبط با اعلان در این کلاس پیدا نشد." }
+                            }
                         }
                     )
                 }
