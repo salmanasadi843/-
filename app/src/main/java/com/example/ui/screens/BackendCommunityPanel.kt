@@ -280,7 +280,7 @@ fun BackendNotificationsDialog(onDismiss:()->Unit, onUnreadCountChanged:(Int)->U
                                             error=e.localizedMessage ?: "علامت‌گذاری اعلان ناموفق بود"
                                         } finally { markingId=null }
                                     }},
-                                    onFailure={error=it.localizedMessage ?: "دریافت توکن ناموفق بود";markingId=null;onOpenNotification(item)}
+                                    onFailure={error=it.localizedMessage ?: "دریافت توکن ناموفق بود";markingId=null}
                                 ) }
                             } else onOpenNotification(item)
                         },
