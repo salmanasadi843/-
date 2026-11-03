@@ -5,7 +5,9 @@ import androidx.compose.ui.test.assertDoesNotExist
 import androidx.compose.ui.test.assertIsDisplayed
 import androidx.compose.ui.test.assertIsEnabled
 import androidx.compose.ui.test.assertIsNotEnabled
+import androidx.compose.ui.test.hasSetTextAction
 import androidx.compose.ui.test.junit4.createComposeRule
+import androidx.compose.ui.test.onNode
 import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.performTextInput
 import org.junit.Rule
@@ -53,7 +55,7 @@ class BackendTeacherApplicationsPanelTest {
         composeRule.onNodeWithText("ثبت درخواست استاد").assertIsNotEnabled()
         composeRule.onNodeWithText("درخواست‌های در انتظار بررسی").assertDoesNotExist()
 
-        composeRule.onNodeWithText("حوزه تدریس").performTextInput("فقه")
+        composeRule.onNode(hasSetTextAction()).performTextInput("فقه")
         composeRule.onNodeWithText("ثبت درخواست استاد").assertIsEnabled()
     }
 }
