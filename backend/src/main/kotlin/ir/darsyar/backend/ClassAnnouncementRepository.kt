@@ -36,6 +36,27 @@ class ClassAnnouncementRepository(private val dataSource:DataSource) {
         }
     }
 
+    fun delete(actor:String,roles:Set<AppRole>,classId:String,announcementId:String):Boolean {
+        val user=UUID.fromString(actor);val clazz=UUID.fromString(classId);val announcement=UUID.fromString(announcementId)
+        dataSource.connection.use { c ->
+            c.autoCommit=false
+            try {
+                val owner=c.prepareStatement("SELECT owner_user_id FROM teaching_classes WHERE id=? AND deleted_at IS NULL FOR UPDATE").use { st ->
+                    st.setObject(1,clazz);st.executeQuery().use { rs -> if(rs.next()) rs.getObject(1,UUID::class.java) else null }
+                } ?: throw IllegalArgumentException("Class not found.")
+                if(AppRole.SUPER_ADMIN !in roles && !(AppRole.TEACHER in roles && owner==user))
+                    throw SecurityException("Only the class owner or super admin can delete announcements.")
+                val deleted=c.prepareStatement("""
+                    UPDATE class_announcements SET deleted_at=now()
+                    WHERE id=? AND class_id=? AND deleted_at IS NULL
+                """.trimIndent()).use { st ->
+                    st.setObject(1,announcement);st.setObject(2,clazz);st.executeUpdate()>0
+                }
+                c.commit();return deleted
+            } catch(e:Throwable){c.rollback();throw e} finally {c.autoCommit=true}
+        }
+    }
+
     fun create(actor:String,roles:Set<AppRole>,classId:String,title:String,body:String):ClassAnnouncementRecord {
         require(title.trim().length in 3..200 && body.isNotBlank() && body.length<=20000) { "Invalid class announcement." }
         val user=UUID.fromString(actor);val clazz=UUID.fromString(classId)
