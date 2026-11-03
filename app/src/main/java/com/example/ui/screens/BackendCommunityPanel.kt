@@ -13,6 +13,7 @@ import androidx.compose.ui.unit.dp
 import com.example.data.api.*
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.withContext
 
 @Composable
@@ -263,7 +264,13 @@ fun BackendNotificationsDialog(onDismiss:()->Unit, onUnreadCountChanged:(Int)->U
         }
     }
 
-    LaunchedEffect(Unit) { loadNotifications() }
+    LaunchedEffect(Unit) {
+        loadNotifications()
+        while(true) {
+            delay(60_000)
+            loadNotifications()
+        }
+    }
 
     AlertDialog(
         onDismissRequest=onDismiss,
@@ -286,8 +293,9 @@ fun BackendNotificationsDialog(onDismiss:()->Unit, onUnreadCountChanged:(Int)->U
                                     onSuccess={token->scope.launch {
                                         try {
                                             withContext(Dispatchers.IO){DarsyarCommunityApiFactory.create().markRead(token,item.id)}
-                                            notifications=notifications.map { n -> if(n.id==item.id) n.copy(isRead=true) else n }
-                                            onUnreadCountChanged(notifications.count { !it.isRead })
+                                            val updatedNotifications=notifications.map { n -> if(n.id==item.id) n.copy(isRead=true) else n }
+                                            notifications=updatedNotifications
+                                            onUnreadCountChanged(updatedNotifications.count { !it.isRead })
                                             onOpenNotification(item)
                                         } catch(e:Exception) {
                                             error=e.localizedMessage ?: "علامت‌گذاری اعلان ناموفق بود"
@@ -308,8 +316,9 @@ fun BackendNotificationsDialog(onDismiss:()->Unit, onUnreadCountChanged:(Int)->U
                                     onSuccess={token->scope.launch {
                                         try {
                                             withContext(Dispatchers.IO){DarsyarCommunityApiFactory.create().markRead(token,item.id)}
-                                            notifications=notifications.map { n -> if(n.id==item.id) n.copy(isRead=true) else n }
-                                            onUnreadCountChanged(notifications.count { !it.isRead })
+                                            val updatedNotifications=notifications.map { n -> if(n.id==item.id) n.copy(isRead=true) else n }
+                                            notifications=updatedNotifications
+                                            onUnreadCountChanged(updatedNotifications.count { !it.isRead })
                                         } catch(e:Exception) {
                                             error=e.localizedMessage ?: "علامت‌گذاری اعلان ناموفق بود"
                                         } finally { markingId=null }
