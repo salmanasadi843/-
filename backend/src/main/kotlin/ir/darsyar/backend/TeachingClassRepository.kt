@@ -177,6 +177,8 @@ class TeachingClassRepository(private val dataSource: DataSource) {
         dataSource.connection.use { connection ->
             connection.autoCommit = false
             try {
+                validateTeacherOwner(connection, owner)
+                validateFolderOwner(connection, owner, command.folderId)
                 val created = connection.prepareStatement(
                     """
                     INSERT INTO teaching_classes(
@@ -247,6 +249,7 @@ class TeachingClassRepository(private val dataSource: DataSource) {
                 if (AppRole.SUPER_ADMIN !in roles &&
                     !(AppRole.TEACHER in roles && isOwner)
                 ) throw SecurityException("You cannot manage this class.")
+                validateFolderOwner(connection, UUID.fromString(before.ownerUserId), command.folderId)
 
                 val updated = connection.prepareStatement(
                     """
@@ -364,6 +367,38 @@ class TeachingClassRepository(private val dataSource: DataSource) {
             } finally {
                 connection.autoCommit = true
             }
+        }
+    }
+
+    private fun validateTeacherOwner(connection: Connection, owner: UUID) {
+        val isActiveTeacher = connection.prepareStatement(
+            """
+            SELECT EXISTS (
+                SELECT 1 FROM app_users u
+                JOIN app_roles r ON r.user_id = u.id AND r.role_name = 'teacher'
+                WHERE u.id = ? AND u.status = 'active'
+            )
+            """.trimIndent()
+        ).use { statement ->
+            statement.setObject(1, owner)
+            statement.executeQuery().use { rows -> rows.next() && rows.getBoolean(1) }
+        }
+        require(isActiveTeacher) { "A class must belong to an active approved teacher." }
+    }
+
+    /** A class can only be placed in a folder owned by the same teacher. */
+    private fun validateFolderOwner(connection: Connection, owner: UUID, folderId: String?) {
+        if (folderId == null) return
+        val folderOwner = connection.prepareStatement(
+            "SELECT owner_user_id FROM teacher_folders WHERE id = ?::uuid AND deleted_at IS NULL"
+        ).use { statement ->
+            statement.setString(1, folderId)
+            statement.executeQuery().use { rows ->
+                if (rows.next()) rows.getObject(1, UUID::class.java) else null
+            }
+        }
+        require(folderOwner != null && folderOwner == owner) {
+            "A class can only use an active folder owned by its teacher."
         }
     }
 
