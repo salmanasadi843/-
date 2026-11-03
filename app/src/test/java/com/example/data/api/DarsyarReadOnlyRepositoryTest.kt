@@ -256,6 +256,12 @@ class DarsyarReadOnlyRepositoryTest {
             return Response.success(Unit)
         }
 
+        override suspend fun getDeletedClasses(authorization: String): Response<List<BackendClassDto>> = Response.success(emptyList())
+
+        override suspend fun deleteClass(classId: String, authorization: String): Response<Unit> = Response.success(Unit)
+
+        override suspend fun restoreClass(classId: String, authorization: String): Response<Unit> = Response.success(Unit)
+
         override suspend fun updateClass(
             classId: String,
             authorization: String,
