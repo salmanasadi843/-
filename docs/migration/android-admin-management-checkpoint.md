@@ -34,6 +34,15 @@ Verified head before this UI integration: `347873c6338919662f2c420398b6fe96e92be
 - Backend `TeacherAdministrationRepository.decideApplication` explicitly accepts `approved`, `rejected`, and `revoked`; the Android repository's allowed values match it.
 - PR #39 remains open and Draft. No deployment, migration, or merge was performed.
 
+
+- The Android panel now hides the application form for accounts that already have the `teacher` role, avoiding a predictable conflict when an approved teacher opens the panel. This is a presentation guard only; Backend authorization remains authoritative.
+
+## Verification update — 2026-11-03
+
+- Head `77cda64a34bfa596da33e413d2e0f4f74fad4ae4`: Android APK, web build, legacy inventory validator, and Backend CI all completed successfully. Backend CI included PostgreSQL integration, backup/restore, first super-admin bootstrap, guarded Firebase identity linking, and liveness/API-version checks.
+- Follow-up UI guard commit: `64db5d60ff75a140bdf725fb7c84659cfd023c7b`. Its Android, web, inventory, and Backend workflows have been triggered but are still queued/in progress at the time of this checkpoint update. Do not mark this head green until those runs finish.
+- No live-account role test has been performed. No legacy queue was migrated, no server was moved, and no deployment or PR merge was performed.
+
 ## Acceptance criteria
 
 - Admin can review and approve/reject teacher applications through the backend from Android and web; revocation remains available through the backend API but is not exposed in this pending-application panel.
