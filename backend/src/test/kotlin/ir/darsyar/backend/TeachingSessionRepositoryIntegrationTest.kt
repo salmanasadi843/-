@@ -220,6 +220,23 @@ class TeachingSessionRepositoryIntegrationTest {
                 }
             }
 
+            // The main administrator may also move content across teacher ownership.
+            val foreignSession = repository.create(
+                otherTeacher.toString(), setOf(AppRole.TEACHER),
+                CreateTeachingSession(
+                    classId = foreignClass.id,
+                    title = "جلسه استاد دیگر",
+                    transcript = "متن محفوظ"
+                )
+            )
+            val adminMoved = repository.move(
+                admin.toString(), setOf(AppRole.SUPER_ADMIN), foreignSession.id, privateClass.id
+            )
+            assertNotNull(adminMoved)
+            assertEquals(foreignSession.id, adminMoved.id)
+            assertEquals(privateClass.id, adminMoved.classId)
+            assertEquals("متن محفوظ", adminMoved.transcript)
+
             val updated = repository.update(
                 admin.toString(), setOf(AppRole.SUPER_ADMIN), published.id,
                 UpdateTeachingSession(null, "ویرایش مدیر", "", "", 123456L, 9000L,
@@ -246,7 +263,7 @@ class TeachingSessionRepositoryIntegrationTest {
             assertTrue(repository.listVisible(admin.toString(), setOf(AppRole.SUPER_ADMIN)).any { it.id == published.id })
             ds.connection.use { connection ->
                 connection.prepareStatement("SELECT count(*) FROM audit_log WHERE entity_type = 'session'").use { st ->
-                    st.executeQuery().use { rs -> check(rs.next()); assertEquals(7, rs.getInt(1)) }
+                    st.executeQuery().use { rs -> check(rs.next()); assertEquals(9, rs.getInt(1)) }
                 }
             }
         }
