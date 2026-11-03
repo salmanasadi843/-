@@ -2,6 +2,7 @@
 
 Branch: `architecture/shared-backend-and-web`
 Last reviewed: 2026-11-03
+Verified head: `2f1906f0a73121c77b4910d878931fd5223ed0ce` (all four CI workflows successful)
 
 ## Verified implementation (do not rebuild)
 
@@ -13,16 +14,16 @@ Last reviewed: 2026-11-03
 - Backend routes use authenticated server-side roles. Class authorization tests cover student denial, teacher ownership restrictions, super-admin owner selection, and teacher-application moderation restrictions.
 - Backend teacher application repository supports submit, approve, reject, and revoke, grants/removes the teacher role, and writes audit records.
 - Web UI already submits teacher applications, lists pending applications for admins, and exposes approve/reject actions.
-- The main Android `HomeScreen` still contains the older Firebase `teacher_requests` approval flow. The Android backend API contract currently has no methods for `/api/v1/teacher-applications` or `/api/v1/admin/teacher-applications`. This is a real cross-platform integration gap, not a missing backend feature.
+- The main Android `HomeScreen` still contains the older Firebase `teacher_requests` approval flow. The Android API and repository now include submit/list/decision methods for `/api/v1/teacher-applications` and `/api/v1/admin/teacher-applications`; these methods use the Firebase ID token as a Bearer token. The backend repository explicitly accepts `approved`, `rejected`, and `revoked`, matching the Android repository validation. The remaining gap is UI integration, not missing endpoints.
 - Existing Room classes and Firebase private teacher backups remain separate; do not broaden Firestore rules or migrate local data as part of this task.
 
 ## Remaining work (only these gaps)
 
-1. [x] Add Android API methods and DTOs for teacher application submission, listing pending applications, and admin decisions using the existing authenticated Firebase ID token. Repository tests were added; CI result is pending.
-2. Integrate those calls into Android UI without removing or corrupting existing local data. Show admin approval controls only when backend `/api/v1/me` confirms `super_admin`.
-3. Decide and document how the legacy Firebase `teacher_requests` flow is handled during transition; do not silently mix Firebase and backend approval states.
-4. Add API/repository and UI tests for student, teacher, and super-admin behavior; verify server authorization remains authoritative.
-5. Re-run Android and backend CI.
+1. [x] Add Android API methods and DTOs for teacher application submission, listing pending applications, and admin decisions using the existing authenticated Firebase ID token; repository tests are present.
+2. [ ] Integrate those calls into Android UI without removing or corrupting existing local data. Show admin approval controls only when backend `/api/v1/me` confirms `super_admin`.
+3. [ ] Decide and document how the legacy Firebase `teacher_requests` flow is handled during transition; do not silently mix Firebase and backend approval states.
+4. [ ] Add API/repository and UI tests for student, teacher, and super-admin behavior; verify server authorization remains authoritative.
+5. [x] Re-run Android and backend CI for commit `2f1906f0a73121c77b4910d878931fd5223ed0ce`; Build Android APK, Build Darsyar Web, Backend CI, and Legacy Inventory Validator Tests all completed successfully.
 
 ## Acceptance criteria
 
