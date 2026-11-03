@@ -208,7 +208,7 @@ class TeachingClassRepositoryIntegrationTest {
 
             val studentView = repository.listVisible(student.toString(), setOf(AppRole.STUDENT))
             assertEquals(
-                setOf(publicClass.id, privateClass.id),
+                setOf(publicClass.id, adminCreatedClass.id, privateClass.id),
                 studentView.map { it.id }.toSet()
             )
             val visitorView = repository.listVisible(visitor.toString(), emptySet())
