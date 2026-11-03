@@ -1,14 +1,14 @@
 package com.example.ui.screens
 
 import androidx.compose.material3.MaterialTheme
-import androidx.compose.ui.test.assertDoesNotExist
 import androidx.compose.ui.test.assertIsDisplayed
 import androidx.compose.ui.test.assertIsEnabled
 import androidx.compose.ui.test.assertIsNotEnabled
 import androidx.compose.ui.test.hasSetTextAction
 import androidx.compose.ui.test.junit4.createComposeRule
-import androidx.compose.ui.test.onNode
 import androidx.compose.ui.test.onNodeWithText
+import androidx.compose.ui.test.onAllNodesWithText
+import androidx.compose.ui.test.assertCountEquals
 import androidx.compose.ui.test.performTextInput
 import org.junit.Rule
 import org.junit.Test
@@ -36,8 +36,8 @@ class BackendTeacherApplicationsPanelTest {
         composeRule.onNodeWithText(
             "حساب شما در حال حاضر دسترسی استاد دارد؛ نیازی به ثبت درخواست جدید نیست."
         ).assertIsDisplayed()
-        composeRule.onNodeWithText("ثبت درخواست استاد").assertDoesNotExist()
-        composeRule.onNodeWithText("درخواست‌های در انتظار بررسی").assertDoesNotExist()
+        composeRule.onAllNodesWithText("ثبت درخواست استاد").assertCountEquals(0)
+        composeRule.onAllNodesWithText("درخواست‌های در انتظار بررسی").assertCountEquals(0)
     }
 
     @Test
@@ -55,7 +55,7 @@ class BackendTeacherApplicationsPanelTest {
         composeRule.onNodeWithText("ثبت درخواست استاد").assertIsNotEnabled()
         composeRule.onNodeWithText("درخواست‌های در انتظار بررسی").assertDoesNotExist()
 
-        composeRule.onNode(hasSetTextAction()).performTextInput("فقه")
+        composeRule.onNodeWithText("حوزه تدریس").performTextInput("فقه")
         composeRule.onNodeWithText("ثبت درخواست استاد").assertIsEnabled()
     }
 }
