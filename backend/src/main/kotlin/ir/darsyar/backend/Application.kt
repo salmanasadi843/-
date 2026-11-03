@@ -145,6 +145,9 @@ data class CourseApiRecord(
 data class MoveSessionRequest(val targetClassId: String)
 
 @Serializable
+data class ReorderSessionRequest(val direction: String)
+
+@Serializable
 data class SessionWriteRequest(
     val courseId: String? = null,
     val title: String,
@@ -1695,6 +1698,33 @@ fun Application.module(
             }
 
             route("/api/v1/sessions/{sessionId}") {
+                post("/reorder") {
+                    val principal = call.principal<DarsyarPrincipal>()
+                    if (principal == null) {
+                        call.respond(HttpStatusCode.Unauthorized, ApiError("unauthorized"))
+                        return@post
+                    }
+                    val request = try { call.receive<ReorderSessionRequest>() }
+                    catch (_: Exception) {
+                        call.respond(HttpStatusCode.BadRequest, ApiError("invalid_request"))
+                        return@post
+                    }
+                    try {
+                        val reordered = sessionRepository.reorder(
+                            principal.userId,
+                            principal.roles,
+                            call.parameters["sessionId"] ?: "",
+                            request.direction
+                        )
+                        if (reordered == null) call.respond(HttpStatusCode.NotFound, ApiError("session_not_found"))
+                        else call.respond(reordered.toApiRecord())
+                    } catch (_: SecurityException) {
+                        call.respond(HttpStatusCode.Forbidden, ApiError("session_management_forbidden"))
+                    } catch (_: IllegalArgumentException) {
+                        call.respond(HttpStatusCode.BadRequest, ApiError("invalid_reorder_request"))
+                    }
+                }
+
                 post("/move") {
                     val principal = call.principal<DarsyarPrincipal>()
                     if (principal == null) {
