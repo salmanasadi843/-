@@ -86,17 +86,26 @@ class FirestoreSyncRepository(
     suspend fun uploadSnapshot(uid: String) {
         // Shared published records are imported with negative IDs. They belong to
         // their original teachers and must never enter this account's private backup.
-        val classes = classDao.getAllForBackup().filter { it.id > 0L && (it.ownerUid == uid || it.ownerUid.isBlank()) }
+        val allLocalClasses = classDao.getAllForBackup()
+        val classes = allLocalClasses.filter {
+            it.id > 0L && (it.ownerUid == uid || it.ownerUid.isBlank())
+        }
         val ownedClassIds = classes.map { it.id }.toSet()
+        val allLocalClassIds = allLocalClasses.map { it.id }.toSet()
         val courses = courseDao.getAllForBackup().filter {
             it.id > 0L && it.classId in ownedClassIds
         }
-        val lectures = lectureDao.getAllForBackup()
-            .filter { it.id > 0L && it.classId in ownedClassIds }
-            .filterNot {
-                it.title == "جلسه ۴: شبکه‌های عصبی و یادگیری عمیق" ||
-                    it.title == "جلسه ۷: سری و تبدیل فوریه و کاربرد در سیگنال"
-            }
+        // Standalone sessions are valid too. Shared/foreign material uses negative
+        // IDs; never silently drop a positive-ID session just because classId is null.
+        // Keep orphaned sessions as recoverable records, but do not upload a session
+        // attached to a known class that belongs to another teacher.
+        val lectures = lectureDao.getAllForBackup().filter { lecture ->
+            lecture.id > 0L && (
+                lecture.classId == null ||
+                    lecture.classId in ownedClassIds ||
+                    lecture.classId !in allLocalClassIds
+                )
+        }
 
         val root = firestore.collection(TEACHER_DATA).document(uid)
         val records = root.collection(RECORDS)
@@ -145,9 +154,9 @@ class FirestoreSyncRepository(
             .awaitResult()
             .documents
 
-        val classes = mutableListOf<ClassEntity>()
-        val courses = mutableListOf<CourseEntity>()
-        val lectures = mutableListOf<LectureEntity>()
+        val cloudClasses = mutableListOf<ClassEntity>()
+        val cloudCourses = mutableListOf<CourseEntity>()
+        val cloudLectures = mutableListOf<LectureEntity>()
         val rootSnapshot = firestore.collection(TEACHER_DATA).document(uid).get().awaitResult()
         val folders = teacherFolderDao?.let {
             (rootSnapshot.get("folders") as? List<*>)?.mapNotNull { value ->
@@ -160,19 +169,45 @@ class FirestoreSyncRepository(
                 "یکی از رکوردهای پشتیبان ابری خالی است؛ اطلاعات محلی دست‌نخورده باقی ماند."
             )
             when (data["recordType"] as? String) {
-                "class" -> classes += data.toClassEntity()
-                "course" -> courses += data.toCourseEntity()
-                "lecture" -> lectures += data.toLectureEntity()
+                "class" -> cloudClasses += data.toClassEntity()
+                "course" -> cloudCourses += data.toCourseEntity()
+                "lecture" -> cloudLectures += data.toLectureEntity()
                 else -> throw IllegalStateException(
                     "نوع یکی از رکوردهای پشتیبان ابری معتبر نیست؛ اطلاعات محلی دست‌نخورده باقی ماند."
                 )
             }
         }
-        validateAndReplaceLocalData(classes, courses, lectures)
+
+        // Cloud snapshots from older builds may be incomplete (notably sessions
+        // without classId). Merge by stable local ID instead of clearing local
+        // Room data first. Existing local records absent from cloud are preserved.
+        val localClasses = classDao.getAllForBackup().filter {
+            it.id > 0L && (it.ownerUid == uid || it.ownerUid.isBlank())
+        }
+        val localCourses = courseDao.getAllForBackup().filter { it.id > 0L }
+        val localLectures = lectureDao.getAllForBackup().filter { it.id > 0L }
+
+        val classesById = (cloudClasses + localClasses).associateBy { it.id }
+        val coursesById = (cloudCourses + localCourses).associateBy { it.id }
+        val lecturesById = (cloudLectures + localLectures).associateBy { it.id }
+        val mergedClasses = classesById.values.toList()
+        val mergedCourses = coursesById.values.toList()
+        val mergedLectures = lecturesById.values.toList()
+
+        val hadLocalOnlyRecords =
+            mergedClasses.size > cloudClasses.size ||
+                mergedCourses.size > cloudCourses.size ||
+                mergedLectures.size > cloudLectures.size
+
+        validateAndReplaceLocalData(mergedClasses, mergedCourses, mergedLectures)
         teacherFolderDao?.let { dao ->
             dao.clearForRestore()
             if (folders.isNotEmpty()) dao.insertAllForRestore(folders)
         }
+
+        // Repair incomplete cloud snapshots immediately after safely restoring the
+        // union, so the next login does not repeat the same disappearance.
+        if (hadLocalOnlyRecords) uploadSnapshot(uid)
     }
 
     private suspend fun restoreSnapshot(
