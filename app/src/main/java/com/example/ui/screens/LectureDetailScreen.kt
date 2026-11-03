@@ -90,6 +90,9 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.SpanStyle
+import androidx.compose.ui.text.buildAnnotatedString
+import androidx.compose.ui.text.withStyle
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
@@ -200,7 +203,8 @@ fun LectureDetailScreen(
     viewModel: MainViewModel,
     onNavigateBack: () -> Unit,
     onNavigateToEdit: (Long) -> Unit,
-    isTeacher: Boolean = true
+    isTeacher: Boolean = true,
+    initialSearchQuery: String = ""
 ) {
     val lecture by viewModel.selectedLecture.collectAsState()
     val context = LocalContext.current
@@ -404,6 +408,7 @@ fun LectureDetailScreen(
             val playableAudio = currentLecture.audioFilePath?.takeIf { File(it).exists() } ?: currentLecture.audioUrl
             TranscriptTab(
                 lecture = currentLecture,
+                searchQuery = initialSearchQuery,
                 onEditClick = { onNavigateToEdit(lectureId) },
                 onCopyClick = { textToCopy ->
                     val clipboard = context.getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager
@@ -599,16 +604,22 @@ fun AudioPlayerCard(
 @Composable
 fun TranscriptTab(
     lecture: LectureEntity,
+    searchQuery: String = "",
     onEditClick: () -> Unit,
     onCopyClick: (String) -> Unit,
     audioContent: (@Composable () -> Unit)? = null,
     audioLinkContent: (@Composable () -> Unit)? = null
 ) {
     val scrollState = rememberScrollState()
-    var selectedTextTab by remember(lecture.id) { mutableStateOf(0) }
     val originalText = lecture.originalTranscript.ifBlank { lecture.transcript }
     val correctedText = lecture.transcript
+    var selectedTextTab by remember(lecture.id, searchQuery) {
+        mutableStateOf(if (searchQuery.isNotBlank() && !containsSearchTerm(originalText, searchQuery) && containsSearchTerm(correctedText, searchQuery)) 1 else 0)
+    }
     val displayedTranscript = if (selectedTextTab == 0) originalText else correctedText
+    val highlightedTranscript = remember(displayedTranscript, searchQuery) {
+        highlightSearchTerms(displayedTranscript, searchQuery, MaterialTheme.colorScheme.tertiaryContainer, MaterialTheme.colorScheme.onTertiaryContainer)
+    }
     val hasText = originalText.isNotBlank() || correctedText.isNotBlank()
     val tags = lecture.tags.split(",").map { it.trim() }.filter { it.isNotBlank() }
     val context = LocalContext.current
@@ -700,6 +711,21 @@ fun TranscriptTab(
         }
 
         Spacer(Modifier.height(12.dp))
+        if (searchQuery.isNotBlank()) {
+            Surface(
+                modifier = Modifier.fillMaxWidth(),
+                shape = RoundedCornerShape(12.dp),
+                color = MaterialTheme.colorScheme.secondaryContainer
+            ) {
+                Text(
+                    text = "نتیجه جست‌وجو: $searchQuery",
+                    modifier = Modifier.padding(horizontal = 12.dp, vertical = 9.dp),
+                    color = MaterialTheme.colorScheme.onSecondaryContainer,
+                    style = MaterialTheme.typography.labelLarge
+                )
+            }
+            Spacer(Modifier.height(8.dp))
+        }
 
         if (!hasText) {
             Surface(
@@ -738,7 +764,7 @@ fun TranscriptTab(
                 color = MaterialTheme.colorScheme.surface
             ) {
                 Text(
-                    text = displayedTranscript,
+                    text = highlightedTranscript,
                     modifier = Modifier.padding(horizontal = 18.dp, vertical = 20.dp),
                     style = MaterialTheme.typography.bodyLarge.copy(lineHeight = 32.sp),
                     textAlign = TextAlign.Start
@@ -1303,3 +1329,75 @@ fun ChatWithLectureTab(
         }
     }
 }
+
+
+private fun normalizeSearchForHighlight(value: String): String =
+    value.lowercase(Locale.ROOT)
+        .replace('ي', 'ی').replace('ك', 'ک').replace('ۀ', 'ه').replace('ة', 'ه')
+        .replace('ؤ', 'و').replace('إ', 'ا').replace('أ', 'ا').replace('آ', 'ا')
+        .replace(Regex("[\\u064B-\\u065F\\u0670]"), "")
+        .replace(Regex("[\\u200C\\u200F\\u202A-\\u202E]"), " ")
+        .replace(Regex("\\s+"), " ")
+        .trim()
+
+private fun containsSearchTerm(content: String, query: String): Boolean {
+    val normalized = normalizeSearchForHighlight(content)
+    return normalizeSearchForHighlight(query).split(Regex("\\s+"))
+        .filter { it.isNotBlank() }.any(normalized::contains)
+}
+
+private fun highlightSearchTerms(
+    content: String,
+    query: String,
+    background: androidx.compose.ui.graphics.Color,
+    foreground: androidx.compose.ui.graphics.Color
+) = buildAnnotatedString {
+    if (query.isBlank() || content.isBlank()) {
+        append(content)
+        return@buildAnnotatedString
+    }
+
+    val normalized = StringBuilder()
+    val originalIndexes = mutableListOf<Int>()
+    content.forEachIndexed { index, char ->
+        val normalizedChar = normalizeSearchForHighlight(char.toString())
+        normalizedChar.forEach { outputChar ->
+            normalized.append(outputChar)
+            originalIndexes += index
+        }
+    }
+
+    val terms = normalizeSearchForHighlight(query).split(Regex("\\s+"))
+        .filter { it.length >= 2 }.distinct()
+    val ranges = mutableListOf<IntRange>()
+    terms.forEach { term ->
+        var from = 0
+        while (from <= normalized.length - term.length) {
+            val found = normalized.indexOf(term, from)
+            if (found < 0) break
+            val start = originalIndexes.getOrNull(found)
+            val end = originalIndexes.getOrNull(found + term.length - 1)?.plus(1)
+            if (start != null && end != null && end > start) ranges += start until end
+            from = found + term.length
+        }
+    }
+
+    val merged = ranges.sortedBy { it.first }.fold(mutableListOf<IntRange>()) { acc, range ->
+        val last = acc.lastOrNull()
+        if (last != null && range.first <= last.last + 1) {
+            acc[acc.lastIndex] = last.first..maxOf(last.last, range.last)
+        } else acc += range
+        acc
+    }
+
+    var cursor = 0
+    merged.forEach { range ->
+        if (range.first > cursor) append(content.substring(cursor, range.first))
+        withStyle(SpanStyle(background = background, color = foreground)) {
+            append(content.substring(range.first, range.last + 1))
+        }
+        cursor = range.last + 1
+    }
+    if (cursor < content.length) append(content.substring(cursor))
+}
+
