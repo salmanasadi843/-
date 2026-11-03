@@ -331,7 +331,7 @@ class TeachingClassRepositoryIntegrationTest {
                 ).use { statement ->
                     statement.executeQuery().use { rows ->
                         assertTrue(rows.next())
-                        assertEquals(9, rows.getInt(1))
+                        assertEquals(10, rows.getInt(1))
                     }
                 }
             }
