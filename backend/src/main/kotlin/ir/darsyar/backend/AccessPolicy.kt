@@ -15,7 +15,7 @@ object AccessPolicy {
         if (role == AppRole.SUPER_ADMIN) return true
         if (actorUserId != null && actorUserId == resource.ownerUserId) return true
         return when (role) {
-            AppRole.TEACHER -> resource.published
+            AppRole.TEACHER -> resource.published && resource.isPublic
             AppRole.STUDENT -> resource.published && (resource.isPublic || resource.activeMembership)
             AppRole.GUEST -> resource.published && resource.isPublic
             AppRole.SUPER_ADMIN -> true
