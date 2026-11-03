@@ -400,6 +400,91 @@ class TeachingSessionRepository(private val dataSource: DataSource) {
         }
     }
 
+    /**
+     * Swaps a session with its adjacent sibling in the same class.
+     * The owning teacher or a super-admin may reorder; students and other teachers are read-only.
+     */
+    fun reorder(
+        actorUserId: String,
+        roles: Set<AppRole>,
+        sessionId: String,
+        direction: String
+    ): TeachingSessionRecord? {
+        require(direction == "up" || direction == "down") { "Direction must be up or down." }
+        val id = UUID.fromString(sessionId)
+        dataSource.connection.use { connection ->
+            connection.autoCommit = false
+            try {
+                val current = connection.prepareStatement(
+                    """
+                    SELECT s.id::text, s.class_id::text, s.sort_order, c.owner_user_id::text
+                    FROM teaching_sessions s
+                    JOIN teaching_classes c ON c.id = s.class_id
+                    WHERE s.id = ? AND s.deleted_at IS NULL AND c.deleted_at IS NULL
+                    FOR UPDATE OF s
+                    """.trimIndent()
+                ).use { st ->
+                    st.setObject(1, id)
+                    st.executeQuery().use { rs ->
+                        if (rs.next()) Triple(rs.getString("class_id"), rs.getInt("sort_order"), rs.getString("owner_user_id")) else null
+                    }
+                } ?: run { connection.rollback(); return null }
+                val (classId, currentOrder, ownerId) = current
+                if (AppRole.SUPER_ADMIN !in roles &&
+                    !(AppRole.TEACHER in roles && ownerId == actorUserId)
+                ) throw SecurityException("Session management is not allowed.")
+                val neighbor = connection.prepareStatement(
+                    """
+                    SELECT id::text, sort_order
+                    FROM teaching_sessions
+                    WHERE class_id = ? AND deleted_at IS NULL
+                      AND (sort_order ${if (direction == "up") "<" else ">"} ?)
+                    ORDER BY sort_order ${if (direction == "up") "DESC" else "ASC"}, title ASC, id ASC
+                    LIMIT 1
+                    FOR UPDATE
+                    """.trimIndent()
+                ).use { st ->
+                    st.setObject(1, UUID.fromString(classId))
+                    st.setInt(2, currentOrder)
+                    st.executeQuery().use { rs ->
+                        if (rs.next()) rs.getString("id") to rs.getInt("sort_order") else null
+                    }
+                }
+                if (neighbor != null) {
+                    val (neighborId, neighborOrder) = neighbor
+                    connection.prepareStatement(
+                        "UPDATE teaching_sessions SET sort_order = ?, version = version + 1, updated_at = now() WHERE id = ?"
+                    ).use { st ->
+                        st.setInt(1, neighborOrder); st.setObject(2, id); st.executeUpdate()
+                    }
+                    connection.prepareStatement(
+                        "UPDATE teaching_sessions SET sort_order = ?, version = version + 1, updated_at = now() WHERE id = ?"
+                    ).use { st ->
+                        st.setInt(1, currentOrder); st.setObject(2, UUID.fromString(neighborId)); st.executeUpdate()
+                    }
+                }
+                val result = connection.prepareStatement(
+                    """
+                    SELECT s.id::text, s.class_id::text, s.course_id::text, s.title, s.course_name,
+                      s.professor_name, s.date_ms, s.audio_duration_ms, s.transcript,
+                      s.original_transcript, s.ai_summary, s.ai_key_points,
+                      s.ai_quiz_json::text AS ai_quiz_json, s.tags, s.is_published,
+                      s.last_edited_ms, s.sort_order, s.version
+                    FROM teaching_sessions s WHERE s.id = ?
+                    """.trimIndent()
+                ).use { st ->
+                    st.setObject(1, id)
+                    st.executeQuery().use { rs -> check(rs.next()); rs.toSessionRecord() }
+                }
+                connection.commit()
+                return result
+            } catch (error: Throwable) {
+                connection.rollback()
+                throw error
+            } finally { connection.autoCommit = true }
+        }
+    }
+
     fun update(actorUserId: String, roles: Set<AppRole>, sessionId: String, command: UpdateTeachingSession): TeachingSessionRecord? {
         require(command.title.isNotBlank()) { "Session title is required." }
         require(command.audioDurationMs >= 0) { "Audio duration cannot be negative." }
