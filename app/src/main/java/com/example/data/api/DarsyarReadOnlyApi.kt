@@ -56,6 +56,23 @@ interface DarsyarReadOnlyApi {
         @Body request: BackendSessionWriteRequest
     ): Response<BackendSessionDto>
 
+    @GET("api/v1/sessions/deleted")
+    suspend fun getDeletedSessions(
+        @Header("Authorization") authorization: String
+    ): Response<List<BackendSessionSummaryDto>>
+
+    @DELETE("api/v1/sessions/{sessionId}")
+    suspend fun deleteSession(
+        @retrofit2.http.Path("sessionId") sessionId: String,
+        @Header("Authorization") authorization: String
+    ): Response<Unit>
+
+    @POST("api/v1/sessions/{sessionId}/restore")
+    suspend fun restoreSession(
+        @retrofit2.http.Path("sessionId") sessionId: String,
+        @Header("Authorization") authorization: String
+    ): Response<Unit>
+
     @POST("api/v1/sessions/{sessionId}/reorder")
     suspend fun reorderSession(
         @retrofit2.http.Path("sessionId") sessionId: String,
@@ -310,6 +327,25 @@ class DarsyarReadOnlyRepository(
         val response = api.updateSession(sessionId, "Bearer $firebaseIdToken", request)
         if (!response.isSuccessful) throw BackendHttpException(response.code(), "/api/v1/sessions/{sessionId}")
         return response.body() ?: throw IllegalStateException("Backend returned an empty updated session response.")
+    }
+
+    suspend fun loadDeletedSessions(firebaseIdToken: String): List<BackendSessionSummaryDto> {
+        require(firebaseIdToken.isNotBlank()) { "Firebase ID token is required." }
+        val response = api.getDeletedSessions("Bearer $firebaseIdToken")
+        if (!response.isSuccessful) throw BackendHttpException(response.code(), "/api/v1/sessions/deleted")
+        return response.body() ?: throw IllegalStateException("Backend returned an empty deleted sessions response.")
+    }
+
+    suspend fun deleteSession(firebaseIdToken: String, sessionId: String) {
+        require(firebaseIdToken.isNotBlank() && sessionId.isNotBlank()) { "Token and session ID are required." }
+        val response = api.deleteSession(sessionId, "Bearer $firebaseIdToken")
+        if (!response.isSuccessful) throw BackendHttpException(response.code(), "/api/v1/sessions/{sessionId}")
+    }
+
+    suspend fun restoreSession(firebaseIdToken: String, sessionId: String) {
+        require(firebaseIdToken.isNotBlank() && sessionId.isNotBlank()) { "Token and session ID are required." }
+        val response = api.restoreSession(sessionId, "Bearer $firebaseIdToken")
+        if (!response.isSuccessful) throw BackendHttpException(response.code(), "/api/v1/sessions/{sessionId}/restore")
     }
 
     /** Swaps a session with its adjacent sibling in the same class. */
