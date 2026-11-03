@@ -9,6 +9,16 @@ import retrofit2.converter.moshi.MoshiConverterFactory
 import retrofit2.http.*
 
 interface DarsyarCommunityApi {
+    @GET("api/v1/classes/{classId}/access-codes")
+    suspend fun accessCodes(@Path("classId") classId:String,@Header("Authorization") auth:String):Response<List<BackendAccessCodeDto>>
+    @POST("api/v1/classes/{classId}/access-codes")
+    suspend fun createAccessCode(@Path("classId") classId:String,@Body body:AccessCodeCreateDto,@Header("Authorization") auth:String):Response<BackendCreatedAccessCodeDto>
+    @DELETE("api/v1/access-codes/{codeId}")
+    suspend fun revokeAccessCode(@Path("codeId") codeId:String,@Header("Authorization") auth:String):Response<Unit>
+    @GET("api/v1/classes/{classId}/memberships")
+    suspend fun members(@Path("classId") classId:String,@Header("Authorization") auth:String):Response<List<BackendMembershipDto>>
+    @DELETE("api/v1/classes/{classId}/memberships/{studentUserId}")
+    suspend fun revokeMembership(@Path("classId") classId:String,@Path("studentUserId") studentUserId:String,@Header("Authorization") auth:String):Response<Unit>
     @GET("api/v1/classes/{classId}/announcements")
     suspend fun announcements(@Path("classId") classId:String,@Header("Authorization") auth:String):Response<List<BackendAnnouncementDto>>
     @POST("api/v1/classes/{classId}/announcements")
@@ -50,6 +60,22 @@ interface DarsyarCommunityApi {
     @POST("api/v1/notifications/{notificationId}/read")
     suspend fun markRead(@Path("notificationId") id:String,@Header("Authorization") auth:String):Response<Unit>
 }
+
+@JsonClass(generateAdapter=true)
+data class BackendAccessCodeDto(
+    val id:String,val classId:String,val expiresAtMs:Long?,val maxUses:Int?,
+    val useCount:Int,val isActive:Boolean,val createdAtMs:Long
+)
+@JsonClass(generateAdapter=true)
+data class BackendCreatedAccessCodeDto(
+    val id:String,val classId:String,val code:String,val expiresAtMs:Long?,val maxUses:Int?
+)
+@JsonClass(generateAdapter=true)
+data class AccessCodeCreateDto(val expiresAtMs:Long?=null,val maxUses:Int?=null)
+@JsonClass(generateAdapter=true)
+data class BackendMembershipDto(
+    val classId:String,val studentUserId:String,val status:String,val joinedAtMs:Long?,val alreadyActive:Boolean
+)
 
 @JsonClass(generateAdapter=true)
 data class BackendAnnouncementDto(
@@ -113,6 +139,18 @@ class DarsyarCommunityRepository(private val api:DarsyarCommunityApi) {
         if(response.isSuccessful) response.body() ?: throw IllegalStateException("پاسخ خالی از سرور")
         else throw BackendHttpException(response.code(),endpoint)
 
+    suspend fun accessCodes(token:String,classId:String)=checked(api.accessCodes(classId,"Bearer $token"),"access-codes")
+    suspend fun createAccessCode(token:String,classId:String,maxUses:Int)=
+        checked(api.createAccessCode(classId,AccessCodeCreateDto(maxUses=maxUses),"Bearer $token"),"access-codes/create")
+    suspend fun revokeAccessCode(token:String,codeId:String) {
+        val response=api.revokeAccessCode(codeId,"Bearer $token")
+        if(!response.isSuccessful) throw BackendHttpException(response.code(),"access-codes/revoke")
+    }
+    suspend fun members(token:String,classId:String)=checked(api.members(classId,"Bearer $token"),"memberships")
+    suspend fun revokeMembership(token:String,classId:String,studentUserId:String) {
+        val response=api.revokeMembership(classId,studentUserId,"Bearer $token")
+        if(!response.isSuccessful) throw BackendHttpException(response.code(),"memberships/revoke")
+    }
     suspend fun announcements(token:String,classId:String)=checked(api.announcements(classId,"Bearer $token"),"announcements")
     suspend fun createAnnouncement(token:String,classId:String,title:String,body:String)=
         checked(api.createAnnouncement(classId,AnnouncementWriteDto(title,body),"Bearer $token"),"announcements/create")
