@@ -72,6 +72,10 @@ class TeachingClassRepositoryIntegrationTest {
                 ownerA.toString(), setOf(AppRole.TEACHER),
                 CreateTeacherFolder(ownerA.toString(), null, "اصول")
             )
+            val ownerBFolder = folderRepository.create(
+                ownerB.toString(), setOf(AppRole.TEACHER),
+                CreateTeacherFolder(ownerB.toString(), null, "کلاس‌های استاد ب")
+            )
             val hiddenFolder = folderRepository.create(
                 ownerA.toString(), setOf(AppRole.TEACHER),
                 CreateTeacherFolder(ownerA.toString(), null, "مخفی")
@@ -89,6 +93,34 @@ class TeachingClassRepositoryIntegrationTest {
                 ownerA.toString(),
                 CreateTeachingClass(ownerA.toString(), "Private published", "", "", "private", true)
             )
+            // The admin may create content for another approved teacher, but
+            // neither admins nor teachers may attach a class to a different owner's folder.
+            val adminCreatedClass = repository.create(
+                admin.toString(),
+                CreateTeachingClass(ownerB.toString(), "Admin-created for teacher B", "", "", "public", true, ownerBFolder.id)
+            )
+            assertEquals(ownerB.toString(), adminCreatedClass.ownerUserId)
+            assertEquals(ownerBFolder.id, adminCreatedClass.folderId)
+            assertFailsWith<IllegalArgumentException> {
+                repository.create(
+                    admin.toString(),
+                    CreateTeachingClass(ownerB.toString(), "Wrong folder", "", "", "public", true, ownerFolder.id)
+                )
+            }
+            assertFailsWith<IllegalArgumentException> {
+                repository.create(
+                    admin.toString(),
+                    CreateTeachingClass(student.toString(), "Student cannot own class", "", "", "public", true)
+                )
+            }
+            assertFailsWith<IllegalArgumentException> {
+                repository.update(
+                    admin.toString(), setOf(AppRole.SUPER_ADMIN), publicClass.id,
+                    UpdateTeachingClass(publicClass.title, publicClass.description, publicClass.term,
+                        publicClass.visibility, publicClass.isPublished, publicClass.isHidden,
+                        publicClass.sortOrder, ownerBFolder.id)
+                )
+            }
             val hiddenClass = repository.create(
                 ownerA.toString(),
                 CreateTeachingClass(ownerA.toString(), "Hidden published", "", "", "public", true)
@@ -121,12 +153,13 @@ class TeachingClassRepositoryIntegrationTest {
             val studentFolders = folderRepository.listVisible(student.toString(), setOf(AppRole.STUDENT))
             assertTrue(studentFolders.any { it.id == ownerFolder.id })
             assertTrue(studentFolders.none { it.id == hiddenFolder.id })
+            val adminFolders = folderRepository.listVisible(admin.toString(), setOf(AppRole.SUPER_ADMIN))
+            assertTrue(adminFolders.any { it.id == ownerFolder.id && it.ownerUserId == ownerA.toString() })
+            assertTrue(adminFolders.any { it.id == ownerBFolder.id && it.ownerUserId == ownerB.toString() })
+            assertTrue(adminFolders.any { it.id == hiddenFolder.id })
 
             val teacherView = repository.listVisible(ownerB.toString(), setOf(AppRole.TEACHER))
-            assertEquals(
-                setOf(publicClass.id),
-                teacherView.map { it.id }.toSet()
-            )
+            assertEquals(setOf(adminCreatedClass.id), teacherView.map { it.id }.toSet())
 
             val teacherDirectory = repository.listVisibleTeachers(ownerB.toString(), setOf(AppRole.TEACHER))
             assertEquals(listOf(ownerA.toString()), teacherDirectory.map { it.userId })
@@ -309,7 +342,7 @@ class TeachingClassRepositoryIntegrationTest {
             assertTrue(sessionRepository.listVisible(admin.toString(), setOf(AppRole.SUPER_ADMIN)).any { it.id == nestedSessionId.toString() })
 
             val adminView = repository.listVisible(admin.toString(), setOf(AppRole.SUPER_ADMIN))
-            assertEquals(4, adminView.size)
+            assertEquals(5, adminView.size)
 
             assertFailsWith<SecurityException> {
                 repository.update(
@@ -331,7 +364,7 @@ class TeachingClassRepositoryIntegrationTest {
                 ).use { statement ->
                     statement.executeQuery().use { rows ->
                         assertTrue(rows.next())
-                        assertEquals(10, rows.getInt(1))
+                        assertEquals(11, rows.getInt(1))
                     }
                 }
             }
