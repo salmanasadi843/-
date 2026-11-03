@@ -71,6 +71,13 @@ fun BackendBrowseScreen(onBack: () -> Unit) {
     var notificationTopicId by remember { mutableStateOf<String?>(null) }
     var notificationPostId by remember { mutableStateOf<String?>(null) }
     var status by remember { mutableStateOf("در حال آماده‌سازی اتصال…") }
+    var editingClass by remember { mutableStateOf<BackendClassDto?>(null) }
+    var classTitleDraft by remember { mutableStateOf("") }
+    var classDescriptionDraft by remember { mutableStateOf("") }
+    var classTermDraft by remember { mutableStateOf("") }
+    var classVisibilityDraft by remember { mutableStateOf("private") }
+    var classPublishedDraft by remember { mutableStateOf(false) }
+    var classHiddenDraft by remember { mutableStateOf(false) }
 
     fun withFreshToken(action: suspend (String) -> Unit) {
         if (busy) return
@@ -180,6 +187,46 @@ fun BackendBrowseScreen(onBack: () -> Unit) {
                 noteQuote = ""; noteDraft = ""; noteStartOffset = null; noteEndOffset = null
             }
             status = "یادداشت حذف شد."
+        }
+    }
+
+    fun beginEditClass(clazz: BackendClassDto) {
+        editingClass = clazz
+        classTitleDraft = clazz.title
+        classDescriptionDraft = clazz.description
+        classTermDraft = clazz.term
+        classVisibilityDraft = clazz.visibility
+        classPublishedDraft = clazz.isPublished
+        classHiddenDraft = clazz.isHidden
+    }
+
+    fun saveClassChanges() {
+        val current = editingClass ?: return
+        if (classTitleDraft.isBlank()) {
+            status = "عنوان کلاس نمی‌تواند خالی باشد."
+            return
+        }
+        withFreshToken { token ->
+            val updated = withContext(Dispatchers.IO) {
+                DarsyarReadOnlyApiFactory.create().updateClass(
+                    token,
+                    current.id,
+                    BackendClassWriteRequest(
+                        title = classTitleDraft.trim(),
+                        description = classDescriptionDraft,
+                        term = classTermDraft,
+                        visibility = classVisibilityDraft,
+                        isPublished = classPublishedDraft,
+                        isHidden = classHiddenDraft,
+                        sortOrder = current.sortOrder,
+                        folderId = current.folderId
+                    )
+                )
+            }
+            classes = classes.map { if (it.id == updated.id) updated else it }
+            selectedClass = selectedClass?.let { if (it.id == updated.id) updated else it }
+            editingClass = null
+            status = "تغییرات کلاس ذخیره شد."
         }
     }
 
@@ -392,6 +439,12 @@ fun BackendBrowseScreen(onBack: () -> Unit) {
                                     "${if (clazz.visibility == "public") "عمومی · بدون عضویت" else "خصوصی · عضویت لازم"} · ${if (clazz.isPublished) "منتشرشده" else "منتشرنشده"}",
                                     style = MaterialTheme.typography.bodySmall
                                 )
+                            }
+                            if ("super_admin" in accountRoles || ("teacher" in accountRoles && clazz.ownerUserId == accountId)) {
+                                TextButton(
+                                    onClick = { beginEditClass(clazz) },
+                                    enabled = !busy
+                                ) { Text("مدیریت") }
                             }
                             Text("جلسه‌ها", color = MaterialTheme.colorScheme.primary, style = MaterialTheme.typography.labelMedium)
                         }
@@ -613,6 +666,71 @@ fun BackendBrowseScreen(onBack: () -> Unit) {
                 }
             }
         }
+    }
+    if (editingClass != null) {
+        AlertDialog(
+            onDismissRequest = { if (!busy) editingClass = null },
+            title = { Text("مدیریت کلاس") },
+            text = {
+                Column(
+                    modifier = Modifier.fillMaxWidth().heightIn(max = 560.dp),
+                    verticalArrangement = Arrangement.spacedBy(8.dp)
+                ) {
+                    OutlinedTextField(
+                        value = classTitleDraft,
+                        onValueChange = { classTitleDraft = it },
+                        label = { Text("عنوان کلاس") },
+                        singleLine = true,
+                        modifier = Modifier.fillMaxWidth()
+                    )
+                    OutlinedTextField(
+                        value = classDescriptionDraft,
+                        onValueChange = { classDescriptionDraft = it },
+                        label = { Text("توضیحات") },
+                        modifier = Modifier.fillMaxWidth(),
+                        minLines = 2,
+                        maxLines = 4
+                    )
+                    OutlinedTextField(
+                        value = classTermDraft,
+                        onValueChange = { classTermDraft = it },
+                        label = { Text("ترم / سال تحصیلی") },
+                        singleLine = true,
+                        modifier = Modifier.fillMaxWidth()
+                    )
+                    Text("دسترسی کلاس", style = MaterialTheme.typography.labelLarge)
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        RadioButton(
+                            selected = classVisibilityDraft == "public",
+                            onClick = { classVisibilityDraft = "public" }
+                        )
+                        Text("عمومی")
+                        Spacer(Modifier.width(12.dp))
+                        RadioButton(
+                            selected = classVisibilityDraft == "private",
+                            onClick = { classVisibilityDraft = "private" }
+                        )
+                        Text("خصوصی")
+                    }
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        Checkbox(checked = classPublishedDraft, onCheckedChange = { classPublishedDraft = it })
+                        Text("انتشار کلاس")
+                    }
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        Checkbox(checked = classHiddenDraft, onCheckedChange = { classHiddenDraft = it })
+                        Text("پنهان‌کردن کلاس از فهرست")
+                    }
+                }
+            },
+            confirmButton = {
+                TextButton(onClick = { saveClassChanges() }, enabled = !busy && classTitleDraft.isNotBlank()) {
+                    Text("ذخیره")
+                }
+            },
+            dismissButton = {
+                TextButton(onClick = { editingClass = null }, enabled = !busy) { Text("انصراف") }
+            }
+        )
     }
     if (showMyNotesDialog) {
         Dialog(onDismissRequest = { showMyNotesDialog = false }) {
