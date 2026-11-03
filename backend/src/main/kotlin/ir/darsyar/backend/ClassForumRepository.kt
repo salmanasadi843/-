@@ -82,8 +82,9 @@ class ClassForumRepository(private val dataSource: DataSource) {
                 c.prepareStatement("SELECT student_user_id FROM class_memberships WHERE class_id=? AND status='active'").use {
                     it.setObject(1,clazz);it.executeQuery().use { rs -> while(rs.next()) recipients+=rs.getObject(1,UUID::class.java) }
                 }
-                notifyUsers(c,recipients-user,user,clazz,UUID.fromString(result.id),null,"forum_topic","بحث تازه‌ای در تالار کلاس ایجاد شد: ${result.title}")
-                notifyMentions(c,body,user,clazz,UUID.fromString(result.id),null)
+                val notifiedRecipients=recipients-user
+                notifyUsers(c,notifiedRecipients,user,clazz,UUID.fromString(result.id),null,"forum_topic","بحث تازه‌ای در تالار کلاس ایجاد شد: ${result.title}")
+                notifyMentions(c,body,user,clazz,UUID.fromString(result.id),null,notifiedRecipients)
                 c.commit();return result
             } catch(e:Throwable){c.rollback();throw e} finally {c.autoCommit=true}
         }
@@ -135,8 +136,9 @@ class ClassForumRepository(private val dataSource: DataSource) {
                 c.prepareStatement("SELECT author_user_id FROM forum_posts WHERE topic_id=? AND deleted_at IS NULL").use {
                     it.setObject(1,topic);it.executeQuery().use { rs -> while(rs.next()) recipients+=rs.getObject(1,UUID::class.java) }
                 }
-                notifyUsers(c,recipients-user,user,UUID.fromString(context.classId),topic,UUID.fromString(result.id),"forum_reply","پاسخ تازه‌ای در بحث «${context.title}» ثبت شد.")
-                notifyMentions(c,body,user,UUID.fromString(context.classId),topic,UUID.fromString(result.id))
+                val notifiedRecipients=recipients-user
+                notifyUsers(c,notifiedRecipients,user,UUID.fromString(context.classId),topic,UUID.fromString(result.id),"forum_reply","پاسخ تازه‌ای در بحث «${context.title}» ثبت شد.")
+                notifyMentions(c,body,user,UUID.fromString(context.classId),topic,UUID.fromString(result.id),notifiedRecipients)
                 c.commit();return result
             } catch(e:Throwable){c.rollback();throw e} finally {c.autoCommit=true}
         }
@@ -284,8 +286,8 @@ class ClassForumRepository(private val dataSource: DataSource) {
         } }
     }
 
-    private fun notifyMentions(c:Connection,body:String,actor:UUID,classId:UUID,topic:UUID,post:UUID?) {
-        val ids=Regex("@\\[([0-9a-fA-F-]{36})]").findAll(body).mapNotNull { runCatching { UUID.fromString(it.groupValues[1]) }.getOrNull() }.toSet()-actor
+    private fun notifyMentions(c:Connection,body:String,actor:UUID,classId:UUID,topic:UUID,post:UUID?,alreadyNotified:Set<UUID> = emptySet()) {
+        val ids=Regex("@\\[([0-9a-fA-F-]{36})]").findAll(body).mapNotNull { runCatching { UUID.fromString(it.groupValues[1]) }.getOrNull() }.toSet()-actor-alreadyNotified
         if(ids.isEmpty()) return
         val allowed=mutableSetOf<UUID>()
         c.prepareStatement("""
