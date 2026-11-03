@@ -1105,7 +1105,7 @@ fun BackendBrowseScreen(onBack: () -> Unit) {
                     withFreshToken { token ->
                         val api = DarsyarReadOnlyApiFactory.create()
                         val request = BackendTeacherFolderWriteRequest(
-                            ownerUserId = current?.ownerUserId ?: accountId,
+                            ownerUserId = current?.ownerUserId ?: if ("super_admin" in accountRoles) selectedTeacherId ?: accountId else accountId,
                             parentFolderId = current?.parentFolderId,
                             name = folderNameDraft.trim(),
                             sortOrder = current?.sortOrder ?: teacherFolders.size,
