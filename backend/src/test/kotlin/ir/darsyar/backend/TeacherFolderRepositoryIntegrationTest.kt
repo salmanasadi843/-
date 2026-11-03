@@ -62,7 +62,7 @@ class TeacherFolderRepositoryIntegrationTest {
                     """.trimIndent()
                 ).use { statement ->
                     statement.setObject(1, owner)
-                    statement.setObject(2, child.id)
+                    statement.setObject(2, UUID.fromString(child.id))
                     statement.executeUpdate()
                 }
             }
