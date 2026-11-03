@@ -32,6 +32,11 @@ class ClassForumRepositoryIntegrationTest {
                     it.setObject(1,owner);it.setObject(2,student);it.setObject(3,stranger);it.executeUpdate()
                 }
             }
+            ds.connection.use { c ->
+                c.prepareStatement("INSERT INTO app_roles(user_id,role_name) VALUES (?,'teacher')").use {
+                    it.setObject(1,owner);it.executeUpdate()
+                }
+            }
             val clazz=TeachingClassRepository(ds).create(owner.toString(),
                 CreateTeachingClass(owner.toString(),"تالار آزمایشی","","","private",true))
             ds.connection.use { c ->
