@@ -167,9 +167,30 @@ export default function App() {
   }, [user, isAdmin]);
   const canCreateClass = isAdmin || (me?.roles.includes("teacher") ?? false);
   const canRedeemCode = me?.roles.includes("student") ?? false;
+  const browseFolderIds = useMemo(() => {
+    if (browseFolderId === "all" || browseFolderId === "none") return null;
+    const root = folders.find(folder => folder.id === browseFolderId);
+    if (!root) return new Set<string>();
+    const ids = new Set<string>([root.id]);
+    let changed = true;
+    while (changed) {
+      changed = false;
+      folders.forEach(folder => {
+        if (folder.ownerUserId === root.ownerUserId && folder.parentFolderId && ids.has(folder.parentFolderId) && !ids.has(folder.id)) {
+          ids.add(folder.id);
+          changed = true;
+        }
+      });
+    }
+    return ids;
+  }, [folders, browseFolderId]);
   const visibleClasses = useMemo(
-    () => classes.filter(c => (selectedTeacher === "all" || c.ownerUserId === selectedTeacher) && (browseFolderId === "all" || (browseFolderId === "none" ? !c.folderId : c.folderId === browseFolderId))),
-    [classes, selectedTeacher, browseFolderId],
+    () => classes.filter(c =>
+      (selectedTeacher === "all" || c.ownerUserId === selectedTeacher) &&
+      (browseFolderId === "all" ||
+        (browseFolderId === "none" ? !c.folderId : !!c.folderId && !!browseFolderIds?.has(c.folderId))),
+    ),
+    [classes, selectedTeacher, browseFolderId, browseFolderIds],
   );
   const folderOwnerId = isAdmin ? (selectedTeacher === "all" ? "" : selectedTeacher) : (me?.roles.includes("teacher") ? me.userId : "");
   const visibleFolders = useMemo(() => folders.filter(folder => folder.ownerUserId === folderOwnerId), [folders, folderOwnerId]);
