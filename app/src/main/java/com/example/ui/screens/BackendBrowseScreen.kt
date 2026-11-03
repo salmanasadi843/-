@@ -80,6 +80,7 @@ fun BackendBrowseScreen(onBack: () -> Unit) {
     var unreadNotificationCount by remember { mutableIntStateOf(0) }
     var notificationTopicId by remember { mutableStateOf<String?>(null) }
     var notificationPostId by remember { mutableStateOf<String?>(null) }
+    var notificationOpenSequence by remember { mutableIntStateOf(0) }
     var status by remember { mutableStateOf("در حال آماده‌سازی اتصال…") }
     var editingClass by remember { mutableStateOf<BackendClassDto?>(null) }
     var classTitleDraft by remember { mutableStateOf("") }
@@ -782,6 +783,7 @@ fun BackendBrowseScreen(onBack: () -> Unit) {
                         classId = clazz.id,
                         initialTopicId = notificationTopicId,
                         initialPostId = notificationPostId,
+                        initialOpenRequestId = notificationOpenSequence,
                         sessionId = selectedSession?.id,
                         currentUserId = accountId,
                         canModerate = "super_admin" in accountRoles || ("teacher" in accountRoles && clazz.ownerUserId == accountId),
@@ -1372,6 +1374,7 @@ fun BackendBrowseScreen(onBack: () -> Unit) {
             if (targetClass != null) {
                 notificationTopicId = notification.topicId
                 notificationPostId = notification.postId
+                notificationOpenSequence++
                 selectedTeacherId = targetClass.ownerUserId
                 openClass(targetClass)
                 status = if (notification.topicId != null) "کلاس مرتبط باز شد؛ گفت‌وگوی مربوطه در تالار انتخاب می‌شود." else "کلاس مرتبط با اعلان باز شد."
