@@ -840,7 +840,10 @@ fun BackendBrowseScreen(onBack: () -> Unit) {
                         sessionId = selectedSession?.id,
                         currentUserId = accountId,
                         canModerate = "super_admin" in accountRoles || ("teacher" in accountRoles && clazz.ownerUserId == accountId),
-                        onStatus = { status = it }
+                        onStatus = { status = it },
+                        onOpenSession = { sessionId ->
+                            sessions.firstOrNull { it.id == sessionId }?.let { linkedSession -> openSession(linkedSession) }
+                        }
                     )
                 }
             }
