@@ -55,6 +55,9 @@ class ClassForumRepositoryIntegrationTest {
             }
             assertEquals(announcement.id,announcements.list(student.toString(),setOf(AppRole.STUDENT),clazz.id).single().id)
             assertEquals(0,announcements.list(stranger.toString(),setOf(AppRole.STUDENT),clazz.id).size)
+            assertFalse(ClassForumRepository(ds).listNotifications(stranger.toString(),true)
+                .any { it.notificationType=="class_announcement" && it.classId==clazz.id },
+                "A non-member must not receive notifications from a private class.")
             assertFalse(ClassForumRepository(ds).listNotifications(owner.toString(),true)
                 .any { it.notificationType=="class_announcement" && it.classId==clazz.id },
                 "The author/owner must not receive a notification for their own announcement.")
