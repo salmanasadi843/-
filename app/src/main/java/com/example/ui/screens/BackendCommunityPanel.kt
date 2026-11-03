@@ -220,6 +220,19 @@ fun BackendAnnouncementsPanel(classId:String,canManage:Boolean,onStatus:(String)
                     Text(item.title,fontWeight=FontWeight.SemiBold)
                     Text(item.body,style=MaterialTheme.typography.bodySmall)
                     Text(item.authorName+" · "+java.text.DateFormat.getDateTimeInstance().format(java.util.Date(item.publishedAtMs)),style=MaterialTheme.typography.labelSmall)
+                    if(canManage) {
+                        TextButton(enabled=!busy,onClick={
+                            busy=true;error=null
+                            AuthPreferences.getFirebaseIdToken(context) { result -> result.fold(onSuccess={token->scope.launch {
+                                try {
+                                    withContext(Dispatchers.IO){DarsyarCommunityApiFactory.create().deleteAnnouncement(token,classId,item.id)}
+                                    items=items.filterNot { it.id==item.id }
+                                    onStatus("اعلان حذف شد.")
+                                } catch(e:Exception){error=e.localizedMessage ?: "حذف اعلان ناموفق بود"}
+                                finally {busy=false}
+                            }},onFailure={error=it.localizedMessage ?: "دریافت توکن ناموفق بود";busy=false}) }
+                        }) { Text("حذف اعلان",color=MaterialTheme.colorScheme.error) }
+                    }
                 }
             }
         }
