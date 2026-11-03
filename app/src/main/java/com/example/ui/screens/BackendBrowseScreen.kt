@@ -43,6 +43,12 @@ fun BackendBrowseScreen(onBack: () -> Unit) {
     val scope = rememberCoroutineScope()
     var teachers by remember { mutableStateOf<List<BackendTeacherDto>>(emptyList()) }
     var classes by remember { mutableStateOf<List<BackendClassDto>>(emptyList()) }
+    var teacherFolders by remember { mutableStateOf<List<BackendTeacherFolderDto>>(emptyList()) }
+    var selectedFolderId by remember { mutableStateOf<String?>(null) }
+    var folderNameDraft by remember { mutableStateOf("") }
+    var editingFolder by remember { mutableStateOf<BackendTeacherFolderDto?>(null) }
+    var showFolderDialog by remember { mutableStateOf(false) }
+    var classFolderDraft by remember { mutableStateOf<String?>(null) }
     var sessions by remember { mutableStateOf<List<BackendSessionSummaryDto>>(emptyList()) }
     var selectedTeacherId by remember { mutableStateOf<String?>(null) }
     var selectedClass by remember { mutableStateOf<BackendClassDto?>(null) }
@@ -125,16 +131,22 @@ fun BackendBrowseScreen(onBack: () -> Unit) {
                 val repository = DarsyarReadOnlyApiFactory.create()
                 val snapshot = repository.loadSnapshot(token)
                 val directory = repository.loadTeachers(token)
+                val folders = repository.loadTeacherFolders(token)
                 val unreadCount = runCatching {
                     DarsyarCommunityApiFactory.create().notifications(token, unreadOnly = true).size
                 }.getOrDefault(0)
-                Triple(snapshot, directory, unreadCount)
+                listOf(snapshot, directory, unreadCount, folders)
             }
-            accountId = result.first.account.userId
-            accountRoles = result.first.account.roles
-            classes = result.first.classes
-            teachers = result.second
-            unreadNotificationCount = result.third
+            val snapshot = result[0] as BackendSnapshotDto
+            val directory = result[1] as List<BackendTeacherDto>
+            val unreadCount = result[2] as Int
+            val folders = result[3] as List<BackendTeacherFolderDto>
+            accountId = snapshot.account.userId
+            accountRoles = snapshot.account.roles
+            classes = snapshot.classes
+            teachers = directory
+            teacherFolders = folders
+            unreadNotificationCount = unreadCount
             selectedTeacherId = null
             selectedClass = null
             sessions = emptyList()
@@ -213,6 +225,7 @@ fun BackendBrowseScreen(onBack: () -> Unit) {
         classVisibilityDraft = clazz.visibility
         classPublishedDraft = clazz.isPublished
         classHiddenDraft = clazz.isHidden
+        classFolderDraft = clazz.folderId
     }
 
     fun saveClassChanges() {
@@ -234,7 +247,7 @@ fun BackendBrowseScreen(onBack: () -> Unit) {
                         isPublished = classPublishedDraft,
                         isHidden = classHiddenDraft,
                         sortOrder = current.sortOrder,
-                        folderId = current.folderId
+                        folderId = classFolderDraft
                     )
                 )
             }
@@ -539,6 +552,38 @@ fun BackendBrowseScreen(onBack: () -> Unit) {
                     color = MaterialTheme.colorScheme.onSurfaceVariant
                 )
             }
+            if ("super_admin" in accountRoles || "teacher" in accountRoles) {
+                item {
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        Text("پوشه‌های استاد", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold, modifier = Modifier.weight(1f))
+                        TextButton(onClick = {
+                            editingFolder = null
+                            folderNameDraft = ""
+                            showFolderDialog = true
+                        }, enabled = !busy) { Text("پوشه جدید") }
+                    }
+                    Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                        FilterChip(
+                            selected = selectedFolderId == null,
+                            onClick = { selectedFolderId = null },
+                            label = { Text("همه") }
+                        )
+                        teacherFolders.filter { "super_admin" in accountRoles || it.ownerUserId == accountId }
+                            .forEach { folder ->
+                                FilterChip(
+                                    selected = selectedFolderId == folder.id,
+                                    onClick = { selectedFolderId = if (selectedFolderId == folder.id) null else folder.id },
+                                    label = { Text(folder.name) }
+                                )
+                                TextButton(onClick = {
+                                    editingFolder = folder
+                                    folderNameDraft = folder.name
+                                    showFolderDialog = true
+                                }, enabled = !busy) { Text("ویرایش") }
+                            }
+                    }
+                }
+            }
             item { Text("۱. استاد", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold) }
             if (teachers.isEmpty() && !busy) {
                 item { Text("استادی با کلاس قابل مشاهده پیدا نشد.", style = MaterialTheme.typography.bodySmall) }
@@ -577,7 +622,7 @@ fun BackendBrowseScreen(onBack: () -> Unit) {
                         }
                     }
                 }
-                val teacherClasses = classes.filter { it.ownerUserId == teacherId }.sortedBy { it.sortOrder }
+                val teacherClasses = classes.filter { it.ownerUserId == teacherId && (selectedFolderId == null || it.folderId == selectedFolderId) }.sortedBy { it.sortOrder }
                 if (teacherClasses.isEmpty()) item { Text("کلاسی برای این استاد ثبت نشده است.", style = MaterialTheme.typography.bodySmall) }
                 items(teacherClasses, key = { it.id }) { clazz ->
                     Card(
@@ -1028,6 +1073,77 @@ fun BackendBrowseScreen(onBack: () -> Unit) {
             }
         )
     }
+    if (showFolderDialog) {
+        AlertDialog(
+            onDismissRequest = { if (!busy) showFolderDialog = false },
+            title = { Text(if (editingFolder == null) "ایجاد پوشه استاد" else "ویرایش پوشه استاد") },
+            text = {
+                Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                    OutlinedTextField(
+                        value = folderNameDraft,
+                        onValueChange = { folderNameDraft = it },
+                        label = { Text("نام پوشه") },
+                        singleLine = true,
+                        modifier = Modifier.fillMaxWidth()
+                    )
+                    if (editingFolder != null) {
+                        Row(verticalAlignment = Alignment.CenterVertically) {
+                            Checkbox(
+                                checked = editingFolder?.isHidden == true,
+                                onCheckedChange = { hidden ->
+                                    editingFolder = editingFolder?.copy(isHidden = hidden)
+                                }
+                            )
+                            Text("پنهان‌کردن پوشه")
+                        }
+                    }
+                }
+            },
+            confirmButton = {
+                TextButton(onClick = {
+                    val current = editingFolder
+                    withFreshToken { token ->
+                        val api = DarsyarReadOnlyApiFactory.create()
+                        val request = BackendTeacherFolderWriteRequest(
+                            ownerUserId = current?.ownerUserId ?: accountId,
+                            parentFolderId = current?.parentFolderId,
+                            name = folderNameDraft.trim(),
+                            sortOrder = current?.sortOrder ?: teacherFolders.size,
+                            isHidden = current?.isHidden ?: false
+                        )
+                        val saved = withContext(Dispatchers.IO) {
+                            if (current == null) api.createTeacherFolder(token, request)
+                            else api.updateTeacherFolder(token, current.id, request)
+                        }
+                        teacherFolders = if (current == null) teacherFolders + saved
+                            else teacherFolders.map { if (it.id == saved.id) saved else it }
+                        showFolderDialog = false
+                        status = "پوشه استاد ذخیره شد."
+                    }
+                }, enabled = !busy && folderNameDraft.isNotBlank()) { Text("ذخیره") }
+            },
+            dismissButton = {
+                Row {
+                    if (editingFolder != null) {
+                        TextButton(onClick = {
+                            val target = editingFolder ?: return@TextButton
+                            withFreshToken { token ->
+                                withContext(Dispatchers.IO) {
+                                    DarsyarReadOnlyApiFactory.create().deleteTeacherFolder(token, target.id)
+                                }
+                                teacherFolders = teacherFolders.filterNot { it.id == target.id }
+                                classes = classes.map { if (it.folderId == target.id) it.copy(folderId = null) else it }
+                                if (selectedFolderId == target.id) selectedFolderId = null
+                                showFolderDialog = false
+                                status = "پوشه حذف شد؛ کلاس‌ها حفظ شدند و بدون پوشه باقی ماندند."
+                            }
+                        }, enabled = !busy) { Text("حذف") }
+                    }
+                    TextButton(onClick = { showFolderDialog = false }, enabled = !busy) { Text("انصراف") }
+                }
+            }
+        )
+    }
     if (editingClass != null) {
         AlertDialog(
             onDismissRequest = { if (!busy) editingClass = null },
@@ -1059,6 +1175,22 @@ fun BackendBrowseScreen(onBack: () -> Unit) {
                         singleLine = true,
                         modifier = Modifier.fillMaxWidth()
                     )
+                    Text("پوشه استاد", style = MaterialTheme.typography.labelLarge)
+                    Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                        FilterChip(
+                            selected = classFolderDraft == null,
+                            onClick = { classFolderDraft = null },
+                            label = { Text("بدون پوشه") }
+                        )
+                        teacherFolders.filter { it.ownerUserId == editingClass?.ownerUserId || "super_admin" in accountRoles }
+                            .forEach { folder ->
+                                FilterChip(
+                                    selected = classFolderDraft == folder.id,
+                                    onClick = { classFolderDraft = folder.id },
+                                    label = { Text(folder.name) }
+                                )
+                            }
+                    }
                     Text("دسترسی کلاس", style = MaterialTheme.typography.labelLarge)
                     Row(verticalAlignment = Alignment.CenterVertically) {
                         RadioButton(
