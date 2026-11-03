@@ -90,6 +90,9 @@ fun BackendBrowseScreen(onBack: () -> Unit) {
     var sessionKeyPointsDraft by remember { mutableStateOf("") }
     var sessionTagsDraft by remember { mutableStateOf("") }
     var sessionPublishedDraft by remember { mutableStateOf(false) }
+    var showDeletedSessions by remember { mutableStateOf(false) }
+    var deletedSessions by remember { mutableStateOf<List<BackendSessionSummaryDto>>(emptyList()) }
+    var confirmDeleteSession by remember { mutableStateOf<BackendSessionSummaryDto?>(null) }
 
     fun withFreshToken(action: suspend (String) -> Unit) {
         if (busy) return
@@ -351,6 +354,50 @@ fun BackendBrowseScreen(onBack: () -> Unit) {
         }
     }
 
+    fun openDeletedSessions() {
+        showDeletedSessions = true
+        withFreshToken { token ->
+            deletedSessions = withContext(Dispatchers.IO) {
+                DarsyarReadOnlyApiFactory.create().loadDeletedSessions(token)
+            }
+        }
+    }
+
+    fun deleteSelectedSession() {
+        val target = confirmDeleteSession ?: return
+        withFreshToken { token ->
+            withContext(Dispatchers.IO) {
+                DarsyarReadOnlyApiFactory.create().deleteSession(token, target.id)
+            }
+            sessions = sessions.filterNot { it.id == target.id }
+            if (selectedSession?.id == target.id) {
+                selectedSession = null
+                selectedSessionState = null
+                sessionNotes = emptyList()
+            }
+            deletedSessions = withContext(Dispatchers.IO) {
+                DarsyarReadOnlyApiFactory.create().loadDeletedSessions(token)
+            }
+            confirmDeleteSession = null
+            status = "جلسه به سطل بازیافت منتقل شد؛ امکان بازیابی آن وجود دارد."
+        }
+    }
+
+    fun restoreDeletedSession(target: BackendSessionSummaryDto) {
+        withFreshToken { token ->
+            withContext(Dispatchers.IO) {
+                DarsyarReadOnlyApiFactory.create().restoreSession(token, target.id)
+            }
+            deletedSessions = deletedSessions.filterNot { it.id == target.id }
+            if (selectedClass?.id == target.classId) {
+                sessions = withContext(Dispatchers.IO) {
+                    DarsyarReadOnlyApiFactory.create().loadSessions(token, target.classId)
+                }
+            }
+            status = "جلسه بازیابی شد."
+        }
+    }
+
     fun moveSelectedSession() {
         val session = movingSession ?: return
         if (moveTargetClassId.isBlank() || moveTargetClassId == session.classId) {
@@ -565,6 +612,9 @@ fun BackendBrowseScreen(onBack: () -> Unit) {
                 item {
                     Row(verticalAlignment = Alignment.CenterVertically) {
                         Text("۳. جلسه‌های «${clazz.title}»", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
+                        if ("super_admin" in accountRoles || ("teacher" in accountRoles && clazz.ownerUserId == accountId)) {
+                            TextButton(onClick = { openDeletedSessions() }, enabled = !busy) { Text("سطل بازیافت") }
+                        }
                         Spacer(Modifier.weight(1f))
                         TextButton(onClick = { selectedClass = null; sessions = emptyList(); selectedSession = null }) {
                             Text("بازگشت")
@@ -597,6 +647,10 @@ fun BackendBrowseScreen(onBack: () -> Unit) {
                                         enabled = !busy && sessionIndex < sessions.lastIndex
                                     ) { Text("↓") }
                                 }
+                                TextButton(
+                                    onClick = { confirmDeleteSession = session },
+                                    enabled = !busy
+                                ) { Text("حذف") }
                                 TextButton(
                                     onClick = {
                                         movingSession = session
@@ -801,6 +855,55 @@ fun BackendBrowseScreen(onBack: () -> Unit) {
                 }
             }
         }
+    }
+    if (confirmDeleteSession != null) {
+        AlertDialog(
+            onDismissRequest = { if (!busy) confirmDeleteSession = null },
+            title = { Text("حذف جلسه") },
+            text = { Text("جلسه «${confirmDeleteSession?.title.orEmpty()}» به سطل بازیافت منتقل شود؟ محتوای آن فعلاً برای بازیابی حفظ می‌شود.") },
+            confirmButton = {
+                TextButton(onClick = { deleteSelectedSession() }, enabled = !busy) { Text("حذف") }
+            },
+            dismissButton = {
+                TextButton(onClick = { confirmDeleteSession = null }, enabled = !busy) { Text("انصراف") }
+            }
+        )
+    }
+    if (showDeletedSessions) {
+        AlertDialog(
+            onDismissRequest = { showDeletedSessions = false },
+            title = { Text("سطل بازیافت جلسه‌ها") },
+            text = {
+                Column(
+                    modifier = Modifier.fillMaxWidth().heightIn(max = 520.dp),
+                    verticalArrangement = Arrangement.spacedBy(8.dp)
+                ) {
+                    if (deletedSessions.isEmpty()) {
+                        Text("جلسه حذف‌شده‌ای برای بازیابی وجود ندارد.")
+                    } else {
+                        deletedSessions.forEach { deleted ->
+                            Row(
+                                modifier = Modifier.fillMaxWidth(),
+                                verticalAlignment = Alignment.CenterVertically
+                            ) {
+                                Column(Modifier.weight(1f)) {
+                                    Text(deleted.title, fontWeight = FontWeight.Medium)
+                                    Text("شناسه کلاس: ${deleted.classId.take(8)}…", style = MaterialTheme.typography.labelSmall)
+                                }
+                                TextButton(
+                                    onClick = { restoreDeletedSession(deleted) },
+                                    enabled = !busy
+                                ) { Text("بازیابی") }
+                            }
+                            HorizontalDivider()
+                        }
+                    }
+                }
+            },
+            confirmButton = {
+                TextButton(onClick = { showDeletedSessions = false }) { Text("بستن") }
+            }
+        )
     }
     if (editingSession != null) {
         AlertDialog(
