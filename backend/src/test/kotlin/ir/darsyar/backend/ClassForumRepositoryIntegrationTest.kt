@@ -42,6 +42,10 @@ class ClassForumRepositoryIntegrationTest {
             val announcements=ClassAnnouncementRepository(ds)
             val announcement=announcements.create(owner.toString(),setOf(AppRole.TEACHER),clazz.id,
                 "تغییر برنامه کلاس","جلسه آینده نیم ساعت دیرتر برگزار می‌شود.")
+            assertFailsWith<SecurityException> {
+                announcements.create(stranger.toString(),setOf(AppRole.STUDENT),clazz.id,
+                    "اعلان غیرمجاز","کاربر خارج از کلاس نباید بتواند اعلان منتشر کند.")
+            }
             assertEquals(announcement.id,announcements.list(student.toString(),setOf(AppRole.STUDENT),clazz.id).single().id)
             assertEquals(0,announcements.list(stranger.toString(),setOf(AppRole.STUDENT),clazz.id).size)
             val repo=ClassForumRepository(ds)
