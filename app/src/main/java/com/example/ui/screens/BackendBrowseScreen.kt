@@ -322,7 +322,7 @@ fun BackendBrowseScreen(onBack: () -> Unit) {
                 DarsyarReadOnlyApiFactory.create().restoreClass(token, clazz.id)
             }
             deletedClasses = deletedClasses.filterNot { it.id == clazz.id }
-            classes = classes + clazz.copy(isHidden = false)
+            classes = classes.filterNot { it.id == clazz.id } + clazz
             status = "کلاس بازیابی شد."
             if (deletedClasses.isEmpty()) showDeletedClassesDialog = false
         }
