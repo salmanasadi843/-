@@ -417,7 +417,7 @@ class TeachingSessionRepository(private val dataSource: DataSource) {
             try {
                 val current = connection.prepareStatement(
                     """
-                    SELECT s.id::text, s.class_id::text, s.sort_order, c.owner_user_id::text
+                    SELECT s.class_id::text, c.owner_user_id::text
                     FROM teaching_sessions s
                     JOIN teaching_classes c ON c.id = s.class_id
                     WHERE s.id = ? AND s.deleted_at IS NULL AND c.deleted_at IS NULL
@@ -426,41 +426,56 @@ class TeachingSessionRepository(private val dataSource: DataSource) {
                 ).use { st ->
                     st.setObject(1, id)
                     st.executeQuery().use { rs ->
-                        if (rs.next()) Triple(rs.getString("class_id"), rs.getInt("sort_order"), rs.getString("owner_user_id")) else null
+                        if (rs.next()) rs.getString("class_id") to rs.getString("owner_user_id") else null
                     }
                 } ?: run { connection.rollback(); return null }
-                val (classId, currentOrder, ownerId) = current
+                val (classId, ownerId) = current
                 if (AppRole.SUPER_ADMIN !in roles &&
                     !(AppRole.TEACHER in roles && ownerId == actorUserId)
                 ) throw SecurityException("Session management is not allowed.")
-                val neighbor = connection.prepareStatement(
+
+                // Normalize existing sort values first: legacy sessions may all have sort_order = 0.
+                val orderedIds = connection.prepareStatement(
                     """
-                    SELECT id::text, sort_order
+                    SELECT id::text
                     FROM teaching_sessions
                     WHERE class_id = ? AND deleted_at IS NULL
-                      AND (sort_order ${if (direction == "up") "<" else ">"} ?)
-                    ORDER BY sort_order ${if (direction == "up") "DESC" else "ASC"}, title ASC, id ASC
-                    LIMIT 1
+                    ORDER BY sort_order ASC, date_ms NULLS LAST, title ASC, id ASC
                     FOR UPDATE
                     """.trimIndent()
                 ).use { st ->
                     st.setObject(1, UUID.fromString(classId))
-                    st.setInt(2, currentOrder)
                     st.executeQuery().use { rs ->
-                        if (rs.next()) rs.getString("id") to rs.getInt("sort_order") else null
+                        buildList { while (rs.next()) add(rs.getString("id")) }
                     }
                 }
-                if (neighbor != null) {
-                    val (neighborId, neighborOrder) = neighbor
+                val currentIndex = orderedIds.indexOf(id.toString())
+                if (currentIndex < 0) {
+                    connection.rollback()
+                    return null
+                }
+                val neighborIndex = if (direction == "up") currentIndex - 1 else currentIndex + 1
+                if (neighborIndex in orderedIds.indices) {
                     connection.prepareStatement(
                         "UPDATE teaching_sessions SET sort_order = ?, version = version + 1, updated_at = now() WHERE id = ?"
                     ).use { st ->
-                        st.setInt(1, neighborOrder); st.setObject(2, id); st.executeUpdate()
+                        orderedIds.forEachIndexed { index, itemId ->
+                            st.setInt(1, index)
+                            st.setObject(2, UUID.fromString(itemId))
+                            st.addBatch()
+                        }
+                        st.executeBatch()
                     }
                     connection.prepareStatement(
                         "UPDATE teaching_sessions SET sort_order = ?, version = version + 1, updated_at = now() WHERE id = ?"
                     ).use { st ->
-                        st.setInt(1, currentOrder); st.setObject(2, UUID.fromString(neighborId)); st.executeUpdate()
+                        st.setInt(1, neighborIndex)
+                        st.setObject(2, id)
+                        st.addBatch()
+                        st.setInt(1, currentIndex)
+                        st.setObject(2, UUID.fromString(orderedIds[neighborIndex]))
+                        st.addBatch()
+                        st.executeBatch()
                     }
                 }
                 val result = connection.prepareStatement(
