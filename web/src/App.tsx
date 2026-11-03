@@ -40,6 +40,7 @@ export default function App() {
   const [forumTopics, setForumTopics] = useState<ForumTopic[]>([]);
   const [activeTopic, setActiveTopic] = useState<ForumTopic | null>(null);
   const [forumPosts, setForumPosts] = useState<ForumPost[]>([]);
+  const [highlightedForumPostId, setHighlightedForumPostId] = useState<string | null>(null);
   const [forumTitle, setForumTitle] = useState("");
   const [forumBody, setForumBody] = useState("");
   const [replyBody, setReplyBody] = useState("");
@@ -531,12 +532,12 @@ export default function App() {
     finally { setBusy(false); }
   }
 
-  async function openForumTopic(topic: ForumTopic) {
+  async function openForumTopic(topic: ForumTopic, targetPostId: string | null = null) {
     if (!user) return;
     setBusy(true); setError("");
     try {
       const posts = await api.forumPosts(topic.id, await user.getIdToken());
-      setActiveTopic(topic); setForumPosts(posts); setReplyParentId(null);
+      setActiveTopic(topic); setForumPosts(posts); setReplyParentId(null); setHighlightedForumPostId(targetPostId);
     } catch(e) { setError(message(e)); }
     finally { setBusy(false); }
   }
@@ -661,7 +662,7 @@ export default function App() {
         await openClass(clazz);
         if (item.topicId) {
           const topic = (await api.forumTopics(clazz.id, await user.getIdToken())).find(t => t.id === item.topicId);
-          if (topic) await openForumTopic(topic);
+          if (topic) await openForumTopic(topic, item.postId);
         }
       }
     } catch(e) { setError(message(e)); }
@@ -1191,7 +1192,7 @@ export default function App() {
                 <div><button disabled={busy || !editTopicTitle.trim() || !editTopicBody.trim()}>ذخیره تغییرات</button><button type="button" className="ghost" onClick={() => setEditingTopic(false)}>انصراف</button></div>
               </form> : <p className="pre forum-topic-body">{activeTopic.body}</p>}
               <h4>پاسخ‌ها ({forumPosts.length})</h4>
-              {forumPosts.map(post => <div key={post.id} className={post.parentPostId ? "forum-post nested" : "forum-post"}>
+              {forumPosts.map(post => <div id={`forum-post-${post.id}`} key={post.id} className={`${post.parentPostId ? "forum-post nested" : "forum-post"}${highlightedForumPostId === post.id ? " notification-target" : ""}`}>
                 <div className="forum-post-meta"><strong>{post.authorName}</strong><small>{new Date(post.createdAtMs).toLocaleString("fa-IR")}{post.updatedAtMs > post.createdAtMs ? " · ویرایش‌شده" : ""}</small></div>
                 {editingPostId === post.id ? <form className="editor-form" onSubmit={e => {e.preventDefault();void saveForumPost(post);}}>
                   <textarea value={editPostBody} onChange={e => setEditPostBody(e.target.value)} rows={3} maxLength={20000} required />
