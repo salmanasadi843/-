@@ -61,10 +61,14 @@ class ClassForumRepositoryIntegrationTest {
             assertEquals(1,repo.listTopics(owner.toString(),setOf(AppRole.TEACHER),clazz.id).size)
             assertEquals(1,repo.listTopics(student.toString(),setOf(AppRole.STUDENT),clazz.id).size)
             // Mentions are delivered only to users who belong to this class.
-            repo.createReply(student.toString(),setOf(AppRole.STUDENT),topic.id,null,
+            val studentReply=repo.createReply(student.toString(),setOf(AppRole.STUDENT),topic.id,null,
                 "سلام @["+owner+"] و @["+stranger+"]")
             val ownerInbox=repo.listNotifications(owner.toString(),true)
-            assertTrue(ownerInbox.any { it.notificationType=="forum_mention" && it.actorUserId==student.toString() })
+            assertTrue(ownerInbox.any { it.notificationType=="forum_reply" && it.postId==studentReply.id })
+            assertFalse(ownerInbox.any { it.notificationType=="forum_mention" && it.postId==studentReply.id },
+                "A mention must not create a second notification for a user already notified about the same reply.")
+            assertEquals(1,ownerInbox.count { it.postId==studentReply.id },
+                "The class owner should receive exactly one notification for this reply.")
             assertFalse(repo.listNotifications(stranger.toString(),true).any { it.notificationType=="forum_mention" })
             assertFalse(repo.markNotificationRead(stranger.toString(),ownerInbox.first().id))
             assertFailsWith<SecurityException> {
@@ -76,7 +80,9 @@ class ClassForumRepositoryIntegrationTest {
             assertTrue(reply.topicId==topic.id)
             val studentInbox=repo.listNotifications(student.toString(),true)
             assertTrue(studentInbox.any { it.notificationType=="forum_reply" && it.topicId==topic.id })
-            assertTrue(studentInbox.any { it.notificationType=="class_announcement" })
+            assertTrue(studentInbox.any { it.notificationType=="class_announcement" && it.classId==clazz.id })
+            assertFalse(studentInbox.any { it.actorUserId==student.toString() },
+                "A user must never receive their own notification.")
             assertFalse(repo.listNotifications(owner.toString(),true).any { it.actorUserId==owner.toString() })
             assertFailsWith<SecurityException> {
                 announcements.delete(otherTeacher.toString(),setOf(AppRole.TEACHER),clazz.id,announcement.id)
