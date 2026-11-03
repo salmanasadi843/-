@@ -55,6 +55,9 @@ class ClassForumRepositoryIntegrationTest {
             }
             assertEquals(announcement.id,announcements.list(student.toString(),setOf(AppRole.STUDENT),clazz.id).single().id)
             assertEquals(0,announcements.list(stranger.toString(),setOf(AppRole.STUDENT),clazz.id).size)
+            assertFalse(ClassForumRepository(ds).listNotifications(owner.toString(),true)
+                .any { it.notificationType=="class_announcement" && it.classId==clazz.id },
+                "The author/owner must not receive a notification for their own announcement.")
             val repo=ClassForumRepository(ds)
             val topic=repo.createTopic(student.toString(),setOf(AppRole.STUDENT),clazz.id,null,
                 "پرسش درباره درس","لطفاً این نکته را توضیح دهید.")
@@ -115,6 +118,23 @@ class ClassForumRepositoryIntegrationTest {
             assertEquals(0,repo.listPosts(student.toString(),setOf(AppRole.STUDENT),topic.id).size)
             assertTrue(repo.deleteTopic(student.toString(),setOf(AppRole.STUDENT),topic.id))
             assertEquals(0,repo.listTopics(owner.toString(),setOf(AppRole.TEACHER),clazz.id).size)
+
+            // Public classes are readable and discussable without membership, but
+            // notifications are still limited to the owner and active members.
+            val publicClass=TeachingClassRepository(ds).create(owner.toString(),
+                CreateTeachingClass(owner.toString(),"تالار عمومی آزمایشی","","","public",true))
+            val publicTopic=repo.createTopic(stranger.toString(),setOf(AppRole.STUDENT),publicClass.id,null,
+                "پرسش عمومی","این پرسش را بدون عضویت ثبت می‌کنم.")
+            assertEquals(1,repo.listTopics(stranger.toString(),setOf(AppRole.STUDENT),publicClass.id).size)
+            assertTrue(repo.listNotifications(owner.toString(),true).any {
+                it.notificationType=="forum_topic" && it.topicId==publicTopic.id && it.classId==publicClass.id
+            }, "The owner must be notified about a topic in their public class.")
+            assertFalse(repo.listNotifications(stranger.toString(),true).any {
+                it.topicId==publicTopic.id && it.actorUserId==stranger.toString()
+            }, "A public non-member must not receive their own topic notification.")
+            assertFalse(repo.listNotifications(student.toString(),true).any {
+                it.topicId==publicTopic.id
+            }, "A non-member must not receive member-only forum notifications.")
 
         }
     }
