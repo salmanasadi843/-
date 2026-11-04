@@ -129,6 +129,10 @@ export const api = {
     request<ClassRecord>("/api/v1/classes", token, { method: "POST", body: JSON.stringify(data) }),
   updateClass: (classId: string, data: NewClass, token: string) =>
     request<ClassRecord>(`/api/v1/classes/${encodeURIComponent(classId)}`, token, { method: "PATCH", body: JSON.stringify(data) }),
+  reorderClass: (classId: string, direction: "up" | "down", token: string) =>
+    request<ClassRecord[]>(`/api/v1/classes/${encodeURIComponent(classId)}/reorder`, token, {
+      method: "POST", body: JSON.stringify({ direction }),
+    }),
   deleteClass: (classId: string, token: string) =>
     request<void>(`/api/v1/classes/${encodeURIComponent(classId)}`, token, { method: "DELETE" }),
   deletedClasses: (token: string) => request<ClassRecord[]>("/api/v1/classes/deleted", token),
