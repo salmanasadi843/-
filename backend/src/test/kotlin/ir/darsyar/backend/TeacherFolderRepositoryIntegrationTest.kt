@@ -51,6 +51,8 @@ class TeacherFolderRepositoryIntegrationTest {
                 CreateTeacherFolder(owner.toString(), null, "اصول"))
             val child = repo.create(owner.toString(), ownerRoles,
                 CreateTeacherFolder(owner.toString(), root.id, "جلسات"))
+            val grandchild = repo.create(owner.toString(), ownerRoles,
+                CreateTeacherFolder(owner.toString(), child.id, "متن‌ها"))
             val otherRoot = repo.create(otherTeacher.toString(), ownerRoles,
                 CreateTeacherFolder(otherTeacher.toString(), null, "پوشه استاد دیگر"))
 
@@ -66,9 +68,19 @@ class TeacherFolderRepositoryIntegrationTest {
                     statement.executeUpdate()
                 }
             }
+            ds.connection.use { connection ->
+                connection.prepareStatement(
+                    "UPDATE teaching_classes SET folder_id = ? WHERE folder_id = ?"
+                ).use { statement ->
+                    statement.setObject(1, UUID.fromString(grandchild.id))
+                    statement.setObject(2, UUID.fromString(child.id))
+                    statement.executeUpdate()
+                }
+            }
             val studentFolders = repo.listVisible(student.toString(), setOf(AppRole.STUDENT))
-            assertTrue(studentFolders.any { it.id == root.id }, "Student must receive the parent folder of a visible nested class.")
-            assertTrue(studentFolders.any { it.id == child.id }, "Student must receive the folder containing the visible class.")
+            assertTrue(studentFolders.any { it.id == root.id }, "Student must receive the root ancestor of a visible nested class.")
+            assertTrue(studentFolders.any { it.id == child.id }, "Student must receive the parent folder of a visible nested class.")
+            assertTrue(studentFolders.any { it.id == grandchild.id }, "Student must receive the folder containing the visible class.")
             assertTrue(studentFolders.none { it.id == otherRoot.id }, "Student must not receive unrelated empty teacher folders.")
 
             assertFailsWith<IllegalArgumentException> {
@@ -98,8 +110,8 @@ class TeacherFolderRepositoryIntegrationTest {
 
             // A hidden parent hides its whole folder branch from other users, avoiding orphaned children.
             val studentFoldersAfterHide = repo.listVisible(student.toString(), setOf(AppRole.STUDENT))
-            assertTrue(studentFoldersAfterHide.none { it.id == root.id || it.id == child.id },
-                "Students must not receive descendants whose parent folder is hidden.")
+            assertTrue(studentFoldersAfterHide.none { it.id == root.id || it.id == child.id || it.id == grandchild.id },
+                "Students must not receive descendants at any depth whose ancestor folder is hidden.")
             val studentClassesAfterHide = TeachingClassRepository(ds)
                 .listVisible(student.toString(), setOf(AppRole.STUDENT))
             assertTrue(studentClassesAfterHide.any { it.folderId == child.id },
@@ -111,10 +123,11 @@ class TeacherFolderRepositoryIntegrationTest {
                     "UPDATE teaching_classes SET folder_id = NULL WHERE owner_user_id = ? AND folder_id = ?::uuid"
                 ).use { statement ->
                     statement.setObject(1, owner)
-                    statement.setString(2, child.id)
+                    statement.setString(2, grandchild.id)
                     statement.executeUpdate()
                 }
             }
+            assertTrue(repo.delete(owner.toString(), ownerRoles, grandchild.id))
             assertTrue(repo.delete(owner.toString(), ownerRoles, child.id))
             assertTrue(repo.delete(owner.toString(), ownerRoles, root.id))
             assertTrue(repo.delete(otherTeacher.toString(), ownerRoles, otherRoot.id))
@@ -124,7 +137,7 @@ class TeacherFolderRepositoryIntegrationTest {
                 c.prepareStatement("SELECT count(*) FROM audit_log WHERE entity_type = 'teacher_folder'").use { s ->
                     s.executeQuery().use { rows ->
                         assertTrue(rows.next())
-                        assertEquals(7, rows.getInt(1))
+                        assertEquals(8, rows.getInt(1))
                     }
                 }
             }
