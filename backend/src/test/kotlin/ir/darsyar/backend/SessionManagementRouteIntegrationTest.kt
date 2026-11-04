@@ -16,6 +16,9 @@ import io.ktor.server.testing.testApplication
 import org.flywaydb.core.Flyway
 import org.junit.jupiter.api.Assumptions.assumeTrue
 import java.util.UUID
+import java.util.concurrent.CountDownLatch
+import java.util.concurrent.Executors
+import java.util.concurrent.TimeUnit
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertTrue
@@ -79,7 +82,19 @@ class SessionManagementRouteIntegrationTest {
                     title = "جلسه اولیه",
                     transcript = "متن اصلی جلسه",
                     originalTranscript = "متن اصلی جلسه",
-                    isPublished = true
+                    isPublished = true,
+                    sortOrder = 1
+                )
+            )
+            val siblingSession = sessionRepository.create(
+                ownerId.toString(), setOf(AppRole.TEACHER),
+                CreateTeachingSession(
+                    classId = sourceClass.id,
+                    title = "جلسه هم‌گروه",
+                    transcript = "متن جلسه هم‌گروه",
+                    originalTranscript = "متن جلسه هم‌گروه",
+                    isPublished = true,
+                    sortOrder = 0
                 )
             )
 
@@ -156,6 +171,65 @@ class SessionManagementRouteIntegrationTest {
             assertEquals(HttpStatusCode.OK, ownerMove.status, ownerMoveResponse)
             assertTrue(ownerMoveResponse.contains(sourceClass.id), ownerMoveResponse)
             assertTrue(ownerMoveResponse.contains("متن اصلی جلسه"), ownerMoveResponse)
+
+            // Session reorder is also protected at the HTTP boundary: admins and owners
+            // may reorder, while a different teacher remains read-only.
+            val forbiddenReorder = client.post("/api/v1/sessions/\${session.id}/reorder") {
+                header(HttpHeaders.Authorization, "Bearer other-teacher-token")
+                contentType(ContentType.Application.Json)
+                setBody("""{"direction":"up"}""")
+            }
+            assertEquals(HttpStatusCode.Forbidden, forbiddenReorder.status, forbiddenReorder.bodyAsText())
+
+            val adminReorder = client.post("/api/v1/sessions/\${session.id}/reorder") {
+                header(HttpHeaders.Authorization, "Bearer admin-token")
+                contentType(ContentType.Application.Json)
+                setBody("""{"direction":"up"}""")
+            }
+            assertEquals(HttpStatusCode.OK, adminReorder.status, adminReorder.bodyAsText())
+            var sourceOrder = sessionRepository.listVisible(adminId.toString(), setOf(AppRole.SUPER_ADMIN))
+                .filter { it.classId == sourceClass.id }
+                .sortedBy { it.sortOrder }
+                .map { it.id }
+            assertEquals(listOf(session.id, siblingSession.id), sourceOrder)
+
+            val ownerReorder = client.post("/api/v1/sessions/\${session.id}/reorder") {
+                header(HttpHeaders.Authorization, "Bearer owner-token")
+                contentType(ContentType.Application.Json)
+                setBody("""{"direction":"down"}""")
+            }
+            assertEquals(HttpStatusCode.OK, ownerReorder.status, ownerReorder.bodyAsText())
+            sourceOrder = sessionRepository.listVisible(adminId.toString(), setOf(AppRole.SUPER_ADMIN))
+                .filter { it.classId == sourceClass.id }
+                .sortedBy { it.sortOrder }
+                .map { it.id }
+            assertEquals(listOf(siblingSession.id, session.id), sourceOrder)
+
+            val invalidReorder = client.post("/api/v1/sessions/\${session.id}/reorder") {
+                header(HttpHeaders.Authorization, "Bearer owner-token")
+                contentType(ContentType.Application.Json)
+                setBody("""{"direction":"sideways"}""")
+            }
+            assertEquals(HttpStatusCode.BadRequest, invalidReorder.status, invalidReorder.bodyAsText())
+
+            // Concurrent reorders acquire the complete sibling set in stable ID order.
+            val startTogether = CountDownLatch(1)
+            val executor = Executors.newFixedThreadPool(2)
+            try {
+                val firstMove = executor.submit {
+                    startTogether.await()
+                    sessionRepository.reorder(adminId.toString(), setOf(AppRole.SUPER_ADMIN), session.id, "up")
+                }
+                val secondMove = executor.submit {
+                    startTogether.await()
+                    sessionRepository.reorder(adminId.toString(), setOf(AppRole.SUPER_ADMIN), siblingSession.id, "down")
+                }
+                startTogether.countDown()
+                firstMove.get(10, TimeUnit.SECONDS)
+                secondMove.get(10, TimeUnit.SECONDS)
+            } finally {
+                executor.shutdownNow()
+            }
 
             val forbiddenDelete = client.delete("/api/v1/sessions/${session.id}") {
                 header(HttpHeaders.Authorization, "Bearer other-teacher-token")
