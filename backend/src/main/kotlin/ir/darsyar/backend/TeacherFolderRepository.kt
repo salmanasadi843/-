@@ -38,10 +38,24 @@ class TeacherFolderRepository(private val dataSource: DataSource) {
         val teacher = AppRole.TEACHER in roles
         val student = AppRole.STUDENT in roles
         val sql = """
-            WITH RECURSIVE visible_folder_tree(id, parent_folder_id) AS (
+            WITH RECURSIVE folder_lineage(folder_id, ancestor_id, ancestor_parent_id, ancestor_hidden) AS (
+                SELECT f.id, f.id, f.parent_folder_id, f.is_hidden
+                FROM teacher_folders f
+                WHERE f.deleted_at IS NULL
+                UNION
+                SELECT lineage.folder_id, parent.id, parent.parent_folder_id, parent.is_hidden
+                FROM folder_lineage lineage
+                JOIN teacher_folders parent ON parent.id = lineage.ancestor_parent_id
+                WHERE parent.deleted_at IS NULL
+            ),
+            visible_folder_tree(id, parent_folder_id) AS (
                 SELECT f.id, f.parent_folder_id
                 FROM teacher_folders f
                 WHERE f.is_hidden = false
+                  AND NOT EXISTS (
+                      SELECT 1 FROM folder_lineage lineage
+                      WHERE lineage.folder_id = f.id AND lineage.ancestor_hidden = true
+                  )
                   AND EXISTS (
                     SELECT 1 FROM teaching_classes c
                     WHERE c.folder_id = f.id AND c.owner_user_id = f.owner_user_id
