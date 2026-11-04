@@ -140,7 +140,7 @@ class TeacherFolderRepositoryIntegrationTest {
                 c.prepareStatement("SELECT count(*) FROM audit_log WHERE entity_type = 'teacher_folder'").use { s ->
                     s.executeQuery().use { rows ->
                         assertTrue(rows.next())
-                        assertEquals(8, rows.getInt(1))
+                        assertEquals(9, rows.getInt(1))
                     }
                 }
             }
