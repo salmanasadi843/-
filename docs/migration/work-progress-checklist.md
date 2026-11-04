@@ -263,3 +263,6 @@
 - [x] علت دقیق خطای runtime مشخص شد: fake API در هر دو جهت، فهرست کامل دو کلاس را برمی‌گرداند، اما assertion مسیر `down` با `single()` انتظار یک عضو داشت؛ `single()` روی فهرست دو عضوی `IllegalArgumentException` می‌داد. منطق repository/API علت خطا نبود.
 - [x] assertion مسیر `down` اصلاح شد تا فهرست کامل کلاس‌های برگشتی را مانند مسیر `up` بررسی کند؛ commit: `6bf736d1e819c61a52d88e32a36f7a8b66220ab0`.
 - [ ] اجرای Android CI برای commit اصلاح assertion باید بررسی شود؛ تا اجرای مجدد unit tests و ساخت Debug APK موفق نشود، این مرحله بسته نیست.
+
+- [x] Android CI پس از اصلاح assertion موفق شد: run `41842864322` روی commit `6bf736d1e819c61a52d88e32a36f7a8b66220ab0`؛ هر 22 تست واحد موفق، `Build Debug APK` موفق و `Upload APK` موفق بود.
+- [ ] CI اندروید برای head نهایی شاخه پس از آخرین تغییرات صرفاً مستنداتی چک‌لیست، در صورت نیاز دوباره اجرا/بررسی شود؛ نتیجه run بالا به commit کد اصلاح تست مربوط است.
