@@ -152,12 +152,14 @@ class SessionSearchRouteIntegrationTest {
             val adminResults = searchAs("admin")
             assertTrue(adminResults.contains("جلسه عمومی"))
             assertTrue(adminResults.contains("جلسه خصوصی"))
-            assertFalse(adminResults.contains("پیش‌نویس"))
+            // Super-admin can search all owned and cross-teacher content, including drafts.
+            assertTrue(adminResults.contains("پیش‌نویس"))
 
             val ownerResults = searchAs("owner")
             assertTrue(ownerResults.contains("جلسه عمومی"))
             assertTrue(ownerResults.contains("جلسه خصوصی"))
-            assertFalse(ownerResults.contains("پیش‌نویس"))
+            // Owners can search their own drafts; drafts remain hidden from other roles.
+            assertTrue(ownerResults.contains("پیش‌نویس"))
 
             val otherTeacherResults = searchAs("other-teacher")
             assertTrue(otherTeacherResults.contains("جلسه عمومی"))
