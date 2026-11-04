@@ -166,11 +166,9 @@ class ClassManagementRouteIntegrationTest {
             }
             val adminReorderBody = adminReorder.bodyAsText()
             assertEquals(HttpStatusCode.OK, adminReorder.status, adminReorderBody)
-            assertTrue(
-                adminReorderBody.indexOf("\"id\":\"${ownedClass.id}\"") <
-                    adminReorderBody.indexOf("\"id\":\"${siblingClass.id}\""),
-                adminReorderBody
-            )
+            val adminOwnedIndex = adminReorderBody.indexOf("\"id\":\"${ownedClass.id}\"")
+            val adminSiblingIndex = adminReorderBody.indexOf("\"id\":\"${siblingClass.id}\"")
+            assertTrue(adminOwnedIndex >= 0 && adminSiblingIndex > adminOwnedIndex, adminReorderBody)
 
             val ownerReorder = client.post("/api/v1/classes/${ownedClass.id}/reorder") {
                 header(HttpHeaders.Authorization, "Bearer owner-token")
@@ -179,11 +177,9 @@ class ClassManagementRouteIntegrationTest {
             }
             val ownerReorderBody = ownerReorder.bodyAsText()
             assertEquals(HttpStatusCode.OK, ownerReorder.status, ownerReorderBody)
-            assertTrue(
-                ownerReorderBody.indexOf("\"id\":\"${siblingClass.id}\"") <
-                    ownerReorderBody.indexOf("\"id\":\"${ownedClass.id}\""),
-                ownerReorderBody
-            )
+            val ownerOwnedIndex = ownerReorderBody.indexOf("\"id\":\"${ownedClass.id}\"")
+            val ownerSiblingIndex = ownerReorderBody.indexOf("\"id\":\"${siblingClass.id}\"")
+            assertTrue(ownerSiblingIndex >= 0 && ownerOwnedIndex > ownerSiblingIndex, ownerReorderBody)
 
             val invalidReorder = client.post("/api/v1/classes/${ownedClass.id}/reorder") {
                 header(HttpHeaders.Authorization, "Bearer owner-token")
