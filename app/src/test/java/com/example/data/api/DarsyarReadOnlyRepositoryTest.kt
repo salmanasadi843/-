@@ -123,7 +123,8 @@ class DarsyarReadOnlyRepositoryTest {
     @Test
     fun classReorderUsesBearerTokenAndExactClassId() = runBlocking {
         val fake = FakeApi()
-        val result = DarsyarReadOnlyRepository(fake).reorderClass("fresh-token", "class-42", "up")
+        val repository = DarsyarReadOnlyRepository(fake)
+        val result = repository.reorderClass("fresh-token", "class-42", "up")
 
         assertEquals(listOf("class-42", "class-43"), result.map { it.id })
         assertEquals("Bearer fresh-token", fake.authorizationForClassReorder)
