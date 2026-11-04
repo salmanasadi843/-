@@ -161,6 +161,7 @@ class SessionManagementRouteIntegrationTest {
             assertTrue(moveResponse.contains(targetClass.id), moveResponse)
             assertTrue(moveResponse.contains(session.id), moveResponse)
             assertTrue(moveResponse.contains("متن اصلی جلسه"), moveResponse)
+            assertTrue(moveResponse.contains("متن ویرایش‌شده"), moveResponse)
             val sessionsInTargetAfterAdminMove = sessionRepository
                 .listVisible(adminId.toString(), setOf(AppRole.SUPER_ADMIN))
                 .filter { it.classId == targetClass.id }
@@ -182,6 +183,7 @@ class SessionManagementRouteIntegrationTest {
             assertTrue(ownerMoveResponse.contains(sourceClass.id), ownerMoveResponse)
             assertTrue(ownerMoveResponse.contains(session.id), ownerMoveResponse)
             assertTrue(ownerMoveResponse.contains("متن اصلی جلسه"), ownerMoveResponse)
+            assertTrue(ownerMoveResponse.contains("متن ویرایش‌شده"), ownerMoveResponse)
             val sessionsInSourceAfterOwnerMove = sessionRepository
                 .listVisible(adminId.toString(), setOf(AppRole.SUPER_ADMIN))
                 .filter { it.classId == sourceClass.id }
