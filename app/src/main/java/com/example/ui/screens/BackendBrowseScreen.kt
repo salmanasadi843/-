@@ -750,7 +750,13 @@ fun BackendBrowseScreen(onBack: () -> Unit) {
                     val folderIsVisible = clazz.folderId == null || clazz.folderId in visibleFolderIds
                     clazz.ownerUserId == teacherId && folderIsVisible &&
                         (selectedFolderTree == null || clazz.folderId in selectedFolderTree)
-                }.sortedBy { it.sortOrder }
+                }.sortedWith(
+                    compareBy<BackendClassDto> { clazz ->
+                        teacherFolders.firstOrNull { it.id == clazz.folderId }?.name.orEmpty()
+                    }.thenBy { it.folderId.orEmpty() }
+                        .thenBy { it.sortOrder }
+                        .thenBy { it.title }
+                )
                 if (teacherClasses.isEmpty()) item { Text("کلاسی برای این استاد ثبت نشده است.", style = MaterialTheme.typography.bodySmall) }
                 itemsIndexed(teacherClasses, key = { _, clazz -> clazz.id }) { _, clazz ->
                     val reorderableSiblings = teacherClasses.filter { it.folderId == clazz.folderId }
@@ -771,8 +777,9 @@ fun BackendBrowseScreen(onBack: () -> Unit) {
                                 Spacer(Modifier.width(10.dp))
                                 Column(Modifier.weight(1f)) {
                                     Text(clazz.title, fontWeight = FontWeight.SemiBold)
+                                    val folderLabel = teacherFolders.firstOrNull { it.id == clazz.folderId }?.name ?: "بدون پوشه"
                                     Text(
-                                        "${if (clazz.visibility == "public") "عمومی · بدون عضویت" else "خصوصی · عضویت لازم"} · ${if (clazz.isPublished) "منتشرشده" else "منتشرنشده"}",
+                                        "$folderLabel · ${if (clazz.visibility == "public") "عمومی · بدون عضویت" else "خصوصی · عضویت لازم"} · ${if (clazz.isPublished) "منتشرشده" else "منتشرنشده"}",
                                         style = MaterialTheme.typography.bodySmall
                                     )
                                 }
