@@ -238,3 +238,6 @@
 
 - [x] Integration test جدید `PublicClassRoutesIntegrationTest` اضافه شد: مهمان فقط کلاس عمومی منتشرشده را می‌بیند؛ private/hidden/draft مخفی می‌مانند؛ فهرست جلسه عمومی و جزئیات جلسه به کلاس والد محدود است (commit تست: `af9c953a4ee9b1e554c2f04fe5bf446de9631c7b`).
 - [ ] این تست هنوز اجرا نشده؛ تأیید نهایی فقط پس از Backend CI روی head جدید.
+
+- [x] تست دسترسی عمومی تقویت شد تا جلسه منتشرنشده نیز صریحاً از فهرست عمومی حذف شود (commit: `cb023c5e59ab7e6142c8d838118f48e6ebd6d154`).
+- [x] Backend CI برای همین commit واقعاً شروع شد: run `41838681997`، event=push، status=in_progress (نتیجه هنوز نهایی نیست).
