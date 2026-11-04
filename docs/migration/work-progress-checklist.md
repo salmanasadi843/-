@@ -244,3 +244,5 @@
 - [x] آخرین head شاخه PR #41 برابر `8309410c6bdef62ded9474e0a35a143d5ecca405` است (چک‌لیست پس از اجرای CI ثبت شده)؛ PR همچنان Draft، باز و mergeability=false است.
 
 - [x] پس از سبزشدن CI مهمان، آزمون تکمیلی اضافه شد: جزئیات جلسه پیش‌نویس نیز باید از endpoint عمومی 404 بگیرد (commit `beb4a89502017dc7d3c92619b779ec16e4b9cf26`). اجرای CI این commit در انتظار است.
+
+- [x] Backend CI برای آزمون جزئیات جلسه unpublished سبز شد: run `41839597143`، job `test-and-migrate`، شامل integration PostgreSQL، build backend، backup/restore و bootstrap مدیر اصلی (commit تست `beb4a895`).
