@@ -208,7 +208,8 @@ fun LectureDetailScreen(
     onNavigateBack: () -> Unit,
     onNavigateToEdit: (Long) -> Unit,
     isTeacher: Boolean = true,
-    initialSearchQuery: String = ""
+    initialSearchQuery: String = "",
+    initialSearchMatchMode: String = "all"
 ) {
     val lecture by viewModel.selectedLecture.collectAsState()
     val context = LocalContext.current
@@ -413,6 +414,7 @@ fun LectureDetailScreen(
             TranscriptTab(
                 lecture = currentLecture,
                 searchQuery = initialSearchQuery,
+                searchMatchMode = initialSearchMatchMode,
                 onEditClick = { onNavigateToEdit(lectureId) },
                 onCopyClick = { textToCopy ->
                     val clipboard = context.getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager
@@ -609,6 +611,7 @@ fun AudioPlayerCard(
 fun TranscriptTab(
     lecture: LectureEntity,
     searchQuery: String = "",
+    searchMatchMode: String = "all",
     onEditClick: () -> Unit,
     onCopyClick: (String) -> Unit,
     audioContent: (@Composable () -> Unit)? = null,
@@ -619,21 +622,22 @@ fun TranscriptTab(
     var transcriptLayout by remember(lecture.id) { mutableStateOf<TextLayoutResult?>(null) }
     val originalText = lecture.originalTranscript.ifBlank { lecture.transcript }
     val correctedText = lecture.transcript
-    var selectedTextTab by remember(lecture.id, searchQuery) {
-        mutableStateOf(if (searchQuery.isNotBlank() && !containsSearchTerm(originalText, searchQuery) && containsSearchTerm(correctedText, searchQuery)) 1 else 0)
+    var selectedTextTab by remember(lecture.id, searchQuery, searchMatchMode) {
+        mutableStateOf(if (searchQuery.isNotBlank() && !containsSearchTerm(originalText, searchQuery, searchMatchMode) && containsSearchTerm(correctedText, searchQuery, searchMatchMode)) 1 else 0)
     }
     val displayedTranscript = if (selectedTextTab == 0) originalText else correctedText
     val highlightedTranscript = highlightSearchTerms(
         displayedTranscript,
         searchQuery,
         MaterialTheme.colorScheme.tertiaryContainer,
-        MaterialTheme.colorScheme.onTertiaryContainer
+        MaterialTheme.colorScheme.onTertiaryContainer,
+        searchMatchMode
     )
     val hasText = originalText.isNotBlank() || correctedText.isNotBlank()
 
-    LaunchedEffect(lecture.id, searchQuery, selectedTextTab, transcriptLayout, transcriptTopPx) {
+    LaunchedEffect(lecture.id, searchQuery, searchMatchMode, selectedTextTab, transcriptLayout, transcriptTopPx) {
         if (searchQuery.isNotBlank() && transcriptLayout != null) {
-            val offset = findFirstSearchOffset(displayedTranscript, searchQuery)
+            val offset = findFirstSearchOffset(displayedTranscript, searchQuery, searchMatchMode)
             if (offset != null) {
                 val line = transcriptLayout!!.getLineForOffset(offset.coerceIn(0, displayedTranscript.length))
                 val target = (transcriptTopPx + transcriptLayout!!.getLineTop(line)).roundToInt()
@@ -1363,7 +1367,7 @@ private fun normalizeSearchForHighlight(value: String): String =
         .replace(Regex("\\s+"), " ")
         .trim()
 
-private fun findFirstSearchOffset(content: String, query: String): Int? {
+private fun findFirstSearchOffset(content: String, query: String, matchMode: String = "all"): Int? {
     val normalized = StringBuilder()
     val originalIndexes = mutableListOf<Int>()
     content.forEachIndexed { index, char ->
@@ -1372,7 +1376,8 @@ private fun findFirstSearchOffset(content: String, query: String): Int? {
             originalIndexes += index
         }
     }
-    val terms = normalizeSearchForHighlight(query).split(Regex("\\s+"))
+    val normalizedQuery = normalizeSearchForHighlight(query).trim()
+    val terms = if (matchMode == "phrase") listOf(normalizedQuery) else normalizedQuery.split(Regex("\\s+"))
         .filter { it.length >= 2 }.distinct()
     val firstNormalizedIndex = terms.mapNotNull { term ->
         normalized.indexOf(term).takeIf { it >= 0 }
@@ -1380,17 +1385,22 @@ private fun findFirstSearchOffset(content: String, query: String): Int? {
     return originalIndexes.getOrNull(firstNormalizedIndex)
 }
 
-private fun containsSearchTerm(content: String, query: String): Boolean {
+private fun containsSearchTerm(content: String, query: String, matchMode: String = "all"): Boolean {
     val normalized = normalizeSearchForHighlight(content)
-    return normalizeSearchForHighlight(query).split(Regex("\\s+"))
-        .filter { it.isNotBlank() }.any(normalized::contains)
+    val normalizedQuery = normalizeSearchForHighlight(query).trim()
+    return if (matchMode == "phrase") {
+        normalizedQuery.isNotBlank() && normalized.contains(normalizedQuery)
+    } else {
+        normalizedQuery.split(Regex("\\s+")).filter { it.isNotBlank() }.any(normalized::contains)
+    }
 }
 
 private fun highlightSearchTerms(
     content: String,
     query: String,
     background: androidx.compose.ui.graphics.Color,
-    foreground: androidx.compose.ui.graphics.Color
+    foreground: androidx.compose.ui.graphics.Color,
+    matchMode: String = "all"
 ) = buildAnnotatedString {
     if (query.isBlank() || content.isBlank()) {
         append(content)
@@ -1407,8 +1417,9 @@ private fun highlightSearchTerms(
         }
     }
 
-    val terms = normalizeSearchForHighlight(query).split(Regex("\\s+"))
-        .filter { it.length >= 2 }.distinct()
+    val normalizedQuery = normalizeSearchForHighlight(query).trim()
+    val terms = if (matchMode == "phrase") listOf(normalizedQuery).filter { it.length >= 2 }
+        else normalizedQuery.split(Regex("\\s+")).filter { it.length >= 2 }.distinct()
     val ranges = mutableListOf<IntRange>()
     terms.forEach { term ->
         var from = 0
