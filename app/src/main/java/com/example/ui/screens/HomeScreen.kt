@@ -61,7 +61,7 @@ fun HomeScreen(
     userRole: UserRole,
     onNavigateToAdd: () -> Unit,
     onNavigateToDetail: (Long) -> Unit,
-    onNavigateToSearchResult: (Long, String) -> Unit,
+    onNavigateToSearchResult: (Long, String, String) -> Unit,
     onNavigateToAiSummary: (Long) -> Unit,
     onNavigateToBackendBrowse: () -> Unit
 ) {
