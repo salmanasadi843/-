@@ -678,6 +678,10 @@ fun Application.module(
                     return@get
                 }
                 val normalizedQuery = normalizeSessionSearchText(query)
+                if (normalizedQuery.length < 2) {
+                    call.respond(HttpStatusCode.BadRequest, ApiError("invalid_search_query"))
+                    return@get
+                }
                 val terms = normalizedQuery.split(Regex("\\s+")).filter { it.isNotBlank() }.distinct()
                 val visibleClasses = classRepository.listVisible(principal.userId, principal.roles)
                     .associateBy({ it.id }, { it.title })
@@ -697,7 +701,7 @@ fun Application.module(
                         val normalizedFields = fields.map { (label, value) -> Triple(label, value, normalizeSessionSearchText(value)) }
                         val allText = normalizedFields.joinToString(" ") { it.third }
                         val matched = if (mode == "phrase") {
-                            allText.contains(normalizedQuery)
+                            normalizedFields.any { (_, _, value) -> value.contains(normalizedQuery) }
                         } else {
                             terms.isNotEmpty() && terms.all { allText.contains(it) }
                         }
