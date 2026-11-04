@@ -5,6 +5,7 @@ import com.zaxxer.hikari.HikariDataSource
 import io.ktor.client.request.delete
 import io.ktor.client.request.header
 import io.ktor.client.request.patch
+import io.ktor.client.request.post
 import io.ktor.client.request.setBody
 import io.ktor.client.statement.bodyAsText
 import io.ktor.http.ContentType
@@ -138,7 +139,56 @@ class ClassManagementRouteIntegrationTest {
             val updateResponse = adminUpdate.bodyAsText()
             assertEquals(HttpStatusCode.OK, adminUpdate.status, updateResponse)
             assertTrue(updateResponse.contains("ویرایش مدیر"), updateResponse)
+
             assertTrue(updateResponse.contains(secondOwnerFolder.id), updateResponse)
+
+            // Reordering is one server-side transaction, scoped to the same teacher and folder.
+            val siblingClass = classes.create(
+                ownerId.toString(),
+                CreateTeachingClass(
+                    ownerId.toString(), "کلاس هم‌گروه", "", "", "private", true,
+                    folderId = secondOwnerFolder.id
+                )
+            )
+            val forbiddenReorder = client.post("/api/v1/classes/${ownedClass.id}/reorder") {
+                header(HttpHeaders.Authorization, "Bearer other-teacher-token")
+                contentType(ContentType.Application.Json)
+                setBody("""{"direction":"up"}""")
+            }
+            assertEquals(HttpStatusCode.Forbidden, forbiddenReorder.status, forbiddenReorder.bodyAsText())
+
+            val adminReorder = client.post("/api/v1/classes/${ownedClass.id}/reorder") {
+                header(HttpHeaders.Authorization, "Bearer admin-token")
+                contentType(ContentType.Application.Json)
+                setBody("""{"direction":"up"}""")
+            }
+            val adminReorderBody = adminReorder.bodyAsText()
+            assertEquals(HttpStatusCode.OK, adminReorder.status, adminReorderBody)
+            assertTrue(
+                adminReorderBody.indexOf("\"id\":\"${ownedClass.id}\"") <
+                    adminReorderBody.indexOf("\"id\":\"${siblingClass.id}\""),
+                adminReorderBody
+            )
+
+            val ownerReorder = client.post("/api/v1/classes/${ownedClass.id}/reorder") {
+                header(HttpHeaders.Authorization, "Bearer owner-token")
+                contentType(ContentType.Application.Json)
+                setBody("""{"direction":"down"}""")
+            }
+            val ownerReorderBody = ownerReorder.bodyAsText()
+            assertEquals(HttpStatusCode.OK, ownerReorder.status, ownerReorderBody)
+            assertTrue(
+                ownerReorderBody.indexOf("\"id\":\"${siblingClass.id}\"") <
+                    ownerReorderBody.indexOf("\"id\":\"${ownedClass.id}\""),
+                ownerReorderBody
+            )
+
+            val invalidReorder = client.post("/api/v1/classes/${ownedClass.id}/reorder") {
+                header(HttpHeaders.Authorization, "Bearer owner-token")
+                contentType(ContentType.Application.Json)
+                setBody("""{"direction":"sideways"}""")
+            }
+            assertEquals(HttpStatusCode.BadRequest, invalidReorder.status, invalidReorder.bodyAsText())
 
             val forbiddenDelete = client.delete("/api/v1/classes/${ownedClass.id}") {
                 header(HttpHeaders.Authorization, "Bearer other-teacher-token")
