@@ -210,8 +210,14 @@ export default function App() {
     ),
     [classes, selectedTeacher, browseFolderId, browseFolderIds],
   );
-  const folderOwnerId = isAdmin ? (selectedTeacher === "all" ? "" : selectedTeacher) : (me?.roles.includes("teacher") ? me.userId : "");
+  const folderOwnerId = isAdmin
+    ? (selectedTeacher === "all" ? "" : selectedTeacher)
+    : selectedTeacher !== "all"
+      ? selectedTeacher
+      : (me?.roles.includes("teacher") ? me.userId : "");
   const visibleFolders = useMemo(() => folders.filter(folder => folder.ownerUserId === folderOwnerId), [folders, folderOwnerId]);
+  const canManageVisibleFolders = !!folderOwnerId &&
+    (isAdmin || (me?.roles.includes("teacher") === true && folderOwnerId === me.userId));
   const canManageSelectedClass = !!selectedClass &&
     (isAdmin || selectedClass.ownerUserId === me?.userId) &&
     (isAdmin || (me?.roles.includes("teacher") ?? false));
@@ -222,9 +228,11 @@ export default function App() {
           <span>{depth > 0 ? "↳ " : ""}{folder.name}{folder.isHidden ? " · مخفی" : ""}</span>
           <span>
             <button className="ghost" onClick={() => {setBrowseFolderId(folder.id);setSelectedClass(null);setDetail(null);}}>نمایش کلاس‌ها</button>
-            <button className="ghost" disabled={busy} onClick={() => void renameTeacherFolder(folder)}>تغییر نام</button>
-            <button className="ghost" disabled={busy} onClick={() => void toggleFolderHidden(folder)}>{folder.isHidden ? "نمایش" : "مخفی"}</button>
-            <button className="ghost danger-text" disabled={busy} onClick={() => void removeTeacherFolder(folder)}>حذف</button>
+            {canManageVisibleFolders && <>
+              <button className="ghost" disabled={busy} onClick={() => void renameTeacherFolder(folder)}>تغییر نام</button>
+              <button className="ghost" disabled={busy} onClick={() => void toggleFolderHidden(folder)}>{folder.isHidden ? "نمایش" : "مخفی"}</button>
+              <button className="ghost danger-text" disabled={busy} onClick={() => void removeTeacherFolder(folder)}>حذف</button>
+            </>}
           </span>
         </div>
         {renderFolderRows(folder.id, depth + 1)}
@@ -1262,8 +1270,8 @@ export default function App() {
         <button className={selectedTeacher === "all" ? "choice active" : "choice"} onClick={() => {setSelectedTeacher("all");setBrowseFolderId("all");setSelectedClass(null);setDetail(null);}}>همه استادان</button>
         {teachers.map(t => <button key={t.userId} className={selectedTeacher === t.userId ? "choice active" : "choice"} onClick={() => {setSelectedTeacher(t.userId);setBrowseFolderId("all");setSelectedClass(null);setDetail(null);}}>{t.displayName}</button>)}
         {(folderOwnerId || (!isAdmin && me?.roles.includes("teacher"))) && <section className="folder-manager">
-          <div className="section-head"><h2>پوشه‌های استاد</h2><button className="ghost" onClick={() => setShowFolderForm(v => !v)}>{showFolderForm ? "بستن" : "＋ پوشه"}</button></div>
-          {showFolderForm && <form onSubmit={createTeacherFolder} className="folder-form"><input value={folderName} onChange={e => setFolderName(e.target.value)} placeholder="نام پوشه جدید" required /><select value={parentFolderId} onChange={e => setParentFolderId(e.target.value)}><option value="">پوشه اصلی</option>{visibleFolders.filter(folder => !folder.isHidden).map(folder => <option key={folder.id} value={folder.id}>{folder.name}</option>)}</select><button disabled={busy || !folderName.trim()}>ایجاد</button></form>}
+          <div className="section-head"><div><h2>پوشه‌های استاد</h2>{!canManageVisibleFolders && <small className="muted">فقط مشاهده</small>}</div>{canManageVisibleFolders && <button className="ghost" onClick={() => setShowFolderForm(v => !v)}>{showFolderForm ? "بستن" : "＋ پوشه"}</button>}</div>
+          {canManageVisibleFolders && showFolderForm && <form onSubmit={createTeacherFolder} className="folder-form"><input value={folderName} onChange={e => setFolderName(e.target.value)} placeholder="نام پوشه جدید" required /><select value={parentFolderId} onChange={e => setParentFolderId(e.target.value)}><option value="">پوشه اصلی</option>{visibleFolders.filter(folder => !folder.isHidden).map(folder => <option key={folder.id} value={folder.id}>{folder.name}</option>)}</select><button disabled={busy || !folderName.trim()}>ایجاد</button></form>}
           {renderFolderRows(null)}
           {!visibleFolders.length && <p className="muted">پوشه‌ای برای این استاد ثبت نشده است.</p>}
         </section>}
