@@ -125,7 +125,7 @@ class DarsyarReadOnlyRepositoryTest {
         val fake = FakeApi()
         val result = DarsyarReadOnlyRepository(fake).reorderClass("fresh-token", "class-42", "up")
 
-        assertEquals("class-42", result.single().id)
+        assertEquals(listOf("class-42", "class-43"), result.map { it.id })
         assertEquals("Bearer fresh-token", fake.authorizationForClassReorder)
         assertEquals("class-42", fake.reorderedClassId)
         assertEquals("up", fake.classReorderRequest?.direction)
@@ -384,6 +384,11 @@ class DarsyarReadOnlyRepositoryTest {
                         id = classId, ownerUserId = "teacher-1", title = "Reordered class",
                         description = "", term = "", visibility = "private",
                         isPublished = true, isHidden = false, sortOrder = 0, folderId = null
+                    ),
+                    BackendClassDto(
+                        id = "class-43", ownerUserId = "teacher-1", title = "Sibling class",
+                        description = "", term = "", visibility = "private",
+                        isPublished = true, isHidden = false, sortOrder = 1, folderId = null
                     )
                 )
             )
