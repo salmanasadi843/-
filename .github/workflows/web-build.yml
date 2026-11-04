@@ -2,7 +2,7 @@ name: Build Darsyar Web
 
 on:
   push:
-    branches: ["architecture/shared-backend-and-web"]
+    branches: ["architecture/shared-backend-and-web", "feature/web-lecture-transcript-search"]
     paths:
       - "web/**"
       - ".github/workflows/web-build.yml"
