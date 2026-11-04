@@ -235,3 +235,6 @@
 - [ ] **کار بعدی:** افزودن Integration test مهمان برای اثبات: کلاس public منتشرشده نمایش داده شود؛ private، hidden و unpublished پنهان بمانند؛ جلسات منتشرشده فقط در کلاس public قابل دسترسی باشند؛ دسترسی به session با classId والد اشتباه رد شود.
 - [x] head فعلی PR #41: `6279e3519574fdec328613ed9653366ddc53b0ae`؛ 81 commit جلوتر از base و 0 commit عقب‌تر (compare status: ahead). این تعداد commit بزرگ است و نیاز به بازبینی تفکیک/دامنه PR دارد؛ mergeability=false باقی است.
 - [x] برای همین head، Workflow runs و combined status هر دو خالی‌اند؛ CI موفق/ناموفق قابل نتیجه‌گیری نیست.
+
+- [x] Integration test جدید `PublicClassRoutesIntegrationTest` اضافه شد: مهمان فقط کلاس عمومی منتشرشده را می‌بیند؛ private/hidden/draft مخفی می‌مانند؛ فهرست جلسه عمومی و جزئیات جلسه به کلاس والد محدود است (commit تست: `af9c953a4ee9b1e554c2f04fe5bf446de9631c7b`).
+- [ ] این تست هنوز اجرا نشده؛ تأیید نهایی فقط پس از Backend CI روی head جدید.
