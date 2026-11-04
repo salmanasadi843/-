@@ -741,16 +741,11 @@ fun BackendBrowseScreen(onBack: () -> Unit) {
                         }
                     }
                 }
-                val canSeeHiddenFolders = "super_admin" in accountRoles || ("teacher" in accountRoles && teacherId == accountId)
-                val visibleFolderIds = teacherFolders.filter {
-                    it.ownerUserId == teacherId && (canSeeHiddenFolders || !it.isHidden)
-                }.map { it.id }.toSet()
                 val selectedFolderTree = folderAndDescendantIds(selectedFolderId)
-                // sortOrder is scoped to a teacher/folder group; keep different folders contiguous.
-                // Keep the Android folder grouping covered by the feature-branch APK workflow.
+                // Hiding a folder hides its navigation entry, not a separately published public class.
+                // Class visibility is controlled by the class visibility/isHidden policy from the API.
                 val teacherClasses = classes.filter { clazz ->
-                    val folderIsVisible = clazz.folderId == null || clazz.folderId in visibleFolderIds
-                    clazz.ownerUserId == teacherId && folderIsVisible &&
+                    clazz.ownerUserId == teacherId &&
                         (selectedFolderTree == null || clazz.folderId in selectedFolderTree)
                 }.sortedWith(
                     compareBy<BackendClassDto> { clazz ->
