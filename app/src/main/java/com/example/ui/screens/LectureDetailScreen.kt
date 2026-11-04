@@ -1377,6 +1377,7 @@ private fun findFirstSearchOffset(content: String, query: String, matchMode: Str
         }
     }
     val normalizedQuery = normalizeSearchForHighlight(query).trim()
+    if (normalizedQuery.length < 2) return null
     val terms = if (matchMode == "phrase") listOf(normalizedQuery) else normalizedQuery.split(Regex("\\s+"))
         .filter { it.length >= 2 }.distinct()
     val firstNormalizedIndex = terms.mapNotNull { term ->
