@@ -59,7 +59,8 @@ fun AdvancedSearchScreen(
     val classes = visibleClasses.filter { classItem ->
         searchableLectures.any { it.classId == classItem.id }
     }.sortedBy { it.name }
-    val terms = normalizeSearchText(query).split(Regex("\\s+")).filter { it.isNotBlank() }
+    val normalizedQuery = normalizeSearchText(query)
+    val terms = normalizedQuery.split(Regex("\\s+")).filter { it.isNotBlank() }
 
     val results = remember(searchableLectures, query, matchMode, selectedProfessor, selectedCourse, selectedClassId) {
         searchableLectures.filter { lecture ->
@@ -71,12 +72,13 @@ fun AdvancedSearchScreen(
                 ).joinToString(" ")
             )
             val textMatches = when {
-                terms.isEmpty() -> true
+                query.isBlank() -> true
+                normalizedQuery.length < 2 -> false
                 matchMode == "phrase" -> listOf(
                     lecture.title, lecture.courseName, lecture.professorName, lecture.tags,
                     lecture.transcript, lecture.originalTranscript,
                     lecture.aiSummary.orEmpty(), lecture.aiKeyPoints.orEmpty()
-                ).any { normalizeSearchText(it).contains(normalizeSearchText(query).trim()) }
+                ).any { normalizeSearchText(it).contains(normalizedQuery.trim()) }
                 else -> terms.all { content.contains(it) }
             }
             textMatches &&
