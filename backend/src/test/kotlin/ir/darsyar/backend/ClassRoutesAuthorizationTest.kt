@@ -52,6 +52,38 @@ class ClassRoutesAuthorizationTest {
     }
 
     @Test
+    fun `unlinked Firebase identity cannot access the application account`() = testApplication {
+        val unlinkedUsers = AuthenticatedUserRepository { _, _ -> null }
+        application {
+            module(unusedDataSource(), verifier(), unlinkedUsers)
+        }
+
+        val response = client.get("/api/v1/me") {
+            header(HttpHeaders.Authorization, "Bearer test-token")
+        }
+        assertEquals(HttpStatusCode.Unauthorized, response.status)
+    }
+
+    @Test
+    fun `inactive application account cannot access protected endpoints`() = testApplication {
+        val inactiveUsers = AuthenticatedUserRepository { _, _ ->
+            AuthenticatedUserRecord(
+                userId = "11111111-1111-4111-8111-111111111111",
+                status = "disabled",
+                roles = setOf(AppRole.SUPER_ADMIN)
+            )
+        }
+        application {
+            module(unusedDataSource(), verifier(), inactiveUsers)
+        }
+
+        val response = client.get("/api/v1/me") {
+            header(HttpHeaders.Authorization, "Bearer test-token")
+        }
+        assertEquals(HttpStatusCode.Unauthorized, response.status)
+    }
+
+    @Test
     fun `student cannot create a class`() = testApplication {
         application {
             module(unusedDataSource(), verifier(), usersWith(AppRole.STUDENT))
