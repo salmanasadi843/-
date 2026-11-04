@@ -1491,7 +1491,10 @@ function normalizeWebSearchWithOffsets(source: string): { text: string; offsets:
   let text = "";
   const offsets: number[] = [];
   let pendingSpace: number | null = null;
-  Array.from(source).forEach((original, index) => {
+  let sourceOffset = 0;
+  Array.from(source).forEach(original => {
+    const index = sourceOffset;
+    sourceOffset += original.length;
     const code = original.codePointAt(0) ?? 0;
     let mapped = original.toLocaleLowerCase();
     if (mapped === "ي") mapped = "ی";
