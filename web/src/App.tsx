@@ -1090,14 +1090,14 @@ export default function App() {
   async function createClass(event: FormEvent) {
     event.preventDefault();
     if (!user || !me) return;
-    if (isAdmin && selectedTeacher === "all") {
+    if (isAdmin && selectedTeacher === "all" && !editingClass) {
       setError("برای ساخت کلاس توسط مدیر، ابتدا یک استاد را انتخاب کنید.");
       return;
     }
     setBusy(true); setError(""); setNotice("");
     try {
       const data = {
-        ...(isAdmin ? { ownerUserId: selectedTeacher } : {}),
+        ...(!editingClass && isAdmin ? { ownerUserId: selectedTeacher } : {}),
         title: classTitle.trim(), description: classDescription.trim(), term: classTerm.trim(),
         visibility: classVisibility, isPublished: editingClass ? selectedClass?.isPublished ?? true : true,
         isHidden: editingClass ? selectedClass?.isHidden ?? false : false,
