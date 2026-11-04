@@ -260,4 +260,6 @@
 - [ ] اجرای جدید Android CI برای commit اصلاحی باید بررسی شود؛ تا پایان run ساخت APK موفق اعلام نمی‌شود.
 
 - [x] نتیجه Android CI run `41841778445` بررسی شد: کامپایل تست‌ها اکنون عبور می‌کند و 22 تست اجرا شده‌اند؛ یک تست (`classReorderUsesBearerTokenAndExactClassId`) در زمان اجرا با `IllegalArgumentException` در خط 124 شکست خورده است. بنابراین خطای unresolved reference رفع شده، اما تست رفتاری مرتب‌سازی هنوز سبز نیست.
-- [ ] علت `IllegalArgumentException` در تست مرتب‌سازی کلاس باید با بازتولید محلی/گزارش تفصیلی تست مشخص شود؛ از روی خلاصه Actions علت دقیق exception قابل اثبات نیست. تا مشخص‌شدن علت، تغییر حدسی در repository یا API انجام نشود.
+- [x] علت دقیق خطای runtime مشخص شد: fake API در هر دو جهت، فهرست کامل دو کلاس را برمی‌گرداند، اما assertion مسیر `down` با `single()` انتظار یک عضو داشت؛ `single()` روی فهرست دو عضوی `IllegalArgumentException` می‌داد. منطق repository/API علت خطا نبود.
+- [x] assertion مسیر `down` اصلاح شد تا فهرست کامل کلاس‌های برگشتی را مانند مسیر `up` بررسی کند؛ commit: `6bf736d1e819c61a52d88e32a36f7a8b66220ab0`.
+- [ ] اجرای Android CI برای commit اصلاح assertion باید بررسی شود؛ تا اجرای مجدد unit tests و ساخت Debug APK موفق نشود، این مرحله بسته نیست.
