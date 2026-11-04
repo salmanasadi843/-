@@ -1050,6 +1050,7 @@ export default function App() {
   }
 
   // Keep folder groups contiguous; sortOrder is meaningful only among sibling classes.
+  // Folder-aware order is shared by admin and teacher browse lists.
   function compareClassBrowseOrder(a: ClassRecord, b: ClassRecord) {
     const folderName = (item: ClassRecord) => item.folderId
       ? folders.find(folder => folder.id === item.folderId)?.name ?? ""
