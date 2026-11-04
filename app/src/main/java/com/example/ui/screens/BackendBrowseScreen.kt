@@ -439,33 +439,13 @@ fun BackendBrowseScreen(onBack: () -> Unit) {
 
     fun reorderClassInTeacher(clazz: BackendClassDto, direction: String) {
         if (!("super_admin" in accountRoles || ("teacher" in accountRoles && clazz.ownerUserId == accountId))) return
-        val siblings = classes.filter { it.ownerUserId == clazz.ownerUserId && it.folderId == clazz.folderId }
-            .sortedWith(compareBy<BackendClassDto> { it.sortOrder }.thenBy { it.title })
-        val index = siblings.indexOfFirst { it.id == clazz.id }
-        val target = siblings.getOrNull(index + if (direction == "up") -1 else 1) ?: return
         withFreshToken { token ->
             val api = DarsyarReadOnlyApiFactory.create()
-            suspend fun updateSort(item: BackendClassDto, sortOrder: Int) = withContext(Dispatchers.IO) {
-                api.updateClass(token, item.id, BackendClassWriteRequest(
-                    title = item.title,
-                    description = item.description,
-                    term = item.term,
-                    visibility = item.visibility,
-                    isPublished = item.isPublished,
-                    isHidden = item.isHidden,
-                    sortOrder = sortOrder,
-                    folderId = item.folderId
-                ))
-            }
-            updateSort(clazz, target.sortOrder)
-            try {
-                updateSort(target, clazz.sortOrder)
-            } catch (error: Throwable) {
-                updateSort(clazz, clazz.sortOrder)
-                throw error
+            withContext(Dispatchers.IO) {
+                api.reorderClass(token, clazz.id, direction)
             }
             classes = withContext(Dispatchers.IO) { api.loadSnapshot(token).classes }
-                .sortedWith(compareBy<BackendClassDto> { it.ownerUserId }.thenBy { it.sortOrder }.thenBy { it.title })
+                .sortedWith(compareBy<BackendClassDto> { it.ownerUserId }.thenBy { it.folderId ?: "" }.thenBy { it.sortOrder }.thenBy { it.title })
             selectedClass = selectedClass?.let { selected -> classes.find { it.id == selected.id } ?: selected }
             status = "ترتیب کلاس‌ها به‌روزرسانی شد."
         }
