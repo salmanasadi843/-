@@ -1367,14 +1367,32 @@ private fun normalizeSearchForHighlight(value: String): String =
         .replace(Regex("\\s+"), " ")
         .trim()
 
+private fun appendNormalizedSearchCharacter(
+    normalized: StringBuilder,
+    originalIndexes: MutableList<Int>,
+    value: String,
+    originalIndex: Int
+) {
+    value.forEach { character ->
+        if (character.isWhitespace()) {
+            if (normalized.isNotEmpty() && normalized.last() != ' ') {
+                normalized.append(' ')
+                originalIndexes += originalIndex
+            }
+        } else {
+            normalized.append(character)
+            originalIndexes += originalIndex
+        }
+    }
+}
+
 private fun findFirstSearchOffset(content: String, query: String, matchMode: String = "all"): Int? {
     val normalized = StringBuilder()
     val originalIndexes = mutableListOf<Int>()
     content.forEachIndexed { index, char ->
-        normalizeSearchForHighlight(char.toString()).forEach { normalizedChar ->
-            normalized.append(normalizedChar)
-            originalIndexes += index
-        }
+        appendNormalizedSearchCharacter(
+            normalized, originalIndexes, normalizeSearchForHighlight(char.toString()), index
+        )
     }
     val normalizedQuery = normalizeSearchForHighlight(query).trim()
     if (normalizedQuery.length < 2) return null
@@ -1411,11 +1429,9 @@ private fun highlightSearchTerms(
     val normalized = StringBuilder()
     val originalIndexes = mutableListOf<Int>()
     content.forEachIndexed { index, char ->
-        val normalizedChar = normalizeSearchForHighlight(char.toString())
-        normalizedChar.forEach { outputChar ->
-            normalized.append(outputChar)
-            originalIndexes += index
-        }
+        appendNormalizedSearchCharacter(
+            normalized, originalIndexes, normalizeSearchForHighlight(char.toString()), index
+        )
     }
 
     val normalizedQuery = normalizeSearchForHighlight(query).trim()
