@@ -73,7 +73,7 @@ class PublicClassRoutesIntegrationTest {
                 teacherId, setOf(AppRole.TEACHER),
                 CreateTeachingSession(publicClass.id, title = "جلسه عمومی", transcript = "متن عمومی", isPublished = true)
             )
-            sessions.create(
+            val draftSession = sessions.create(
                 teacherId, setOf(AppRole.TEACHER),
                 CreateTeachingSession(publicClass.id, title = "جلسه پیش‌نویس", transcript = "متن مخفی", isPublished = false)
             )
@@ -100,6 +100,7 @@ class PublicClassRoutesIntegrationTest {
             assertEquals(HttpStatusCode.OK, publicList.status, publicList.bodyAsText())
             assertTrue(publicList.bodyAsText().contains(publicSession.id))
             assertFalse(publicList.bodyAsText().contains(privateSession.id))
+            assertFalse(publicList.bodyAsText().contains(draftSession.id))
 
             val publicDetail = client.get("/api/v1/public/classes/${publicClass.id}/sessions/${publicSession.id}")
             assertEquals(HttpStatusCode.OK, publicDetail.status, publicDetail.bodyAsText())
