@@ -237,7 +237,8 @@
 - [x] برای همین head، Workflow runs و combined status هر دو خالی‌اند؛ CI موفق/ناموفق قابل نتیجه‌گیری نیست.
 
 - [x] Integration test جدید `PublicClassRoutesIntegrationTest` اضافه شد: مهمان فقط کلاس عمومی منتشرشده را می‌بیند؛ private/hidden/draft مخفی می‌مانند؛ فهرست جلسه عمومی و جزئیات جلسه به کلاس والد محدود است (commit تست: `af9c953a4ee9b1e554c2f04fe5bf446de9631c7b`).
-- [ ] این تست هنوز اجرا نشده؛ تأیید نهایی فقط پس از Backend CI روی head جدید.
+- [x] آزمون مهمان `PublicClassRoutesIntegrationTest` در Backend CI run `41838681997` (commit `cb023c5e59ab7e6142c8d838118f48e6ebd6d154`) با موفقیت اجرا شد؛ کلاس‌های private/hidden/draft و جلسه unpublished از فهرست مهمان حذف می‌شوند و جزئیات جلسه با والد نادرست رد می‌شود.
 
 - [x] تست دسترسی عمومی تقویت شد تا جلسه منتشرنشده نیز صریحاً از فهرست عمومی حذف شود (commit: `cb023c5e59ab7e6142c8d838118f48e6ebd6d154`).
-- [x] Backend CI برای همین commit واقعاً شروع شد: run `41838681997`، event=push، status=in_progress (نتیجه هنوز نهایی نیست).
+- [x] Backend CI run `41838681997` به پایان رسید: `completed / success`؛ آزمون integration مهمان سبز شد.
+- [x] آخرین head شاخه PR #41 برابر `8309410c6bdef62ded9474e0a35a143d5ecca405` است (چک‌لیست پس از اجرای CI ثبت شده)؛ PR همچنان Draft، باز و mergeability=false است.
