@@ -568,6 +568,15 @@ export default function App() {
       : matches(detail.transcript ?? "") >= 0 ? "edited-transcript" : null;
     if (target) requestAnimationFrame(() => document.getElementById(target)?.scrollIntoView({ behavior: "smooth", block: "center" }));
   }
+  useEffect(() => {
+    if (!detail || !searchHighlightQuery.trim()) return;
+    const frame = window.requestAnimationFrame(() => {
+      const target = document.querySelector("#search-highlight-target mark.session-search-highlight");
+      target?.scrollIntoView({ behavior: "smooth", block: "center" });
+    });
+    return () => window.cancelAnimationFrame(frame);
+  }, [detail, searchHighlightQuery, searchHighlightField, searchHighlightMode]);
+
   function transcriptWithHighlight(text: string) {
     const note = sessionNotes.find(item => item.id === activeNoteId);
     if (!note?.quotedText) return text;
