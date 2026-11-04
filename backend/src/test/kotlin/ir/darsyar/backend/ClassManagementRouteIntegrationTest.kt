@@ -62,6 +62,15 @@ class ClassManagementRouteIntegrationTest {
             }
 
             val classes = TeachingClassRepository(dataSource)
+            val folderRepository = TeacherFolderRepository(dataSource)
+            val ownerFolder = folderRepository.create(
+                ownerId.toString(), setOf(AppRole.TEACHER),
+                CreateTeacherFolder(ownerId.toString(), null, "پوشه اول")
+            )
+            val secondOwnerFolder = folderRepository.create(
+                ownerId.toString(), setOf(AppRole.TEACHER),
+                CreateTeacherFolder(ownerId.toString(), null, "پوشه دوم")
+            )
             val ownedClass = classes.create(
                 ownerId.toString(),
                 CreateTeachingClass(ownerId.toString(), "کلاس اولیه", "", "", "private", true)
@@ -84,6 +93,25 @@ class ClassManagementRouteIntegrationTest {
 
             application { module(dataSource, verifier, users) }
 
+            // The owner teacher can move their own class between their folders.
+            val ownerMove = client.patch("/api/v1/classes/${ownedClass.id}") {
+                header(HttpHeaders.Authorization, "Bearer owner-token")
+                contentType(ContentType.Application.Json)
+                setBody("""{
+                    "title":"کلاس اولیه",
+                    "description":"",
+                    "term":"",
+                    "visibility":"private",
+                    "isPublished":true,
+                    "isHidden":false,
+                    "sortOrder":1,
+                    "folderId":"${ownerFolder.id}"
+                }""".trimIndent())
+            }
+            val ownerMoveResponse = ownerMove.bodyAsText()
+            assertEquals(HttpStatusCode.OK, ownerMove.status, ownerMoveResponse)
+            assertTrue(ownerMoveResponse.contains(ownerFolder.id), ownerMoveResponse)
+
             val updateBody = """{
                 "title":"ویرایش مدیر",
                 "description":"مدیریت‌شده توسط مدیر اصلی",
@@ -91,8 +119,8 @@ class ClassManagementRouteIntegrationTest {
                 "visibility":"private",
                 "isPublished":true,
                 "isHidden":false,
-                "sortOrder":0,
-                "folderId":null
+                "sortOrder":2,
+                "folderId":"${secondOwnerFolder.id}"
             }""".trimIndent()
 
             val forbiddenUpdate = client.patch("/api/v1/classes/${ownedClass.id}") {
@@ -110,6 +138,7 @@ class ClassManagementRouteIntegrationTest {
             val updateResponse = adminUpdate.bodyAsText()
             assertEquals(HttpStatusCode.OK, adminUpdate.status, updateResponse)
             assertTrue(updateResponse.contains("ویرایش مدیر"), updateResponse)
+            assertTrue(updateResponse.contains(secondOwnerFolder.id), updateResponse)
 
             val forbiddenDelete = client.delete("/api/v1/classes/${ownedClass.id}") {
                 header(HttpHeaders.Authorization, "Bearer other-teacher-token")
