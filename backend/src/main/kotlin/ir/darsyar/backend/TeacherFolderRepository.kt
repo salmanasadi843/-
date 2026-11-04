@@ -41,7 +41,8 @@ class TeacherFolderRepository(private val dataSource: DataSource) {
             WITH RECURSIVE visible_folder_tree(id, parent_folder_id) AS (
                 SELECT f.id, f.parent_folder_id
                 FROM teacher_folders f
-                WHERE EXISTS (
+                WHERE f.is_hidden = false
+                  AND EXISTS (
                     SELECT 1 FROM teaching_classes c
                     WHERE c.folder_id = f.id AND c.owner_user_id = f.owner_user_id
                       AND c.deleted_at IS NULL AND c.is_published = true AND c.is_hidden = false
@@ -58,6 +59,7 @@ class TeacherFolderRepository(private val dataSource: DataSource) {
                 FROM teacher_folders parent
                 JOIN visible_folder_tree child ON child.parent_folder_id = parent.id
                 WHERE parent.deleted_at IS NULL
+                  AND parent.is_hidden = false
             )
             SELECT f.id::text, f.owner_user_id::text, f.parent_folder_id::text,
                    f.name, f.sort_order, f.is_hidden, f.version
