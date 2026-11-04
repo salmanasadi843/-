@@ -16,6 +16,8 @@ import io.ktor.server.testing.testApplication
 import org.flywaydb.core.Flyway
 import org.junit.jupiter.api.Assumptions.assumeTrue
 import java.util.UUID
+import java.util.concurrent.CountDownLatch
+import java.util.concurrent.Executors
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertTrue
@@ -188,7 +190,39 @@ class ClassManagementRouteIntegrationTest {
                 contentType(ContentType.Application.Json)
                 setBody("""{"direction":"sideways"}""")
             }
+
             assertEquals(HttpStatusCode.BadRequest, invalidReorder.status, invalidReorder.bodyAsText())
+
+            // Two simultaneous reorder operations must serialize and leave one stable order.
+            classes.create(
+                ownerId.toString(),
+                CreateTeachingClass(
+                    ownerId.toString(), "کلاس سوم", "", "", "private", true,
+                    folderId = secondOwnerFolder.id
+                )
+            )
+            val startTogether = CountDownLatch(1)
+            val executor = Executors.newFixedThreadPool(2)
+            try {
+                val moveOwnedUp = executor.submit {
+                    startTogether.await()
+                    classes.reorder(adminId.toString(), setOf(AppRole.SUPER_ADMIN), ownedClass.id, "up")
+                }
+                val moveSiblingDown = executor.submit {
+                    startTogether.await()
+                    classes.reorder(adminId.toString(), setOf(AppRole.SUPER_ADMIN), siblingClass.id, "down")
+                }
+                startTogether.countDown()
+                moveOwnedUp.get()
+                moveSiblingDown.get()
+            } finally {
+                executor.shutdownNow()
+            }
+            val finalSortOrders = classes.listVisible(adminId.toString(), setOf(AppRole.SUPER_ADMIN))
+                .filter { it.ownerUserId == ownerId.toString() && it.folderId == secondOwnerFolder.id }
+                .map { it.sortOrder }
+                .sorted()
+            assertEquals(listOf(0, 1, 2), finalSortOrders)
 
             val forbiddenDelete = client.delete("/api/v1/classes/${ownedClass.id}") {
                 header(HttpHeaders.Authorization, "Bearer other-teacher-token")
