@@ -252,3 +252,9 @@
 - [x] خلأ آزمون endpoint مشخص شد: آزمون HTTP قبلی نقش‌ها را در حالت all پوشش می‌داد، اما phrase و نرمال‌سازی فارسی را جداگانه assert نمی‌کرد.
 - [x] آزمون HTTP تکمیل شد: عبارت دقیق contiguous، ترتیب متفاوت واژه‌ها، و حروف فارسی/عربی در query؛ commit: `f4566ec2aec02aad3721d3cfaa2a6e9ff7f3dad0`.
 - [x] Backend CI برای commit آزمون `f4566ec2` موفق شد: run `41840989631`، job `test-and-migrate`؛ آزمون‌های واحد و PostgreSQL integration، build توزیع Backend و بررسی backup/restore و bootstrap مدیر موفق بودند.
+
+
+## رفع خطای CI اندروید — 2026-11-04
+- [x] لاگ اجرای Android run `41815322362` بررسی شد؛ شکست از خطای کامپایل تست بود، نه از سورس اصلی APK: در `DarsyarReadOnlyRepositoryTest.kt` متغیر `repository` در آزمون مرتب‌سازی کلاس تعریف نشده بود.
+- [x] متغیر repository در آزمون ساخته و همان instance برای مرتب‌سازی رو به بالا/پایین استفاده شد؛ commit اصلاح: `7bacbc5d2beba2695295aa8b2f688e090eecc377`.
+- [ ] اجرای جدید Android CI برای commit اصلاحی باید بررسی شود؛ تا پایان run ساخت APK موفق اعلام نمی‌شود.
