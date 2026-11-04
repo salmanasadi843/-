@@ -145,6 +145,9 @@ data class CourseApiRecord(
 data class MoveSessionRequest(val targetClassId: String)
 
 @Serializable
+data class ReorderClassRequest(val direction: String)
+
+@Serializable
 data class ReorderSessionRequest(val direction: String)
 
 @Serializable
@@ -1191,6 +1194,37 @@ fun Application.module(
                         call.respond(HttpStatusCode.Forbidden, ApiError("class_management_forbidden"))
                     } catch (_: IllegalArgumentException) {
                         call.respond(HttpStatusCode.BadRequest, ApiError("invalid_class_data"))
+                    }
+                }
+
+                post("/{classId}/reorder") {
+                    val principal = call.principal<DarsyarPrincipal>()
+                    if (principal == null) {
+                        call.respond(HttpStatusCode.Unauthorized, ApiError("unauthorized"))
+                        return@post
+                    }
+                    val request = try {
+                        call.receive<ReorderClassRequest>()
+                    } catch (_: Exception) {
+                        call.respond(HttpStatusCode.BadRequest, ApiError("invalid_request"))
+                        return@post
+                    }
+                    try {
+                        val reordered = classRepository.reorder(
+                            principal.userId,
+                            principal.roles,
+                            call.parameters["classId"] ?: "",
+                            request.direction
+                        )
+                        if (reordered == null) {
+                            call.respond(HttpStatusCode.NotFound, ApiError("class_not_found"))
+                        } else {
+                            call.respond(reordered.map { it.toApiRecord() })
+                        }
+                    } catch (_: SecurityException) {
+                        call.respond(HttpStatusCode.Forbidden, ApiError("class_management_forbidden"))
+                    } catch (_: IllegalArgumentException) {
+                        call.respond(HttpStatusCode.BadRequest, ApiError("invalid_reorder_request"))
                     }
                 }
 
