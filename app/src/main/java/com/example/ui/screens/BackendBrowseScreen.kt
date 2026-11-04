@@ -777,7 +777,7 @@ fun BackendBrowseScreen(onBack: () -> Unit) {
                                 Spacer(Modifier.width(10.dp))
                                 Column(Modifier.weight(1f)) {
                                     Text(clazz.title, fontWeight = FontWeight.SemiBold)
-                                    val folderLabel = teacherFolders.firstOrNull { it.id == clazz.folderId }?.name ?: "بدون پوشه"
+                                    val folderLabel = clazz.folderId?.let { folderId -> teacherFolders.firstOrNull { it.id == folderId }?.name ?: "پوشه" } ?: "بدون پوشه"
                                     Text(
                                         "$folderLabel · ${if (clazz.visibility == "public") "عمومی · بدون عضویت" else "خصوصی · عضویت لازم"} · ${if (clazz.isPublished) "منتشرشده" else "منتشرنشده"}",
                                         style = MaterialTheme.typography.bodySmall
