@@ -1049,13 +1049,22 @@ export default function App() {
     finally { setBusy(false); }
   }
 
+  function compareClassBrowseOrder(a: ClassRecord, b: ClassRecord) {
+    const folderName = (item: ClassRecord) => item.folderId
+      ? folders.find(folder => folder.id === item.folderId)?.name ?? ""
+      : "";
+    return folderName(a).localeCompare(folderName(b), "fa") ||
+      (a.folderId ?? "").localeCompare(b.folderId ?? "") ||
+      a.sortOrder - b.sortOrder || a.title.localeCompare(b.title, "fa");
+  }
+
   function renderClassCard(item: ClassRecord, siblings: ClassRecord[]) {
     const ordered = [...siblings].sort((a, b) => a.sortOrder - b.sortOrder || a.title.localeCompare(b.title, "fa"));
     const index = ordered.findIndex(candidate => candidate.id === item.id);
     const canReorder = isAdmin || (me?.roles.includes("teacher") && item.ownerUserId === me.userId);
     return <div key={item.id} style={{ display: "flex", alignItems: "stretch", gap: 6 }}>
       <button className={selectedClass?.id === item.id ? "class-card selected" : "class-card"} style={{ flex: 1 }} onClick={() => void openClass(item)}>
-        <span className="tag">{item.visibility === "public" ? "عمومی" : "خصوصی"}{!item.isPublished ? " · پیش‌نویس" : ""}</span><strong>{item.title}</strong>
+        <span className="tag">{item.visibility === "public" ? "عمومی" : "خصوصی"}{!item.isPublished ? " · پیش‌نویس" : ""}</span><strong>{item.title}</strong><small className="muted">{item.folderId ? folders.find(folder => folder.id === item.folderId)?.name ?? "پوشه" : "بدون پوشه"}</small>
       </button>
       {canReorder && <div style={{ display: "flex", flexDirection: "column", justifyContent: "center" }}>
         <button type="button" className="ghost" aria-label={`انتقال کلاس ${item.title} به بالا`} title="انتقال به بالا" disabled={busy || index <= 0} onClick={() => void reorderClass(item, siblings, "up")}>↑</button>
@@ -1290,13 +1299,13 @@ export default function App() {
                 </div>
               )}
               {teacherClasses.length ? <div className="class-grid">
-                {[...teacherClasses].sort((a, b) => a.sortOrder - b.sortOrder || a.title.localeCompare(b.title, "fa")).map(c => renderClassCard(c, teacherClasses.filter(sibling => sibling.folderId === c.folderId)))}
+                {[...teacherClasses].sort(compareClassBrowseOrder).map(c => renderClassCard(c, teacherClasses.filter(sibling => sibling.folderId === c.folderId)))}
               </div> : <p className="muted">هنوز کلاسی برای این استاد ثبت نشده است.</p>}
             </section>;
           })}
           {!visibleClasses.length && <p className="muted empty">کلاسی برای نمایش وجود ندارد.</p>}
         </div> : <div className="class-grid">
-          {[...visibleClasses].sort((a, b) => a.sortOrder - b.sortOrder || a.title.localeCompare(b.title, "fa")).map(c => renderClassCard(c, visibleClasses.filter(sibling => sibling.ownerUserId === c.ownerUserId && sibling.folderId === c.folderId)))}
+          {[...visibleClasses].sort(compareClassBrowseOrder).map(c => renderClassCard(c, visibleClasses.filter(sibling => sibling.ownerUserId === c.ownerUserId && sibling.folderId === c.folderId)))}
           {!visibleClasses.length && <p className="muted empty">کلاسی برای نمایش وجود ندارد.</p>}
         </div>}
         {selectedClass && <div className="lower">
