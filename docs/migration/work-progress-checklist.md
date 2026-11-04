@@ -246,3 +246,9 @@
 - [x] پس از سبزشدن CI مهمان، آزمون تکمیلی اضافه شد: جزئیات جلسه پیش‌نویس نیز باید از endpoint عمومی 404 بگیرد (commit `beb4a89502017dc7d3c92619b779ec16e4b9cf26`). اجرای CI این commit در انتظار است.
 
 - [x] Backend CI برای آزمون جزئیات جلسه unpublished سبز شد: run `41839597143`، job `test-and-migrate`، شامل integration PostgreSQL، build backend، backup/restore و bootstrap مدیر اصلی (commit تست `beb4a895`).
+
+
+## تکمیل آزمون جست‌وجو — 2026-11-04
+- [x] خلأ آزمون endpoint مشخص شد: آزمون HTTP قبلی نقش‌ها را در حالت all پوشش می‌داد، اما phrase و نرمال‌سازی فارسی را جداگانه assert نمی‌کرد.
+- [x] آزمون HTTP تکمیل شد: عبارت دقیق contiguous، ترتیب متفاوت واژه‌ها، و حروف فارسی/عربی در query؛ commit: `f4566ec2aec02aad3721d3cfaa2a6e9ff7f3dad0`.
+- [ ] نتیجه Backend CI برای commit آزمون جدید باید بررسی شود؛ تا آن زمان موفقیت آزمون تازه ادعا نمی‌شود.
