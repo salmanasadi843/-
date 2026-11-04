@@ -1301,7 +1301,7 @@ export default function App() {
                 </div>
               )}
               {teacherClasses.length ? <div className="class-grid">
-                {[...teacherClasses].sort((a, b) => a.sortOrder - b.sortOrder || a.title.localeCompare(b.title, "fa")).map(c => renderClassCard(c, teacherClasses))}
+                {[...teacherClasses].sort((a, b) => a.sortOrder - b.sortOrder || a.title.localeCompare(b.title, "fa")).map(c => renderClassCard(c, teacherClasses.filter(sibling => sibling.folderId === c.folderId)))}
               </div> : <p className="muted">هنوز کلاسی برای این استاد ثبت نشده است.</p>}
             </section>;
           })}
