@@ -85,6 +85,7 @@ class SessionManagementRouteIntegrationTest {
 
             val identities = mapOf(
                 "admin-token" to (adminId.toString() to setOf(AppRole.SUPER_ADMIN)),
+                "owner-token" to (ownerId.toString() to setOf(AppRole.TEACHER)),
                 "other-teacher-token" to (otherTeacherId.toString() to setOf(AppRole.TEACHER))
             )
             val verifier = IdentityTokenVerifier { token ->
@@ -144,6 +145,17 @@ class SessionManagementRouteIntegrationTest {
             assertEquals(HttpStatusCode.OK, adminMove.status, moveResponse)
             assertTrue(moveResponse.contains(targetClass.id), moveResponse)
             assertTrue(moveResponse.contains("متن اصلی جلسه"), moveResponse)
+
+            // The owning teacher may also move a session between two classes they own.
+            val ownerMove = client.post("/api/v1/sessions/${session.id}/move") {
+                header(HttpHeaders.Authorization, "Bearer owner-token")
+                contentType(ContentType.Application.Json)
+                setBody("""{"targetClassId":"${sourceClass.id}"}""")
+            }
+            val ownerMoveResponse = ownerMove.bodyAsText()
+            assertEquals(HttpStatusCode.OK, ownerMove.status, ownerMoveResponse)
+            assertTrue(ownerMoveResponse.contains(sourceClass.id), ownerMoveResponse)
+            assertTrue(ownerMoveResponse.contains("متن اصلی جلسه"), ownerMoveResponse)
 
             val forbiddenDelete = client.delete("/api/v1/sessions/${session.id}") {
                 header(HttpHeaders.Authorization, "Bearer other-teacher-token")
