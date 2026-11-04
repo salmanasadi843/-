@@ -114,8 +114,8 @@ class TeacherFolderRepositoryIntegrationTest {
                 "Students must not receive descendants at any depth whose ancestor folder is hidden.")
             val studentClassesAfterHide = TeachingClassRepository(ds)
                 .listVisible(student.toString(), setOf(AppRole.STUDENT))
-            assertTrue(studentClassesAfterHide.any { it.folderId == child.id },
-                "Hiding a folder must not hide its separately published public class.")
+            assertTrue(studentClassesAfterHide.any { it.folderId == grandchild.id },
+                "Hiding a folder must not hide its separately published public class in a deeper descendant.")
 
             // The class must be moved out before its containing folder can be deleted.
             ds.connection.use { connection ->
