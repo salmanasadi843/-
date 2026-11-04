@@ -24,4 +24,12 @@ dependencies {
 }
 application { mainClass.set("ir.darsyar.backend.ApplicationKt") }
 kotlin { jvmToolchain(17) }
-tasks.test { useJUnitPlatform() }
+tasks.test {
+    useJUnitPlatform()
+    testLogging {
+        events("failed", "standardOut", "standardError")
+        exceptionFormat = org.gradle.api.tasks.testing.logging.TestExceptionFormat.FULL
+        showCauses = true
+        showStackTraces = true
+    }
+}

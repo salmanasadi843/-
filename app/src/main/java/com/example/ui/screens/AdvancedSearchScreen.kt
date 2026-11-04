@@ -24,7 +24,7 @@ import java.util.Locale
 fun AdvancedSearchScreen(
     viewModel: MainViewModel,
     userRole: UserRole,
-    onOpenLecture: (Long, String) -> Unit,
+    onOpenLecture: (Long, String, String) -> Unit,
     onBack: () -> Unit
 ) {
     BackHandler(onBack = onBack)
@@ -44,11 +44,12 @@ fun AdvancedSearchScreen(
         allLectures.filter { it.id < 0L && it.isPublished && it.classId in visibleClassIds }
     } else allLectures
 
-    var query by remember { mutableStateOf("") }
-    var matchMode by remember { mutableStateOf("all") }
-    var selectedProfessor by remember { mutableStateOf("همه استادان") }
-    var selectedCourse by remember { mutableStateOf("همه درس‌ها") }
-    var selectedClassId by remember { mutableStateOf<Long?>(null) }
+    val searchState by viewModel.advancedSearchState.collectAsState()
+    val query = searchState.query
+    val matchMode = searchState.matchMode
+    val selectedProfessor = searchState.selectedProfessor
+    val selectedCourse = searchState.selectedCourse
+    val selectedClassId = searchState.selectedClassId
     var openFilter by remember { mutableStateOf("") }
 
     val professors = listOf("همه استادان") + searchableLectures.map { it.professorName.trim() }
@@ -58,7 +59,8 @@ fun AdvancedSearchScreen(
     val classes = visibleClasses.filter { classItem ->
         searchableLectures.any { it.classId == classItem.id }
     }.sortedBy { it.name }
-    val terms = normalizeSearchText(query).split(Regex("\\s+")).filter { it.isNotBlank() }
+    val normalizedQuery = normalizeSearchText(query)
+    val terms = normalizedQuery.split(Regex("\\s+")).filter { it.isNotBlank() }
 
     val results = remember(searchableLectures, query, matchMode, selectedProfessor, selectedCourse, selectedClassId) {
         searchableLectures.filter { lecture ->
@@ -70,8 +72,13 @@ fun AdvancedSearchScreen(
                 ).joinToString(" ")
             )
             val textMatches = when {
-                terms.isEmpty() -> true
-                matchMode == "phrase" -> content.contains(normalizeSearchText(query).trim())
+                query.isBlank() -> true
+                normalizedQuery.length < 2 -> false
+                matchMode == "phrase" -> listOf(
+                    lecture.title, lecture.courseName, lecture.professorName, lecture.tags,
+                    lecture.transcript, lecture.originalTranscript,
+                    lecture.aiSummary.orEmpty(), lecture.aiKeyPoints.orEmpty()
+                ).any { normalizeSearchText(it).contains(normalizedQuery.trim()) }
                 else -> terms.all { content.contains(it) }
             }
             textMatches &&
@@ -99,7 +106,7 @@ fun AdvancedSearchScreen(
         ) {
             OutlinedTextField(
                 value = query,
-                onValueChange = { query = it },
+                onValueChange = { viewModel.updateAdvancedSearchState(searchState.copy(query = it)) },
                 modifier = Modifier.fillMaxWidth(),
                 singleLine = false,
                 maxLines = 3,
@@ -110,12 +117,12 @@ fun AdvancedSearchScreen(
             SingleChoiceSegmentedButtonRow(Modifier.fillMaxWidth()) {
                 SegmentedButton(
                     selected = matchMode == "all",
-                    onClick = { matchMode = "all" },
+                    onClick = { viewModel.updateAdvancedSearchState(searchState.copy(matchMode = "all")) },
                     shape = SegmentedButtonDefaults.itemShape(index = 0, count = 2)
                 ) { Text("همه واژه‌ها") }
                 SegmentedButton(
                     selected = matchMode == "phrase",
-                    onClick = { matchMode = "phrase" },
+                    onClick = { viewModel.updateAdvancedSearchState(searchState.copy(matchMode = "phrase")) },
                     shape = SegmentedButtonDefaults.itemShape(index = 1, count = 2)
                 ) { Text("عبارت دقیق") }
             }
@@ -130,7 +137,7 @@ fun AdvancedSearchScreen(
                     }
                     DropdownMenu(expanded = openFilter == "professor", onDismissRequest = { openFilter = "" }) {
                         professors.forEach { name ->
-                            DropdownMenuItem(text = { Text(name) }, onClick = { selectedProfessor = name; openFilter = "" })
+                            DropdownMenuItem(text = { Text(name) }, onClick = { viewModel.updateAdvancedSearchState(searchState.copy(selectedProfessor = name)); openFilter = "" })
                         }
                     }
                 }
@@ -140,7 +147,7 @@ fun AdvancedSearchScreen(
                     }
                     DropdownMenu(expanded = openFilter == "course", onDismissRequest = { openFilter = "" }) {
                         courses.forEach { name ->
-                            DropdownMenuItem(text = { Text(name) }, onClick = { selectedCourse = name; openFilter = "" })
+                            DropdownMenuItem(text = { Text(name) }, onClick = { viewModel.updateAdvancedSearchState(searchState.copy(selectedCourse = name)); openFilter = "" })
                         }
                     }
                 }
@@ -149,9 +156,9 @@ fun AdvancedSearchScreen(
                         Text(classes.firstOrNull { it.id == selectedClassId }?.name ?: "کلاس: همه", maxLines = 1, overflow = TextOverflow.Ellipsis)
                     }
                     DropdownMenu(expanded = openFilter == "class", onDismissRequest = { openFilter = "" }) {
-                        DropdownMenuItem(text = { Text("همه کلاس‌ها") }, onClick = { selectedClassId = null; openFilter = "" })
+                        DropdownMenuItem(text = { Text("همه کلاس‌ها") }, onClick = { viewModel.updateAdvancedSearchState(searchState.copy(selectedClassId = null)); openFilter = "" })
                         classes.forEach { item ->
-                            DropdownMenuItem(text = { Text(item.name) }, onClick = { selectedClassId = item.id; openFilter = "" })
+                            DropdownMenuItem(text = { Text(item.name) }, onClick = { viewModel.updateAdvancedSearchState(searchState.copy(selectedClassId = item.id)); openFilter = "" })
                         }
                     }
                 }
@@ -160,11 +167,7 @@ fun AdvancedSearchScreen(
                 Text("${results.size} نتیجه", fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.primary)
                 Spacer(Modifier.weight(1f))
                 TextButton(onClick = {
-                    query = ""
-                    matchMode = "all"
-                    selectedProfessor = "همه استادان"
-                    selectedCourse = "همه درس‌ها"
-                    selectedClassId = null
+                    viewModel.resetAdvancedSearchFilters()
                 }) { Text("پاک‌کردن فیلترها") }
             }
             if (userRole == UserRole.STUDENT && !studentFeedReady) {
@@ -182,7 +185,7 @@ fun AdvancedSearchScreen(
                     val className = classes.firstOrNull { it.id == lecture.classId }?.name
                     val excerpt = makeSearchExcerpt(lecture, terms)
                     Card(
-                        modifier = Modifier.fillMaxWidth().clickable { onOpenLecture(lecture.id, query.trim()) },
+                        modifier = Modifier.fillMaxWidth().clickable { onOpenLecture(lecture.id, query.trim(), matchMode) },
                         shape = RoundedCornerShape(16.dp),
                         colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface)
                     ) {

@@ -66,6 +66,13 @@ interface DarsyarReadOnlyApi {
         @Body request: BackendClassWriteRequest
     ): Response<BackendClassDto>
 
+    @POST("api/v1/classes/{classId}/reorder")
+    suspend fun reorderClass(
+        @retrofit2.http.Path("classId") classId: String,
+        @Header("Authorization") authorization: String,
+        @Body request: BackendReorderClassRequest
+    ): Response<List<BackendClassDto>>
+
     @PATCH("api/v1/sessions/{sessionId}")
     suspend fun updateSession(
         @retrofit2.http.Path("sessionId") sessionId: String,
@@ -299,6 +306,9 @@ data class BackendSessionWriteRequest(
 )
 
 @JsonClass(generateAdapter = true)
+data class BackendReorderClassRequest(val direction: String)
+
+@JsonClass(generateAdapter = true)
 data class BackendReorderSessionRequest(val direction: String)
 
 @JsonClass(generateAdapter = true)
@@ -389,6 +399,24 @@ class DarsyarReadOnlyRepository(
         val response = api.updateClass(classId, "Bearer $firebaseIdToken", request)
         if (!response.isSuccessful) throw BackendHttpException(response.code(), "/api/v1/classes/{classId}")
         return response.body() ?: throw IllegalStateException("Backend returned an empty class response.")
+    }
+
+    /** Reorders a class atomically within its teacher/folder group on the backend. */
+    suspend fun reorderClass(
+        firebaseIdToken: String,
+        classId: String,
+        direction: String
+    ): List<BackendClassDto> {
+        require(firebaseIdToken.isNotBlank()) { "Firebase ID token is required." }
+        require(classId.isNotBlank()) { "Class ID is required." }
+        require(direction == "up" || direction == "down") { "Invalid class reorder direction." }
+        val response = api.reorderClass(
+            classId, "Bearer $firebaseIdToken", BackendReorderClassRequest(direction)
+        )
+        if (!response.isSuccessful) {
+            throw BackendHttpException(response.code(), "/api/v1/classes/{classId}/reorder")
+        }
+        return response.body() ?: throw IllegalStateException("Backend returned an empty reordered class list.")
     }
 
     /** Updates session content; the backend enforces owner/super-admin permissions. */

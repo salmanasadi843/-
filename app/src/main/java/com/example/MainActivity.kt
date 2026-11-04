@@ -79,8 +79,12 @@ fun OstadYarApp(
     var userRole by remember { mutableStateOf(AuthPreferences.currentRole(context)) }
     val currentScreen by viewModel.currentScreen.collectAsState()
     var pendingSearchQuery by remember { mutableStateOf("") }
+    var pendingSearchMatchMode by remember { mutableStateOf("all") }
     LaunchedEffect(currentScreen) {
-        if (currentScreen !is Screen.Detail) pendingSearchQuery = ""
+        if (currentScreen !is Screen.Detail) {
+            pendingSearchQuery = ""
+            pendingSearchMatchMode = "all"
+        }
     }
 
     LaunchedEffect(authenticated) {
@@ -141,8 +145,9 @@ fun OstadYarApp(
                 userRole = userRole,
                 onNavigateToAdd = { viewModel.openClasses() },
                 onNavigateToDetail = { lectureId -> viewModel.navigateTo(Screen.Detail(lectureId)) },
-                onNavigateToSearchResult = { lectureId, query ->
+                onNavigateToSearchResult = { lectureId, query, matchMode ->
                     pendingSearchQuery = query
+                    pendingSearchMatchMode = matchMode
                     viewModel.navigateTo(Screen.Detail(lectureId))
                 },
                 onNavigateToAiSummary = { lectureId -> viewModel.navigateTo(Screen.Detail(lectureId)) },
@@ -194,12 +199,13 @@ fun OstadYarApp(
             LectureDetailScreen(
                 lectureId = screen.lectureId,
                 viewModel = viewModel,
-                onNavigateBack = { pendingSearchQuery = ""; viewModel.navigateBack() },
+                onNavigateBack = { pendingSearchQuery = ""; pendingSearchMatchMode = "all"; viewModel.navigateBack() },
                 onNavigateToEdit = { editId ->
                     if (userRole == UserRole.TEACHER) viewModel.navigateTo(Screen.AddEdit(editId))
                 },
                 isTeacher = userRole == UserRole.TEACHER,
-                initialSearchQuery = pendingSearchQuery
+                initialSearchQuery = pendingSearchQuery,
+                initialSearchMatchMode = pendingSearchMatchMode
             )
         }
 

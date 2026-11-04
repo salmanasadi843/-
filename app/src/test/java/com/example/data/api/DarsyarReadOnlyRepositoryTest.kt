@@ -119,6 +119,36 @@ class DarsyarReadOnlyRepositoryTest {
         assertEquals("class-target", fake.moveRequest?.targetClassId)
     }
 
+
+    @Test
+    fun classReorderUsesBearerTokenAndExactClassId() = runBlocking {
+        val fake = FakeApi()
+        val result = DarsyarReadOnlyRepository(fake).reorderClass("fresh-token", "class-42", "up")
+
+        assertEquals("class-42", result.single().id)
+        assertEquals("Bearer fresh-token", fake.authorizationForClassReorder)
+        assertEquals("class-42", fake.reorderedClassId)
+        assertEquals("up", fake.classReorderRequest?.direction)
+    }
+
+    @Test
+    fun invalidClassReorderArgumentsAreRejectedBeforeRequest() = runBlocking {
+        val fake = FakeApi()
+        val repository = DarsyarReadOnlyRepository(fake)
+
+        assertThrows(IllegalArgumentException::class.java) {
+            runBlocking { repository.reorderClass("token", "class-42", "sideways") }
+        }
+        assertThrows(IllegalArgumentException::class.java) {
+            runBlocking { repository.reorderClass(" ", "class-42", "up") }
+        }
+        assertThrows(IllegalArgumentException::class.java) {
+            runBlocking { repository.reorderClass("token", " ", "up") }
+        }
+
+        assertEquals(null, fake.authorizationForClassReorder)
+    }
+
     @Test
     fun invalidSessionMoveAndReorderArgumentsAreRejectedBeforeRequest() = runBlocking {
         val fake = FakeApi()
@@ -242,6 +272,9 @@ class DarsyarReadOnlyRepositoryTest {
         var authorizationForSessionDetail: String? = null
         var requestedClassIdForSessionDetail: String? = null
         var requestedSessionIdForSessionDetail: String? = null
+        var authorizationForClassReorder: String? = null
+        var reorderedClassId: String? = null
+        var classReorderRequest: BackendReorderClassRequest? = null
         var authorizationForReorder: String? = null
         var reorderedSessionId: String? = null
         var reorderRequest: BackendReorderSessionRequest? = null
@@ -329,6 +362,26 @@ class DarsyarReadOnlyRepositoryTest {
                 isHidden = request.isHidden, sortOrder = request.sortOrder, folderId = request.folderId
             )
         )
+
+
+        override suspend fun reorderClass(
+            classId: String,
+            authorization: String,
+            request: BackendReorderClassRequest
+        ): Response<List<BackendClassDto>> {
+            authorizationForClassReorder = authorization
+            reorderedClassId = classId
+            classReorderRequest = request
+            return Response.success(
+                listOf(
+                    BackendClassDto(
+                        id = classId, ownerUserId = "teacher-1", title = "Reordered class",
+                        description = "", term = "", visibility = "private",
+                        isPublished = true, isHidden = false, sortOrder = 0, folderId = null
+                    )
+                )
+            )
+        }
 
         override suspend fun updateSession(
             sessionId: String,
