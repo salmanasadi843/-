@@ -1033,6 +1033,48 @@ export default function App() {
     finally { setBusy(false); }
   }
 
+  async function reorderClass(item: ClassRecord, siblings: ClassRecord[], direction: "up" | "down") {
+    if (!user || !(isAdmin || (me?.roles.includes("teacher") && item.ownerUserId === me.userId))) return;
+    const ordered = [...siblings].sort((a, b) => a.sortOrder - b.sortOrder || a.title.localeCompare(b.title, "fa"));
+    const index = ordered.findIndex(candidate => candidate.id === item.id);
+    const target = ordered[index + (direction === "up" ? -1 : 1)];
+    if (!target || busy) return;
+    setBusy(true); setError(""); setNotice("");
+    const token = await user.getIdToken();
+    const payload = (clazz: ClassRecord, sortOrder: number) => ({
+      title: clazz.title, description: clazz.description, term: clazz.term,
+      visibility: clazz.visibility, isPublished: clazz.isPublished, isHidden: clazz.isHidden,
+      sortOrder, folderId: clazz.folderId,
+    });
+    try {
+      await api.updateClass(item.id, payload(item, target.sortOrder), token);
+      try {
+        await api.updateClass(target.id, payload(target, item.sortOrder), token);
+      } catch (error) {
+        await api.updateClass(item.id, payload(item, item.sortOrder), token);
+        throw error;
+      }
+      setClasses(await api.classes(token));
+      setNotice("ترتیب کلاس‌ها به‌روزرسانی شد.");
+    } catch (e) { setError(message(e)); }
+    finally { setBusy(false); }
+  }
+
+  function renderClassCard(item: ClassRecord, siblings: ClassRecord[]) {
+    const ordered = [...siblings].sort((a, b) => a.sortOrder - b.sortOrder || a.title.localeCompare(b.title, "fa"));
+    const index = ordered.findIndex(candidate => candidate.id === item.id);
+    const canReorder = isAdmin || (me?.roles.includes("teacher") && item.ownerUserId === me.userId);
+    return <div key={item.id} style={{ display: "flex", alignItems: "stretch", gap: 6 }}>
+      <button className={selectedClass?.id === item.id ? "class-card selected" : "class-card"} style={{ flex: 1 }} onClick={() => void openClass(item)}>
+        <span className="tag">{item.visibility === "public" ? "عمومی" : "خصوصی"}{!item.isPublished ? " · پیش‌نویس" : ""}</span><strong>{item.title}</strong>
+      </button>
+      {canReorder && <div style={{ display: "flex", flexDirection: "column", justifyContent: "center" }}>
+        <button type="button" className="ghost" aria-label={`انتقال کلاس ${item.title} به بالا`} title="انتقال به بالا" disabled={busy || index <= 0} onClick={() => void reorderClass(item, siblings, "up")}>↑</button>
+        <button type="button" className="ghost" aria-label={`انتقال کلاس ${item.title} به پایین`} title="انتقال به پایین" disabled={busy || index < 0 || index >= ordered.length - 1} onClick={() => void reorderClass(item, siblings, "down")}>↓</button>
+      </div>}
+    </div>;
+  }
+
   async function removeSelectedSession() {
     if (!user || !detail || !canManageSelectedClass) return;
     if (!window.confirm("این جلسه حذف شود؟ امکان بازیابی آن از طریق API وجود دارد.")) return;
@@ -1259,17 +1301,13 @@ export default function App() {
                 </div>
               )}
               {teacherClasses.length ? <div className="class-grid">
-                {teacherClasses.map(c => <button key={c.id} className={selectedClass?.id === c.id ? "class-card selected" : "class-card"} onClick={() => void openClass(c)}>
-                  <span className="tag">{c.visibility === "public" ? "عمومی" : "خصوصی"}{!c.isPublished ? " · پیش‌نویس" : ""}</span><strong>{c.title}</strong>
-                </button>)}
+                {[...teacherClasses].sort((a, b) => a.sortOrder - b.sortOrder || a.title.localeCompare(b.title, "fa")).map(c => renderClassCard(c, teacherClasses))}
               </div> : <p className="muted">هنوز کلاسی برای این استاد ثبت نشده است.</p>}
             </section>;
           })}
           {!visibleClasses.length && <p className="muted empty">کلاسی برای نمایش وجود ندارد.</p>}
         </div> : <div className="class-grid">
-          {visibleClasses.map(c => <button key={c.id} className={selectedClass?.id === c.id ? "class-card selected" : "class-card"} onClick={() => void openClass(c)}>
-            <span className="tag">{c.visibility === "public" ? "عمومی" : "خصوصی"}{!c.isPublished ? " · پیش‌نویس" : ""}</span><strong>{c.title}</strong>
-          </button>)}
+          {[...visibleClasses].sort((a, b) => a.sortOrder - b.sortOrder || a.title.localeCompare(b.title, "fa")).map(c => renderClassCard(c, visibleClasses.filter(sibling => sibling.ownerUserId === c.ownerUserId && sibling.folderId === c.folderId)))}
           {!visibleClasses.length && <p className="muted empty">کلاسی برای نمایش وجود ندارد.</p>}
         </div>}
         {selectedClass && <div className="lower">
