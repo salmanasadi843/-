@@ -174,14 +174,14 @@ class SessionManagementRouteIntegrationTest {
 
             // Session reorder is also protected at the HTTP boundary: admins and owners
             // may reorder, while a different teacher remains read-only.
-            val forbiddenReorder = client.post("/api/v1/sessions/\${session.id}/reorder") {
+            val forbiddenReorder = client.post("/api/v1/sessions/${session.id}/reorder") {
                 header(HttpHeaders.Authorization, "Bearer other-teacher-token")
                 contentType(ContentType.Application.Json)
                 setBody("""{"direction":"up"}""")
             }
             assertEquals(HttpStatusCode.Forbidden, forbiddenReorder.status, forbiddenReorder.bodyAsText())
 
-            val adminReorder = client.post("/api/v1/sessions/\${session.id}/reorder") {
+            val adminReorder = client.post("/api/v1/sessions/${session.id}/reorder") {
                 header(HttpHeaders.Authorization, "Bearer admin-token")
                 contentType(ContentType.Application.Json)
                 setBody("""{"direction":"up"}""")
@@ -193,7 +193,7 @@ class SessionManagementRouteIntegrationTest {
                 .map { it.id }
             assertEquals(listOf(session.id, siblingSession.id), sourceOrder)
 
-            val ownerReorder = client.post("/api/v1/sessions/\${session.id}/reorder") {
+            val ownerReorder = client.post("/api/v1/sessions/${session.id}/reorder") {
                 header(HttpHeaders.Authorization, "Bearer owner-token")
                 contentType(ContentType.Application.Json)
                 setBody("""{"direction":"down"}""")
@@ -205,7 +205,7 @@ class SessionManagementRouteIntegrationTest {
                 .map { it.id }
             assertEquals(listOf(siblingSession.id, session.id), sourceOrder)
 
-            val invalidReorder = client.post("/api/v1/sessions/\${session.id}/reorder") {
+            val invalidReorder = client.post("/api/v1/sessions/${session.id}/reorder") {
                 header(HttpHeaders.Authorization, "Bearer owner-token")
                 contentType(ContentType.Application.Json)
                 setBody("""{"direction":"sideways"}""")
