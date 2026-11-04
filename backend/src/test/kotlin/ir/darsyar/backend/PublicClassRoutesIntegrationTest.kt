@@ -57,7 +57,11 @@ class PublicClassRoutesIntegrationTest {
             )
             val hiddenClass = classes.create(
                 teacherId,
-                CreateTeachingClass(teacherId, "عمومی مخفی", "", "", "public", true, isHidden = true)
+                CreateTeachingClass(teacherId, "عمومی مخفی", "", "", "public", true)
+            )
+            classes.update(
+                teacherId, setOf(AppRole.TEACHER), hiddenClass.id,
+                UpdateTeachingClass("عمومی مخفی", "", "", "public", true, true, 0)
             )
             val draftClass = classes.create(
                 teacherId,
