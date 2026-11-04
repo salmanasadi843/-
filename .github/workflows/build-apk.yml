@@ -36,36 +36,61 @@ jobs:
     steps:
       - name: Checkout
         uses: actions/checkout@v6
+        with:
+          # For pull requests, inspect only the newest branch commit, not the
+          # complete PR diff (which may contain older Android changes).
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
+          fetch-depth: 2
+
+      - name: Detect Android changes in this commit
+        id: android_changes
+        if: github.event_name != 'workflow_dispatch'
+        shell: bash
+        run: |
+          changed_files="$(git diff --name-only HEAD^ HEAD)"
+          if printf '%s\\n' "$changed_files" | grep -Eq '^(app/|gradle/|build.gradle.kts$|settings.gradle.kts$|gradle.properties$|gradlew$)'; then
+            echo "build=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "build=false" >> "$GITHUB_OUTPUT"
+            echo "No Android or Gradle source changed in the latest commit; skipping APK build."
+          fi
 
       - name: Set up JDK 17
+        if: github.event_name == 'workflow_dispatch' || steps.android_changes.outputs.build == 'true'
         uses: actions/setup-java@v5
         with:
           distribution: temurin
           java-version: '17'
 
       - name: Set up Android SDK
+        if: github.event_name == 'workflow_dispatch' || steps.android_changes.outputs.build == 'true'
         uses: android-actions/setup-android@v4
         with:
           packages: platform-tools
 
       - name: Install Android SDK 36
+        if: github.event_name == 'workflow_dispatch' || steps.android_changes.outputs.build == 'true'
         shell: bash
         run: |
           yes | sdkmanager --licenses >/dev/null || true
           sdkmanager "platforms;android-36" "build-tools;36.0.0" "platform-tools"
 
       - name: Set up Gradle
+        if: github.event_name == 'workflow_dispatch' || steps.android_changes.outputs.build == 'true'
         uses: gradle/actions/setup-gradle@v6
         with:
           gradle-version: '9.3.1'
 
       - name: Run Android unit tests
+        if: github.event_name == 'workflow_dispatch' || steps.android_changes.outputs.build == 'true'
         run: gradle testDebugUnitTest --stacktrace
 
       - name: Build Debug APK
+        if: github.event_name == 'workflow_dispatch' || steps.android_changes.outputs.build == 'true'
         run: gradle assembleDebug --stacktrace
 
       - name: Upload APK
+        if: github.event_name == 'workflow_dispatch' || steps.android_changes.outputs.build == 'true'
         uses: actions/upload-artifact@v6
         with:
           name: ostadyar-debug-apk
