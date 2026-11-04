@@ -437,6 +437,40 @@ fun BackendBrowseScreen(onBack: () -> Unit) {
         }
     }
 
+    fun reorderClassInTeacher(clazz: BackendClassDto, direction: String) {
+        if (!("super_admin" in accountRoles || ("teacher" in accountRoles && clazz.ownerUserId == accountId))) return
+        val siblings = classes.filter { it.ownerUserId == clazz.ownerUserId && it.folderId == clazz.folderId }
+            .sortedWith(compareBy<BackendClassDto> { it.sortOrder }.thenBy { it.title })
+        val index = siblings.indexOfFirst { it.id == clazz.id }
+        val target = siblings.getOrNull(index + if (direction == "up") -1 else 1) ?: return
+        withFreshToken { token ->
+            val api = DarsyarReadOnlyApiFactory.create()
+            suspend fun updateSort(item: BackendClassDto, sortOrder: Int) = withContext(Dispatchers.IO) {
+                api.updateClass(token, item.id, BackendClassWriteRequest(
+                    title = item.title,
+                    description = item.description,
+                    term = item.term,
+                    visibility = item.visibility,
+                    isPublished = item.isPublished,
+                    isHidden = item.isHidden,
+                    sortOrder = sortOrder,
+                    folderId = item.folderId
+                ))
+            }
+            val moved = updateSort(clazz, target.sortOrder)
+            try {
+                updateSort(target, clazz.sortOrder)
+            } catch (error: Throwable) {
+                updateSort(clazz, clazz.sortOrder)
+                throw error
+            }
+            classes = withContext(Dispatchers.IO) { api.loadClasses(token) }
+                .sortedWith(compareBy<BackendClassDto> { it.ownerUserId }.thenBy { it.sortOrder }.thenBy { it.title })
+            selectedClass = selectedClass?.let { selected -> classes.find { it.id == selected.id } ?: selected }
+            status = "ترتیب کلاس‌ها به‌روزرسانی شد."
+        }
+    }
+
     fun openDeletedSessions() {
         showDeletedSessions = true
         withFreshToken { token ->
@@ -738,30 +772,39 @@ fun BackendBrowseScreen(onBack: () -> Unit) {
                         (selectedFolderTree == null || clazz.folderId in selectedFolderTree)
                 }.sortedBy { it.sortOrder }
                 if (teacherClasses.isEmpty()) item { Text("کلاسی برای این استاد ثبت نشده است.", style = MaterialTheme.typography.bodySmall) }
-                items(teacherClasses, key = { it.id }) { clazz ->
+                itemsIndexed(teacherClasses, key = { _, clazz -> clazz.id }) { _, clazz ->
+                    val reorderableSiblings = teacherClasses.filter { it.folderId == clazz.folderId }
+                        .sortedWith(compareBy<BackendClassDto> { it.sortOrder }.thenBy { it.title })
+                    val classOrderIndex = reorderableSiblings.indexOfFirst { it.id == clazz.id }
                     Card(
-                        Modifier.fillMaxWidth().clickable { openClass(clazz) },
+                        Modifier.fillMaxWidth(),
                         colors = CardDefaults.cardColors(
                             containerColor = if (selectedClass?.id == clazz.id) MaterialTheme.colorScheme.primaryContainer else MaterialTheme.colorScheme.surface
                         )
                     ) {
                         Row(Modifier.fillMaxWidth().padding(14.dp), verticalAlignment = Alignment.CenterVertically) {
-                            Icon(Icons.Default.School, contentDescription = null, tint = MaterialTheme.colorScheme.primary)
-                            Spacer(Modifier.width(10.dp))
-                            Column(Modifier.weight(1f)) {
-                                Text(clazz.title, fontWeight = FontWeight.SemiBold)
-                                Text(
-                                    "${if (clazz.visibility == "public") "عمومی · بدون عضویت" else "خصوصی · عضویت لازم"} · ${if (clazz.isPublished) "منتشرشده" else "منتشرنشده"}",
-                                    style = MaterialTheme.typography.bodySmall
-                                )
+                            Row(
+                                Modifier.weight(1f).clickable { openClass(clazz) },
+                                verticalAlignment = Alignment.CenterVertically
+                            ) {
+                                Icon(Icons.Default.School, contentDescription = null, tint = MaterialTheme.colorScheme.primary)
+                                Spacer(Modifier.width(10.dp))
+                                Column(Modifier.weight(1f)) {
+                                    Text(clazz.title, fontWeight = FontWeight.SemiBold)
+                                    Text(
+                                        "${if (clazz.visibility == "public") "عمومی · بدون عضویت" else "خصوصی · عضویت لازم"} · ${if (clazz.isPublished) "منتشرشده" else "منتشرنشده"}",
+                                        style = MaterialTheme.typography.bodySmall
+                                    )
+                                }
+                                Text("جلسه‌ها", color = MaterialTheme.colorScheme.primary, style = MaterialTheme.typography.labelMedium)
                             }
                             if ("super_admin" in accountRoles || ("teacher" in accountRoles && clazz.ownerUserId == accountId)) {
-                                TextButton(
-                                    onClick = { beginEditClass(clazz) },
-                                    enabled = !busy
-                                ) { Text("مدیریت") }
+                                Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                                    TextButton(onClick = { reorderClassInTeacher(clazz, "up") }, enabled = !busy && classOrderIndex > 0) { Text("↑") }
+                                    TextButton(onClick = { reorderClassInTeacher(clazz, "down") }, enabled = !busy && classOrderIndex >= 0 && classOrderIndex < reorderableSiblings.lastIndex) { Text("↓") }
+                                    TextButton(onClick = { beginEditClass(clazz) }, enabled = !busy) { Text("مدیریت") }
+                                }
                             }
-                            Text("جلسه‌ها", color = MaterialTheme.colorScheme.primary, style = MaterialTheme.typography.labelMedium)
                         }
                     }
                 }
