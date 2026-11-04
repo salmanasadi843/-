@@ -3,6 +3,7 @@ package ir.darsyar.backend
 import com.zaxxer.hikari.HikariConfig
 import com.zaxxer.hikari.HikariDataSource
 import io.ktor.client.request.delete
+import io.ktor.client.request.get
 import io.ktor.client.request.header
 import io.ktor.client.request.patch
 import io.ktor.client.request.post
@@ -78,6 +79,10 @@ class ClassManagementRouteIntegrationTest {
                 ownerId.toString(),
                 CreateTeachingClass(ownerId.toString(), "کلاس اولیه", "", "", "private", true)
             )
+            val otherTeachersPublicClass = classes.create(
+                otherTeacherId.toString(),
+                CreateTeachingClass(otherTeacherId.toString(), "کلاس عمومی استاد دیگر", "", "", "public", true)
+            )
 
             val identities = mapOf(
                 "admin-token" to (adminId.toString() to setOf(AppRole.SUPER_ADMIN)),
@@ -95,6 +100,39 @@ class ClassManagementRouteIntegrationTest {
             }
 
             application { module(dataSource, verifier, users) }
+
+            // The directory and class-list HTTP endpoints must preserve the teacher -> class hierarchy.
+            val adminTeachersResponse = client.get("/api/v1/teachers") {
+                header(HttpHeaders.Authorization, "Bearer admin-token")
+            }
+            val adminTeachersBody = adminTeachersResponse.bodyAsText()
+            assertEquals(HttpStatusCode.OK, adminTeachersResponse.status, adminTeachersBody)
+            assertTrue(adminTeachersBody.contains(ownerId.toString()), adminTeachersBody)
+            assertTrue(adminTeachersBody.contains(otherTeacherId.toString()), adminTeachersBody)
+
+            val ownerTeachersResponse = client.get("/api/v1/teachers") {
+                header(HttpHeaders.Authorization, "Bearer owner-token")
+            }
+            val ownerTeachersBody = ownerTeachersResponse.bodyAsText()
+            assertEquals(HttpStatusCode.OK, ownerTeachersResponse.status, ownerTeachersBody)
+            assertTrue(ownerTeachersBody.contains(ownerId.toString()), ownerTeachersBody)
+            assertTrue(ownerTeachersBody.contains(otherTeacherId.toString()), ownerTeachersBody)
+
+            val adminClassesResponse = client.get("/api/v1/classes") {
+                header(HttpHeaders.Authorization, "Bearer admin-token")
+            }
+            val adminClassesBody = adminClassesResponse.bodyAsText()
+            assertEquals(HttpStatusCode.OK, adminClassesResponse.status, adminClassesBody)
+            assertTrue(adminClassesBody.contains(ownedClass.id), adminClassesBody)
+            assertTrue(adminClassesBody.contains(otherTeachersPublicClass.id), adminClassesBody)
+
+            val ownerClassesResponse = client.get("/api/v1/classes") {
+                header(HttpHeaders.Authorization, "Bearer owner-token")
+            }
+            val ownerClassesBody = ownerClassesResponse.bodyAsText()
+            assertEquals(HttpStatusCode.OK, ownerClassesResponse.status, ownerClassesBody)
+            assertTrue(ownerClassesBody.contains(ownedClass.id), ownerClassesBody)
+            assertTrue(ownerClassesBody.contains(otherTeachersPublicClass.id), ownerClassesBody)
 
             // The owner teacher can move their own class between their folders.
             val ownerMove = client.patch("/api/v1/classes/${ownedClass.id}") {
