@@ -457,14 +457,14 @@ fun BackendBrowseScreen(onBack: () -> Unit) {
                     folderId = item.folderId
                 ))
             }
-            val moved = updateSort(clazz, target.sortOrder)
+            updateSort(clazz, target.sortOrder)
             try {
                 updateSort(target, clazz.sortOrder)
             } catch (error: Throwable) {
                 updateSort(clazz, clazz.sortOrder)
                 throw error
             }
-            classes = withContext(Dispatchers.IO) { api.loadClasses(token) }
+            classes = withContext(Dispatchers.IO) { api.loadSnapshot(token).classes }
                 .sortedWith(compareBy<BackendClassDto> { it.ownerUserId }.thenBy { it.sortOrder }.thenBy { it.title })
             selectedClass = selectedClass?.let { selected -> classes.find { it.id == selected.id } ?: selected }
             status = "ترتیب کلاس‌ها به‌روزرسانی شد."
