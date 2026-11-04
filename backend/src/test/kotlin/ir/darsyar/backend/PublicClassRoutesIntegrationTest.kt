@@ -106,6 +106,9 @@ class PublicClassRoutesIntegrationTest {
             assertEquals(HttpStatusCode.OK, publicDetail.status, publicDetail.bodyAsText())
             assertTrue(publicDetail.bodyAsText().contains("متن عمومی"))
 
+            val draftDetail = client.get("/api/v1/public/classes/${publicClass.id}/sessions/${draftSession.id}")
+            assertEquals(HttpStatusCode.NotFound, draftDetail.status, draftDetail.bodyAsText())
+
             val privateDetail = client.get("/api/v1/public/classes/${privateClass.id}/sessions/${privateSession.id}")
             assertEquals(HttpStatusCode.NotFound, privateDetail.status, privateDetail.bodyAsText())
 
