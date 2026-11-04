@@ -62,6 +62,8 @@ export default function App() {
   const [sessionSearchResults, setSessionSearchResults] = useState<SessionSearchResult[]>([]);
   const [sessionSearchLoading, setSessionSearchLoading] = useState(false);
   const [searchHighlightQuery, setSearchHighlightQuery] = useState("");
+  const [searchHighlightMode, setSearchHighlightMode] = useState<"all" | "phrase">("all");
+  const [searchHighlightField, setSearchHighlightField] = useState("");
   const [showMyNotes, setShowMyNotes] = useState(false);
   const [loadingGlobalNotes, setLoadingGlobalNotes] = useState(false);
   const [pendingNoteFocusId, setPendingNoteFocusId] = useState<string | null>(null);
@@ -340,6 +342,7 @@ export default function App() {
       setSessionState(savedState);
       setPlaybackPositionMs(savedState.lastPlaybackPositionMs);
       setSessionNotes(notes);
+      setSearchHighlightQuery(""); setSearchHighlightField("");
       setNoteQuote(""); setNoteDraft(""); setNoteOffsets(null); setActiveNoteId(null); setEditingNoteId(null);
     }
     catch (e) { setError(message(e)); }
@@ -378,7 +381,10 @@ export default function App() {
       setSelectedClass(classRecord); setSessions(sessionList); setCourses(courseList); setDetail(sessionDetail);
       setAudioSources(sources); setSessionState(savedState); setPlaybackPositionMs(savedState.lastPlaybackPositionMs);
       setSessionNotes(notes); setForumTopics(topics); setAnnouncements(notices);
-      setActiveTopic(null); setForumPosts([]); setSearchHighlightQuery(sessionSearchQuery.trim());
+      setActiveTopic(null); setForumPosts([]);
+      setSearchHighlightMode(sessionSearchMode);
+      setSearchHighlightField(result.matchedIn);
+      setSearchHighlightQuery(["متن اصلی", "متن ویرایش‌شده"].includes(result.matchedIn) ? sessionSearchQuery.trim() : "");
       setNoteQuote(""); setNoteDraft(""); setNoteOffsets(null); setActiveNoteId(null); setEditingNoteId(null);
       setNotice("جلسهٔ پیدا‌شده باز شد؛ محل تطبیق در متن مشخص شده است.");
     } catch (e) { setError(message(e)); }
@@ -386,15 +392,42 @@ export default function App() {
   }
 
   function highlightSearchText(source: string) {
-    const query = normalizeWebSearchText(searchHighlightQuery);
-    if (!query) return source;
     const normalized = normalizeWebSearchWithOffsets(source);
-    const index = normalized.text.indexOf(query);
-    if (index < 0) return source;
-    const start = normalized.offsets[index];
-    const end = normalized.offsets[index + query.length - 1] + 1;
-    if (start == null || end <= start) return source;
-    return <>{source.slice(0, start)}<mark className="session-search-highlight">{source.slice(start, end)}</mark>{source.slice(end)}</>;
+    const query = normalizeWebSearchText(searchHighlightQuery);
+    const terms = searchHighlightMode === "phrase" ? [query] : query.split(/\\s+/).filter(Boolean);
+    if (!terms.length || !normalized.text) return source;
+    const ranges: Array<{ start: number; end: number }> = [];
+    terms.forEach(term => {
+      let from = 0;
+      while (from < normalized.text.length) {
+        const index = normalized.text.indexOf(term, from);
+        if (index < 0) break;
+        const start = normalized.offsets[index];
+        const end = normalized.offsets[index + term.length - 1];
+        if (start != null && end != null) ranges.push({ start, end: end + 1 });
+        from = index + Math.max(1, term.length);
+      }
+    });
+    ranges.sort((a, b) => a.start - b.start);
+    const merged = ranges.reduce<Array<{ start: number; end: number }>>((items, range) => {
+      const previous = items[items.length - 1];
+      if (previous && range.start <= previous.end) previous.end = Math.max(previous.end, range.end);
+      else items.push({ ...range });
+      return items;
+    }, []);
+    if (!merged.length) return source;
+    const parts: Array<{ text: string; highlighted: boolean }> = [];
+    let cursor = 0;
+    merged.forEach(range => {
+      if (range.start < cursor) return;
+      if (range.start > cursor) parts.push({ text: source.slice(cursor, range.start), highlighted: false });
+      parts.push({ text: source.slice(range.start, range.end), highlighted: true });
+      cursor = range.end;
+    });
+    if (cursor < source.length) parts.push({ text: source.slice(cursor), highlighted: false });
+    return <>{parts.map((part, index) => part.highlighted
+      ? <mark className="session-search-highlight" key={index}>{part.text}</mark>
+      : <span key={index}>{part.text}</span>)}</>;
   }
 
   async function loadGlobalNotes() {
@@ -1431,8 +1464,8 @@ export default function App() {
           </section>
           {detail.aiSummary && <><h3>خلاصه هوشمند</h3><p className="pre">{detail.aiSummary}</p></>}
           {detail.aiKeyPoints && <><h3>نکات کلیدی</h3><p className="pre">{detail.aiKeyPoints}</p></>}
-          {detail.originalTranscript && <><h3>متن اصلی</h3><p id={searchHighlightQuery ? "search-highlight-target" : "original-transcript"} className="pre" onMouseUp={captureTranscriptSelection}>{searchHighlightQuery ? highlightSearchText(detail.originalTranscript) : transcriptWithHighlight(detail.originalTranscript)}</p><p className="muted">بخشی از متن را انتخاب کنید تا همراه یادداشت ذخیره شود.</p></>}
-          {detail.transcript && detail.transcript !== detail.originalTranscript && <><h3>متن ویرایش‌شده</h3><p id={!detail.originalTranscript && searchHighlightQuery ? "search-highlight-target" : "edited-transcript"} className="pre" onMouseUp={captureTranscriptSelection}>{searchHighlightQuery ? highlightSearchText(detail.transcript) : transcriptWithHighlight(detail.transcript)}</p><p className="muted">بخشی از متن را انتخاب کنید تا همراه یادداشت ذخیره شود.</p></>}
+          {detail.originalTranscript && <><h3>متن اصلی</h3><p id={searchHighlightQuery && searchHighlightField === "متن اصلی" ? "search-highlight-target" : "original-transcript"} className="pre" onMouseUp={captureTranscriptSelection}>{searchHighlightQuery ? highlightSearchText(detail.originalTranscript) : transcriptWithHighlight(detail.originalTranscript)}</p><p className="muted">بخشی از متن را انتخاب کنید تا همراه یادداشت ذخیره شود.</p></>}
+          {detail.transcript && detail.transcript !== detail.originalTranscript && <><h3>متن ویرایش‌شده</h3><p id={searchHighlightQuery && searchHighlightField === "متن ویرایش‌شده" ? "search-highlight-target" : "edited-transcript"} className="pre" onMouseUp={captureTranscriptSelection}>{searchHighlightQuery ? highlightSearchText(detail.transcript) : transcriptWithHighlight(detail.transcript)}</p><p className="muted">بخشی از متن را انتخاب کنید تا همراه یادداشت ذخیره شود.</p></>}
         </article>}
       </section>
     </div>
