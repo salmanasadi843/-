@@ -175,6 +175,25 @@ class SessionSearchRouteIntegrationTest {
             assertTrue(visitorResults.contains("جلسه عمومی"))
             assertFalse(visitorResults.contains("جلسه خصوصی"))
             assertFalse(visitorResults.contains("پیش‌نویس"))
+
+            suspend fun searchQuery(token: String, query: String, mode: String = "all"): String {
+                val response = client.get("/api/v1/sessions/search?q=$query&mode=$mode") {
+                    header(HttpHeaders.Authorization, "Bearer $token")
+                }
+                assertEquals(HttpStatusCode.OK, response.status, response.bodyAsText())
+                return response.bodyAsText()
+            }
+            // Exact phrase must match contiguous text, not merely all separate terms.
+            val exactPhrase = searchQuery("visitor", "متن%20عمومی%20کلیدواژه", "phrase")
+            assertTrue(exactPhrase.contains("جلسه عمومی"))
+            assertFalse(exactPhrase.contains("جلسه خصوصی"))
+            // Persian/Arabic letter variants are normalized by the route.
+            val normalized = searchQuery("visitor", "%DA%A9%D9%84%DB%8C%D8%AF%D9%88%D8%A7%DA%98%D9%87")
+            assertTrue(normalized.contains("جلسه عمومی"))
+            assertFalse(normalized.contains("جلسه خصوصی"))
+            // Phrase with the same words in a different order must not match.
+            val reorderedPhrase = searchQuery("visitor", "کلیدواژه%20متن", "phrase")
+            assertFalse(reorderedPhrase.contains("جلسه عمومی"))
         }
     }
 }
