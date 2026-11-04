@@ -1487,3 +1487,36 @@ function roleLabel(roles: string[]) {
   if (roles.includes("student")) return "دانشجو";
   return "کاربر";
 }
+function normalizeWebSearchWithOffsets(source: string): { text: string; offsets: number[] } {
+  let text = "";
+  const offsets: number[] = [];
+  let pendingSpace: number | null = null;
+  Array.from(source).forEach((original, index) => {
+    const code = original.codePointAt(0) ?? 0;
+    let mapped = original.toLocaleLowerCase();
+    if (mapped === "ي") mapped = "ی";
+    else if (mapped === "ك") mapped = "ک";
+    else if (mapped === "ۀ" || mapped === "ة") mapped = "ه";
+    else if (mapped === "ؤ") mapped = "و";
+    else if (mapped === "إ" || mapped === "أ" || mapped === "آ") mapped = "ا";
+    if ((code >= 0x064b && code <= 0x065f) || code === 0x0670 || code === 0x200f ||
+        (code >= 0x202a && code <= 0x202e)) return;
+    if (code === 0x200c || /\\s/.test(original)) {
+      if (text.length && pendingSpace == null) pendingSpace = index;
+      return;
+    }
+    if (pendingSpace != null && text.length) {
+      text += " ";
+      offsets.push(pendingSpace);
+    }
+    pendingSpace = null;
+    text += mapped;
+    for (let i = 0; i < mapped.length; i++) offsets.push(index);
+  });
+  const trimmed = text.trimEnd();
+  return { text: trimmed, offsets: offsets.slice(0, trimmed.length) };
+}
+
+function normalizeWebSearchText(source: string): string {
+  return normalizeWebSearchWithOffsets(source).text;
+}
