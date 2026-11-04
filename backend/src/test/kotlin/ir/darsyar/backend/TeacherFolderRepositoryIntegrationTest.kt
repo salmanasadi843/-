@@ -96,6 +96,11 @@ class TeacherFolderRepositoryIntegrationTest {
             assertEquals("اصول اصلاح‌شده", adminUpdate?.name)
             assertTrue(repo.listVisible(admin.toString(), setOf(AppRole.SUPER_ADMIN)).any { it.id == root.id })
 
+            // A hidden parent hides its whole folder branch from other users, avoiding orphaned children.
+            val studentFoldersAfterHide = repo.listVisible(student.toString(), setOf(AppRole.STUDENT))
+            assertTrue(studentFoldersAfterHide.none { it.id == root.id || it.id == child.id },
+                "Students must not receive descendants whose parent folder is hidden.")
+
             // The class must be moved out before its containing folder can be deleted.
             ds.connection.use { connection ->
                 connection.prepareStatement(
