@@ -100,6 +100,10 @@ class TeacherFolderRepositoryIntegrationTest {
             val studentFoldersAfterHide = repo.listVisible(student.toString(), setOf(AppRole.STUDENT))
             assertTrue(studentFoldersAfterHide.none { it.id == root.id || it.id == child.id },
                 "Students must not receive descendants whose parent folder is hidden.")
+            val studentClassesAfterHide = TeachingClassRepository(ds)
+                .listVisible(student.toString(), setOf(AppRole.STUDENT))
+            assertTrue(studentClassesAfterHide.any { it.folderId == child.id },
+                "Hiding a folder must not hide its separately published public class.")
 
             // The class must be moved out before its containing folder can be deleted.
             ds.connection.use { connection ->
