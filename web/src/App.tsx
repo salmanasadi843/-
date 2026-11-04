@@ -1040,20 +1040,9 @@ export default function App() {
     const target = ordered[index + (direction === "up" ? -1 : 1)];
     if (!target || busy) return;
     setBusy(true); setError(""); setNotice("");
-    const token = await user.getIdToken();
-    const payload = (clazz: ClassRecord, sortOrder: number) => ({
-      title: clazz.title, description: clazz.description, term: clazz.term,
-      visibility: clazz.visibility, isPublished: clazz.isPublished, isHidden: clazz.isHidden,
-      sortOrder, folderId: clazz.folderId,
-    });
     try {
-      await api.updateClass(item.id, payload(item, target.sortOrder), token);
-      try {
-        await api.updateClass(target.id, payload(target, item.sortOrder), token);
-      } catch (error) {
-        await api.updateClass(item.id, payload(item, item.sortOrder), token);
-        throw error;
-      }
+      const token = await user.getIdToken();
+      await api.reorderClass(item.id, direction, token);
       setClasses(await api.classes(token));
       setNotice("ترتیب کلاس‌ها به‌روزرسانی شد.");
     } catch (e) { setError(message(e)); }
