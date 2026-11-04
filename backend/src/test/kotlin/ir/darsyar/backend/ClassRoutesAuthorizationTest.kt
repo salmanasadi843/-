@@ -357,4 +357,30 @@ class ClassRoutesAuthorizationTest {
         }
         assertEquals(HttpStatusCode.BadRequest, response.status)
     }
+
+    @Test
+    fun `session search rejects unauthenticated requests`() = testApplication {
+        application { module(unusedDataSource(), verifier(), usersWith(AppRole.STUDENT)) }
+        val response = client.get("/api/v1/sessions/search?q=آزمایش&mode=all")
+        assertEquals(HttpStatusCode.Unauthorized, response.status)
+    }
+
+    @Test
+    fun `session search rejects too short query before database access`() = testApplication {
+        application { module(unusedDataSource(), verifier(), usersWith(AppRole.STUDENT)) }
+        val response = client.get("/api/v1/sessions/search?q=ا&mode=all") {
+            header(HttpHeaders.Authorization, "Bearer test-token")
+        }
+        assertEquals(HttpStatusCode.BadRequest, response.status)
+    }
+
+    @Test
+    fun `session search rejects unsupported mode before database access`() = testApplication {
+        application { module(unusedDataSource(), verifier(), usersWith(AppRole.TEACHER)) }
+        val response = client.get("/api/v1/sessions/search?q=آزمایش&mode=prefix") {
+            header(HttpHeaders.Authorization, "Bearer test-token")
+        }
+        assertEquals(HttpStatusCode.BadRequest, response.status)
+    }
+
 }
