@@ -258,3 +258,6 @@
 - [x] لاگ اجرای Android run `41815322362` بررسی شد؛ شکست از خطای کامپایل تست بود، نه از سورس اصلی APK: در `DarsyarReadOnlyRepositoryTest.kt` متغیر `repository` در آزمون مرتب‌سازی کلاس تعریف نشده بود.
 - [x] متغیر repository در آزمون ساخته و همان instance برای مرتب‌سازی رو به بالا/پایین استفاده شد؛ commit اصلاح: `7bacbc5d2beba2695295aa8b2f688e090eecc377`.
 - [ ] اجرای جدید Android CI برای commit اصلاحی باید بررسی شود؛ تا پایان run ساخت APK موفق اعلام نمی‌شود.
+
+- [x] نتیجه Android CI run `41841778445` بررسی شد: کامپایل تست‌ها اکنون عبور می‌کند و 22 تست اجرا شده‌اند؛ یک تست (`classReorderUsesBearerTokenAndExactClassId`) در زمان اجرا با `IllegalArgumentException` در خط 124 شکست خورده است. بنابراین خطای unresolved reference رفع شده، اما تست رفتاری مرتب‌سازی هنوز سبز نیست.
+- [ ] علت `IllegalArgumentException` در تست مرتب‌سازی کلاس باید با بازتولید محلی/گزارش تفصیلی تست مشخص شود؛ از روی خلاصه Actions علت دقیق exception قابل اثبات نیست. تا مشخص‌شدن علت، تغییر حدسی در repository یا API انجام نشود.
