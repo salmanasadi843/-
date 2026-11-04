@@ -159,7 +159,17 @@ class SessionManagementRouteIntegrationTest {
             val moveResponse = adminMove.bodyAsText()
             assertEquals(HttpStatusCode.OK, adminMove.status, moveResponse)
             assertTrue(moveResponse.contains(targetClass.id), moveResponse)
+            assertTrue(moveResponse.contains(session.id), moveResponse)
             assertTrue(moveResponse.contains("متن اصلی جلسه"), moveResponse)
+            val sessionsInTargetAfterAdminMove = sessionRepository
+                .listVisible(adminId.toString(), setOf(AppRole.SUPER_ADMIN))
+                .filter { it.classId == targetClass.id }
+            assertEquals(listOf(session.id), sessionsInTargetAfterAdminMove.map { it.id })
+            assertTrue(
+                sessionRepository.listVisible(adminId.toString(), setOf(AppRole.SUPER_ADMIN))
+                    .none { it.classId == sourceClass.id && it.id == session.id },
+                "Moved session must no longer appear in the source class."
+            )
 
             // The owning teacher may also move a session between two classes they own.
             val ownerMove = client.post("/api/v1/sessions/${session.id}/move") {
@@ -170,7 +180,17 @@ class SessionManagementRouteIntegrationTest {
             val ownerMoveResponse = ownerMove.bodyAsText()
             assertEquals(HttpStatusCode.OK, ownerMove.status, ownerMoveResponse)
             assertTrue(ownerMoveResponse.contains(sourceClass.id), ownerMoveResponse)
+            assertTrue(ownerMoveResponse.contains(session.id), ownerMoveResponse)
             assertTrue(ownerMoveResponse.contains("متن اصلی جلسه"), ownerMoveResponse)
+            val sessionsInSourceAfterOwnerMove = sessionRepository
+                .listVisible(adminId.toString(), setOf(AppRole.SUPER_ADMIN))
+                .filter { it.classId == sourceClass.id }
+            assertEquals(1, sessionsInSourceAfterOwnerMove.count { it.id == session.id })
+            assertTrue(
+                sessionRepository.listVisible(adminId.toString(), setOf(AppRole.SUPER_ADMIN))
+                    .none { it.classId == targetClass.id && it.id == session.id },
+                "Moved-back session must no longer appear in the target class."
+            )
 
             // Session reorder is also protected at the HTTP boundary: admins and owners
             // may reorder, while a different teacher remains read-only.
