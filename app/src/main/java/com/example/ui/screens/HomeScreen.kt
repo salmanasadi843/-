@@ -88,7 +88,7 @@ fun HomeScreen(
     val context = LocalContext.current
     val isOnline = rememberNetworkConnection()
     var showBulkExportDialog by androidx.compose.runtime.remember { androidx.compose.runtime.mutableStateOf(false) }
-    var showAdvancedSearch by remember { mutableStateOf(false) }
+    val advancedSearchState by viewModel.advancedSearchState.collectAsState()
     var showTeacherRequests by remember { mutableStateOf(false) }
     var pendingTeacherRequests by remember { mutableStateOf<List<TeacherRequestItem>>(emptyList()) }
     var teacherRequestsLoadError by remember { mutableStateOf<String?>(null) }
@@ -202,12 +202,12 @@ fun HomeScreen(
         )
     }
 
-    if (showAdvancedSearch) {
+    if (advancedSearchState.isOpen) {
         AdvancedSearchScreen(
             viewModel = viewModel,
             userRole = userRole,
             onOpenLecture = onNavigateToSearchResult,
-            onBack = { showAdvancedSearch = false }
+            onBack = { viewModel.setAdvancedSearchOpen(false) }
         )
         return
     }
@@ -241,7 +241,7 @@ fun HomeScreen(
                     }
                 },
                 actions = {
-                    IconButton(onClick = { showAdvancedSearch = true }) { Icon(Icons.Default.Search, contentDescription = "جستجوی پیشرفته در درس‌ها") }
+                    IconButton(onClick = { viewModel.setAdvancedSearchOpen(true) }) { Icon(Icons.Default.Search, contentDescription = "جستجوی پیشرفته در درس‌ها") }
                     if (isTeacher) IconButton(onClick = { showBulkExportDialog = true }) { Icon(Icons.Default.Share, contentDescription = "ارسال گروهی مطالب") }
                     IconButton(onClick = viewModel::openClasses) { Icon(Icons.Default.School, "کلاس‌ها") }
                     if (BackendEndpointConfig.isConfigured) {
