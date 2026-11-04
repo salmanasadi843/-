@@ -144,8 +144,9 @@ class SessionSearchRouteIntegrationTest {
                 val response = client.get("/api/v1/sessions/search?q=کلیدواژه&mode=all") {
                     header(HttpHeaders.Authorization, "Bearer $token")
                 }
-                assertEquals(HttpStatusCode.OK, response.status)
-                return response.bodyAsText()
+                val body = response.bodyAsText()
+                assertEquals(HttpStatusCode.OK, response.status, "Search failed for token=$token: $body")
+                return body
             }
 
             val adminResults = searchAs("admin")
