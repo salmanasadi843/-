@@ -292,6 +292,132 @@ class TeachingClassRepository(private val dataSource: DataSource) {
     }
 
 
+
+    /**
+     * Moves a class one position within its teacher/folder group in a single transaction.
+     * All sibling rows are locked in stable ID order, so concurrent reorder requests serialize.
+     */
+    fun reorder(
+        actorUserId: String,
+        roles: Set<AppRole>,
+        classId: String,
+        direction: String
+    ): List<TeachingClassRecord>? {
+        val actor = UUID.fromString(actorUserId)
+        val id = UUID.fromString(classId)
+        require(direction in setOf("up", "down")) { "Invalid class reorder direction." }
+
+        dataSource.connection.use { connection ->
+            connection.autoCommit = false
+            try {
+                val targetSnapshot = connection.prepareStatement(
+                    """
+                    SELECT id::text, owner_user_id::text, title, description, term,
+                           visibility, is_published, is_hidden, sort_order, folder_id::text
+                    FROM teaching_classes
+                    WHERE id = ? AND deleted_at IS NULL
+                    """.trimIndent()
+                ).use { statement ->
+                    statement.setObject(1, id)
+                    statement.executeQuery().use { rows ->
+                        if (rows.next()) rows.toTeachingClassRecord() else null
+                    }
+                } ?: run {
+                    connection.rollback()
+                    return null
+                }
+
+                val isOwner = targetSnapshot.ownerUserId == actorUserId
+                if (AppRole.SUPER_ADMIN !in roles &&
+                    !(AppRole.TEACHER in roles && isOwner)
+                ) throw SecurityException("You cannot manage this class.")
+
+                // Lock the complete sibling set in a deterministic order. Competing reorder
+                // operations for this same teacher/folder therefore run one after another.
+                val lockedSiblings = connection.prepareStatement(
+                    """
+                    SELECT id::text, owner_user_id::text, title, description, term,
+                           visibility, is_published, is_hidden, sort_order, folder_id::text
+                    FROM teaching_classes
+                    WHERE owner_user_id = ?
+                      AND folder_id IS NOT DISTINCT FROM ?::uuid
+                      AND deleted_at IS NULL
+                    ORDER BY id
+                    FOR UPDATE
+                    """.trimIndent()
+                ).use { statement ->
+                    statement.setObject(1, UUID.fromString(targetSnapshot.ownerUserId))
+                    statement.setString(2, targetSnapshot.folderId)
+                    statement.executeQuery().use { rows ->
+                        buildList {
+                            while (rows.next()) add(rows.toTeachingClassRecord())
+                        }
+                    }
+                }
+
+                val ordered = lockedSiblings.sortedWith(
+                    compareBy<TeachingClassRecord> { it.sortOrder }
+                        .thenBy { it.title }
+                        .thenBy { it.id }
+                )
+                val currentIndex = ordered.indexOfFirst { it.id == classId }
+                if (currentIndex < 0) {
+                    connection.rollback()
+                    return null
+                }
+
+                val targetIndex = currentIndex + if (direction == "up") -1 else 1
+                if (targetIndex !in ordered.indices) {
+                    connection.commit()
+                    return ordered
+                }
+
+                val reordered = ordered.toMutableList()
+                val current = reordered[currentIndex]
+                reordered[currentIndex] = reordered[targetIndex]
+                reordered[targetIndex] = current
+
+                val result = mutableListOf<TeachingClassRecord>()
+                for ((newOrder, before) in reordered.withIndex()) {
+                    if (before.sortOrder == newOrder) {
+                        result += before
+                        continue
+                    }
+                    val updated = connection.prepareStatement(
+                        """
+                        UPDATE teaching_classes
+                        SET sort_order = ?, version = version + 1, updated_at = now()
+                        WHERE id = ?
+                        RETURNING id::text, owner_user_id::text, title, description, term,
+                                  visibility, is_published, is_hidden, sort_order, folder_id::text
+                        """.trimIndent()
+                    ).use { statement ->
+                        statement.setInt(1, newOrder)
+                        statement.setObject(2, UUID.fromString(before.id))
+                        statement.executeQuery().use { rows ->
+                            check(rows.next())
+                            rows.toTeachingClassRecord()
+                        }
+                    }
+                    connection.writeAudit(
+                        actor, "class.reordered", updated.id,
+                        UUID.fromString(updated.ownerUserId),
+                        before.toAuditJson(), updated.toAuditJson()
+                    )
+                    result += updated
+                }
+
+                connection.commit()
+                return result
+            } catch (error: Throwable) {
+                connection.rollback()
+                throw error
+            } finally {
+                connection.autoCommit = true
+            }
+        }
+    }
+
     /** Deleted classes are visible only in the owner's/admin's recovery area. */
     fun listDeleted(actorUserId: String, roles: Set<AppRole>): List<TeachingClassRecord> {
         val actor = UUID.fromString(actorUserId)
