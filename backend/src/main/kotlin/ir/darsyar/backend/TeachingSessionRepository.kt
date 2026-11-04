@@ -415,13 +415,15 @@ class TeachingSessionRepository(private val dataSource: DataSource) {
         dataSource.connection.use { connection ->
             connection.autoCommit = false
             try {
+                // Read the session's class without taking a row lock. Locking the target
+                // first and then its siblings can deadlock when two requests reorder
+                // different sessions in the same class.
                 val current = connection.prepareStatement(
                     """
                     SELECT s.class_id::text, c.owner_user_id::text
                     FROM teaching_sessions s
                     JOIN teaching_classes c ON c.id = s.class_id
                     WHERE s.id = ? AND s.deleted_at IS NULL AND c.deleted_at IS NULL
-                    FOR UPDATE OF s
                     """.trimIndent()
                 ).use { st ->
                     st.setObject(1, id)
@@ -434,7 +436,47 @@ class TeachingSessionRepository(private val dataSource: DataSource) {
                     !(AppRole.TEACHER in roles && ownerId == actorUserId)
                 ) throw SecurityException("Session management is not allowed.")
 
-                // Normalize existing sort values first: legacy sessions may all have sort_order = 0.
+                // Lock every sibling in a stable ID order for all concurrent reorder requests.
+                val lockedIds = connection.prepareStatement(
+                    """
+                    SELECT id::text
+                    FROM teaching_sessions
+                    WHERE class_id = ? AND deleted_at IS NULL
+                    ORDER BY id
+                    FOR UPDATE
+                    """.trimIndent()
+                ).use { st ->
+                    st.setObject(1, UUID.fromString(classId))
+                    st.executeQuery().use { rs ->
+                        buildList { while (rs.next()) add(rs.getString("id")) }
+                    }
+                }
+                if (id.toString() !in lockedIds) {
+                    connection.rollback()
+                    return null
+                }
+
+                // Ensure the target was not moved or deleted while locks were acquired.
+                val stillInClass = connection.prepareStatement(
+                    """
+                    SELECT EXISTS(
+                        SELECT 1 FROM teaching_sessions s
+                        JOIN teaching_classes c ON c.id = s.class_id
+                        WHERE s.id = ? AND s.class_id = ? AND s.deleted_at IS NULL
+                          AND c.deleted_at IS NULL
+                    )
+                    """.trimIndent()
+                ).use { st ->
+                    st.setObject(1, id)
+                    st.setObject(2, UUID.fromString(classId))
+                    st.executeQuery().use { rs -> rs.next() && rs.getBoolean(1) }
+                }
+                if (!stillInClass) {
+                    connection.rollback()
+                    return null
+                }
+
+                // Normalize legacy sort values before applying the requested swap.
                 val orderedIds = connection.prepareStatement(
                     """
                     SELECT id::text
