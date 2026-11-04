@@ -152,6 +152,12 @@ class ClassManagementRouteIntegrationTest {
             val ownerMoveResponse = ownerMove.bodyAsText()
             assertEquals(HttpStatusCode.OK, ownerMove.status, ownerMoveResponse)
             assertTrue(ownerMoveResponse.contains(ownerFolder.id), ownerMoveResponse)
+            val classesAfterOwnerMove = classes.listVisible(adminId.toString(), setOf(AppRole.SUPER_ADMIN))
+                .filter { it.id == ownedClass.id }
+            assertEquals(1, classesAfterOwnerMove.size, "Moving a class must not create a duplicate record.")
+            assertEquals(ownerId.toString(), classesAfterOwnerMove.single().ownerUserId)
+            assertEquals(ownerFolder.id, classesAfterOwnerMove.single().folderId)
+            assertEquals("کلاس اولیه", classesAfterOwnerMove.single().title)
 
             val updateBody = """{
                 "title":"ویرایش مدیر",
@@ -179,8 +185,13 @@ class ClassManagementRouteIntegrationTest {
             val updateResponse = adminUpdate.bodyAsText()
             assertEquals(HttpStatusCode.OK, adminUpdate.status, updateResponse)
             assertTrue(updateResponse.contains("ویرایش مدیر"), updateResponse)
-
             assertTrue(updateResponse.contains(secondOwnerFolder.id), updateResponse)
+            val classesAfterAdminMove = classes.listVisible(adminId.toString(), setOf(AppRole.SUPER_ADMIN))
+                .filter { it.id == ownedClass.id }
+            assertEquals(1, classesAfterAdminMove.size, "Admin moving a class must preserve exactly one class record.")
+            assertEquals(ownerId.toString(), classesAfterAdminMove.single().ownerUserId)
+            assertEquals(secondOwnerFolder.id, classesAfterAdminMove.single().folderId)
+            assertEquals("ویرایش مدیر", classesAfterAdminMove.single().title)
 
             // Reordering is one server-side transaction, scoped to the same teacher and folder.
             val siblingClass = classes.create(
