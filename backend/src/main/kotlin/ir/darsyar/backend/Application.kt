@@ -12,6 +12,7 @@ import io.ktor.server.auth.bearer
 import io.ktor.server.auth.principal
 import io.ktor.server.plugins.contentnegotiation.ContentNegotiation
 import io.ktor.server.request.receive
+import io.ktor.server.request.queryParameters
 import io.ktor.server.response.respond
 import io.ktor.server.response.respondText
 import io.ktor.server.routing.get
@@ -181,6 +182,19 @@ data class SessionSummaryApiRecord(
     val lastEditedMs: Long?,
     val sortOrder: Int,
     val version: Long
+)
+
+@Serializable
+data class SessionSearchResultApiRecord(
+    val id: String,
+    val classId: String,
+    val classTitle: String,
+    val title: String,
+    val courseName: String,
+    val professorName: String,
+    val dateMs: Long?,
+    val matchedIn: String,
+    val excerpt: String
 )
 
 @Serializable
@@ -419,6 +433,44 @@ private fun TeachingSessionRecord.toApiRecord() = SessionApiRecord(
     aiQuizJson, tags, isPublished, lastEditedMs, sortOrder, version
 )
 
+private fun normalizeSessionSearchText(value: String): String = value.lowercase()
+    .replace('ي', 'ی').replace('ك', 'ک').replace('ۀ', 'ه').replace('ة', 'ه')
+    .replace('ؤ', 'و').replace('إ', 'ا').replace('أ', 'ا').replace('آ', 'ا')
+    .replace(Regex("[\\u064B-\\u065F\\u0670]"), "")
+    .replace(Regex("[\\u200C\\u200F\\u202A-\\u202E]"), " ")
+    .replace(Regex("\\s+"), " ").trim()
+
+private fun sessionSearchExcerpt(source: String, normalizedQuery: String, terms: List<String>, mode: String): String {
+    if (source.isBlank()) return ""
+    val normalized = StringBuilder()
+    val offsets = mutableListOf<Int>()
+    var pendingSpace: Int? = null
+    source.forEachIndexed { index, original ->
+        val mapped = when (original) {
+            'ي' -> 'ی'; 'ك' -> 'ک'; 'ۀ', 'ة' -> 'ه'; 'ؤ' -> 'و'
+            'إ', 'أ', 'آ' -> 'ا'; else -> original.lowercaseChar()
+        }
+        if (mapped in '\\u064B'..'\\u065F' || mapped == '\\u0670' || mapped == '\\u200F' || mapped in '\\u202A'..'\\u202E') return@forEachIndexed
+        if (mapped == '\\u200C' || mapped.isWhitespace()) {
+            if (normalized.isNotEmpty() && pendingSpace == null) pendingSpace = index
+            return@forEachIndexed
+        }
+        if (pendingSpace != null && normalized.isNotEmpty()) { normalized.append(' '); offsets += pendingSpace!! }
+        pendingSpace = null
+        normalized.append(mapped)
+        offsets += index
+    }
+    val target = if (mode == "phrase") normalizedQuery else terms.firstOrNull { normalized.indexOf(it) >= 0 }.orEmpty()
+    val matchAt = normalized.indexOf(target)
+    if (target.isBlank() || matchAt < 0) return source.take(240)
+    val originalStart = offsets.getOrNull(matchAt) ?: 0
+    val originalEnd = (offsets.getOrNull((matchAt + target.length - 1).coerceAtMost(offsets.lastIndex)) ?: originalStart) + 1
+    val start = (originalStart - 100).coerceAtLeast(0)
+    val end = (originalEnd + 140).coerceAtMost(source.length)
+    return (if (start > 0) "… " else "") + source.substring(start, end) +
+        (if (end < source.length) " …" else "")
+}
+
 fun main() {
     val dataSource = Database.connectAndMigrate()
     val server = io.ktor.server.engine.embeddedServer(
@@ -612,6 +664,59 @@ fun Application.module(
                             .map { it.toSummaryApiRecord() }
                     )
                 }
+            }
+
+            get("/api/v1/sessions/search") {
+                val principal = call.principal<DarsyarPrincipal>()
+                if (principal == null) {
+                    call.respond(HttpStatusCode.Unauthorized, ApiError("unauthorized"))
+                    return@get
+                }
+                val query = call.request.queryParameters["q"]?.trim().orEmpty()
+                val mode = call.request.queryParameters["mode"]?.lowercase() ?: "all"
+                if (query.length !in 2..200 || mode !in setOf("all", "phrase")) {
+                    call.respond(HttpStatusCode.BadRequest, ApiError("invalid_search_query"))
+                    return@get
+                }
+                val normalizedQuery = normalizeSessionSearchText(query)
+                val terms = normalizedQuery.split(Regex("\\s+")).filter { it.isNotBlank() }.distinct()
+                val visibleClasses = classRepository.listVisible(principal.userId, principal.roles)
+                    .associateBy({ it.id }, { it.title })
+                val results = sessionRepository.listVisible(principal.userId, principal.roles)
+                    .asSequence()
+                    .filter { it.classId in visibleClasses }
+                    .mapNotNull { session ->
+                        val fields = listOf(
+                            "عنوان جلسه" to session.title,
+                            "اطلاعات جلسه" to listOf(session.courseName, session.professorName, session.tags).joinToString(" "),
+                            "متن ویرایش‌شده" to session.transcript,
+                            "متن اصلی" to session.originalTranscript,
+                            "خلاصه هوشمند" to session.aiSummary.orEmpty(),
+                            "نکات کلیدی" to session.aiKeyPoints.orEmpty(),
+                            "پرسش‌های هوشمند" to session.aiQuizJson.orEmpty()
+                        )
+                        val normalizedFields = fields.map { (label, value) -> Triple(label, value, normalizeSessionSearchText(value)) }
+                        val allText = normalizedFields.joinToString(" ") { it.third }
+                        val matched = if (mode == "phrase") {
+                            allText.contains(normalizedQuery)
+                        } else {
+                            terms.isNotEmpty() && terms.all { allText.contains(it) }
+                        }
+                        if (!matched) return@mapNotNull null
+                        val excerptSource = normalizedFields.firstOrNull { (_, _, value) ->
+                            if (mode == "phrase") value.contains(normalizedQuery)
+                            else terms.any { value.contains(it) }
+                        } ?: normalizedFields.first()
+                        val excerpt = sessionSearchExcerpt(excerptSource.second, normalizedQuery, terms, mode)
+                        SessionSearchResultApiRecord(
+                            session.id, session.classId, visibleClasses[session.classId].orEmpty(),
+                            session.title, session.courseName, session.professorName,
+                            session.dateMs, excerptSource.first, excerpt
+                        )
+                    }
+                    .take(50)
+                    .toList()
+                call.respond(results)
             }
 
             post("/api/v1/teacher-applications") {
