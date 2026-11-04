@@ -132,7 +132,7 @@ class DarsyarReadOnlyRepositoryTest {
         assertEquals("up", fake.classReorderRequest?.direction)
 
         val movedDown = repository.reorderClass("fresh-token", "class-42", "down")
-        assertEquals("class-42", movedDown.single().id)
+        assertEquals(listOf("class-42", "class-43"), movedDown.map { it.id })
         assertEquals("Bearer fresh-token", fake.authorizationForClassReorder)
         assertEquals("class-42", fake.reorderedClassId)
         assertEquals("down", fake.classReorderRequest?.direction)
