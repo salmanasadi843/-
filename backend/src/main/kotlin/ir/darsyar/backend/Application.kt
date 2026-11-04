@@ -450,8 +450,8 @@ private fun sessionSearchExcerpt(source: String, normalizedQuery: String, terms:
             'ي' -> 'ی'; 'ك' -> 'ک'; 'ۀ', 'ة' -> 'ه'; 'ؤ' -> 'و'
             'إ', 'أ', 'آ' -> 'ا'; else -> original.lowercaseChar()
         }
-        if (mapped in '\\u064B'..'\\u065F' || mapped == '\\u0670' || mapped == '\\u200F' || mapped in '\\u202A'..'\\u202E') return@forEachIndexed
-        if (mapped == '\\u200C' || mapped.isWhitespace()) {
+        if (mapped.code in 0x064B..0x065F || mapped.code == 0x0670 || mapped.code == 0x200F || mapped.code in 0x202A..0x202E) return@forEachIndexed
+        if (mapped.code == 0x200C || mapped.isWhitespace()) {
             if (normalized.isNotEmpty() && pendingSpace == null) pendingSpace = index
             return@forEachIndexed
         }
