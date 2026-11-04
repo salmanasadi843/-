@@ -251,4 +251,4 @@
 ## تکمیل آزمون جست‌وجو — 2026-11-04
 - [x] خلأ آزمون endpoint مشخص شد: آزمون HTTP قبلی نقش‌ها را در حالت all پوشش می‌داد، اما phrase و نرمال‌سازی فارسی را جداگانه assert نمی‌کرد.
 - [x] آزمون HTTP تکمیل شد: عبارت دقیق contiguous، ترتیب متفاوت واژه‌ها، و حروف فارسی/عربی در query؛ commit: `f4566ec2aec02aad3721d3cfaa2a6e9ff7f3dad0`.
-- [ ] نتیجه Backend CI برای commit آزمون جدید باید بررسی شود؛ تا آن زمان موفقیت آزمون تازه ادعا نمی‌شود.
+- [x] Backend CI برای commit آزمون `f4566ec2` موفق شد: run `41840989631`، job `test-and-migrate`؛ آزمون‌های واحد و PostgreSQL integration، build توزیع Backend و بررسی backup/restore و bootstrap مدیر موفق بودند.
