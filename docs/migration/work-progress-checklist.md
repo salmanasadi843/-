@@ -363,3 +363,4 @@
 
 - [x] Backend CI run `41884603175` روی commit آزمون `c936e8bcf61f24dd348079942901b04e88b1c16f` با نتیجه نهایی `success` کامل شد.
 - [x] تست‌های واحد و PostgreSQL integration، build توزیع، اجرای Backend، نصب ابزارهای PostgreSQL، backup/restore، bootstrap مدیر اصلی، identity-linking و health/API version همگی موفق شدند؛ بنابراین آزمون تکمیلی انتقال کلاس نیز تأیید شد.
+- [x] Backend CI run `41884603175` روی commit `c936e8bcf61f24dd348079942901b04e88b1c16f` موفق شد؛ تست‌های Backend/PostgreSQL، build، اجرای سرویس، backup/restore، bootstrap مدیر، identity-linking و health/API version همگی موفق بودند. آزمون جدید حفظ شناسه/مالک و عدم‌تکثیر کلاس پس از انتقال نیز در این اجرا تأیید شد.
