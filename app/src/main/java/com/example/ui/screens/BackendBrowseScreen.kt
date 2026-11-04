@@ -746,6 +746,7 @@ fun BackendBrowseScreen(onBack: () -> Unit) {
                     it.ownerUserId == teacherId && (canSeeHiddenFolders || !it.isHidden)
                 }.map { it.id }.toSet()
                 val selectedFolderTree = folderAndDescendantIds(selectedFolderId)
+                // sortOrder is scoped to a teacher/folder group; keep different folders contiguous.
                 val teacherClasses = classes.filter { clazz ->
                     val folderIsVisible = clazz.folderId == null || clazz.folderId in visibleFolderIds
                     clazz.ownerUserId == teacherId && folderIsVisible &&
