@@ -43,6 +43,7 @@ export type NewClass = {
 };
 export type NewSession = {
   title: string; courseName: string; professorName: string; dateMs: number;
+  courseId?: string | null; audioDurationMs?: number; tags?: string; aiQuizJson?: string | null;
   transcript: string; originalTranscript: string; aiSummary: string | null; aiKeyPoints: string | null;
   isPublished: boolean; lastEditedMs: number; sortOrder: number;
 };
@@ -166,7 +167,7 @@ export const api = {
     request<SessionDetail>(`/api/v1/sessions/${encodeURIComponent(sessionId)}/reorder`, token, {
       method: "POST", body: JSON.stringify({ direction }),
     }),
-  updateSession: (sessionId: string, data: NewSession & { courseId?: string | null; audioDurationMs?: number; tags?: string; aiQuizJson?: string | null }, token: string) =>
+  updateSession: (sessionId: string, data: NewSession, token: string) =>
     request<SessionDetail>(`/api/v1/sessions/${encodeURIComponent(sessionId)}`, token, { method: "PATCH", body: JSON.stringify(data) }),
   deleteSession: (sessionId: string, token: string) =>
     request<void>(`/api/v1/sessions/${encodeURIComponent(sessionId)}`, token, { method: "DELETE" }),
