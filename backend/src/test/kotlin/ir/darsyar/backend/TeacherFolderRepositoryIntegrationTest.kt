@@ -7,6 +7,7 @@ import org.junit.jupiter.api.Assumptions.assumeTrue
 import org.junit.jupiter.api.Test
 import java.util.UUID
 import kotlin.test.assertEquals
+import kotlin.test.assertFalse
 import kotlin.test.assertFailsWith
 import kotlin.test.assertTrue
 
@@ -54,16 +55,17 @@ class TeacherFolderRepositoryIntegrationTest {
             val otherRoot = repo.create(otherTeacher.toString(), ownerRoles,
                 CreateTeacherFolder(otherTeacher.toString(), null, "پوشه استاد دیگر"))
 
-            ds.connection.use { connection ->
+            val publicClassId = ds.connection.use { connection ->
                 connection.prepareStatement(
                     """
                     INSERT INTO teaching_classes(owner_user_id, folder_id, title, visibility, is_published, is_hidden)
                     VALUES (?, ?, 'کلاس عمومی', 'public', true, false)
+                    RETURNING id::text
                     """.trimIndent()
                 ).use { statement ->
                     statement.setObject(1, owner)
                     statement.setObject(2, UUID.fromString(child.id))
-                    statement.executeUpdate()
+                    statement.executeQuery().use { rows -> check(rows.next()); rows.getString(1) }
                 }
             }
             val studentFolders = repo.listVisible(student.toString(), setOf(AppRole.STUDENT))
@@ -94,7 +96,25 @@ class TeacherFolderRepositoryIntegrationTest {
             val adminUpdate = repo.update(admin.toString(), setOf(AppRole.SUPER_ADMIN), root.id,
                 UpdateTeacherFolder(null, "اصول اصلاح‌شده", 2, true))
             assertEquals("اصول اصلاح‌شده", adminUpdate?.name)
-            assertTrue(repo.listVisible(admin.toString(), setOf(AppRole.SUPER_ADMIN)).any { it.id == root.id })
+            val adminFolders = repo.listVisible(admin.toString(), setOf(AppRole.SUPER_ADMIN))
+            assertTrue(adminFolders.any { it.id == root.id }, "Admin must retain access to hidden parent folders.")
+            assertTrue(adminFolders.any { it.id == child.id }, "Admin must retain access to descendants of hidden folders.")
+
+            val ownerFolders = repo.listVisible(owner.toString(), ownerRoles)
+            assertTrue(ownerFolders.any { it.id == root.id }, "Owner must retain access to their hidden parent folder.")
+            assertTrue(ownerFolders.any { it.id == child.id }, "Owner must retain access to their child folder.")
+
+            val studentFoldersAfterHide = repo.listVisible(student.toString(), setOf(AppRole.STUDENT))
+            assertFalse(studentFoldersAfterHide.any { it.id == root.id }, "Students must not see a hidden parent folder.")
+            assertFalse(studentFoldersAfterHide.any { it.id == child.id }, "Students must not see a child whose ancestor is hidden.")
+
+            val studentClassesAfterHide = TeachingClassRepository(ds).listVisible(
+                student.toString(), setOf(AppRole.STUDENT)
+            )
+            assertTrue(
+                studentClassesAfterHide.any { it.id == publicClassId },
+                "Hiding a folder must not hide its independently published public class."
+            )
 
             // The class must be moved out before its containing folder can be deleted.
             ds.connection.use { connection ->
