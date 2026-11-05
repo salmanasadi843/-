@@ -264,6 +264,89 @@ class TeachingSessionRoutesAuthorizationIntegrationTest {
                     assertEquals(HttpStatusCode.NoContent, ownerDelete.status)
                 }
 
+                suspend fun verifyPersonalNotesAndStateAuthorization() {
+                    val notesPath = "/api/v1/classes/${ownerClass.id}/sessions/${activeSession.id}/notes"
+                    val statePath = "/api/v1/classes/${ownerClass.id}/sessions/${activeSession.id}/state"
+
+                    val guestNotes = client.get(notesPath)
+                    assertEquals(HttpStatusCode.Unauthorized, guestNotes.status)
+                    val guestState = client.get(statePath)
+                    assertEquals(HttpStatusCode.Unauthorized, guestState.status)
+
+                    val studentCreateNote = client.post(notesPath) {
+                        bearerAuth("student-token")
+                        contentType(ContentType.Application.Json)
+                        setBody("""{"quotedText":"متن جلسه","noteText":"یادداشت شخصی دانشجو","startOffset":0,"endOffset":5}""")
+                    }
+                    val noteBody = studentCreateNote.bodyAsText()
+                    assertEquals(HttpStatusCode.Created, studentCreateNote.status, noteBody)
+                    val noteId = Regex("\\\"id\\\":\\\"([^\\\"]+)\\\"")
+                        .find(noteBody)?.groupValues?.get(1)
+                    assertFalse(noteId.isNullOrBlank(), noteBody)
+
+                    val studentNotes = client.get(notesPath) { bearerAuth("student-token") }
+                    assertEquals(HttpStatusCode.OK, studentNotes.status)
+                    assertContains(studentNotes.bodyAsText(), noteId!!)
+
+                    val ownerNotes = client.get(notesPath) { bearerAuth("owner-token") }
+                    assertEquals(HttpStatusCode.OK, ownerNotes.status)
+                    assertFalse(ownerNotes.bodyAsText().contains(noteId))
+
+                    val ownerEditStudentNote = client.patch("/api/v1/session-notes/$noteId") {
+                        bearerAuth("owner-token")
+                        contentType(ContentType.Application.Json)
+                        setBody("""{"quotedText":"متن جلسه","noteText":"تغییر غیرمجاز مالک","startOffset":0,"endOffset":5}""")
+                    }
+                    assertEquals(HttpStatusCode.NotFound, ownerEditStudentNote.status)
+
+                    val ownerDeleteStudentNote = client.delete("/api/v1/session-notes/$noteId") {
+                        bearerAuth("owner-token")
+                    }
+                    assertEquals(HttpStatusCode.NotFound, ownerDeleteStudentNote.status)
+
+                    val studentUpdateNote = client.patch("/api/v1/session-notes/$noteId") {
+                        bearerAuth("student-token")
+                        contentType(ContentType.Application.Json)
+                        setBody("""{"quotedText":"متن جلسه","noteText":"یادداشت ویرایش‌شده","startOffset":0,"endOffset":5}""")
+                    }
+                    assertEquals(HttpStatusCode.OK, studentUpdateNote.status)
+
+                    val studentStateWrite = client.put(statePath) {
+                        bearerAuth("student-token")
+                        contentType(ContentType.Application.Json)
+                        setBody("""{"isFavorite":true,"lastPlaybackPositionMs":12000}""")
+                    }
+                    assertEquals(HttpStatusCode.OK, studentStateWrite.status)
+
+                    val studentStateRead = client.get(statePath) { bearerAuth("student-token") }
+                    assertEquals(HttpStatusCode.OK, studentStateRead.status)
+                    assertContains(studentStateRead.bodyAsText(), "\"isFavorite\":true")
+                    assertContains(studentStateRead.bodyAsText(), "\"lastPlaybackPositionMs\":12000")
+
+                    val ownerStateRead = client.get(statePath) { bearerAuth("owner-token") }
+                    assertEquals(HttpStatusCode.OK, ownerStateRead.status)
+                    assertContains(ownerStateRead.bodyAsText(), "\"isFavorite\":false")
+                    assertContains(ownerStateRead.bodyAsText(), "\"lastPlaybackPositionMs\":0")
+
+                    val ownerStateWrite = client.put(statePath) {
+                        bearerAuth("owner-token")
+                        contentType(ContentType.Application.Json)
+                        setBody("""{"isFavorite":false,"lastPlaybackPositionMs":6000}""")
+                    }
+                    assertEquals(HttpStatusCode.OK, ownerStateWrite.status)
+
+                    val studentStateAfterOwnerWrite = client.get(statePath) {
+                        bearerAuth("student-token")
+                    }
+                    assertEquals(HttpStatusCode.OK, studentStateAfterOwnerWrite.status)
+                    assertContains(studentStateAfterOwnerWrite.bodyAsText(), "\"isFavorite\":true")
+
+                    val studentDeleteNote = client.delete("/api/v1/session-notes/$noteId") {
+                        bearerAuth("student-token")
+                    }
+                    assertEquals(HttpStatusCode.NoContent, studentDeleteNote.status)
+                }
+
                 suspend fun verifyAnnouncementAuthorization() {
                     val ownerPath = "/api/v1/classes/${ownerClass.id}/announcements"
 
@@ -913,6 +996,7 @@ class TeachingSessionRoutesAuthorizationIntegrationTest {
                 // Verify the original public/private visibility before the admin move
                 // changes foreignSession's parent class later in the mutation scenarios.
                 verifyAudioSourceAuthorization()
+                verifyPersonalNotesAndStateAuthorization()
                 verifyAnnouncementAuthorization()
                 verifyPublicReadVisibility()
                 verifySessionMutationPermissions()
