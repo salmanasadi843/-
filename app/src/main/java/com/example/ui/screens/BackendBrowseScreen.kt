@@ -250,6 +250,7 @@ fun BackendBrowseScreen(onBack: () -> Unit) {
     }
 
     fun beginCreateClass(ownerTeacherId: String) {
+        selectedTeacherId = ownerTeacherId
         editingClass = null
         creatingClass = true
         classTitleDraft = ""
