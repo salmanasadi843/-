@@ -8,6 +8,67 @@ import retrofit2.Response
 
 class DarsyarReadOnlyRepositoryTest {
     @Test
+    fun createClassUsesBearerTokenAndPreservesAdminOwnerAndVisibility() = runBlocking {
+        val fake = FakeApi()
+        val request = BackendClassWriteRequest(
+            title = "درس خارج اصول",
+            ownerUserId = "teacher-9",
+            visibility = "public",
+            isPublished = true,
+            folderId = "folder-3"
+        )
+
+        val created = DarsyarReadOnlyRepository(fake).createClass("admin-token", request)
+
+        assertEquals("Bearer admin-token", fake.authorizationForCreateClass)
+        assertEquals("teacher-9", fake.createdClassRequest?.ownerUserId)
+        assertEquals("public", fake.createdClassRequest?.visibility)
+        assertEquals("folder-3", fake.createdClassRequest?.folderId)
+        assertEquals("created-class", created.id)
+    }
+
+    @Test
+    fun createSessionUsesBearerTokenAndSelectedClassId() = runBlocking {
+        val fake = FakeApi()
+        val request = BackendSessionWriteRequest(
+            title = "جلسه اول",
+            transcript = "متن کامل",
+            originalTranscript = "متن اصلی",
+            isPublished = true
+        )
+
+        val created = DarsyarReadOnlyRepository(fake).createSession("teacher-token", "class-42", request)
+
+        assertEquals("Bearer teacher-token", fake.authorizationForCreateSession)
+        assertEquals("class-42", fake.createdSessionClassId)
+        assertEquals("جلسه اول", fake.createdSessionRequest?.title)
+        assertEquals("متن اصلی", created.originalTranscript)
+    }
+
+    @Test
+    fun createClassAndSessionRejectInvalidArgumentsBeforeRequest() = runBlocking {
+        val fake = FakeApi()
+        val repository = DarsyarReadOnlyRepository(fake)
+        assertThrows(IllegalArgumentException::class.java) {
+            runBlocking { repository.createClass(" ", BackendClassWriteRequest(title = "x")) }
+        }
+        assertThrows(IllegalArgumentException::class.java) {
+            runBlocking { repository.createClass("token", BackendClassWriteRequest(title = " ", visibility = "public")) }
+        }
+        assertThrows(IllegalArgumentException::class.java) {
+            runBlocking { repository.createClass("token", BackendClassWriteRequest(title = "x", visibility = "secret")) }
+        }
+        assertThrows(IllegalArgumentException::class.java) {
+            runBlocking { repository.createSession("token", " ", BackendSessionWriteRequest(title = "x")) }
+        }
+        assertThrows(IllegalArgumentException::class.java) {
+            runBlocking { repository.createSession("token", "class-1", BackendSessionWriteRequest(title = " ")) }
+        }
+        assertEquals(null, fake.authorizationForCreateClass)
+        assertEquals(null, fake.authorizationForCreateSession)
+    }
+
+    @Test
     fun snapshotUsesBearerTokenAndReturnsAccountAndClasses() = runBlocking {
         val fake = FakeApi()
         val result = DarsyarReadOnlyRepository(fake).loadSnapshot("firebase-token")
@@ -226,6 +287,11 @@ class DarsyarReadOnlyRepositoryTest {
         var decisionRequest: BackendTeacherApplicationDecisionRequest? = null
         var authorizationForMe: String? = null
         var authorizationForClasses: String? = null
+        var authorizationForCreateClass: String? = null
+        var createdClassRequest: BackendClassWriteRequest? = null
+        var authorizationForCreateSession: String? = null
+        var createdSessionClassId: String? = null
+        var createdSessionRequest: BackendSessionWriteRequest? = null
         var authorizationForTeachers: String? = null
         var authorizationForFolders: String? = null
         var authorizationForCreateFolder: String? = null
@@ -457,6 +523,43 @@ class DarsyarReadOnlyRepositoryTest {
                     transcript = "full transcript", originalTranscript = "original",
                     aiSummary = null, aiKeyPoints = null, aiQuizJson = null, tags = "",
                     isPublished = true, lastEditedMs = null, sortOrder = 0, version = 1
+                )
+            )
+        }
+
+        override suspend fun createClass(
+            authorization: String,
+            request: BackendClassWriteRequest
+        ): Response<BackendClassDto> {
+            authorizationForCreateClass = authorization
+            createdClassRequest = request
+            return Response.success(
+                BackendClassDto(
+                    id = "created-class", ownerUserId = request.ownerUserId ?: "teacher-1",
+                    title = request.title, description = request.description, term = request.term,
+                    visibility = request.visibility, isPublished = request.isPublished,
+                    isHidden = request.isHidden, sortOrder = request.sortOrder, folderId = request.folderId
+                )
+            )
+        }
+
+        override suspend fun createSession(
+            classId: String,
+            authorization: String,
+            request: BackendSessionWriteRequest
+        ): Response<BackendSessionDto> {
+            authorizationForCreateSession = authorization
+            createdSessionClassId = classId
+            createdSessionRequest = request
+            return Response.success(
+                BackendSessionDto(
+                    id = "created-session", classId = classId, courseId = request.courseId,
+                    title = request.title, courseName = request.courseName, professorName = request.professorName,
+                    dateMs = request.dateMs, audioDurationMs = request.audioDurationMs,
+                    transcript = request.transcript, originalTranscript = request.originalTranscript,
+                    aiSummary = request.aiSummary, aiKeyPoints = request.aiKeyPoints, aiQuizJson = request.aiQuizJson,
+                    tags = request.tags, isPublished = request.isPublished, lastEditedMs = request.lastEditedMs,
+                    sortOrder = request.sortOrder, version = 1
                 )
             )
         }
