@@ -99,6 +99,24 @@ class TeachingSessionRoutesAuthorizationIntegrationTest {
                     statement.executeUpdate()
                 }
             }
+            val folderRepository = TeacherFolderRepository(dataSource)
+            val ownerFolder = folderRepository.create(
+                owner.toString(), setOf(AppRole.TEACHER),
+                CreateTeacherFolder(owner.toString(), null, "پوشه استاد مالک")
+            )
+            val foreignFolder = folderRepository.create(
+                otherTeacher.toString(), setOf(AppRole.TEACHER),
+                CreateTeacherFolder(otherTeacher.toString(), null, "پوشه استاد دیگر")
+            )
+            val courseRepository = TeachingCourseRepository(dataSource)
+            val ownerCourse = courseRepository.create(
+                owner.toString(), setOf(AppRole.TEACHER),
+                CreateTeachingCourse(ownerClass.id, "دوره مالک")
+            )
+            val foreignCourse = courseRepository.create(
+                otherTeacher.toString(), setOf(AppRole.TEACHER),
+                CreateTeachingCourse(otherTeacherClass.id, "دوره استاد دیگر")
+            )
             val sessionRepository = TeachingSessionRepository(dataSource)
             val activeSession = sessionRepository.create(
                 owner.toString(), setOf(AppRole.TEACHER),
@@ -518,6 +536,92 @@ class TeachingSessionRoutesAuthorizationIntegrationTest {
                     bearerAuth("admin-token")
                 }
                 assertEquals(HttpStatusCode.NoContent, adminClassRestore.status)
+
+
+                // Folder HTTP routes: owners manage their folders; other teachers cannot.
+                val foreignFolderUpdate = client.patch("/api/v1/teacher-folders/${ownerFolder.id}") {
+                    bearerAuth("other-teacher-token")
+                    contentType(ContentType.Application.Json)
+                    setBody("""{"name":"تغییر غیرمجاز","sortOrder":1,"isHidden":false}""")
+                }
+                assertEquals(HttpStatusCode.Forbidden, foreignFolderUpdate.status)
+
+                val foreignFolderDelete = client.delete("/api/v1/teacher-folders/${ownerFolder.id}") {
+                    bearerAuth("other-teacher-token")
+                }
+                assertEquals(HttpStatusCode.Forbidden, foreignFolderDelete.status)
+
+                val ownerFolderUpdate = client.patch("/api/v1/teacher-folders/${ownerFolder.id}") {
+                    bearerAuth("owner-token")
+                    contentType(ContentType.Application.Json)
+                    setBody("""{"name":"پوشه اصلاح‌شده","sortOrder":1,"isHidden":false}""")
+                }
+                assertEquals(HttpStatusCode.OK, ownerFolderUpdate.status)
+
+                val adminFolderUpdate = client.patch("/api/v1/teacher-folders/${foreignFolder.id}") {
+                    bearerAuth("admin-token")
+                    contentType(ContentType.Application.Json)
+                    setBody("""{"name":"پوشه اصلاح‌شده توسط مدیر","sortOrder":2,"isHidden":false}""")
+                }
+                assertEquals(HttpStatusCode.OK, adminFolderUpdate.status)
+
+                val adminFolderDelete = client.delete("/api/v1/teacher-folders/${foreignFolder.id}") {
+                    bearerAuth("admin-token")
+                }
+                assertEquals(HttpStatusCode.NoContent, adminFolderDelete.status)
+
+                val guestFolderCreate = client.post("/api/v1/teacher-folders") {
+                    contentType(ContentType.Application.Json)
+                    setBody("""{"name":"پوشه مهمان"}""")
+                }
+                assertEquals(HttpStatusCode.Unauthorized, guestFolderCreate.status)
+
+                val teacherFolderImpersonation = client.post("/api/v1/teacher-folders") {
+                    bearerAuth("other-teacher-token")
+                    contentType(ContentType.Application.Json)
+                    setBody("""{"ownerUserId":"${owner}","name":"پوشه جعل مالکیت"}""")
+                }
+                assertEquals(HttpStatusCode.Forbidden, teacherFolderImpersonation.status)
+
+                // Course HTTP routes follow the class owner boundary; admin is cross-owner.
+                val foreignCourseUpdate = client.patch("/api/v1/courses/${ownerCourse.id}") {
+                    bearerAuth("other-teacher-token")
+                    contentType(ContentType.Application.Json)
+                    setBody("""{"title":"دوره غیرمجاز"}""")
+                }
+                assertEquals(HttpStatusCode.Forbidden, foreignCourseUpdate.status)
+
+                val foreignCourseDelete = client.delete("/api/v1/courses/${ownerCourse.id}") {
+                    bearerAuth("other-teacher-token")
+                }
+                assertEquals(HttpStatusCode.Forbidden, foreignCourseDelete.status)
+
+                val ownerCourseUpdate = client.patch("/api/v1/courses/${ownerCourse.id}") {
+                    bearerAuth("owner-token")
+                    contentType(ContentType.Application.Json)
+                    setBody("""{"title":"دوره اصلاح‌شده مالک"}""")
+                }
+                assertEquals(HttpStatusCode.OK, ownerCourseUpdate.status)
+
+                val adminCourseUpdate = client.patch("/api/v1/courses/${foreignCourse.id}") {
+                    bearerAuth("admin-token")
+                    contentType(ContentType.Application.Json)
+                    setBody("""{"title":"دوره اصلاح‌شده مدیر"}""")
+                }
+                assertEquals(HttpStatusCode.OK, adminCourseUpdate.status)
+
+                val studentCourseCreate = client.post("/api/v1/classes/${ownerClass.id}/courses") {
+                    bearerAuth("student-token")
+                    contentType(ContentType.Application.Json)
+                    setBody("""{"title":"دوره دانشجو"}""")
+                }
+                assertEquals(HttpStatusCode.Forbidden, studentCourseCreate.status)
+
+                val guestCourseCreate = client.post("/api/v1/classes/${ownerClass.id}/courses") {
+                    contentType(ContentType.Application.Json)
+                    setBody("""{"title":"دوره مهمان"}""")
+                }
+                assertEquals(HttpStatusCode.Unauthorized, guestCourseCreate.status)
 
                 val guestClassCreate = client.post("/api/v1/classes") {
                     contentType(ContentType.Application.Json)
