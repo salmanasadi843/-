@@ -39,19 +39,25 @@ class TeachingSessionRoutesAuthorizationIntegrationTest {
         }
 
         HikariDataSource(config).use { dataSource ->
+            val admin = UUID.randomUUID()
             val owner = UUID.randomUUID()
             val otherTeacher = UUID.randomUUID()
+            val student = UUID.randomUUID()
             dataSource.connection.use { connection ->
-                connection.prepareStatement("INSERT INTO app_users(id) VALUES (?), (?)").use { statement ->
-                    statement.setObject(1, owner)
-                    statement.setObject(2, otherTeacher)
+                connection.prepareStatement("INSERT INTO app_users(id) VALUES (?), (?), (?), (?)").use { statement ->
+                    statement.setObject(1, admin)
+                    statement.setObject(2, owner)
+                    statement.setObject(3, otherTeacher)
+                    statement.setObject(4, student)
                     statement.executeUpdate()
                 }
                 connection.prepareStatement(
-                    "INSERT INTO app_roles(user_id, role_name) VALUES (?, 'teacher'), (?, 'teacher')"
+                    "INSERT INTO app_roles(user_id, role_name) VALUES (?, 'super_admin'), (?, 'teacher'), (?, 'teacher'), (?, 'student')"
                 ).use { statement ->
-                    statement.setObject(1, owner)
-                    statement.setObject(2, otherTeacher)
+                    statement.setObject(1, admin)
+                    statement.setObject(2, owner)
+                    statement.setObject(3, otherTeacher)
+                    statement.setObject(4, student)
                     statement.executeUpdate()
                 }
             }
