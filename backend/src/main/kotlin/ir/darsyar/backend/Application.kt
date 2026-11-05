@@ -147,6 +147,7 @@ data class MoveSessionRequest(val targetClassId: String)
 @Serializable
 data class ReorderSessionRequest(val direction: String)
 
+@Serializable
 data class ReorderClassRequest(val direction: String)
 
 @Serializable
