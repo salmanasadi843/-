@@ -9,6 +9,7 @@ import io.ktor.client.request.get
 import io.ktor.client.request.patch
 import io.ktor.client.request.post
 import io.ktor.client.request.setBody
+import io.ktor.client.statement.bodyAsText
 import io.ktor.http.ContentType
 import io.ktor.http.HttpStatusCode
 import io.ktor.server.testing.testApplication
@@ -17,6 +18,7 @@ import org.junit.jupiter.api.Assumptions.assumeTrue
 import org.junit.jupiter.api.Test
 import java.util.UUID
 import kotlin.test.assertEquals
+import kotlin.test.assertContains
 
 class TeachingSessionRoutesAuthorizationIntegrationTest {
     @Test
@@ -225,6 +227,9 @@ class TeachingSessionRoutesAuthorizationIntegrationTest {
                     setBody("""{"targetClassId":"${ownerClass.id}"}""")
                 }
                 assertEquals(HttpStatusCode.OK, adminMove.status)
+                val movedSessionJson = adminMove.bodyAsText()
+                assertContains(movedSessionJson, foreignSession.id)
+                assertContains(movedSessionJson, ownerClass.id)
 
                 val adminUpdate = client.patch("/api/v1/sessions/${foreignSession.id}") {
                     bearerAuth("admin-token")
@@ -249,6 +254,65 @@ class TeachingSessionRoutesAuthorizationIntegrationTest {
                     setBody("""{"title":"Guest-created session"}""")
                 }
                 assertEquals(HttpStatusCode.Unauthorized, guestCreate.status)
+
+                
+                // Class-level HTTP authorization: teachers manage only their own classes;
+                // the main admin may manage classes owned by any teacher.
+                val foreignClassUpdateByTeacher = client.patch("/api/v1/classes/${ownerClass.id}") {
+                    bearerAuth("other-teacher-token")
+                    contentType(ContentType.Application.Json)
+                    setBody("""{"title":"Unauthorized class edit","description":"","term":"","visibility":"public","isPublished":true,"isHidden":false,"sortOrder":0}""")
+                }
+                assertEquals(HttpStatusCode.Forbidden, foreignClassUpdateByTeacher.status)
+
+                val foreignClassDeleteByTeacher = client.delete("/api/v1/classes/${ownerClass.id}") {
+                    bearerAuth("other-teacher-token")
+                }
+                assertEquals(HttpStatusCode.Forbidden, foreignClassDeleteByTeacher.status)
+
+                val studentClassCreate = client.post("/api/v1/classes") {
+                    bearerAuth("student-token")
+                    contentType(ContentType.Application.Json)
+                    setBody("""{"title":"Student class","visibility":"private"}""")
+                }
+                assertEquals(HttpStatusCode.Forbidden, studentClassCreate.status)
+
+                val teacherCannotCreateForAnotherOwner = client.post("/api/v1/classes") {
+                    bearerAuth("other-teacher-token")
+                    contentType(ContentType.Application.Json)
+                    setBody("""{"ownerUserId":"${owner}","title":"Impersonated class","visibility":"private"}""")
+                }
+                assertEquals(HttpStatusCode.Forbidden, teacherCannotCreateForAnotherOwner.status)
+
+                val ownerClassUpdate = client.patch("/api/v1/classes/${ownerClass.id}") {
+                    bearerAuth("owner-token")
+                    contentType(ContentType.Application.Json)
+                    setBody("""{"title":"Owner updated class","description":"","term":"","visibility":"public","isPublished":true,"isHidden":false,"sortOrder":0}""")
+                }
+                assertEquals(HttpStatusCode.OK, ownerClassUpdate.status)
+
+                val adminClassUpdate = client.patch("/api/v1/classes/${otherTeacherClass.id}") {
+                    bearerAuth("admin-token")
+                    contentType(ContentType.Application.Json)
+                    setBody("""{"title":"Admin updated other teacher class","description":"","term":"","visibility":"private","isPublished":true,"isHidden":false,"sortOrder":0}""")
+                }
+                assertEquals(HttpStatusCode.OK, adminClassUpdate.status)
+
+                val adminClassDelete = client.delete("/api/v1/classes/${otherTeacherClass.id}") {
+                    bearerAuth("admin-token")
+                }
+                assertEquals(HttpStatusCode.NoContent, adminClassDelete.status)
+
+                val adminClassRestore = client.post("/api/v1/classes/${otherTeacherClass.id}/restore") {
+                    bearerAuth("admin-token")
+                }
+                assertEquals(HttpStatusCode.NoContent, adminClassRestore.status)
+
+                val guestClassCreate = client.post("/api/v1/classes") {
+                    contentType(ContentType.Application.Json)
+                    setBody("""{"title":"Guest class","visibility":"public"}""")
+                }
+                assertEquals(HttpStatusCode.Unauthorized, guestClassCreate.status)
             }
         }
     }
