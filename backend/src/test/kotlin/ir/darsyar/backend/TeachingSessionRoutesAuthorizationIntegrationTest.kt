@@ -350,7 +350,7 @@ class TeachingSessionRoutesAuthorizationIntegrationTest {
                     val anonymousMismatchedParentDetail = client.get(
                         "/api/v1/public/classes/${ownerClass.id}/sessions/${foreignSession.id}"
                     )
-                    check(anonymousMismatchedParentDetail.status == HttpStatusCode.NotFound) { "PUBLIC_CROSS_CLASS_DETAIL: expected 404, got ${anonymousMismatchedParentDetail.status}" }
+                    assertEquals(HttpStatusCode.NotFound, anonymousMismatchedParentDetail.status, "PUBLIC_CROSS_CLASS_DETAIL: a session must not be readable through a different public class ID")
 
                     val anonymousHiddenSessions = client.get(
                         "/api/v1/public/classes/${hiddenPublicClass.id}/sessions"
