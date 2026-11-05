@@ -70,3 +70,12 @@
 - Commit آزمون: `f17b3466cf4b8cb61f6598bc7283307e4ddf2c5f`.
 - [ ] اجرای CI برای commit جدید هنوز در GitHub Actions مشاهده نشده؛ نتیجه آزمون را تا اجرای workflow موفق، سبز اعلام نمی‌کنیم.
 - [ ] این آزمون‌های policy جای آزمون integration روی route/repository و پذیرش حساب واقعی را نمی‌گیرند.
+
+
+## بررسی CI و هویت — 2026-11-05
+- [x] Backend CI روی head `97ae246` موفق شد: https://github.com/salmanasadi843/-/actions/runs/41976828462
+- [x] Web Build و Legacy Inventory روی همان head موفق شدند: https://github.com/salmanasadi843/-/actions/runs/41976828591 و https://github.com/salmanasadi843/-/actions/runs/41976828580
+- [x] علت Android Unit Test failure بررسی شد: Maven Central پاسخ HTTP 429 هنگام دانلود `org.robolectric:nativeruntime-dist-compat:1.0.18` داد؛ خطا از محدودیت دانلود dependency است نه assertion تست. Job شکست‌خورده retry شد (attempt 2 در صف).
+- [x] Firebase auth audit: UID معتبر باید از قبل در `auth_identities` لینک باشد؛ نقش از DB؛ حساب inactive رد؛ email auto-link انجام نمی‌شود.
+- [ ] CI retry Android باید نتیجه‌اش بررسی شود؛ هنوز green تلقی نشده.
+- [ ] PR #39 همچنان Draft و باز است؛ merge انجام نشده.
