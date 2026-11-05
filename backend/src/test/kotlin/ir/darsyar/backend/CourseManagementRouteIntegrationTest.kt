@@ -88,13 +88,15 @@ class CourseManagementRouteIntegrationTest {
             application { module(dataSource, verifier, users) }
 
             val guestList = client.get("/api/v1/classes/${classRecord.id}/courses")
-            assertEquals(HttpStatusCode.Unauthorized, guestList.status, guestList.bodyAsText())
+            val guestListBody = guestList.bodyAsText()
+            assertEquals(HttpStatusCode.Unauthorized, guestList.status, guestListBody)
 
             val studentList = client.get("/api/v1/classes/${classRecord.id}/courses") {
                 header(HttpHeaders.Authorization, "Bearer student-token")
             }
-            assertEquals(HttpStatusCode.OK, studentList.status, studentList.bodyAsText())
-            assertEquals("[]", studentList.bodyAsText(), "A student without active membership must not see courses in a private class.")
+            val studentListBody = studentList.bodyAsText()
+            assertEquals(HttpStatusCode.OK, studentList.status, studentListBody)
+            assertEquals("[]", studentListBody, "A student without active membership must not see courses in a private class.")
 
             val studentCreate = client.post("/api/v1/classes/${classRecord.id}/courses") {
                 header(HttpHeaders.Authorization, "Bearer student-token")
@@ -125,21 +127,35 @@ class CourseManagementRouteIntegrationTest {
             assertEquals(HttpStatusCode.Created, adminCreate.status, adminCreateBody)
             val courseId = Regex(""""id":"([^"]+)"""").find(adminCreateBody)?.groupValues?.get(1)
             assertTrue(!courseId.isNullOrBlank(), adminCreateBody)
+            val createdCourseId = requireNotNull(courseId)
 
-            val studentUpdate = client.patch("/api/v1/courses/$courseId") {
+            val accessCodes = ClassAccessRepository(dataSource)
+            val accessCode = accessCodes.createCode(
+                ownerId.toString(), setOf(AppRole.TEACHER), classRecord.id, maxUses = 1
+            )
+            accessCodes.redeem(studentId.toString(), setOf(AppRole.STUDENT), accessCode.code)
+
+            val memberList = client.get("/api/v1/classes/${classRecord.id}/courses") {
+                header(HttpHeaders.Authorization, "Bearer student-token")
+            }
+            val memberListBody = memberList.bodyAsText()
+            assertEquals(HttpStatusCode.OK, memberList.status, memberListBody)
+            assertTrue(memberListBody.contains(createdCourseId), memberListBody)
+
+            val studentUpdate = client.patch("/api/v1/courses/$createdCourseId") {
                 header(HttpHeaders.Authorization, "Bearer student-token")
                 contentType(ContentType.Application.Json)
                 setBody("""{"title":"ویرایش غیرمجاز دانشجو","teacherName":"","description":"","createdAtMs":null,"sortOrder":0}""")
             }
             assertEquals(HttpStatusCode.Forbidden, studentUpdate.status, studentUpdate.bodyAsText())
 
-            val studentDelete = client.delete("/api/v1/courses/$courseId") {
+            val studentDelete = client.delete("/api/v1/courses/$createdCourseId") {
                 header(HttpHeaders.Authorization, "Bearer student-token")
             }
             assertEquals(HttpStatusCode.Forbidden, studentDelete.status, studentDelete.bodyAsText())
 
             val updateBody = """{"title":"دوره ویرایش‌شده توسط مدیر","teacherName":"استاد","description":"مدیریت بین‌استادی","createdAtMs":10,"sortOrder":2}"""
-            val forbiddenUpdate = client.patch("/api/v1/courses/$courseId") {
+            val forbiddenUpdate = client.patch("/api/v1/courses/$createdCourseId") {
                 header(HttpHeaders.Authorization, "Bearer other-teacher-token")
                 contentType(ContentType.Application.Json)
                 setBody(updateBody)
