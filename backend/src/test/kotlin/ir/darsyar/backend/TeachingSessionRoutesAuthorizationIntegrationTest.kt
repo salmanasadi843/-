@@ -454,6 +454,141 @@ class TeachingSessionRoutesAuthorizationIntegrationTest {
                     assertEquals(HttpStatusCode.NoContent, adminDelete.status)
                 }
 
+                suspend fun verifyForumAndNotificationAuthorization() {
+                    val topicsPath = "/api/v1/classes/${ownerClass.id}/forum/topics"
+
+                    val guestList = client.get(topicsPath)
+                    assertEquals(HttpStatusCode.Unauthorized, guestList.status)
+
+                    val nonMemberPrivateList = client.get("/api/v1/classes/${otherTeacherClass.id}/forum/topics") {
+                        bearerAuth("student-token")
+                    }
+                    assertEquals(HttpStatusCode.Forbidden, nonMemberPrivateList.status)
+
+                    val studentCreateTopic = client.post(topicsPath) {
+                        bearerAuth("student-token")
+                        contentType(ContentType.Application.Json)
+                        setBody("""{"title":"پرسش دانشجو در کلاس عمومی","body":"متن پرسش برای آزمون HTTP"}""")
+                    }
+                    val topicBody = studentCreateTopic.bodyAsText()
+                    assertEquals(HttpStatusCode.Created, studentCreateTopic.status, topicBody)
+                    val topicId = Regex("\\\"id\\\":\\\"([^\\\"]+)\\\"")
+                        .find(topicBody)?.groupValues?.get(1)
+                    assertFalse(topicId.isNullOrBlank(), topicBody)
+
+                    val ownerTopics = client.get(topicsPath) { bearerAuth("owner-token") }
+                    assertEquals(HttpStatusCode.OK, ownerTopics.status)
+                    assertContains(ownerTopics.bodyAsText(), topicId!!)
+
+                    val foreignTeacherTopics = client.get(topicsPath) {
+                        bearerAuth("other-teacher-token")
+                    }
+                    assertEquals(HttpStatusCode.OK, foreignTeacherTopics.status)
+                    assertContains(foreignTeacherTopics.bodyAsText(), topicId)
+
+                    val foreignTeacherUpdateTopic = client.patch("/api/v1/forum/topics/$topicId") {
+                        bearerAuth("other-teacher-token")
+                        contentType(ContentType.Application.Json)
+                        setBody("""{"title":"ویرایش غیرمجاز","body":"نباید تغییر کند"}""")
+                    }
+                    assertEquals(HttpStatusCode.Forbidden, foreignTeacherUpdateTopic.status)
+
+                    val studentUpdateTopic = client.patch("/api/v1/forum/topics/$topicId") {
+                        bearerAuth("student-token")
+                        contentType(ContentType.Application.Json)
+                        setBody("""{"title":"پرسش ویرایش‌شده دانشجو","body":"متن اصلاح‌شده پرسش"}""")
+                    }
+                    assertEquals(HttpStatusCode.OK, studentUpdateTopic.status)
+
+                    val studentCreateReply = client.post("/api/v1/forum/topics/$topicId/posts") {
+                        bearerAuth("student-token")
+                        contentType(ContentType.Application.Json)
+                        setBody("""{"body":"پاسخ دانشجو برای آزمون مجوزها"}""")
+                    }
+                    val replyBody = studentCreateReply.bodyAsText()
+                    assertEquals(HttpStatusCode.Created, studentCreateReply.status, replyBody)
+                    val replyId = Regex("\\\"id\\\":\\\"([^\\\"]+)\\\"")
+                        .find(replyBody)?.groupValues?.get(1)
+                    assertFalse(replyId.isNullOrBlank(), replyBody)
+
+                    val foreignTeacherUpdateReply = client.patch("/api/v1/forum/posts/$replyId") {
+                        bearerAuth("other-teacher-token")
+                        contentType(ContentType.Application.Json)
+                        setBody("""{"body":"ویرایش غیرمجاز پاسخ"}""")
+                    }
+                    assertEquals(HttpStatusCode.Forbidden, foreignTeacherUpdateReply.status)
+
+                    val ownerUpdateReply = client.patch("/api/v1/forum/posts/$replyId") {
+                        bearerAuth("owner-token")
+                        contentType(ContentType.Application.Json)
+                        setBody("""{"body":"پاسخ ویرایش‌شده توسط مالک کلاس"}""")
+                    }
+                    assertEquals(HttpStatusCode.OK, ownerUpdateReply.status)
+
+                    val studentModeration = client.patch("/api/v1/forum/topics/$topicId/moderation") {
+                        bearerAuth("student-token")
+                        contentType(ContentType.Application.Json)
+                        setBody("""{"isPinned":true,"isLocked":false}""")
+                    }
+                    assertEquals(HttpStatusCode.Forbidden, studentModeration.status)
+
+                    val foreignTeacherModeration = client.patch("/api/v1/forum/topics/$topicId/moderation") {
+                        bearerAuth("other-teacher-token")
+                        contentType(ContentType.Application.Json)
+                        setBody("""{"isPinned":true,"isLocked":false}""")
+                    }
+                    assertEquals(HttpStatusCode.Forbidden, foreignTeacherModeration.status)
+
+                    val ownerModeration = client.patch("/api/v1/forum/topics/$topicId/moderation") {
+                        bearerAuth("owner-token")
+                        contentType(ContentType.Application.Json)
+                        setBody("""{"isPinned":true,"isLocked":true}""")
+                    }
+                    assertEquals(HttpStatusCode.NoContent, ownerModeration.status)
+
+                    val replyAfterLock = client.post("/api/v1/forum/topics/$topicId/posts") {
+                        bearerAuth("student-token")
+                        contentType(ContentType.Application.Json)
+                        setBody("""{"body":"پاسخ پس از قفل بحث"}""")
+                    }
+                    assertEquals(HttpStatusCode.Conflict, replyAfterLock.status)
+
+                    val foreignTeacherDeleteTopic = client.delete("/api/v1/forum/topics/$topicId") {
+                        bearerAuth("other-teacher-token")
+                    }
+                    assertEquals(HttpStatusCode.Forbidden, foreignTeacherDeleteTopic.status)
+
+                    val ownerDeleteReply = client.delete("/api/v1/forum/posts/$replyId") {
+                        bearerAuth("owner-token")
+                    }
+                    assertEquals(HttpStatusCode.NoContent, ownerDeleteReply.status)
+
+                    val ownerNotifications = client.get("/api/v1/notifications?unreadOnly=true") {
+                        bearerAuth("owner-token")
+                    }
+                    val inboxBody = ownerNotifications.bodyAsText()
+                    assertEquals(HttpStatusCode.OK, ownerNotifications.status, inboxBody)
+                    assertContains(inboxBody, topicId)
+                    val notificationId = Regex("\\\"id\\\":\\\"([^\\\"]+)\\\"")
+                        .find(inboxBody)?.groupValues?.get(1)
+                    assertFalse(notificationId.isNullOrBlank(), inboxBody)
+
+                    val studentMarkOwnerNotification = client.post("/api/v1/notifications/$notificationId/read") {
+                        bearerAuth("student-token")
+                    }
+                    assertEquals(HttpStatusCode.NotFound, studentMarkOwnerNotification.status)
+
+                    val ownerMarkNotification = client.post("/api/v1/notifications/$notificationId/read") {
+                        bearerAuth("owner-token")
+                    }
+                    assertEquals(HttpStatusCode.NoContent, ownerMarkNotification.status)
+
+                    val studentDeleteTopic = client.delete("/api/v1/forum/topics/$topicId") {
+                        bearerAuth("student-token")
+                    }
+                    assertEquals(HttpStatusCode.NoContent, studentDeleteTopic.status)
+                }
+
                 suspend fun verifySessionMutationPermissions() {
                     val readResponse = client.get("/api/v1/classes/${ownerClass.id}/sessions") {
                         bearerAuth("other-teacher-token")
@@ -999,6 +1134,7 @@ class TeachingSessionRoutesAuthorizationIntegrationTest {
                 verifyAudioSourceAuthorization()
                 verifyPersonalNotesAndStateAuthorization()
                 verifyAnnouncementAuthorization()
+                verifyForumAndNotificationAuthorization()
                 verifyPublicReadVisibility()
                 verifySessionMutationPermissions()
                 verifyMembershipAuthorization()
