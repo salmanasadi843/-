@@ -75,6 +75,14 @@ class TeachingSessionRoutesAuthorizationIntegrationTest {
                 CreateTeachingSession(ownerClass.id, title = "Deleted session")
             )
             sessionRepository.setDeleted(owner.toString(), setOf(AppRole.TEACHER), deletedSession.id, true)
+            val foreignSession = sessionRepository.create(
+                otherTeacher.toString(), setOf(AppRole.TEACHER),
+                CreateTeachingSession(otherTeacherClass.id, title = "Foreign teacher session")
+            )
+            val ownerManagedSession = sessionRepository.create(
+                owner.toString(), setOf(AppRole.TEACHER),
+                CreateTeachingSession(ownerClass.id, title = "Owner managed session")
+            )
 
             testApplication {
                 application {
@@ -85,13 +93,25 @@ class TeachingSessionRoutesAuthorizationIntegrationTest {
                         },
                         userRepository = AuthenticatedUserRepository { provider, subject ->
                             check(provider == "firebase")
-                            if (subject == "other-teacher-token") {
-                                AuthenticatedUserRecord(
-                                    userId = otherTeacher.toString(),
-                                    status = "active",
+                            when (subject) {
+                                "admin-token" -> AuthenticatedUserRecord(
+                                    userId = admin.toString(), status = "active",
+                                    roles = setOf(AppRole.SUPER_ADMIN)
+                                )
+                                "owner-token" -> AuthenticatedUserRecord(
+                                    userId = owner.toString(), status = "active",
                                     roles = setOf(AppRole.TEACHER)
                                 )
-                            } else null
+                                "other-teacher-token" -> AuthenticatedUserRecord(
+                                    userId = otherTeacher.toString(), status = "active",
+                                    roles = setOf(AppRole.TEACHER)
+                                )
+                                "student-token" -> AuthenticatedUserRecord(
+                                    userId = student.toString(), status = "active",
+                                    roles = setOf(AppRole.STUDENT)
+                                )
+                                else -> null
+                            }
                         }
                     )
                 }
@@ -138,6 +158,91 @@ class TeachingSessionRoutesAuthorizationIntegrationTest {
                     bearerAuth("other-teacher-token")
                 }
                 assertEquals(HttpStatusCode.Forbidden, restoreResponse.status)
+
+                // The owner may perform the same mutations on their own content.
+                val ownerCreate = client.post("/api/v1/classes/${ownerClass.id}/sessions") {
+                    bearerAuth("owner-token")
+                    contentType(ContentType.Application.Json)
+                    setBody("""{"title":"Owner-created session"}""")
+                }
+                assertEquals(HttpStatusCode.Created, ownerCreate.status)
+
+                val ownerUpdate = client.patch("/api/v1/sessions/${ownerManagedSession.id}") {
+                    bearerAuth("owner-token")
+                    contentType(ContentType.Application.Json)
+                    setBody("""{"title":"Owner updated session"}""")
+                }
+                assertEquals(HttpStatusCode.OK, ownerUpdate.status)
+
+                val ownerReorder = client.post("/api/v1/sessions/${ownerManagedSession.id}/reorder") {
+                    bearerAuth("owner-token")
+                    contentType(ContentType.Application.Json)
+                    setBody("""{"direction":"up"}""")
+                }
+                assertEquals(HttpStatusCode.OK, ownerReorder.status)
+
+                val ownerDelete = client.delete("/api/v1/sessions/${ownerManagedSession.id}") {
+                    bearerAuth("owner-token")
+                }
+                assertEquals(HttpStatusCode.NoContent, ownerDelete.status)
+
+                val ownerRestore = client.post("/api/v1/sessions/${ownerManagedSession.id}/restore") {
+                    bearerAuth("owner-token")
+                }
+                assertEquals(HttpStatusCode.NoContent, ownerRestore.status)
+
+                // A student is authenticated but cannot create or mutate teacher content.
+                val studentCreate = client.post("/api/v1/classes/${ownerClass.id}/sessions") {
+                    bearerAuth("student-token")
+                    contentType(ContentType.Application.Json)
+                    setBody("""{"title":"Student-created session"}""")
+                }
+                assertEquals(HttpStatusCode.Forbidden, studentCreate.status)
+
+                val studentUpdate = client.patch("/api/v1/sessions/${activeSession.id}") {
+                    bearerAuth("student-token")
+                    contentType(ContentType.Application.Json)
+                    setBody("""{"title":"Student update"}""")
+                }
+                assertEquals(HttpStatusCode.Forbidden, studentUpdate.status)
+
+                val studentDelete = client.delete("/api/v1/sessions/${activeSession.id}") {
+                    bearerAuth("student-token")
+                }
+                assertEquals(HttpStatusCode.Forbidden, studentDelete.status)
+
+                // The main admin may manage another teacher's content, including moving
+                // it across teacher ownership while preserving the session identity.
+                val adminMove = client.post("/api/v1/sessions/${foreignSession.id}/move") {
+                    bearerAuth("admin-token")
+                    contentType(ContentType.Application.Json)
+                    setBody("""{"targetClassId":"${ownerClass.id}"}""")
+                }
+                assertEquals(HttpStatusCode.OK, adminMove.status)
+
+                val adminUpdate = client.patch("/api/v1/sessions/${foreignSession.id}") {
+                    bearerAuth("admin-token")
+                    contentType(ContentType.Application.Json)
+                    setBody("""{"title":"Admin updated foreign session"}""")
+                }
+                assertEquals(HttpStatusCode.OK, adminUpdate.status)
+
+                val adminDelete = client.delete("/api/v1/sessions/${foreignSession.id}") {
+                    bearerAuth("admin-token")
+                }
+                assertEquals(HttpStatusCode.NoContent, adminDelete.status)
+
+                val adminRestore = client.post("/api/v1/sessions/${foreignSession.id}/restore") {
+                    bearerAuth("admin-token")
+                }
+                assertEquals(HttpStatusCode.NoContent, adminRestore.status)
+
+                // No bearer token represents a guest; protected mutation endpoints reject it.
+                val guestCreate = client.post("/api/v1/classes/${ownerClass.id}/sessions") {
+                    contentType(ContentType.Application.Json)
+                    setBody("""{"title":"Guest-created session"}""")
+                }
+                assertEquals(HttpStatusCode.Unauthorized, guestCreate.status)
             }
         }
     }
