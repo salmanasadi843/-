@@ -322,7 +322,7 @@ class TeachingClassRepository(private val dataSource: DataSource) {
                 } ?: run { connection.rollback(); return null }
                 val (ownerId, folderId) = current
                 if (AppRole.SUPER_ADMIN !in roles &&
-                    !(AppRole.TEACHER in roles && ownerId == actorUserId)
+                    !(AppRole.TEACHER in roles && ownerId == actor.toString())
                 ) throw SecurityException("Class management is not allowed.")
 
                 // Lock a stable owner row before locking sibling classes. This serializes
