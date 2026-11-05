@@ -123,7 +123,8 @@ class TeacherFolderManagementRouteIntegrationTest {
             }
             val otherTeacherListBody = otherTeacherList.bodyAsText()
             assertEquals(HttpStatusCode.OK, otherTeacherList.status, otherTeacherListBody)
-            assertTrue(!otherTeacherListBody.contains(folder.id), otherTeacherListBody)
+            // Public published classes make their ancestor folders browsable by other teachers; write access remains owner/admin-only.
+            assertTrue(otherTeacherListBody.contains(folder.id), otherTeacherListBody)
 
             val studentList = client.get("/api/v1/teacher-folders") {
                 header(HttpHeaders.Authorization, "Bearer student-token")
