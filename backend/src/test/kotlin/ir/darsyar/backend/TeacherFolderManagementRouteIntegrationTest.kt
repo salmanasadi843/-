@@ -75,6 +75,11 @@ class TeacherFolderManagementRouteIntegrationTest {
                 setOf(AppRole.TEACHER),
                 CreateTeacherFolder(ownerId.toString(), folder.id, "زیرپوشه")
             )
+            val destinationFolder = folders.create(
+                ownerId.toString(),
+                setOf(AppRole.TEACHER),
+                CreateTeacherFolder(ownerId.toString(), null, "پوشه مقصد")
+            )
             val publicClassId = dataSource.connection.use { connection ->
                 connection.prepareStatement(
                     """INSERT INTO teaching_classes(owner_user_id, folder_id, title, visibility, is_published, is_hidden)
@@ -107,6 +112,27 @@ class TeacherFolderManagementRouteIntegrationTest {
             }
 
             application { module(dataSource, verifier, users) }
+
+            // A valid parent change must succeed over HTTP, then return to its original parent.
+            val moveToDestination = client.patch("/api/v1/teacher-folders/${childFolder.id}") {
+                header(HttpHeaders.Authorization, "Bearer admin-token")
+                contentType(ContentType.Application.Json)
+                setBody("""{"name":"زیرپوشه","parentFolderId":"${destinationFolder.id}","sortOrder":0,"isHidden":false}""")
+            }
+            val movedBody = moveToDestination.bodyAsText()
+            assertEquals(HttpStatusCode.OK, moveToDestination.status, movedBody)
+            assertTrue(movedBody.contains("parentFolderId"), movedBody)
+            assertTrue(movedBody.contains(destinationFolder.id), movedBody)
+
+            val restoreOriginalParent = client.patch("/api/v1/teacher-folders/${childFolder.id}") {
+                header(HttpHeaders.Authorization, "Bearer admin-token")
+                contentType(ContentType.Application.Json)
+                setBody("""{"name":"زیرپوشه","parentFolderId":"${folder.id}","sortOrder":0,"isHidden":false}""")
+            }
+            val restoredBody = restoreOriginalParent.bodyAsText()
+            assertEquals(HttpStatusCode.OK, restoreOriginalParent.status, restoredBody)
+            assertTrue(restoredBody.contains("parentFolderId"), restoredBody)
+            assertTrue(restoredBody.contains(folder.id), restoredBody)
 
             val ownerList = client.get("/api/v1/teacher-folders") {
                 header(HttpHeaders.Authorization, "Bearer owner-token")
