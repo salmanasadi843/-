@@ -19,6 +19,7 @@ import org.junit.jupiter.api.Test
 import java.util.UUID
 import kotlin.test.assertEquals
 import kotlin.test.assertContains
+import kotlin.test.assertFalse
 
 class TeachingSessionRoutesAuthorizationIntegrationTest {
     @Test
@@ -73,6 +74,19 @@ class TeachingSessionRoutesAuthorizationIntegrationTest {
                 otherTeacher.toString(),
                 CreateTeachingClass(otherTeacher.toString(), "Other teacher class", "", "", "private", true)
             )
+            val memberPrivateClass = classRepository.create(
+                otherTeacher.toString(),
+                CreateTeachingClass(otherTeacher.toString(), "Member-only private class", "", "", "private", true)
+            )
+            dataSource.connection.use { connection ->
+                connection.prepareStatement(
+                    "INSERT INTO class_memberships(class_id, student_user_id, status) VALUES (?::uuid, ?, 'active')"
+                ).use { statement ->
+                    statement.setString(1, memberPrivateClass.id)
+                    statement.setObject(2, student)
+                    statement.executeUpdate()
+                }
+            }
             val sessionRepository = TeachingSessionRepository(dataSource)
             val activeSession = sessionRepository.create(
                 owner.toString(), setOf(AppRole.TEACHER),
@@ -86,6 +100,10 @@ class TeachingSessionRoutesAuthorizationIntegrationTest {
             val foreignSession = sessionRepository.create(
                 otherTeacher.toString(), setOf(AppRole.TEACHER),
                 CreateTeachingSession(otherTeacherClass.id, title = "Foreign teacher session")
+            )
+            val memberPrivateSession = sessionRepository.create(
+                otherTeacher.toString(), setOf(AppRole.TEACHER),
+                CreateTeachingSession(memberPrivateClass.id, title = "Member-only private session")
             )
             val ownerManagedSession = sessionRepository.create(
                 owner.toString(), setOf(AppRole.TEACHER),
@@ -254,6 +272,71 @@ class TeachingSessionRoutesAuthorizationIntegrationTest {
                     setBody("""{"title":"Guest-created session"}""")
                 }
                 assertEquals(HttpStatusCode.Unauthorized, guestCreate.status)
+                
+                // HTTP read visibility: anonymous users see only public, published,
+                // non-hidden content; authenticated students need active membership
+                // for private classes, while teachers retain ownership boundaries.
+                val anonymousClasses = client.get("/api/v1/public/classes").bodyAsText()
+                assertContains(anonymousClasses, ownerClass.id)
+                assertFalse(anonymousClasses.contains(otherTeacherClass.id))
+                assertFalse(anonymousClasses.contains(memberPrivateClass.id))
+
+                val anonymousPublicSessions = client.get(
+                    "/api/v1/public/classes/${ownerClass.id}/sessions"
+                )
+                assertEquals(HttpStatusCode.OK, anonymousPublicSessions.status)
+                assertContains(anonymousPublicSessions.bodyAsText(), activeSession.id)
+
+                val anonymousPublicDetail = client.get(
+                    "/api/v1/public/classes/${ownerClass.id}/sessions/${activeSession.id}"
+                )
+                assertEquals(HttpStatusCode.OK, anonymousPublicDetail.status)
+
+                val anonymousPrivateDetail = client.get(
+                    "/api/v1/public/classes/${otherTeacherClass.id}/sessions/${foreignSession.id}"
+                )
+                assertEquals(HttpStatusCode.NotFound, anonymousPrivateDetail.status)
+
+                val ownerClasses = client.get("/api/v1/classes") {
+                    bearerAuth("owner-token")
+                }.bodyAsText()
+                assertContains(ownerClasses, ownerClass.id)
+                assertFalse(ownerClasses.contains(otherTeacherClass.id))
+
+                val otherTeacherClasses = client.get("/api/v1/classes") {
+                    bearerAuth("other-teacher-token")
+                }.bodyAsText()
+                assertContains(otherTeacherClasses, ownerClass.id)
+                assertContains(otherTeacherClasses, otherTeacherClass.id)
+
+                val studentClasses = client.get("/api/v1/classes") {
+                    bearerAuth("student-token")
+                }.bodyAsText()
+                assertContains(studentClasses, ownerClass.id)
+                assertContains(studentClasses, memberPrivateClass.id)
+                assertFalse(studentClasses.contains(otherTeacherClass.id))
+
+                val studentPrivateSessions = client.get(
+                    "/api/v1/classes/${memberPrivateClass.id}/sessions"
+                ) {
+                    bearerAuth("student-token")
+                }
+                assertEquals(HttpStatusCode.OK, studentPrivateSessions.status)
+                assertContains(studentPrivateSessions.bodyAsText(), memberPrivateSession.id)
+
+                val studentUnjoinedPrivateSessions = client.get(
+                    "/api/v1/classes/${otherTeacherClass.id}/sessions"
+                ) {
+                    bearerAuth("student-token")
+                }
+                assertEquals(HttpStatusCode.OK, studentUnjoinedPrivateSessions.status)
+                assertFalse(studentUnjoinedPrivateSessions.bodyAsText().contains(foreignSession.id))
+
+                val adminClasses = client.get("/api/v1/classes") {
+                    bearerAuth("admin-token")
+                }.bodyAsText()
+                assertContains(adminClasses, ownerClass.id)
+                assertContains(adminClasses, otherTeacherClass.id)
 
                 
                 // Class-level HTTP authorization: teachers manage only their own classes;
