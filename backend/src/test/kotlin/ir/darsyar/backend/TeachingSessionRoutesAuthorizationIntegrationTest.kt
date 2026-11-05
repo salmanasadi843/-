@@ -346,6 +346,12 @@ class TeachingSessionRoutesAuthorizationIntegrationTest {
                     )
                     assertEquals(HttpStatusCode.NotFound, anonymousPrivateDetail.status)
 
+                    // A valid public class ID must not make a session from another class public.
+                    val anonymousMismatchedParentDetail = client.get(
+                        "/api/v1/public/classes/${ownerClass.id}/sessions/${foreignSession.id}"
+                    )
+                    assertEquals(HttpStatusCode.NotFound, anonymousMismatchedParentDetail.status)
+
                     val anonymousHiddenSessions = client.get(
                         "/api/v1/public/classes/${hiddenPublicClass.id}/sessions"
                     )
@@ -394,6 +400,22 @@ class TeachingSessionRoutesAuthorizationIntegrationTest {
                     }
                     assertEquals(HttpStatusCode.OK, studentPrivateSessions.status)
                     assertContains(studentPrivateSessions.bodyAsText(), memberPrivateSession.id)
+
+                    val studentPrivateSessionDetail = client.get(
+                        "/api/v1/classes/${memberPrivateClass.id}/sessions/${memberPrivateSession.id}"
+                    ) {
+                        bearerAuth("student-token")
+                    }
+                    assertEquals(HttpStatusCode.OK, studentPrivateSessionDetail.status)
+                    assertContains(studentPrivateSessionDetail.bodyAsText(), memberPrivateSession.id)
+
+                    // An active membership to one class must not authorize another private class.
+                    val studentForeignPrivateSessionDetail = client.get(
+                        "/api/v1/classes/${otherTeacherClass.id}/sessions/${foreignSession.id}"
+                    ) {
+                        bearerAuth("student-token")
+                    }
+                    assertEquals(HttpStatusCode.NotFound, studentForeignPrivateSessionDetail.status)
 
                     val studentUnjoinedPrivateSessions = client.get(
                         "/api/v1/classes/${otherTeacherClass.id}/sessions"
@@ -486,6 +508,13 @@ class TeachingSessionRoutesAuthorizationIntegrationTest {
                     }
                     assertEquals(HttpStatusCode.OK, studentAfterRevokeSessions.status)
                     assertFalse(studentAfterRevokeSessions.bodyAsText().contains(memberPrivateSession.id))
+
+                    val studentAfterRevokeSessionDetail = client.get(
+                        "/api/v1/classes/${memberPrivateClass.id}/sessions/${memberPrivateSession.id}"
+                    ) {
+                        bearerAuth("student-token")
+                    }
+                    assertEquals(HttpStatusCode.NotFound, studentAfterRevokeSessionDetail.status)
 
                     val adminClasses = client.get("/api/v1/classes") {
                         bearerAuth("admin-token")
