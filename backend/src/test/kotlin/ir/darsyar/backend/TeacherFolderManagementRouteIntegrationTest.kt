@@ -188,8 +188,9 @@ class TeacherFolderManagementRouteIntegrationTest {
             val adminDelete = client.delete("/api/v1/teacher-folders/${folder.id}") {
                 header(HttpHeaders.Authorization, "Bearer admin-token")
             }
-            assertEquals(HttpStatusCode.NoContent, adminDelete.status)
-            assertTrue(folders.listVisible(adminId.toString(), setOf(AppRole.SUPER_ADMIN)).none { it.id == folder.id })
+            // A parent with a child folder/class cannot be deleted; admin permissions do not bypass this safety rule.
+            assertEquals(HttpStatusCode.Conflict, adminDelete.status, adminDelete.bodyAsText())
+            assertTrue(folders.listVisible(adminId.toString(), setOf(AppRole.SUPER_ADMIN)).any { it.id == folder.id })
         }
     }
 
