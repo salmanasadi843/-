@@ -313,7 +313,6 @@ class TeachingClassRepository(private val dataSource: DataSource) {
                     SELECT c.owner_user_id::text, c.folder_id::text
                     FROM teaching_classes c
                     WHERE c.id = ? AND c.deleted_at IS NULL
-                    FOR UPDATE
                     """.trimIndent()
                 ).use { st ->
                     st.setObject(1, id)
@@ -325,6 +324,13 @@ class TeachingClassRepository(private val dataSource: DataSource) {
                 if (AppRole.SUPER_ADMIN !in roles &&
                     !(AppRole.TEACHER in roles && ownerId == actorUserId)
                 ) throw SecurityException("Class management is not allowed.")
+
+                // Lock a stable owner row before locking sibling classes. This serializes
+                // reorders of different classes and avoids lock-order deadlocks.
+                connection.prepareStatement("SELECT id FROM app_users WHERE id = ? FOR UPDATE").use { st ->
+                    st.setObject(1, UUID.fromString(ownerId))
+                    st.executeQuery().use { rs -> check(rs.next()) }
+                }
 
                 val orderedIds = connection.prepareStatement(
                     """
