@@ -442,7 +442,30 @@ fun BackendBrowseScreen(onBack: () -> Unit) {
                 if (current == null) repository.createSession(token, clazz.id, request)
                 else repository.updateSession(token, current.id, request)
             }
+            val newSessionContext = if (current == null) {
+                withContext(Dispatchers.IO) {
+                    val community = DarsyarCommunityApiFactory.create()
+                    Triple(
+                        community.sessionState(token, saved.classId, saved.id),
+                        community.sessionNotes(token, saved.classId, saved.id),
+                        saved
+                    )
+                }
+            } else null
             selectedSession = saved
+            if (newSessionContext != null) {
+                selectedSessionState = newSessionContext.first
+                sessionNotes = newSessionContext.second
+                noteQuote = ""
+                noteDraft = ""
+                noteStartOffset = null
+                noteEndOffset = null
+                activeNoteId = null
+                editingNoteId = null
+                originalTranscriptSelection = TextRange.Zero
+                editedTranscriptSelection = TextRange.Zero
+                playbackPositionDraft = newSessionContext.first.lastPlaybackPositionMs.toFloat()
+            }
             sessions = if (current == null) {
                 sessions + BackendSessionSummaryDto(
                     id = saved.id,
