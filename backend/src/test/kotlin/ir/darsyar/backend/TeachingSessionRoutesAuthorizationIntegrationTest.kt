@@ -151,6 +151,14 @@ class TeachingSessionRoutesAuthorizationIntegrationTest {
                 owner.toString(), setOf(AppRole.TEACHER),
                 CreateTeachingSession(ownerClass.id, title = "Owner managed session")
             )
+            val seededAudioSource = TeachingAudioSourceRepository(dataSource).create(
+                owner.toString(), setOf(AppRole.TEACHER), activeSession.id,
+                CreateTeachingAudioSource(
+                    sourceKind = "direct_url",
+                    sourceUrl = "https://media.example.test/seeded-session-audio.mp3",
+                    title = "صدای آزمون HTTP"
+                )
+            )
 
             testApplication {
                 application {
@@ -182,6 +190,78 @@ class TeachingSessionRoutesAuthorizationIntegrationTest {
                             }
                         }
                     )
+                }
+
+                suspend fun verifyAudioSourceAuthorization() {
+                    val path = "/api/v1/sessions/${activeSession.id}/audio-sources"
+
+                    val guestList = client.get(path)
+                    assertEquals(HttpStatusCode.Unauthorized, guestList.status)
+
+                    val studentList = client.get(path) { bearerAuth("student-token") }
+                    assertEquals(HttpStatusCode.OK, studentList.status)
+                    assertContains(studentList.bodyAsText(), seededAudioSource.id)
+
+                    val foreignTeacherList = client.get(path) { bearerAuth("other-teacher-token") }
+                    assertEquals(HttpStatusCode.OK, foreignTeacherList.status)
+                    assertContains(foreignTeacherList.bodyAsText(), seededAudioSource.id)
+
+                    val studentCreate = client.post(path) {
+                        bearerAuth("student-token")
+                        contentType(ContentType.Application.Json)
+                        setBody("""{"sourceKind":"direct_url","sourceUrl":"https://media.example.test/student.mp3"}""")
+                    }
+                    assertEquals(HttpStatusCode.Forbidden, studentCreate.status)
+
+                    val foreignTeacherCreate = client.post(path) {
+                        bearerAuth("other-teacher-token")
+                        contentType(ContentType.Application.Json)
+                        setBody("""{"sourceKind":"direct_url","sourceUrl":"https://media.example.test/foreign.mp3"}""")
+                    }
+                    assertEquals(HttpStatusCode.Forbidden, foreignTeacherCreate.status)
+
+                    val studentUpdate = client.patch("$path/${seededAudioSource.id}") {
+                        bearerAuth("student-token")
+                        contentType(ContentType.Application.Json)
+                        setBody("""{"sourceUrl":"https://media.example.test/student-edit.mp3","title":"ویرایش دانشجو","sortOrder":1}""")
+                    }
+                    assertEquals(HttpStatusCode.Forbidden, studentUpdate.status)
+
+                    val foreignTeacherUpdate = client.patch("$path/${seededAudioSource.id}") {
+                        bearerAuth("other-teacher-token")
+                        contentType(ContentType.Application.Json)
+                        setBody("""{"sourceUrl":"https://media.example.test/foreign-edit.mp3","title":"ویرایش استاد دیگر","sortOrder":1}""")
+                    }
+                    assertEquals(HttpStatusCode.Forbidden, foreignTeacherUpdate.status)
+
+                    val studentDelete = client.delete("$path/${seededAudioSource.id}") {
+                        bearerAuth("student-token")
+                    }
+                    assertEquals(HttpStatusCode.Forbidden, studentDelete.status)
+
+                    val foreignTeacherDelete = client.delete("$path/${seededAudioSource.id}") {
+                        bearerAuth("other-teacher-token")
+                    }
+                    assertEquals(HttpStatusCode.Forbidden, foreignTeacherDelete.status)
+
+                    val ownerUpdate = client.patch("$path/${seededAudioSource.id}") {
+                        bearerAuth("owner-token")
+                        contentType(ContentType.Application.Json)
+                        setBody("""{"sourceUrl":"https://media.example.test/owner-edit.mp3","title":"ویرایش مالک","sortOrder":2}""")
+                    }
+                    assertEquals(HttpStatusCode.OK, ownerUpdate.status)
+
+                    val adminUpdate = client.patch("$path/${seededAudioSource.id}") {
+                        bearerAuth("admin-token")
+                        contentType(ContentType.Application.Json)
+                        setBody("""{"sourceUrl":"https://media.example.test/admin-edit.mp3","title":"ویرایش مدیر","sortOrder":3}""")
+                    }
+                    assertEquals(HttpStatusCode.OK, adminUpdate.status)
+
+                    val ownerDelete = client.delete("$path/${seededAudioSource.id}") {
+                        bearerAuth("owner-token")
+                    }
+                    assertEquals(HttpStatusCode.NoContent, ownerDelete.status)
                 }
 
                 suspend fun verifySessionMutationPermissions() {
@@ -726,6 +806,7 @@ class TeachingSessionRoutesAuthorizationIntegrationTest {
 
                 // Verify the original public/private visibility before the admin move
                 // changes foreignSession's parent class later in the mutation scenarios.
+                verifyAudioSourceAuthorization()
                 verifyPublicReadVisibility()
                 verifySessionMutationPermissions()
                 verifyMembershipAuthorization()
