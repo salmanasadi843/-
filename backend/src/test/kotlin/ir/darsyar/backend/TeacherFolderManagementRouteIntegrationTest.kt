@@ -157,6 +157,24 @@ class TeacherFolderManagementRouteIntegrationTest {
             }
             assertEquals(HttpStatusCode.Forbidden, forbiddenUpdate.status, forbiddenUpdate.bodyAsText())
 
+            // Even an administrator cannot place a teacher's folder under another teacher's folder.
+            val otherTeacherFolder = folders.create(
+                otherTeacherId.toString(),
+                setOf(AppRole.TEACHER),
+                CreateTeacherFolder(otherTeacherId.toString(), null, "پوشه استاد دیگر")
+            )
+            val foreignParentUpdate = client.patch("/api/v1/teacher-folders/${folder.id}") {
+                header(HttpHeaders.Authorization, "Bearer admin-token")
+                contentType(ContentType.Application.Json)
+                setBody("""{
+                    "name":"تلاش برای والد با مالک دیگر",
+                    "parentFolderId":"${otherTeacherFolder.id}",
+                    "sortOrder":0,
+                    "isHidden":false
+                }""".trimIndent())
+            }
+            assertEquals(HttpStatusCode.BadRequest, foreignParentUpdate.status, foreignParentUpdate.bodyAsText())
+
             // Reparenting a folder below its own descendant must be rejected at the HTTP boundary.
             val cycleUpdate = client.patch("/api/v1/teacher-folders/${folder.id}") {
                 header(HttpHeaders.Authorization, "Bearer admin-token")

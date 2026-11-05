@@ -282,6 +282,20 @@ class ClassManagementRouteIntegrationTest {
                 setOf(ownedClass.id),
                 classes.listDeleted(adminId.toString(), setOf(AppRole.SUPER_ADMIN)).map { it.id }.toSet()
             )
+
+            val forbiddenRestore = client.post("/api/v1/classes/${ownedClass.id}/restore") {
+                header(HttpHeaders.Authorization, "Bearer other-teacher-token")
+            }
+            assertEquals(HttpStatusCode.Forbidden, forbiddenRestore.status, forbiddenRestore.bodyAsText())
+
+            val adminRestore = client.post("/api/v1/classes/${ownedClass.id}/restore") {
+                header(HttpHeaders.Authorization, "Bearer admin-token")
+            }
+            assertEquals(HttpStatusCode.NoContent, adminRestore.status, adminRestore.bodyAsText())
+            assertTrue(
+                classes.listDeleted(adminId.toString(), setOf(AppRole.SUPER_ADMIN)).none { it.id == ownedClass.id },
+                "A restored class must no longer appear in the deleted-class list."
+            )
         }
     }
 }
