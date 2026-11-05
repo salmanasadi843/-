@@ -817,7 +817,14 @@ fun BackendBrowseScreen(onBack: () -> Unit) {
                 }.map { it.id }.toSet()
                 val selectedFolderTree = folderAndDescendantIds(selectedFolderId)
                 val teacherClasses = classes.filter { clazz ->
-                    val folderIsVisible = clazz.folderId == null || clazz.folderId in visibleFolderIds
+                    val folderIsVisible = isClassVisibleInTeacherBrowse(
+                        folderId = clazz.folderId,
+                        visibility = clazz.visibility,
+                        isPublished = clazz.isPublished,
+                        isHidden = clazz.isHidden,
+                        canSeeHiddenFolders = canSeeHiddenFolders,
+                        visibleFolderIds = visibleFolderIds
+                    )
                     clazz.ownerUserId == teacherId && folderIsVisible &&
                         (selectedFolderTree == null || clazz.folderId in selectedFolderTree)
                 }.sortedBy { it.sortOrder }
