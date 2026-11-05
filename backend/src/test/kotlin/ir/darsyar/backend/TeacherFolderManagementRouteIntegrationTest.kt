@@ -123,8 +123,13 @@ class TeacherFolderManagementRouteIntegrationTest {
             }
             val otherTeacherListBody = otherTeacherList.bodyAsText()
             assertEquals(HttpStatusCode.OK, otherTeacherList.status, otherTeacherListBody)
-            // Folder visibility for students is covered below; this assertion focuses on HTTP access success.
-            assertEquals(HttpStatusCode.OK, otherTeacherList.status, otherTeacherListBody)
+            // A non-owner teacher may browse folders that contain published public classes,
+            // but this is read-only access (mutation is asserted forbidden below).
+            assertTrue(otherTeacherListBody.contains(folder.id), otherTeacherListBody)
+            assertTrue(otherTeacherListBody.contains(childFolder.id), otherTeacherListBody)
+
+            val anonymousList = client.get("/api/v1/teacher-folders")
+            assertEquals(HttpStatusCode.Unauthorized, anonymousList.status, anonymousList.bodyAsText())
 
             val studentList = client.get("/api/v1/teacher-folders") {
                 header(HttpHeaders.Authorization, "Bearer student-token")
