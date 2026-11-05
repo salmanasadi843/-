@@ -90,6 +90,22 @@ class TeachingSessionRepositoryIntegrationTest {
             val repository = TeachingSessionRepository(ds)
             val audioRepository = TeachingAudioSourceRepository(ds)
             val forumRepository = ClassForumRepository(ds)
+
+            // Creation must enforce the same ownership boundary as update/move/delete:
+            // another teacher may read a published public class, but cannot add content to it.
+            assertFailsWith<SecurityException> {
+                repository.create(
+                    otherTeacher.toString(), setOf(AppRole.TEACHER),
+                    CreateTeachingSession(classId = publicClass.id, title = "Unauthorized session")
+                )
+            }
+            assertFailsWith<SecurityException> {
+                repository.create(
+                    student.toString(), setOf(AppRole.STUDENT),
+                    CreateTeachingSession(classId = publicClass.id, title = "Student-created session")
+                )
+            }
+
             val published = repository.create(
                 owner.toString(), setOf(AppRole.TEACHER),
                 CreateTeachingSession(
