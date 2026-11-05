@@ -264,6 +264,112 @@ class TeachingSessionRoutesAuthorizationIntegrationTest {
                     assertEquals(HttpStatusCode.NoContent, ownerDelete.status)
                 }
 
+                suspend fun verifyAnnouncementAuthorization() {
+                    val ownerPath = "/api/v1/classes/${ownerClass.id}/announcements"
+
+                    val guestList = client.get(ownerPath)
+                    assertEquals(HttpStatusCode.Unauthorized, guestList.status)
+
+                    val guestCreate = client.post(ownerPath) {
+                        contentType(ContentType.Application.Json)
+                        setBody("""{"title":"اعلان مهمان","body":"نباید منتشر شود"}""")
+                    }
+                    assertEquals(HttpStatusCode.Unauthorized, guestCreate.status)
+
+                    val foreignTeacherCreate = client.post(ownerPath) {
+                        bearerAuth("other-teacher-token")
+                        contentType(ContentType.Application.Json)
+                        setBody("""{"title":"اعلان غیرمجاز","body":"استاد غیرمالک"}""")
+                    }
+                    assertEquals(HttpStatusCode.Forbidden, foreignTeacherCreate.status)
+
+                    val studentCreate = client.post(ownerPath) {
+                        bearerAuth("student-token")
+                        contentType(ContentType.Application.Json)
+                        setBody("""{"title":"اعلان دانشجو","body":"نباید منتشر شود"}""")
+                    }
+                    assertEquals(HttpStatusCode.Forbidden, studentCreate.status)
+
+                    val ownerCreate = client.post(ownerPath) {
+                        bearerAuth("owner-token")
+                        contentType(ContentType.Application.Json)
+                        setBody("""{"title":"اطلاعیه استاد مالک","body":"متن اطلاعیه عمومی"}""")
+                    }
+                    val ownerBody = ownerCreate.bodyAsText()
+                    assertEquals(HttpStatusCode.Created, ownerCreate.status, ownerBody)
+                    val ownerAnnouncementId = Regex(""""id":"([^"]+)"""")
+                        .find(ownerBody)?.groupValues?.get(1)
+                    assertFalse(ownerAnnouncementId.isNullOrBlank(), ownerBody)
+
+                    val ownerList = client.get(ownerPath) { bearerAuth("owner-token") }
+                    assertEquals(HttpStatusCode.OK, ownerList.status)
+                    assertContains(ownerList.bodyAsText(), ownerAnnouncementId!!)
+
+                    val foreignTeacherPublicList = client.get(ownerPath) {
+                        bearerAuth("other-teacher-token")
+                    }
+                    assertEquals(HttpStatusCode.OK, foreignTeacherPublicList.status)
+                    assertContains(foreignTeacherPublicList.bodyAsText(), ownerAnnouncementId)
+
+                    val studentPublicList = client.get(ownerPath) { bearerAuth("student-token") }
+                    assertEquals(HttpStatusCode.OK, studentPublicList.status)
+                    assertContains(studentPublicList.bodyAsText(), ownerAnnouncementId)
+
+                    val foreignTeacherDelete = client.delete("$ownerPath/$ownerAnnouncementId") {
+                        bearerAuth("other-teacher-token")
+                    }
+                    assertEquals(HttpStatusCode.Forbidden, foreignTeacherDelete.status)
+
+                    val studentDelete = client.delete("$ownerPath/$ownerAnnouncementId") {
+                        bearerAuth("student-token")
+                    }
+                    assertEquals(HttpStatusCode.Forbidden, studentDelete.status)
+
+                    val ownerDelete = client.delete("$ownerPath/$ownerAnnouncementId") {
+                        bearerAuth("owner-token")
+                    }
+                    assertEquals(HttpStatusCode.NoContent, ownerDelete.status)
+
+                    val adminPrivateCreate = client.post("/api/v1/classes/${otherTeacherClass.id}/announcements") {
+                        bearerAuth("admin-token")
+                        contentType(ContentType.Application.Json)
+                        setBody("""{"title":"اطلاعیه مدیر در کلاس خصوصی","body":"فقط اعضا"}""")
+                    }
+                    val adminPrivateBody = adminPrivateCreate.bodyAsText()
+                    assertEquals(HttpStatusCode.Created, adminPrivateCreate.status, adminPrivateBody)
+                    val privateAnnouncementId = Regex(""""id":"([^"]+)"""")
+                        .find(adminPrivateBody)?.groupValues?.get(1)
+                    assertFalse(privateAnnouncementId.isNullOrBlank(), adminPrivateBody)
+
+                    val nonMemberPrivateList = client.get("/api/v1/classes/${otherTeacherClass.id}/announcements") {
+                        bearerAuth("student-token")
+                    }
+                    assertEquals(HttpStatusCode.OK, nonMemberPrivateList.status)
+                    assertFalse(nonMemberPrivateList.bodyAsText().contains(privateAnnouncementId!!))
+
+                    val adminMemberClassCreate = client.post("/api/v1/classes/${memberPrivateClass.id}/announcements") {
+                        bearerAuth("admin-token")
+                        contentType(ContentType.Application.Json)
+                        setBody("""{"title":"اطلاعیه برای عضو","body":"اعضای کلاس می‌بینند"}""")
+                    }
+                    val memberBody = adminMemberClassCreate.bodyAsText()
+                    assertEquals(HttpStatusCode.Created, adminMemberClassCreate.status, memberBody)
+                    val memberAnnouncementId = Regex(""""id":"([^"]+)"""")
+                        .find(memberBody)?.groupValues?.get(1)
+                    assertFalse(memberAnnouncementId.isNullOrBlank(), memberBody)
+
+                    val memberList = client.get("/api/v1/classes/${memberPrivateClass.id}/announcements") {
+                        bearerAuth("student-token")
+                    }
+                    assertEquals(HttpStatusCode.OK, memberList.status)
+                    assertContains(memberList.bodyAsText(), memberAnnouncementId!!)
+
+                    val adminDelete = client.delete("/api/v1/classes/${otherTeacherClass.id}/announcements/$privateAnnouncementId") {
+                        bearerAuth("admin-token")
+                    }
+                    assertEquals(HttpStatusCode.NoContent, adminDelete.status)
+                }
+
                 suspend fun verifySessionMutationPermissions() {
                     val readResponse = client.get("/api/v1/classes/${ownerClass.id}/sessions") {
                         bearerAuth("other-teacher-token")
@@ -807,6 +913,7 @@ class TeachingSessionRoutesAuthorizationIntegrationTest {
                 // Verify the original public/private visibility before the admin move
                 // changes foreignSession's parent class later in the mutation scenarios.
                 verifyAudioSourceAuthorization()
+                verifyAnnouncementAuthorization()
                 verifyPublicReadVisibility()
                 verifySessionMutationPermissions()
                 verifyMembershipAuthorization()
