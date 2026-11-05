@@ -70,10 +70,27 @@ class TeacherFolderManagementRouteIntegrationTest {
                 CreateTeacherFolder(ownerId.toString(), null, "پوشه استاد")
             )
 
+            val childFolder = folders.create(
+                ownerId.toString(),
+                setOf(AppRole.TEACHER),
+                CreateTeacherFolder(ownerId.toString(), folder.id, "زیرپوشه")
+            )
+            dataSource.connection.use { connection ->
+                connection.prepareStatement(
+                    """INSERT INTO teaching_classes(owner_user_id, folder_id, title, visibility, is_published, is_hidden)
+                       VALUES (?, ?, 'کلاس عمومی در زیرپوشه', 'public', true, false)"""
+                ).use { statement ->
+                    statement.setObject(1, ownerId)
+                    statement.setObject(2, UUID.fromString(childFolder.id))
+                    statement.executeUpdate()
+                }
+            }
+
             val identities = mapOf(
                 "admin-token" to (adminId.toString() to setOf(AppRole.SUPER_ADMIN)),
                 "owner-token" to (ownerId.toString() to setOf(AppRole.TEACHER)),
-                "other-teacher-token" to (otherTeacherId.toString() to setOf(AppRole.TEACHER))
+                "other-teacher-token" to (otherTeacherId.toString() to setOf(AppRole.TEACHER)),
+                "student-token" to (UUID.randomUUID().toString() to setOf(AppRole.STUDENT))
             )
             val verifier = IdentityTokenVerifier { token ->
                 check(token in identities)
@@ -107,6 +124,14 @@ class TeacherFolderManagementRouteIntegrationTest {
             val otherTeacherListBody = otherTeacherList.bodyAsText()
             assertEquals(HttpStatusCode.OK, otherTeacherList.status, otherTeacherListBody)
             assertTrue(!otherTeacherListBody.contains(folder.id), otherTeacherListBody)
+
+            val studentList = client.get("/api/v1/teacher-folders") {
+                header(HttpHeaders.Authorization, "Bearer student-token")
+            }
+            val studentListBody = studentList.bodyAsText()
+            assertEquals(HttpStatusCode.OK, studentList.status, studentListBody)
+            assertTrue(studentListBody.contains(folder.id), studentListBody)
+            assertTrue(studentListBody.contains(childFolder.id), studentListBody)
 
             val updateBody = """{
                 "name":"پوشه ویرایش‌شده توسط مدیر",
@@ -145,6 +170,14 @@ class TeacherFolderManagementRouteIntegrationTest {
             val adminHiddenBody = adminHiddenList.bodyAsText()
             assertEquals(HttpStatusCode.OK, adminHiddenList.status, adminHiddenBody)
             assertTrue(adminHiddenBody.contains(folder.id), adminHiddenBody)
+
+            val studentHiddenList = client.get("/api/v1/teacher-folders") {
+                header(HttpHeaders.Authorization, "Bearer student-token")
+            }
+            val studentHiddenBody = studentHiddenList.bodyAsText()
+            assertEquals(HttpStatusCode.OK, studentHiddenList.status, studentHiddenBody)
+            assertTrue(!studentHiddenBody.contains(folder.id), studentHiddenBody)
+            assertTrue(!studentHiddenBody.contains(childFolder.id), studentHiddenBody)
 
             val forbiddenDelete = client.delete("/api/v1/teacher-folders/${folder.id}") {
                 header(HttpHeaders.Authorization, "Bearer other-teacher-token")
