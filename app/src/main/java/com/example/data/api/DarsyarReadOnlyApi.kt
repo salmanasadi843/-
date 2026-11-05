@@ -37,6 +37,12 @@ interface DarsyarReadOnlyApi {
         @Header("Authorization") authorization: String
     ): Response<BackendMeDto>
 
+    @POST("api/v1/classes")
+    suspend fun createClass(
+        @Header("Authorization") authorization: String,
+        @Body request: BackendClassWriteRequest
+    ): Response<BackendClassDto>
+
     @GET("api/v1/classes")
     suspend fun getClasses(
         @Header("Authorization") authorization: String
@@ -58,6 +64,13 @@ interface DarsyarReadOnlyApi {
         @retrofit2.http.Path("classId") classId: String,
         @Header("Authorization") authorization: String
     ): Response<Unit>
+
+    @POST("api/v1/classes/{classId}/sessions")
+    suspend fun createSession(
+        @retrofit2.http.Path("classId") classId: String,
+        @Header("Authorization") authorization: String,
+        @Body request: BackendSessionWriteRequest
+    ): Response<BackendSessionDto>
 
     @PATCH("api/v1/classes/{classId}")
     suspend fun updateClass(
@@ -221,6 +234,7 @@ data class BackendClassDto(
 @JsonClass(generateAdapter = true)
 data class BackendClassWriteRequest(
     val title: String,
+    val ownerUserId: String? = null,
     val description: String = "",
     val term: String = "",
     val visibility: String = "private",
@@ -376,6 +390,33 @@ class DarsyarReadOnlyRepository(
         require(firebaseIdToken.isNotBlank() && classId.isNotBlank()) { "Token and class ID are required." }
         val response = api.restoreClass(classId, "Bearer $firebaseIdToken")
         if (!response.isSuccessful) throw BackendHttpException(response.code(), "/api/v1/classes/{classId}/restore")
+    }
+
+    /** Creates a class for the authenticated teacher; super-admin may specify its owner. */
+    suspend fun createClass(
+        firebaseIdToken: String,
+        request: BackendClassWriteRequest
+    ): BackendClassDto {
+        require(firebaseIdToken.isNotBlank()) { "Firebase ID token is required." }
+        require(request.title.isNotBlank()) { "Class title is required." }
+        require(request.visibility in setOf("public", "private", "unlisted")) { "Unsupported class visibility." }
+        val response = api.createClass("Bearer $firebaseIdToken", request)
+        if (!response.isSuccessful) throw BackendHttpException(response.code(), "/api/v1/classes")
+        return response.body() ?: throw IllegalStateException("Backend returned an empty created class response.")
+    }
+
+    /** Creates a session in the selected class; server enforces ownership/admin access. */
+    suspend fun createSession(
+        firebaseIdToken: String,
+        classId: String,
+        request: BackendSessionWriteRequest
+    ): BackendSessionDto {
+        require(firebaseIdToken.isNotBlank()) { "Firebase ID token is required." }
+        require(classId.isNotBlank()) { "Class ID is required." }
+        require(request.title.isNotBlank()) { "Session title is required." }
+        val response = api.createSession(classId, "Bearer $firebaseIdToken", request)
+        if (!response.isSuccessful) throw BackendHttpException(response.code(), "/api/v1/classes/{classId}/sessions")
+        return response.body() ?: throw IllegalStateException("Backend returned an empty created session response.")
     }
 
     /** Class mutations are authorized and audited by the backend (owner or super-admin). */
