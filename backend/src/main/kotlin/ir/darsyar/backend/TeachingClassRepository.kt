@@ -292,6 +292,104 @@ class TeachingClassRepository(private val dataSource: DataSource) {
     }
 
 
+    /**
+     * Swaps a class with its adjacent sibling for the same teacher and folder.
+     * Locking the current class row serializes concurrent reorder operations for that class.
+     */
+    fun reorder(
+        actorUserId: String,
+        roles: Set<AppRole>,
+        classId: String,
+        direction: String
+    ): TeachingClassRecord? {
+        require(direction == "up" || direction == "down") { "Direction must be up or down." }
+        val actor = UUID.fromString(actorUserId)
+        val id = UUID.fromString(classId)
+        dataSource.connection.use { connection ->
+            connection.autoCommit = false
+            try {
+                val current = connection.prepareStatement(
+                    """
+                    SELECT c.owner_user_id::text, c.folder_id::text
+                    FROM teaching_classes c
+                    WHERE c.id = ? AND c.deleted_at IS NULL
+                    FOR UPDATE
+                    """.trimIndent()
+                ).use { st ->
+                    st.setObject(1, id)
+                    st.executeQuery().use { rs ->
+                        if (rs.next()) rs.getString("owner_user_id") to rs.getString("folder_id") else null
+                    }
+                } ?: run { connection.rollback(); return null }
+                val (ownerId, folderId) = current
+                if (AppRole.SUPER_ADMIN !in roles &&
+                    !(AppRole.TEACHER in roles && ownerId == actorUserId)
+                ) throw SecurityException("Class management is not allowed.")
+
+                val orderedIds = connection.prepareStatement(
+                    """
+                    SELECT id::text
+                    FROM teaching_classes
+                    WHERE owner_user_id = ? AND folder_id IS NOT DISTINCT FROM ?::uuid
+                      AND deleted_at IS NULL
+                    ORDER BY sort_order ASC, title ASC, id ASC
+                    FOR UPDATE
+                    """.trimIndent()
+                ).use { st ->
+                    st.setObject(1, UUID.fromString(ownerId))
+                    st.setString(2, folderId)
+                    st.executeQuery().use { rs ->
+                        buildList { while (rs.next()) add(rs.getString("id")) }
+                    }
+                }
+                val currentIndex = orderedIds.indexOf(id.toString())
+                if (currentIndex < 0) {
+                    connection.rollback()
+                    return null
+                }
+                val neighborIndex = if (direction == "up") currentIndex - 1 else currentIndex + 1
+                if (neighborIndex in orderedIds.indices) {
+                    val swapped = orderedIds.toMutableList().apply {
+                        val item = this[currentIndex]
+                        this[currentIndex] = this[neighborIndex]
+                        this[neighborIndex] = item
+                    }
+                    connection.prepareStatement(
+                        """
+                        UPDATE teaching_classes
+                        SET sort_order = ?, version = version + 1, updated_at = now()
+                        WHERE id = ?
+                        """.trimIndent()
+                    ).use { st ->
+                        swapped.forEachIndexed { index, itemId ->
+                            st.setInt(1, index)
+                            st.setObject(2, UUID.fromString(itemId))
+                            st.addBatch()
+                        }
+                        st.executeBatch()
+                    }
+                }
+                val result = connection.prepareStatement(
+                    """
+                    SELECT id::text, owner_user_id::text, title, description, term,
+                           visibility, is_published, is_hidden, sort_order, folder_id::text
+                    FROM teaching_classes WHERE id = ?
+                    """.trimIndent()
+                ).use { st ->
+                    st.setObject(1, id)
+                    st.executeQuery().use { rs -> check(rs.next()); rs.toTeachingClassRecord() }
+                }
+                connection.commit()
+                return result
+            } catch (error: Throwable) {
+                connection.rollback()
+                throw error
+            } finally {
+                connection.autoCommit = true
+            }
+        }
+    }
+
     /** Deleted classes are visible only in the owner's/admin's recovery area. */
     fun listDeleted(actorUserId: String, roles: Set<AppRole>): List<TeachingClassRecord> {
         val actor = UUID.fromString(actorUserId)
