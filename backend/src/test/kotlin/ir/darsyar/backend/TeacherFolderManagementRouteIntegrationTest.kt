@@ -157,6 +157,19 @@ class TeacherFolderManagementRouteIntegrationTest {
             }
             assertEquals(HttpStatusCode.Forbidden, forbiddenUpdate.status, forbiddenUpdate.bodyAsText())
 
+            // Reparenting a folder below its own descendant must be rejected at the HTTP boundary.
+            val cycleUpdate = client.patch("/api/v1/teacher-folders/${folder.id}") {
+                header(HttpHeaders.Authorization, "Bearer admin-token")
+                contentType(ContentType.Application.Json)
+                setBody("""{
+                    "name":"تلاش برای چرخه",
+                    "parentFolderId":"${childFolder.id}",
+                    "sortOrder":0,
+                    "isHidden":false
+                }""".trimIndent())
+            }
+            assertEquals(HttpStatusCode.BadRequest, cycleUpdate.status, cycleUpdate.bodyAsText())
+
             val adminUpdate = client.patch("/api/v1/teacher-folders/${folder.id}") {
                 header(HttpHeaders.Authorization, "Bearer admin-token")
                 contentType(ContentType.Application.Json)
