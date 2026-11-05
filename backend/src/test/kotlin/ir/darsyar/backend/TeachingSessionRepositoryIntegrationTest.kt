@@ -105,6 +105,12 @@ class TeachingSessionRepositoryIntegrationTest {
                     CreateTeachingSession(classId = publicClass.id, title = "Student-created session")
                 )
             }
+            assertFailsWith<SecurityException> {
+                repository.create(
+                    visitor.toString(), emptySet(),
+                    CreateTeachingSession(classId = publicClass.id, title = "Guest-created session")
+                )
+            }
 
             val published = repository.create(
                 owner.toString(), setOf(AppRole.TEACHER),
