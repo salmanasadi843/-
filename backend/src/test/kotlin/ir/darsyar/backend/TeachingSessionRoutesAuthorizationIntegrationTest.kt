@@ -610,6 +610,12 @@ class TeachingSessionRoutesAuthorizationIntegrationTest {
                 }
                 assertEquals(HttpStatusCode.OK, adminCourseUpdate.status)
 
+                // Admin can delete an empty course owned by another teacher.
+                val adminCourseDelete = client.delete("/api/v1/courses/${foreignCourse.id}") {
+                    bearerAuth("admin-token")
+                }
+                assertEquals(HttpStatusCode.NoContent, adminCourseDelete.status)
+
                 val studentCourseCreate = client.post("/api/v1/classes/${ownerClass.id}/courses") {
                     bearerAuth("student-token")
                     contentType(ContentType.Application.Json)
