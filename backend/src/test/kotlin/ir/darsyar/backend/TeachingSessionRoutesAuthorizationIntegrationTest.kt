@@ -724,8 +724,10 @@ class TeachingSessionRoutesAuthorizationIntegrationTest {
 
                 }
 
-                verifySessionMutationPermissions()
+                // Verify the original public/private visibility before the admin move
+                // changes foreignSession's parent class later in the mutation scenarios.
                 verifyPublicReadVisibility()
+                verifySessionMutationPermissions()
                 verifyMembershipAuthorization()
                 verifyClassAuthorization()
                 verifyFolderAuthorization()
