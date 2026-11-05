@@ -314,6 +314,7 @@ class TeacherFolderManagementRouteIntegrationTest {
                 }
             }
 
+            val folders = TeacherFolderRepository(dataSource)
             val identities = mapOf(
                 "owner-token" to (ownerId.toString() to setOf(AppRole.TEACHER)),
                 "other-teacher-token" to (otherTeacherId.toString() to setOf(AppRole.TEACHER))
@@ -342,6 +343,17 @@ class TeacherFolderManagementRouteIntegrationTest {
                 setBody("""{"name":"پوشه شخصی","sortOrder":0}""")
             }
             assertEquals(HttpStatusCode.Created, allowedCreate.status, allowedCreate.bodyAsText())
+
+            val createdFolder = folders.listVisible(ownerId.toString(), setOf(AppRole.TEACHER))
+                .single { it.name == "پوشه شخصی" }
+            val ownerDelete = client.delete("/api/v1/teacher-folders/${createdFolder.id}") {
+                header(HttpHeaders.Authorization, "Bearer owner-token")
+            }
+            assertEquals(HttpStatusCode.NoContent, ownerDelete.status, ownerDelete.bodyAsText())
+            assertTrue(
+                folders.listVisible(ownerId.toString(), setOf(AppRole.TEACHER)).none { it.id == createdFolder.id },
+                "The owner-deleted folder must no longer appear in the visible folder list."
+            )
         }
     }
 }
