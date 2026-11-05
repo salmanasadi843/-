@@ -297,7 +297,7 @@ class TeachingSessionRoutesAuthorizationIntegrationTest {
                     }
                     val ownerBody = ownerCreate.bodyAsText()
                     assertEquals(HttpStatusCode.Created, ownerCreate.status, ownerBody)
-                    val ownerAnnouncementId = Regex(""""id":"([^"]+)"""")
+                    val ownerAnnouncementId = Regex("\\\"id\\\":\\\"([^\\\"]+)\\\"")
                         .find(ownerBody)?.groupValues?.get(1)
                     assertFalse(ownerAnnouncementId.isNullOrBlank(), ownerBody)
 
@@ -337,7 +337,7 @@ class TeachingSessionRoutesAuthorizationIntegrationTest {
                     }
                     val adminPrivateBody = adminPrivateCreate.bodyAsText()
                     assertEquals(HttpStatusCode.Created, adminPrivateCreate.status, adminPrivateBody)
-                    val privateAnnouncementId = Regex(""""id":"([^"]+)"""")
+                    val privateAnnouncementId = Regex("\\\"id\\\":\\\"([^\\\"]+)\\\"")
                         .find(adminPrivateBody)?.groupValues?.get(1)
                     assertFalse(privateAnnouncementId.isNullOrBlank(), adminPrivateBody)
 
@@ -354,7 +354,7 @@ class TeachingSessionRoutesAuthorizationIntegrationTest {
                     }
                     val memberBody = adminMemberClassCreate.bodyAsText()
                     assertEquals(HttpStatusCode.Created, adminMemberClassCreate.status, memberBody)
-                    val memberAnnouncementId = Regex(""""id":"([^"]+)"""")
+                    val memberAnnouncementId = Regex("\\\"id\\\":\\\"([^\\\"]+)\\\"")
                         .find(memberBody)?.groupValues?.get(1)
                     assertFalse(memberAnnouncementId.isNullOrBlank(), memberBody)
 
