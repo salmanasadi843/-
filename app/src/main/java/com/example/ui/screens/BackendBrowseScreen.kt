@@ -442,14 +442,14 @@ fun BackendBrowseScreen(onBack: () -> Unit) {
                 if (current == null) repository.createSession(token, clazz.id, request)
                 else repository.updateSession(token, current.id, request)
             }
+            // Creation is the primary operation: secondary state/note fetches must not
+            // make a successful server-side create look like a failed save (and invite duplicates).
             val newSessionContext = if (current == null) {
                 withContext(Dispatchers.IO) {
                     val community = DarsyarCommunityApiFactory.create()
-                    Triple(
-                        community.sessionState(token, saved.classId, saved.id),
-                        community.sessionNotes(token, saved.classId, saved.id),
-                        saved
-                    )
+                    val state = runCatching { community.sessionState(token, saved.classId, saved.id) }.getOrNull()
+                    val notes = runCatching { community.sessionNotes(token, saved.classId, saved.id) }.getOrDefault(emptyList())
+                    state to notes
                 }
             } else null
             selectedSession = saved
@@ -464,7 +464,7 @@ fun BackendBrowseScreen(onBack: () -> Unit) {
                 editingNoteId = null
                 originalTranscriptSelection = TextRange.Zero
                 editedTranscriptSelection = TextRange.Zero
-                playbackPositionDraft = newSessionContext.first.lastPlaybackPositionMs.toFloat()
+                playbackPositionDraft = newSessionContext.first?.lastPlaybackPositionMs?.toFloat() ?: 0f
             }
             sessions = if (current == null) {
                 sessions + BackendSessionSummaryDto(
