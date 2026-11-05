@@ -78,6 +78,18 @@ class TeachingSessionRoutesAuthorizationIntegrationTest {
                 otherTeacher.toString(),
                 CreateTeachingClass(otherTeacher.toString(), "Member-only private class", "", "", "private", true)
             )
+            val hiddenPublicClass = classRepository.create(
+                otherTeacher.toString(),
+                CreateTeachingClass(otherTeacher.toString(), "Hidden public class", "", "", "public", true)
+            )
+            classRepository.update(
+                otherTeacher.toString(), setOf(AppRole.TEACHER), hiddenPublicClass.id,
+                UpdateTeachingClass("Hidden public class", "", "", "public", true, true, 0)
+            )
+            val unpublishedPublicClass = classRepository.create(
+                otherTeacher.toString(),
+                CreateTeachingClass(otherTeacher.toString(), "Unpublished public class", "", "", "public", false)
+            )
             dataSource.connection.use { connection ->
                 connection.prepareStatement(
                     "INSERT INTO class_memberships(class_id, student_user_id, status) VALUES (?::uuid, ?, 'active')"
@@ -104,6 +116,18 @@ class TeachingSessionRoutesAuthorizationIntegrationTest {
             val memberPrivateSession = sessionRepository.create(
                 otherTeacher.toString(), setOf(AppRole.TEACHER),
                 CreateTeachingSession(memberPrivateClass.id, title = "Member-only private session")
+            )
+            val hiddenPublicSession = sessionRepository.create(
+                otherTeacher.toString(), setOf(AppRole.TEACHER),
+                CreateTeachingSession(hiddenPublicClass.id, title = "Hidden public session")
+            )
+            val unpublishedPublicSession = sessionRepository.create(
+                otherTeacher.toString(), setOf(AppRole.TEACHER),
+                CreateTeachingSession(unpublishedPublicClass.id, title = "Unpublished class session")
+            )
+            val unpublishedSession = sessionRepository.create(
+                owner.toString(), setOf(AppRole.TEACHER),
+                CreateTeachingSession(ownerClass.id, title = "Unpublished session", isPublished = false)
             )
             val ownerManagedSession = sessionRepository.create(
                 owner.toString(), setOf(AppRole.TEACHER),
@@ -280,6 +304,8 @@ class TeachingSessionRoutesAuthorizationIntegrationTest {
                 assertContains(anonymousClasses, ownerClass.id)
                 assertFalse(anonymousClasses.contains(otherTeacherClass.id))
                 assertFalse(anonymousClasses.contains(memberPrivateClass.id))
+                assertFalse(anonymousClasses.contains(hiddenPublicClass.id))
+                assertFalse(anonymousClasses.contains(unpublishedPublicClass.id))
 
                 val anonymousPublicSessions = client.get(
                     "/api/v1/public/classes/${ownerClass.id}/sessions"
@@ -297,6 +323,23 @@ class TeachingSessionRoutesAuthorizationIntegrationTest {
                 )
                 assertEquals(HttpStatusCode.NotFound, anonymousPrivateDetail.status)
 
+                val anonymousHiddenSessions = client.get(
+                    "/api/v1/public/classes/${hiddenPublicClass.id}/sessions"
+                )
+                assertEquals(HttpStatusCode.OK, anonymousHiddenSessions.status)
+                assertFalse(anonymousHiddenSessions.bodyAsText().contains(hiddenPublicSession.id))
+
+                val anonymousUnpublishedSessions = client.get(
+                    "/api/v1/public/classes/${unpublishedPublicClass.id}/sessions"
+                )
+                assertEquals(HttpStatusCode.OK, anonymousUnpublishedSessions.status)
+                assertFalse(anonymousUnpublishedSessions.bodyAsText().contains(unpublishedPublicSession.id))
+
+                val anonymousUnpublishedSessionDetail = client.get(
+                    "/api/v1/public/classes/${ownerClass.id}/sessions/${unpublishedSession.id}"
+                )
+                assertEquals(HttpStatusCode.NotFound, anonymousUnpublishedSessionDetail.status)
+
                 val ownerClasses = client.get("/api/v1/classes") {
                     bearerAuth("owner-token")
                 }.bodyAsText()
@@ -308,6 +351,8 @@ class TeachingSessionRoutesAuthorizationIntegrationTest {
                 }.bodyAsText()
                 assertContains(otherTeacherClasses, ownerClass.id)
                 assertContains(otherTeacherClasses, otherTeacherClass.id)
+                assertFalse(otherTeacherClasses.contains(hiddenPublicClass.id))
+                assertFalse(otherTeacherClasses.contains(unpublishedPublicClass.id))
 
                 val studentClasses = client.get("/api/v1/classes") {
                     bearerAuth("student-token")
@@ -315,6 +360,8 @@ class TeachingSessionRoutesAuthorizationIntegrationTest {
                 assertContains(studentClasses, ownerClass.id)
                 assertContains(studentClasses, memberPrivateClass.id)
                 assertFalse(studentClasses.contains(otherTeacherClass.id))
+                assertFalse(studentClasses.contains(hiddenPublicClass.id))
+                assertFalse(studentClasses.contains(unpublishedPublicClass.id))
 
                 val studentPrivateSessions = client.get(
                     "/api/v1/classes/${memberPrivateClass.id}/sessions"
@@ -331,6 +378,22 @@ class TeachingSessionRoutesAuthorizationIntegrationTest {
                 }
                 assertEquals(HttpStatusCode.OK, studentUnjoinedPrivateSessions.status)
                 assertFalse(studentUnjoinedPrivateSessions.bodyAsText().contains(foreignSession.id))
+
+                val studentHiddenSessions = client.get(
+                    "/api/v1/classes/${hiddenPublicClass.id}/sessions"
+                ) {
+                    bearerAuth("student-token")
+                }
+                assertEquals(HttpStatusCode.OK, studentHiddenSessions.status)
+                assertFalse(studentHiddenSessions.bodyAsText().contains(hiddenPublicSession.id))
+
+                val studentUnpublishedSessions = client.get(
+                    "/api/v1/classes/${unpublishedPublicClass.id}/sessions"
+                ) {
+                    bearerAuth("student-token")
+                }
+                assertEquals(HttpStatusCode.OK, studentUnpublishedSessions.status)
+                assertFalse(studentUnpublishedSessions.bodyAsText().contains(unpublishedPublicSession.id))
 
                 // Membership endpoints are restricted to the class owner or main admin.
                 val ownerMemberships = client.get(
