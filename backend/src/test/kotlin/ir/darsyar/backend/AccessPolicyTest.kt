@@ -37,4 +37,20 @@ class AccessPolicyTest {
     @Test fun guestCannotReadPrivateClass() {
         assertFalse(AccessPolicy.canReadClass(AppRole.GUEST, null, publishedClass.copy(isPublic = false)))
     }
+
+    @Test fun membershipDoesNotGrantAccessToUnpublishedClass() {
+        val unpublishedPrivate = publishedClass.copy(published = false, isPublic = false, activeMembership = true)
+        assertFalse(AccessPolicy.canReadClass(AppRole.STUDENT, "student-a", unpublishedPrivate))
+    }
+
+    @Test fun ownerAndSuperAdminCanReadUnpublishedClass() {
+        val draft = publishedClass.copy(published = false, isPublic = false)
+        assertTrue(AccessPolicy.canReadClass(AppRole.TEACHER, "teacher-a", draft))
+        assertTrue(AccessPolicy.canReadClass(AppRole.SUPER_ADMIN, "admin", draft))
+    }
+
+    @Test fun guestCanReadOnlyPublishedPublicClass() {
+        assertTrue(AccessPolicy.canReadClass(AppRole.GUEST, null, publishedClass))
+        assertFalse(AccessPolicy.canReadClass(AppRole.GUEST, null, publishedClass.copy(published = false)))
+    }
 }
