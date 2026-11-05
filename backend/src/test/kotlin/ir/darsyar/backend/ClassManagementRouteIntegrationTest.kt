@@ -296,6 +296,25 @@ class ClassManagementRouteIntegrationTest {
                 classes.listDeleted(adminId.toString(), setOf(AppRole.SUPER_ADMIN)).none { it.id == ownedClass.id },
                 "A restored class must no longer appear in the deleted-class list."
             )
+
+            // The owning teacher must also be able to soft-delete and restore their class.
+            val ownerDelete = client.delete("/api/v1/classes/${ownedClass.id}") {
+                header(HttpHeaders.Authorization, "Bearer owner-token")
+            }
+            assertEquals(HttpStatusCode.NoContent, ownerDelete.status, ownerDelete.bodyAsText())
+            assertTrue(
+                classes.listDeleted(ownerId.toString(), setOf(AppRole.TEACHER)).any { it.id == ownedClass.id },
+                "The owner-deleted class must appear in the owner's deleted-class list."
+            )
+
+            val ownerRestore = client.post("/api/v1/classes/${ownedClass.id}/restore") {
+                header(HttpHeaders.Authorization, "Bearer owner-token")
+            }
+            assertEquals(HttpStatusCode.NoContent, ownerRestore.status, ownerRestore.bodyAsText())
+            assertTrue(
+                classes.listDeleted(ownerId.toString(), setOf(AppRole.TEACHER)).none { it.id == ownedClass.id },
+                "The owner-restored class must disappear from the owner's deleted-class list."
+            )
         }
     }
 }
