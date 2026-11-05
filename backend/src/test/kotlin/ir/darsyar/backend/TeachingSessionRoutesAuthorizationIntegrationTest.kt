@@ -623,6 +623,43 @@ class TeachingSessionRoutesAuthorizationIntegrationTest {
                 }
                 assertEquals(HttpStatusCode.Unauthorized, guestCourseCreate.status)
 
+                // Folder creation must preserve owner scoping; only admins may target another owner.
+                val ownerFolderCreate = client.post("/api/v1/teacher-folders") {
+                    bearerAuth("owner-token")
+                    contentType(ContentType.Application.Json)
+                    setBody("""{"name":"پوشه جدید مالک","sortOrder":3}""")
+                }
+                assertEquals(HttpStatusCode.Created, ownerFolderCreate.status)
+
+                val adminFolderCreate = client.post("/api/v1/teacher-folders") {
+                    bearerAuth("admin-token")
+                    contentType(ContentType.Application.Json)
+                    setBody("""{"ownerUserId":"${otherTeacher}","name":"پوشه ساخته‌شده مدیر"}""")
+                }
+                assertEquals(HttpStatusCode.Created, adminFolderCreate.status)
+
+                val adminFolderCreateWithoutOwner = client.post("/api/v1/teacher-folders") {
+                    bearerAuth("admin-token")
+                    contentType(ContentType.Application.Json)
+                    setBody("""{"name":"پوشه بدون مالک"}""")
+                }
+                assertEquals(HttpStatusCode.BadRequest, adminFolderCreateWithoutOwner.status)
+
+                // Both an owner and an admin can create courses within the authorized class.
+                val ownerCourseCreate = client.post("/api/v1/classes/${ownerClass.id}/courses") {
+                    bearerAuth("owner-token")
+                    contentType(ContentType.Application.Json)
+                    setBody("""{"title":"دوره تازه مالک"}""")
+                }
+                assertEquals(HttpStatusCode.Created, ownerCourseCreate.status)
+
+                val adminCourseCreate = client.post("/api/v1/classes/${otherTeacherClass.id}/courses") {
+                    bearerAuth("admin-token")
+                    contentType(ContentType.Application.Json)
+                    setBody("""{"title":"دوره تازه مدیر"}""")
+                }
+                assertEquals(HttpStatusCode.Created, adminCourseCreate.status)
+
                 val guestClassCreate = client.post("/api/v1/classes") {
                     contentType(ContentType.Application.Json)
                     setBody("""{"title":"Guest class","visibility":"public"}""")
