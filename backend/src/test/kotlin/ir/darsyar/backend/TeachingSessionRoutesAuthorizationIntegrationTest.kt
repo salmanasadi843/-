@@ -332,6 +332,70 @@ class TeachingSessionRoutesAuthorizationIntegrationTest {
                 assertEquals(HttpStatusCode.OK, studentUnjoinedPrivateSessions.status)
                 assertFalse(studentUnjoinedPrivateSessions.bodyAsText().contains(foreignSession.id))
 
+                // Membership endpoints are restricted to the class owner or main admin.
+                val ownerMemberships = client.get(
+                    "/api/v1/classes/${memberPrivateClass.id}/memberships"
+                ) {
+                    bearerAuth("other-teacher-token")
+                }
+                assertEquals(HttpStatusCode.OK, ownerMemberships.status)
+                assertContains(ownerMemberships.bodyAsText(), student.toString())
+
+                val adminMemberships = client.get(
+                    "/api/v1/classes/${memberPrivateClass.id}/memberships"
+                ) {
+                    bearerAuth("admin-token")
+                }
+                assertEquals(HttpStatusCode.OK, adminMemberships.status)
+                assertContains(adminMemberships.bodyAsText(), student.toString())
+
+                val foreignTeacherMemberships = client.get(
+                    "/api/v1/classes/${memberPrivateClass.id}/memberships"
+                ) {
+                    bearerAuth("owner-token")
+                }
+                assertEquals(HttpStatusCode.Forbidden, foreignTeacherMemberships.status)
+
+                val studentMemberships = client.get(
+                    "/api/v1/classes/${memberPrivateClass.id}/memberships"
+                ) {
+                    bearerAuth("student-token")
+                }
+                assertEquals(HttpStatusCode.Forbidden, studentMemberships.status)
+
+                val guestMemberships = client.get(
+                    "/api/v1/classes/${memberPrivateClass.id}/memberships"
+                )
+                assertEquals(HttpStatusCode.Unauthorized, guestMemberships.status)
+
+                val foreignTeacherRevoke = client.delete(
+                    "/api/v1/classes/${memberPrivateClass.id}/memberships/${student}"
+                ) {
+                    bearerAuth("owner-token")
+                }
+                assertEquals(HttpStatusCode.Forbidden, foreignTeacherRevoke.status)
+
+                val adminRevoke = client.delete(
+                    "/api/v1/classes/${memberPrivateClass.id}/memberships/${student}"
+                ) {
+                    bearerAuth("admin-token")
+                }
+                assertEquals(HttpStatusCode.NoContent, adminRevoke.status)
+
+                val studentAfterRevokeClasses = client.get("/api/v1/classes") {
+                    bearerAuth("student-token")
+                }.bodyAsText()
+                assertFalse(studentAfterRevokeClasses.contains(memberPrivateClass.id))
+                assertContains(studentAfterRevokeClasses, ownerClass.id)
+
+                val studentAfterRevokeSessions = client.get(
+                    "/api/v1/classes/${memberPrivateClass.id}/sessions"
+                ) {
+                    bearerAuth("student-token")
+                }
+                assertEquals(HttpStatusCode.OK, studentAfterRevokeSessions.status)
+                assertFalse(studentAfterRevokeSessions.bodyAsText().contains(memberPrivateSession.id))
+
                 val adminClasses = client.get("/api/v1/classes") {
                     bearerAuth("admin-token")
                 }.bodyAsText()
