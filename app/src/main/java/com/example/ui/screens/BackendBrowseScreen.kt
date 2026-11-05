@@ -83,6 +83,7 @@ fun BackendBrowseScreen(onBack: () -> Unit) {
     var notificationOpenSequence by remember { mutableIntStateOf(0) }
     var status by remember { mutableStateOf("در حال آماده‌سازی اتصال…") }
     var editingClass by remember { mutableStateOf<BackendClassDto?>(null) }
+    var creatingClass by remember { mutableStateOf(false) }
     var classTitleDraft by remember { mutableStateOf("") }
     var classDescriptionDraft by remember { mutableStateOf("") }
     var classTermDraft by remember { mutableStateOf("") }
@@ -248,7 +249,20 @@ fun BackendBrowseScreen(onBack: () -> Unit) {
         }
     }
 
+    fun beginCreateClass(ownerTeacherId: String) {
+        editingClass = null
+        creatingClass = true
+        classTitleDraft = ""
+        classDescriptionDraft = ""
+        classTermDraft = ""
+        classVisibilityDraft = "private"
+        classPublishedDraft = false
+        classHiddenDraft = false
+        classFolderDraft = selectedFolderId
+    }
+
     fun beginEditClass(clazz: BackendClassDto) {
+        creatingClass = false
         editingClass = clazz
         classTitleDraft = clazz.title
         classDescriptionDraft = clazz.description
@@ -260,32 +274,40 @@ fun BackendBrowseScreen(onBack: () -> Unit) {
     }
 
     fun saveClassChanges() {
-        val current = editingClass ?: return
+        val current = editingClass
         if (classTitleDraft.isBlank()) {
             status = "عنوان کلاس نمی‌تواند خالی باشد."
             return
         }
         withFreshToken { token ->
-            val updated = withContext(Dispatchers.IO) {
-                DarsyarReadOnlyApiFactory.create().updateClass(
-                    token,
-                    current.id,
-                    BackendClassWriteRequest(
-                        title = classTitleDraft.trim(),
-                        description = classDescriptionDraft,
-                        term = classTermDraft,
-                        visibility = classVisibilityDraft,
-                        isPublished = classPublishedDraft,
-                        isHidden = classHiddenDraft,
-                        sortOrder = current.sortOrder,
-                        folderId = classFolderDraft
-                    )
-                )
+            val repository = DarsyarReadOnlyApiFactory.create()
+            val writeRequest = BackendClassWriteRequest(
+                title = classTitleDraft.trim(),
+                ownerUserId = if (current == null && "super_admin" in accountRoles) selectedTeacherId else null,
+                description = classDescriptionDraft,
+                term = classTermDraft,
+                visibility = classVisibilityDraft,
+                isPublished = classPublishedDraft,
+                isHidden = classHiddenDraft,
+                sortOrder = current?.sortOrder ?: 0,
+                folderId = classFolderDraft
+            )
+            val saved = withContext(Dispatchers.IO) {
+                if (current == null) repository.createClass(token, writeRequest)
+                else repository.updateClass(token, current.id, writeRequest)
             }
-            classes = classes.map { if (it.id == updated.id) updated else it }
-            selectedClass = selectedClass?.let { if (it.id == updated.id) updated else it }
+            classes = if (current == null) classes + saved else classes.map { if (it.id == saved.id) saved else it }
+            if (current == null) {
+                selectedTeacherId = saved.ownerUserId
+                selectedClass = saved
+                sessions = emptyList()
+                selectedSession = null
+            } else {
+                selectedClass = selectedClass?.let { if (it.id == saved.id) saved else it }
+            }
             editingClass = null
-            status = "تغییرات کلاس ذخیره شد."
+            creatingClass = false
+            status = if (current == null) "کلاس جدید ایجاد شد." else "تغییرات کلاس ذخیره شد."
         }
     }
 
@@ -720,6 +742,7 @@ fun BackendBrowseScreen(onBack: () -> Unit) {
                         Text("۲. کلاس‌های استاد", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
                         Spacer(Modifier.weight(1f))
                         if ("super_admin" in accountRoles || ("teacher" in accountRoles && teacherId == accountId)) {
+                            TextButton(onClick = { beginCreateClass(teacherId) }, enabled = !busy) { Text("کلاس جدید") }
                             TextButton(onClick = { openDeletedClasses() }, enabled = !busy) { Text("کلاس‌های حذف‌شده") }
                         }
                         TextButton(onClick = { selectedTeacherId = null; selectedClass = null; sessions = emptyList(); selectedSession = null }) {
@@ -1334,10 +1357,10 @@ fun BackendBrowseScreen(onBack: () -> Unit) {
             }
         )
     }
-    if (editingClass != null) {
+    if (editingClass != null || creatingClass) {
         AlertDialog(
-            onDismissRequest = { if (!busy) editingClass = null },
-            title = { Text("مدیریت کلاس") },
+            onDismissRequest = { if (!busy) { editingClass = null; creatingClass = false } },
+            title = { Text(if (creatingClass) "ایجاد کلاس جدید" else "مدیریت کلاس") },
             text = {
                 Column(
                     modifier = Modifier.fillMaxWidth().heightIn(max = 560.dp),
@@ -1373,7 +1396,7 @@ fun BackendBrowseScreen(onBack: () -> Unit) {
                             label = { Text("بدون پوشه") }
                         )
                         teacherFolders.filter {
-                            it.ownerUserId == editingClass?.ownerUserId &&
+                            it.ownerUserId == (editingClass?.ownerUserId ?: if ("super_admin" in accountRoles) selectedTeacherId else accountId) &&
                                 ("super_admin" in accountRoles || ("teacher" in accountRoles && editingClass?.ownerUserId == accountId) || !it.isHidden)
                         }.sortedWith(compareBy<BackendTeacherFolderDto> { folderDepth(it) }.thenBy { it.sortOrder })
                             .forEach { folder ->
@@ -1415,8 +1438,10 @@ fun BackendBrowseScreen(onBack: () -> Unit) {
             },
             dismissButton = {
                 Row {
-                    TextButton(onClick = { confirmDeleteClass = editingClass }, enabled = !busy) { Text("حذف کلاس") }
-                    TextButton(onClick = { editingClass = null }, enabled = !busy) { Text("انصراف") }
+                    if (!creatingClass) {
+                        TextButton(onClick = { confirmDeleteClass = editingClass }, enabled = !busy) { Text("حذف کلاس") }
+                    }
+                    TextButton(onClick = { editingClass = null; creatingClass = false }, enabled = !busy) { Text("انصراف") }
                 }
             }
         )
