@@ -75,14 +75,18 @@ class TeacherFolderManagementRouteIntegrationTest {
                 setOf(AppRole.TEACHER),
                 CreateTeacherFolder(ownerId.toString(), folder.id, "زیرپوشه")
             )
-            dataSource.connection.use { connection ->
+            val publicClassId = dataSource.connection.use { connection ->
                 connection.prepareStatement(
                     """INSERT INTO teaching_classes(owner_user_id, folder_id, title, visibility, is_published, is_hidden)
-                       VALUES (?, ?, 'کلاس عمومی در زیرپوشه', 'public', true, false)"""
+                       VALUES (?, ?, 'کلاس عمومی در زیرپوشه', 'public', true, false)
+                       RETURNING id::text"""
                 ).use { statement ->
                     statement.setObject(1, ownerId)
                     statement.setObject(2, UUID.fromString(childFolder.id))
-                    statement.executeUpdate()
+                    statement.executeQuery().use { rows ->
+                        check(rows.next())
+                        rows.getString(1)
+                    }
                 }
             }
 
@@ -184,6 +188,12 @@ class TeacherFolderManagementRouteIntegrationTest {
             assertEquals(HttpStatusCode.OK, studentHiddenList.status, studentHiddenBody)
             assertTrue(!studentHiddenBody.contains(folder.id), studentHiddenBody)
             assertTrue(!studentHiddenBody.contains(childFolder.id), studentHiddenBody)
+
+            // Hiding the folder tree must not revoke the independently public class catalog entry.
+            val anonymousPublicClasses = client.get("/api/v1/public/classes")
+            val anonymousPublicClassesBody = anonymousPublicClasses.bodyAsText()
+            assertEquals(HttpStatusCode.OK, anonymousPublicClasses.status, anonymousPublicClassesBody)
+            assertTrue(anonymousPublicClassesBody.contains(publicClassId), anonymousPublicClassesBody)
 
             val forbiddenDelete = client.delete("/api/v1/teacher-folders/${folder.id}") {
                 header(HttpHeaders.Authorization, "Bearer other-teacher-token")
