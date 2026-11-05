@@ -119,6 +119,11 @@ class ClassAccessCodeRoutesIntegrationTest {
             }
             assertEquals(HttpStatusCode.Forbidden, foreignList.status, foreignList.bodyAsText())
 
+            val studentList = client.get("/api/v1/classes/${privateClass.id}/access-codes") {
+                header(HttpHeaders.Authorization, "Bearer student-token")
+            }
+            assertEquals(HttpStatusCode.Forbidden, studentList.status, studentList.bodyAsText())
+
             val foreignCreate = client.post("/api/v1/classes/${privateClass.id}/access-codes") {
                 header(HttpHeaders.Authorization, "Bearer other-teacher-token")
                 contentType(ContentType.Application.Json)
@@ -137,6 +142,11 @@ class ClassAccessCodeRoutesIntegrationTest {
                 header(HttpHeaders.Authorization, "Bearer other-teacher-token")
             }
             assertEquals(HttpStatusCode.Forbidden, foreignDeactivate.status, foreignDeactivate.bodyAsText())
+
+            val studentDeactivate = client.delete("/api/v1/access-codes/$ownerCodeId") {
+                header(HttpHeaders.Authorization, "Bearer student-token")
+            }
+            assertEquals(HttpStatusCode.Forbidden, studentDeactivate.status, studentDeactivate.bodyAsText())
 
             val studentRedeem = client.post("/api/v1/class-memberships/redeem") {
                 header(HttpHeaders.Authorization, "Bearer student-token")
