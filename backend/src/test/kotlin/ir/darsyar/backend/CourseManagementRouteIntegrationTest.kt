@@ -3,6 +3,7 @@ package ir.darsyar.backend
 import com.zaxxer.hikari.HikariConfig
 import com.zaxxer.hikari.HikariDataSource
 import io.ktor.client.request.delete
+import io.ktor.client.request.get
 import io.ktor.client.request.header
 import io.ktor.client.request.patch
 import io.ktor.client.request.post
@@ -43,21 +44,24 @@ class CourseManagementRouteIntegrationTest {
             val adminId = UUID.randomUUID()
             val ownerId = UUID.randomUUID()
             val otherTeacherId = UUID.randomUUID()
+            val studentId = UUID.randomUUID()
 
             dataSource.connection.use { connection ->
                 connection.prepareStatement(
-                    "INSERT INTO app_users(id, display_name) VALUES (?, 'مدیر'), (?, 'استاد مالک'), (?, 'استاد دیگر')"
+                    "INSERT INTO app_users(id, display_name) VALUES (?, 'مدیر'), (?, 'استاد مالک'), (?, 'استاد دیگر'), (?, 'دانشجو')"
                 ).use { statement ->
                     statement.setObject(1, adminId)
                     statement.setObject(2, ownerId)
                     statement.setObject(3, otherTeacherId)
+                    statement.setObject(4, studentId)
                     statement.executeUpdate()
                 }
                 connection.prepareStatement(
-                    "INSERT INTO app_roles(user_id, role_name) VALUES (?, 'teacher'), (?, 'teacher')"
+                    "INSERT INTO app_roles(user_id, role_name) VALUES (?, 'teacher'), (?, 'teacher'), (?, 'student')"
                 ).use { statement ->
                     statement.setObject(1, ownerId)
                     statement.setObject(2, otherTeacherId)
+                    statement.setObject(3, studentId)
                     statement.executeUpdate()
                 }
             }
@@ -69,7 +73,8 @@ class CourseManagementRouteIntegrationTest {
             val identities = mapOf(
                 "admin-token" to (adminId.toString() to setOf(AppRole.SUPER_ADMIN)),
                 "owner-token" to (ownerId.toString() to setOf(AppRole.TEACHER)),
-                "other-teacher-token" to (otherTeacherId.toString() to setOf(AppRole.TEACHER))
+                "other-teacher-token" to (otherTeacherId.toString() to setOf(AppRole.TEACHER)),
+                "student-token" to (studentId.toString() to setOf(AppRole.STUDENT))
             )
             val verifier = IdentityTokenVerifier { token ->
                 check(token in identities)
@@ -81,6 +86,28 @@ class CourseManagementRouteIntegrationTest {
                 AuthenticatedUserRecord(userId = userId, status = "active", roles = roles)
             }
             application { module(dataSource, verifier, users) }
+
+            val guestList = client.get("/api/v1/classes/${classRecord.id}/courses")
+            assertEquals(HttpStatusCode.Unauthorized, guestList.status, guestList.bodyAsText())
+
+            val studentList = client.get("/api/v1/classes/${classRecord.id}/courses") {
+                header(HttpHeaders.Authorization, "Bearer student-token")
+            }
+            assertEquals(HttpStatusCode.OK, studentList.status, studentList.bodyAsText())
+            assertEquals("[]", studentList.bodyAsText(), "A student without active membership must not see courses in a private class.")
+
+            val studentCreate = client.post("/api/v1/classes/${classRecord.id}/courses") {
+                header(HttpHeaders.Authorization, "Bearer student-token")
+                contentType(ContentType.Application.Json)
+                setBody("""{"title":"دوره دانشجو","teacherName":"","description":"","createdAtMs":null,"sortOrder":0}""")
+            }
+            assertEquals(HttpStatusCode.Forbidden, studentCreate.status, studentCreate.bodyAsText())
+
+            val guestCreate = client.post("/api/v1/classes/${classRecord.id}/courses") {
+                contentType(ContentType.Application.Json)
+                setBody("""{"title":"دوره مهمان","teacherName":"","description":"","createdAtMs":null,"sortOrder":0}""")
+            }
+            assertEquals(HttpStatusCode.Unauthorized, guestCreate.status, guestCreate.bodyAsText())
 
             val foreignCreate = client.post("/api/v1/classes/${classRecord.id}/courses") {
                 header(HttpHeaders.Authorization, "Bearer other-teacher-token")
@@ -98,6 +125,18 @@ class CourseManagementRouteIntegrationTest {
             assertEquals(HttpStatusCode.Created, adminCreate.status, adminCreateBody)
             val courseId = Regex(""""id":"([^"]+)"""").find(adminCreateBody)?.groupValues?.get(1)
             assertTrue(!courseId.isNullOrBlank(), adminCreateBody)
+
+            val studentUpdate = client.patch("/api/v1/courses/$courseId") {
+                header(HttpHeaders.Authorization, "Bearer student-token")
+                contentType(ContentType.Application.Json)
+                setBody("""{"title":"ویرایش غیرمجاز دانشجو","teacherName":"","description":"","createdAtMs":null,"sortOrder":0}""")
+            }
+            assertEquals(HttpStatusCode.Forbidden, studentUpdate.status, studentUpdate.bodyAsText())
+
+            val studentDelete = client.delete("/api/v1/courses/$courseId") {
+                header(HttpHeaders.Authorization, "Bearer student-token")
+            }
+            assertEquals(HttpStatusCode.Forbidden, studentDelete.status, studentDelete.bodyAsText())
 
             val updateBody = """{"title":"دوره ویرایش‌شده توسط مدیر","teacherName":"استاد","description":"مدیریت بین‌استادی","createdAtMs":10,"sortOrder":2}"""
             val forbiddenUpdate = client.patch("/api/v1/courses/$courseId") {
