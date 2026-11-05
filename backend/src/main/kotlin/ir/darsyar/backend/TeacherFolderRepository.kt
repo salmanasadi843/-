@@ -38,12 +38,24 @@ class TeacherFolderRepository(private val dataSource: DataSource) {
         val teacher = AppRole.TEACHER in roles
         val student = AppRole.STUDENT in roles
         val sql = """
-            WITH RECURSIVE visible_folder_tree(id, parent_folder_id) AS (
-                SELECT f.id, f.parent_folder_id
+            WITH RECURSIVE folder_tree(id, parent_folder_id, owner_user_id, ancestors_visible) AS (
+                SELECT f.id, f.parent_folder_id, f.owner_user_id, NOT f.is_hidden
                 FROM teacher_folders f
-                WHERE EXISTS (
+                WHERE f.parent_folder_id IS NULL AND f.deleted_at IS NULL
+                UNION ALL
+                SELECT child.id, child.parent_folder_id, child.owner_user_id,
+                       parent.ancestors_visible AND NOT child.is_hidden
+                FROM teacher_folders child
+                JOIN folder_tree parent ON child.parent_folder_id = parent.id
+                WHERE child.deleted_at IS NULL
+            ),
+            visible_folder_tree(id, parent_folder_id) AS (
+                SELECT folder.id, folder.parent_folder_id
+                FROM folder_tree folder
+                WHERE folder.ancestors_visible
+                  AND EXISTS (
                     SELECT 1 FROM teaching_classes c
-                    WHERE c.folder_id = f.id AND c.owner_user_id = f.owner_user_id
+                    WHERE c.folder_id = folder.id AND c.owner_user_id = folder.owner_user_id
                       AND c.deleted_at IS NULL AND c.is_published = true AND c.is_hidden = false
                       AND (
                           c.visibility = 'public' OR (? AND EXISTS (
@@ -52,12 +64,12 @@ class TeacherFolderRepository(private val dataSource: DataSource) {
                                 AND m.status = 'active'
                           ))
                       )
-                )
+                  )
                 UNION
                 SELECT parent.id, parent.parent_folder_id
-                FROM teacher_folders parent
+                FROM folder_tree parent
                 JOIN visible_folder_tree child ON child.parent_folder_id = parent.id
-                WHERE parent.deleted_at IS NULL
+                WHERE parent.ancestors_visible
             )
             SELECT f.id::text, f.owner_user_id::text, f.parent_folder_id::text,
                    f.name, f.sort_order, f.is_hidden, f.version
