@@ -93,6 +93,7 @@ fun BackendBrowseScreen(onBack: () -> Unit) {
     var movingSession by remember { mutableStateOf<BackendSessionSummaryDto?>(null) }
     var moveTargetClassId by remember { mutableStateOf("") }
     var editingSession by remember { mutableStateOf<BackendSessionDto?>(null) }
+    var creatingSession by remember { mutableStateOf(false) }
     var sessionTitleDraft by remember { mutableStateOf("") }
     var sessionCourseDraft by remember { mutableStateOf("") }
     var sessionProfessorDraft by remember { mutableStateOf("") }
@@ -396,50 +397,86 @@ fun BackendBrowseScreen(onBack: () -> Unit) {
         sessionPublishedDraft = detail.isPublished
     }
 
+    fun beginCreateSession() {
+        if (selectedClass == null) return
+        editingSession = null
+        creatingSession = true
+        sessionTitleDraft = ""
+        sessionCourseDraft = ""
+        sessionProfessorDraft = teachers.firstOrNull { it.userId == selectedClass?.ownerUserId }?.displayName.orEmpty()
+        sessionTranscriptDraft = ""
+        sessionSummaryDraft = ""
+        sessionKeyPointsDraft = ""
+        sessionTagsDraft = ""
+        sessionPublishedDraft = false
+    }
+
     fun saveSessionChanges() {
-        val current = editingSession ?: return
+        val clazz = selectedClass ?: return
+        val current = editingSession
+        if (current == null && !creatingSession) return
         if (sessionTitleDraft.isBlank()) {
             status = "عنوان جلسه نمی‌تواند خالی باشد."
             return
         }
         withFreshToken { token ->
-            val updated = withContext(Dispatchers.IO) {
-                DarsyarReadOnlyApiFactory.create().updateSession(
-                    token,
-                    current.id,
-                    BackendSessionWriteRequest(
-                        courseId = current.courseId,
-                        title = sessionTitleDraft.trim(),
-                        courseName = sessionCourseDraft,
-                        professorName = sessionProfessorDraft,
-                        dateMs = current.dateMs,
-                        audioDurationMs = current.audioDurationMs,
-                        transcript = sessionTranscriptDraft,
-                        originalTranscript = current.originalTranscript,
-                        aiSummary = sessionSummaryDraft.ifBlank { null },
-                        aiKeyPoints = sessionKeyPointsDraft.ifBlank { null },
-                        aiQuizJson = current.aiQuizJson,
-                        tags = sessionTagsDraft,
-                        isPublished = sessionPublishedDraft,
-                        lastEditedMs = System.currentTimeMillis(),
-                        sortOrder = current.sortOrder
-                    )
-                )
+            val repository = DarsyarReadOnlyApiFactory.create()
+            val request = BackendSessionWriteRequest(
+                courseId = current?.courseId,
+                title = sessionTitleDraft.trim(),
+                courseName = sessionCourseDraft,
+                professorName = sessionProfessorDraft,
+                dateMs = current?.dateMs ?: System.currentTimeMillis(),
+                audioDurationMs = current?.audioDurationMs ?: 0L,
+                transcript = sessionTranscriptDraft,
+                originalTranscript = current?.originalTranscript ?: sessionTranscriptDraft,
+                aiSummary = sessionSummaryDraft.ifBlank { null },
+                aiKeyPoints = sessionKeyPointsDraft.ifBlank { null },
+                aiQuizJson = current?.aiQuizJson,
+                tags = sessionTagsDraft,
+                isPublished = sessionPublishedDraft,
+                lastEditedMs = System.currentTimeMillis(),
+                sortOrder = current?.sortOrder ?: sessions.size
+            )
+            val saved = withContext(Dispatchers.IO) {
+                if (current == null) repository.createSession(token, clazz.id, request)
+                else repository.updateSession(token, current.id, request)
             }
-            selectedSession = updated
-            sessions = sessions.map {
-                if (it.id == updated.id) it.copy(
-                    title = updated.title,
-                    courseName = updated.courseName,
-                    professorName = updated.professorName,
-                    tags = updated.tags,
-                    isPublished = updated.isPublished,
-                    lastEditedMs = updated.lastEditedMs,
-                    version = updated.version
+            selectedSession = saved
+            sessions = if (current == null) {
+                sessions + BackendSessionSummaryDto(
+                    id = saved.id,
+                    classId = saved.classId,
+                    courseId = saved.courseId,
+                    title = saved.title,
+                    courseName = saved.courseName,
+                    professorName = saved.professorName,
+                    dateMs = saved.dateMs,
+                    audioDurationMs = saved.audioDurationMs,
+                    tags = saved.tags,
+                    isPublished = saved.isPublished,
+                    lastEditedMs = saved.lastEditedMs,
+                    sortOrder = saved.sortOrder,
+                    version = saved.version
+                )
+            } else sessions.map {
+                if (it.id == saved.id) it.copy(
+                    title = saved.title,
+                    courseName = saved.courseName,
+                    professorName = saved.professorName,
+                    tags = saved.tags,
+                    isPublished = saved.isPublished,
+                    lastEditedMs = saved.lastEditedMs,
+                    version = saved.version
                 ) else it
             }
             editingSession = null
-            status = "محتوای جلسه ذخیره شد؛ متن اصلی بدون تغییر باقی ماند."
+            creatingSession = false
+            status = if (current == null) {
+                "جلسه جدید ایجاد شد؛ متن اولیه نیز به‌عنوان متن اصلی حفظ شد."
+            } else {
+                "محتوای جلسه ذخیره شد؛ متن اصلی بدون تغییر باقی ماند."
+            }
         }
     }
 
@@ -796,6 +833,7 @@ fun BackendBrowseScreen(onBack: () -> Unit) {
                     Row(verticalAlignment = Alignment.CenterVertically) {
                         Text("۳. جلسه‌های «${clazz.title}»", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
                         if ("super_admin" in accountRoles || ("teacher" in accountRoles && clazz.ownerUserId == accountId)) {
+                            TextButton(onClick = { beginCreateSession() }, enabled = !busy) { Text("جلسه جدید") }
                             TextButton(onClick = { openDeletedSessions() }, enabled = !busy) { Text("سطل بازیافت") }
                         }
                         Spacer(Modifier.weight(1f))
@@ -1146,10 +1184,10 @@ fun BackendBrowseScreen(onBack: () -> Unit) {
             }
         )
     }
-    if (editingSession != null) {
+    if (editingSession != null || creatingSession) {
         AlertDialog(
-            onDismissRequest = { if (!busy) editingSession = null },
-            title = { Text("ویرایش محتوای جلسه") },
+            onDismissRequest = { if (!busy) { editingSession = null; creatingSession = false } },
+            title = { Text(if (creatingSession) "ایجاد جلسه جدید" else "ویرایش محتوای جلسه") },
             text = {
                 Column(
                     modifier = Modifier.fillMaxWidth().heightIn(max = 600.dp),
@@ -1218,10 +1256,10 @@ fun BackendBrowseScreen(onBack: () -> Unit) {
                 TextButton(
                     onClick = { saveSessionChanges() },
                     enabled = !busy && sessionTitleDraft.isNotBlank()
-                ) { Text("ذخیره تغییرات") }
+                ) { Text(if (creatingSession) "ایجاد جلسه" else "ذخیره تغییرات") }
             },
             dismissButton = {
-                TextButton(onClick = { editingSession = null }, enabled = !busy) { Text("انصراف") }
+                TextButton(onClick = { editingSession = null; creatingSession = false }, enabled = !busy) { Text("انصراف") }
             }
         )
     }
