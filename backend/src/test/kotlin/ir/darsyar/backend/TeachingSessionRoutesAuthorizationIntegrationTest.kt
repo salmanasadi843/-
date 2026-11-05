@@ -351,8 +351,9 @@ class TeachingSessionRoutesAuthorizationIntegrationTest {
                 }.bodyAsText()
                 assertContains(otherTeacherClasses, ownerClass.id)
                 assertContains(otherTeacherClasses, otherTeacherClass.id)
-                assertFalse(otherTeacherClasses.contains(hiddenPublicClass.id))
-                assertFalse(otherTeacherClasses.contains(unpublishedPublicClass.id))
+                // The owning teacher retains access to their own hidden and unpublished classes.
+                assertContains(otherTeacherClasses, hiddenPublicClass.id)
+                assertContains(otherTeacherClasses, unpublishedPublicClass.id)
 
                 val studentClasses = client.get("/api/v1/classes") {
                     bearerAuth("student-token")
