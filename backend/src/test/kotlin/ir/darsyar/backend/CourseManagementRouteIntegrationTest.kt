@@ -82,6 +82,13 @@ class CourseManagementRouteIntegrationTest {
             }
             application { module(dataSource, verifier, users) }
 
+            val foreignCreate = client.post("/api/v1/classes/${classRecord.id}/courses") {
+                header(HttpHeaders.Authorization, "Bearer other-teacher-token")
+                contentType(ContentType.Application.Json)
+                setBody("""{"title":"دوره غیرمجاز","teacherName":"استاد دیگر","description":"","createdAtMs":null,"sortOrder":0}""")
+            }
+            assertEquals(HttpStatusCode.Forbidden, foreignCreate.status, foreignCreate.bodyAsText())
+
             val adminCreate = client.post("/api/v1/classes/${classRecord.id}/courses") {
                 header(HttpHeaders.Authorization, "Bearer admin-token")
                 contentType(ContentType.Application.Json)
@@ -135,6 +142,11 @@ class CourseManagementRouteIntegrationTest {
                 setBody("""{"title":"دوره ویرایش‌شده استاد","teacherName":"استاد","description":"","createdAtMs":null,"sortOrder":1}""")
             }
             assertEquals(HttpStatusCode.OK, ownerUpdate.status, ownerUpdate.bodyAsText())
+
+            val ownerDelete = client.delete("/api/v1/courses/$ownerCourseId") {
+                header(HttpHeaders.Authorization, "Bearer owner-token")
+            }
+            assertEquals(HttpStatusCode.NoContent, ownerDelete.status, ownerDelete.bodyAsText())
         }
     }
 }
