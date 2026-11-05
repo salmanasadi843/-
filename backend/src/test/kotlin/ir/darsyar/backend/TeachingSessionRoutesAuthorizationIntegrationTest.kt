@@ -350,7 +350,7 @@ class TeachingSessionRoutesAuthorizationIntegrationTest {
                     val anonymousMismatchedParentDetail = client.get(
                         "/api/v1/public/classes/${ownerClass.id}/sessions/${foreignSession.id}"
                     )
-                    assertEquals(HttpStatusCode.NotFound, anonymousMismatchedParentDetail.status, "A public parent must not expose a session belonging to a different private class.")
+                    check(anonymousMismatchedParentDetail.status == HttpStatusCode.NotFound) { "PUBLIC_CROSS_CLASS_DETAIL: expected 404, got ${anonymousMismatchedParentDetail.status}; body=${anonymousMismatchedParentDetail.bodyAsText()}" }
 
                     val anonymousHiddenSessions = client.get(
                         "/api/v1/public/classes/${hiddenPublicClass.id}/sessions"
@@ -406,7 +406,7 @@ class TeachingSessionRoutesAuthorizationIntegrationTest {
                     ) {
                         bearerAuth("student-token")
                     }
-                    assertEquals(HttpStatusCode.OK, studentPrivateSessionDetail.status, "An active member must be able to read a session detail in their private class.")
+                    check(studentPrivateSessionDetail.status == HttpStatusCode.OK) { "ACTIVE_MEMBER_DETAIL: expected 200, got ${studentPrivateSessionDetail.status}; body=${studentPrivateSessionDetail.bodyAsText()}" }
                     assertContains(studentPrivateSessionDetail.bodyAsText(), memberPrivateSession.id)
 
                     // An active membership to one class must not authorize another private class.
@@ -415,7 +415,7 @@ class TeachingSessionRoutesAuthorizationIntegrationTest {
                     ) {
                         bearerAuth("student-token")
                     }
-                    assertEquals(HttpStatusCode.NotFound, studentForeignPrivateSessionDetail.status, "Membership in one private class must not grant access to another private class.")
+                    check(studentForeignPrivateSessionDetail.status == HttpStatusCode.NotFound) { "FOREIGN_PRIVATE_DETAIL: expected 404, got ${studentForeignPrivateSessionDetail.status}; body=${studentForeignPrivateSessionDetail.bodyAsText()}" }
 
                     val studentUnjoinedPrivateSessions = client.get(
                         "/api/v1/classes/${otherTeacherClass.id}/sessions"
@@ -514,7 +514,7 @@ class TeachingSessionRoutesAuthorizationIntegrationTest {
                     ) {
                         bearerAuth("student-token")
                     }
-                    assertEquals(HttpStatusCode.NotFound, studentAfterRevokeSessionDetail.status, "Revoking membership must also revoke session-detail access.")
+                    check(studentAfterRevokeSessionDetail.status == HttpStatusCode.NotFound) { "REVOKED_MEMBER_DETAIL: expected 404, got ${studentAfterRevokeSessionDetail.status}; body=${studentAfterRevokeSessionDetail.bodyAsText()}" }
 
                     val adminClasses = client.get("/api/v1/classes") {
                         bearerAuth("admin-token")
