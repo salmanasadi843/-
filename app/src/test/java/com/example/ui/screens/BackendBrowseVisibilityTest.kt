@@ -60,7 +60,7 @@ class BackendBrowseVisibilityTest {
                 folderId = "visible-folder",
                 visibility = "private",
                 isPublished = false,
-                isHidden = true,
+                isHidden = false,
                 canSeeHiddenFolders = false,
                 visibleFolderIds = setOf("visible-folder")
             )
