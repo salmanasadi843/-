@@ -3,6 +3,7 @@ package ir.darsyar.backend
 import com.zaxxer.hikari.HikariConfig
 import com.zaxxer.hikari.HikariDataSource
 import io.ktor.client.request.delete
+import io.ktor.client.request.get
 import io.ktor.client.request.header
 import io.ktor.client.request.patch
 import io.ktor.client.request.post
@@ -86,6 +87,27 @@ class TeacherFolderManagementRouteIntegrationTest {
 
             application { module(dataSource, verifier, users) }
 
+            val ownerList = client.get("/api/v1/teacher-folders") {
+                header(HttpHeaders.Authorization, "Bearer owner-token")
+            }
+            val ownerListBody = ownerList.bodyAsText()
+            assertEquals(HttpStatusCode.OK, ownerList.status, ownerListBody)
+            assertTrue(ownerListBody.contains(folder.id), ownerListBody)
+
+            val adminList = client.get("/api/v1/teacher-folders") {
+                header(HttpHeaders.Authorization, "Bearer admin-token")
+            }
+            val adminListBody = adminList.bodyAsText()
+            assertEquals(HttpStatusCode.OK, adminList.status, adminListBody)
+            assertTrue(adminListBody.contains(folder.id), adminListBody)
+
+            val otherTeacherList = client.get("/api/v1/teacher-folders") {
+                header(HttpHeaders.Authorization, "Bearer other-teacher-token")
+            }
+            val otherTeacherListBody = otherTeacherList.bodyAsText()
+            assertEquals(HttpStatusCode.OK, otherTeacherList.status, otherTeacherListBody)
+            assertTrue(!otherTeacherListBody.contains(folder.id), otherTeacherListBody)
+
             val updateBody = """{
                 "name":"پوشه ویرایش‌شده توسط مدیر",
                 "parentFolderId":null,
@@ -109,6 +131,20 @@ class TeacherFolderManagementRouteIntegrationTest {
             assertEquals(HttpStatusCode.OK, adminUpdate.status, updateResponse)
             assertTrue(updateResponse.contains("پوشه ویرایش‌شده توسط مدیر"), updateResponse)
             assertTrue(updateResponse.contains("\"isHidden\":true"), updateResponse)
+
+            val ownerHiddenList = client.get("/api/v1/teacher-folders") {
+                header(HttpHeaders.Authorization, "Bearer owner-token")
+            }
+            val ownerHiddenBody = ownerHiddenList.bodyAsText()
+            assertEquals(HttpStatusCode.OK, ownerHiddenList.status, ownerHiddenBody)
+            assertTrue(ownerHiddenBody.contains(folder.id), ownerHiddenBody)
+
+            val adminHiddenList = client.get("/api/v1/teacher-folders") {
+                header(HttpHeaders.Authorization, "Bearer admin-token")
+            }
+            val adminHiddenBody = adminHiddenList.bodyAsText()
+            assertEquals(HttpStatusCode.OK, adminHiddenList.status, adminHiddenBody)
+            assertTrue(adminHiddenBody.contains(folder.id), adminHiddenBody)
 
             val forbiddenDelete = client.delete("/api/v1/teacher-folders/${folder.id}") {
                 header(HttpHeaders.Authorization, "Bearer other-teacher-token")
