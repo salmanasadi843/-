@@ -113,6 +113,16 @@ class TeacherFolderManagementRouteIntegrationTest {
 
             application { module(dataSource, verifier, users) }
 
+            // Administrators may create a folder on behalf of another teacher.
+            val adminCreateForOtherTeacher = client.post("/api/v1/teacher-folders") {
+                header(HttpHeaders.Authorization, "Bearer admin-token")
+                contentType(ContentType.Application.Json)
+                setBody("""{"ownerUserId":"$otherTeacherId","name":"پوشه ایجادشده توسط مدیر","sortOrder":0}""")
+            }
+            val adminCreateBody = adminCreateForOtherTeacher.bodyAsText()
+            assertEquals(HttpStatusCode.Created, adminCreateForOtherTeacher.status, adminCreateBody)
+            assertTrue(adminCreateBody.contains("\"ownerUserId\":\"$otherTeacherId\""), adminCreateBody)
+
             // A valid parent change must succeed over HTTP, then return to its original parent.
             val moveToDestination = client.patch("/api/v1/teacher-folders/${childFolder.id}") {
                 header(HttpHeaders.Authorization, "Bearer admin-token")
