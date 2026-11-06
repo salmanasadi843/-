@@ -1442,7 +1442,7 @@ private fun highlightSearchTerms(
     val originalIndexes = mutableListOf<Int>()
     content.forEachIndexed { index, char ->
         appendNormalizedSearchCharacter(
-            normalized, originalIndexes, normalizeSearchForHighlight(char.toString()), index
+            normalized, originalIndexes, normalizeSearchCharacterForHighlight(char), index
         )
     }
 
