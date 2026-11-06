@@ -108,6 +108,7 @@ export default function App() {
   const [loadingAdminUsers, setLoadingAdminUsers] = useState(false);
   const [adminUserQuery, setAdminUserQuery] = useState("");
   const [adminUserOffset, setAdminUserOffset] = useState(0);
+  const [adminUsersRefreshKey, setAdminUsersRefreshKey] = useState(0);
 
   useEffect(() => {
     if (!highlightedForumPostId || !forumPosts.some(post => post.id === highlightedForumPostId)) return;
@@ -208,7 +209,7 @@ export default function App() {
     }
     void loadAdminUsers();
     return () => { cancelled = true; };
-  }, [user, isAdmin, adminUserOffset]);
+  }, [user, isAdmin, adminUserOffset, adminUsersRefreshKey]);
   const canCreateClass = isAdmin || (me?.roles.includes("teacher") ?? false);
   const canRedeemCode = me?.roles.includes("student") ?? false;
   const browseFolderIds = useMemo(() => {
@@ -1220,7 +1221,7 @@ export default function App() {
     {isAdmin && <section className="panel content admin-users-panel">
       <div className="section-head">
         <div><h2>فهرست کاربران</h2><p className="muted">مشاهدهٔ حساب‌ها و نقش‌ها؛ این بخش امکان تغییر نقش یا سطح دسترسی ندارد.</p></div>
-        <button type="button" className="ghost" disabled={loadingAdminUsers} onClick={() => { setAdminUserOffset(0); setAdminUserQuery(""); }}>تازه‌سازی</button>
+        <button type="button" className="ghost" disabled={loadingAdminUsers} onClick={() => { setAdminUserQuery(""); setAdminUsersRefreshKey(value => value + 1); }}>تازه‌سازی</button>
       </div>
       <label className="admin-user-search">جست‌وجو در کاربران این صفحه
         <input value={adminUserQuery} onChange={event => setAdminUserQuery(event.target.value)} placeholder="نام، ایمیل یا شناسه کاربر…" />
