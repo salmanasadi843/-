@@ -1,6 +1,6 @@
 import { FormEvent, MouseEvent, useEffect, useMemo, useState } from "react";
 import { onAuthStateChanged, sendPasswordResetEmail, signInWithEmailAndPassword, signOut, User } from "firebase/auth";
-import { api, AccessCode, AudioSource, ClassAnnouncement, ClassMember, ClassRecord, CourseRecord, ForumPost, ForumTopic, Me, SessionDetail, SessionNote, GlobalSessionNote, SessionState, SessionSummary, Teacher, TeacherApplication, TeacherFolder, UserNotification } from "./api";
+import { api, AccessCode, AudioSource, ClassAnnouncement, ClassMember, ClassRecord, CourseRecord, ForumPost, ForumTopic, Me, SessionDetail, SessionNote, GlobalSessionNote, SessionState, SessionSummary, SessionSearchResult, Teacher, TeacherApplication, TeacherFolder, UserNotification } from "./api";
 import { auth, firebaseConfigured } from "./firebase";
 
 export default function App() {
@@ -57,6 +57,13 @@ export default function App() {
   const [sessionNotes, setSessionNotes] = useState<SessionNote[]>([]);
   const [globalNotes, setGlobalNotes] = useState<GlobalSessionNote[]>([]);
   const [globalNotesSearch, setGlobalNotesSearch] = useState("");
+  const [sessionSearchQuery, setSessionSearchQuery] = useState("");
+  const [sessionSearchMode, setSessionSearchMode] = useState<"all" | "phrase">("all");
+  const [sessionSearchResults, setSessionSearchResults] = useState<SessionSearchResult[]>([]);
+  const [sessionSearchLoading, setSessionSearchLoading] = useState(false);
+  const [searchHighlightQuery, setSearchHighlightQuery] = useState("");
+  const [searchHighlightMode, setSearchHighlightMode] = useState<"all" | "phrase">("all");
+  const [searchHighlightField, setSearchHighlightField] = useState("");
   const [showMyNotes, setShowMyNotes] = useState(false);
   const [loadingGlobalNotes, setLoadingGlobalNotes] = useState(false);
   const [pendingNoteFocusId, setPendingNoteFocusId] = useState<string | null>(null);
@@ -102,6 +109,12 @@ export default function App() {
     if (!highlightedForumPostId || !forumPosts.some(post => post.id === highlightedForumPostId)) return;
     document.getElementById(`forum-post-${highlightedForumPostId}`)?.scrollIntoView({ behavior: "smooth", block: "center" });
   }, [highlightedForumPostId, forumPosts]);
+
+  useEffect(() => {
+    if (searchHighlightQuery && detail) {
+      document.getElementById("search-highlight-target")?.scrollIntoView({ behavior: "smooth", block: "center" });
+    }
+  }, [searchHighlightQuery, searchHighlightField, searchHighlightMode, detail]);
 
   useEffect(() => {
     if (!auth) return;
@@ -330,11 +343,55 @@ export default function App() {
       setSessionState(savedState);
       setPlaybackPositionMs(savedState.lastPlaybackPositionMs);
       setSessionNotes(notes);
+      setSearchHighlightQuery(""); setSearchHighlightField("");
       setNoteQuote(""); setNoteDraft(""); setNoteOffsets(null); setActiveNoteId(null); setEditingNoteId(null);
     }
     catch (e) { setError(message(e)); }
     finally { setBusy(false); }
   }
+  async function runSessionSearch(event: FormEvent) {
+    event.preventDefault();
+    if (!user || sessionSearchQuery.trim().length < 2) return;
+    setSessionSearchLoading(true); setError(""); setNotice("");
+    try {
+      const results = await api.searchSessions(sessionSearchQuery.trim(), sessionSearchMode, await user.getIdToken());
+      setSessionSearchResults(results);
+      if (!results.length) setNotice("در محتوای قابل‌دسترسی جلسه‌ای با این عبارت پیدا نشد.");
+    } catch (e) { setError(message(e)); }
+    finally { setSessionSearchLoading(false); }
+  }
+
+  async function openSessionSearchResult(result: SessionSearchResult) {
+    if (!user) return;
+    setBusy(true); setError(""); setNotice(""); setShowMyNotes(false);
+    try {
+      const token = await user.getIdToken();
+      const classList = classes.length ? classes : await api.classes(token);
+      const classRecord = classList.find(item => item.id === result.classId);
+      if (!classRecord) throw new Error("این کلاس دیگر در فهرست قابل‌دسترسی شما نیست.");
+      const [sessionList, courseList, sessionDetail, sources, savedState, notes, topics, notices] = await Promise.all([
+        api.sessions(classRecord.id, token),
+        api.courses(classRecord.id, token),
+        api.session(classRecord.id, result.id, token),
+        api.audioSources(result.id, token),
+        api.sessionState(classRecord.id, result.id, token),
+        api.sessionNotes(classRecord.id, result.id, token),
+        api.forumTopics(classRecord.id, token),
+        api.classAnnouncements(classRecord.id, token),
+      ]);
+      setSelectedClass(classRecord); setSessions(sessionList); setCourses(courseList); setDetail(sessionDetail);
+      setAudioSources(sources); setSessionState(savedState); setPlaybackPositionMs(savedState.lastPlaybackPositionMs);
+      setSessionNotes(notes); setForumTopics(topics); setAnnouncements(notices);
+      setActiveTopic(null); setForumPosts([]);
+      setSearchHighlightMode(sessionSearchMode);
+      setSearchHighlightField(result.matchedIn);
+      setSearchHighlightQuery(["متن اصلی", "متن ویرایش‌شده"].includes(result.matchedIn) ? sessionSearchQuery.trim() : "");
+      setNoteQuote(""); setNoteDraft(""); setNoteOffsets(null); setActiveNoteId(null); setEditingNoteId(null);
+      setNotice("جلسهٔ پیدا‌شده باز شد؛ محل تطبیق در متن مشخص شده است.");
+    } catch (e) { setError(message(e)); }
+    finally { setBusy(false); }
+  }
+
   async function loadGlobalNotes() {
     if (!user) return;
     setLoadingGlobalNotes(true); setError("");
@@ -482,6 +539,45 @@ export default function App() {
     const end = start + note.quotedText.length;
     return <>{text.slice(0, start)}<mark className="note-anchor-highlight">{text.slice(start, end)}</mark>{text.slice(end)}</>;
   }
+  function highlightSearchText(source: string) {
+    const normalized = normalizeWebSearchWithOffsets(source);
+    const query = normalizeWebSearchText(searchHighlightQuery);
+    const terms = searchHighlightMode === "phrase" ? [query] : query.split(/\s+/).filter(Boolean);
+    if (!terms.length || !normalized.text) return source;
+    const ranges: Array<{ start: number; end: number }> = [];
+    terms.forEach(term => {
+      let from = 0;
+      while (from < normalized.text.length) {
+        const index = normalized.text.indexOf(term, from);
+        if (index < 0) break;
+        const start = normalized.offsets[index];
+        const end = normalized.offsets[index + term.length - 1];
+        if (start != null && end != null) ranges.push({ start, end: end + 1 });
+        from = index + Math.max(1, term.length);
+      }
+    });
+    ranges.sort((a, b) => a.start - b.start);
+    const merged = ranges.reduce<Array<{ start: number; end: number }>>((items, range) => {
+      const previous = items[items.length - 1];
+      if (previous && range.start <= previous.end) previous.end = Math.max(previous.end, range.end);
+      else items.push({ ...range });
+      return items;
+    }, []);
+    if (!merged.length) return source;
+    const parts: Array<{ text: string; highlighted: boolean }> = [];
+    let cursor = 0;
+    merged.forEach(range => {
+      if (range.start < cursor) return;
+      if (range.start > cursor) parts.push({ text: source.slice(cursor, range.start), highlighted: false });
+      parts.push({ text: source.slice(range.start, range.end), highlighted: true });
+      cursor = range.end;
+    });
+    if (cursor < source.length) parts.push({ text: source.slice(cursor), highlighted: false });
+    return <>{parts.map((part, index) => part.highlighted
+      ? <mark className="session-search-highlight" key={index}>{part.text}</mark>
+      : <span key={index}>{part.text}</span>)}</>;
+  }
+
   async function deletePersonalNote(noteId: string) {
     if (!user) return;
     setBusy(true); setError(""); setNotice("");
@@ -1046,6 +1142,31 @@ export default function App() {
   return <main className={showMyNotes ? "shell notes-mode" : "shell"}>
     <header className="topbar"><Brand /><div className="account">{user && <button className="ghost" onClick={() => showMyNotes ? setShowMyNotes(false) : void loadGlobalNotes()}>{showMyNotes ? "بازگشت به کلاس‌ها" : loadingGlobalNotes ? "در حال دریافت یادداشت‌ها…" : "یادداشت‌های من"}</button>}<div className="notification-wrap"><button className="ghost notification-button" onClick={() => {setShowNotifications(v => !v);if(!showNotifications) void refreshNotifications();}}>اعلان‌ها {notifications.filter(n => !n.isRead).length ? <b className="notification-count">{notifications.filter(n => !n.isRead).length}</b> : null}</button>{showNotifications && <section className="notification-popover"><div className="section-head"><strong>اعلان‌ها</strong><button className="ghost" onClick={() => void refreshNotifications()}>تازه‌سازی</button></div>{notifications.slice(0,30).map(n => <button key={n.id} className={n.isRead ? "notification-item read" : "notification-item"} onClick={() => void openNotification(n)}><span>{n.message}</span><small>{new Date(n.createdAtMs).toLocaleString("fa-IR")}</small></button>)}{!notifications.length && <p className="muted">اعلانی ندارید.</p>}</section>}</div><span>{user.email}</span><button className="ghost" onClick={() => void signOut(auth!)}>خروج</button></div></header>
     <section className="welcome"><div><p className="eyebrow">محیط آموزشی درس‌یار</p><h1>{isAdmin ? "مدیریت و مرور محتوا" : "کلاس‌های آموزشی"}</h1><p>ساختار استاد ← کلاس ← جلسه</p></div><span className="role">{roleLabel(me?.roles ?? [])}</span></section>
+    <section className="panel session-search-panel">
+      <form className="session-search-form" onSubmit={runSessionSearch}>
+        <label htmlFor="session-search-input">جست‌وجو در متن همهٔ جلسه‌های قابل‌دسترسی</label>
+        <div className="session-search-controls">
+          <input id="session-search-input" value={sessionSearchQuery} onChange={event => setSessionSearchQuery(event.target.value)}
+            placeholder="عبارت یا واژهٔ موردنظر را بنویسید…" minLength={2} maxLength={200} />
+          <select aria-label="حالت جست‌وجو" value={sessionSearchMode} onChange={event => setSessionSearchMode(event.target.value as "all" | "phrase")}>
+            <option value="all">همهٔ واژه‌ها</option><option value="phrase">عبارت دقیق</option>
+          </select>
+          <button disabled={sessionSearchLoading || sessionSearchQuery.trim().length < 2}>{sessionSearchLoading ? "در حال جست‌وجو…" : "جست‌وجو"}</button>
+        </div>
+        <small className="muted">جست‌وجو فقط در کلاس‌ها و جلسه‌هایی انجام می‌شود که دسترسی مشاهدهٔ آن‌ها را دارید.</small>
+      </form>
+      {!!sessionSearchResults.length && <div className="session-search-results">
+        <div className="section-head"><strong>{sessionSearchResults.length} نتیجهٔ جست‌وجو</strong><button type="button" className="ghost" onClick={() => {setSessionSearchResults([]);setSearchHighlightQuery("");setSearchHighlightField("");}}>پاک‌کردن نتایج</button></div>
+        {sessionSearchResults.map(result => <button type="button" className="session-search-result" key={result.id}
+          onClick={() => void openSessionSearchResult(result)}>
+          <strong>{result.title}</strong>
+          <span>{result.classTitle} · {result.professorName}{result.courseName ? " · " + result.courseName : ""}</span>
+          <small>تطبیق در: {result.matchedIn}</small>
+          <p>{result.excerpt}</p>
+        </button>)}
+        {sessionSearchResults.length === 50 && <small className="muted">برای جلوگیری از بار زیاد، حداکثر ۵۰ نتیجه نمایش داده می‌شود؛ عبارت دقیق‌تری وارد کنید.</small>}
+      </div>}
+    </section>
     {error && <p className="error notice">{error}</p>}
     {notice && <p className="success notice">{notice}</p>}
     {showMyNotes && <section className="panel content global-notes-panel">
@@ -1344,8 +1465,8 @@ export default function App() {
           </section>
           {detail.aiSummary && <><h3>خلاصه هوشمند</h3><p className="pre">{detail.aiSummary}</p></>}
           {detail.aiKeyPoints && <><h3>نکات کلیدی</h3><p className="pre">{detail.aiKeyPoints}</p></>}
-          {detail.originalTranscript && <><h3>متن اصلی</h3><p id="original-transcript" className="pre" onMouseUp={captureTranscriptSelection}>{transcriptWithHighlight(detail.originalTranscript)}</p><p className="muted">بخشی از متن را انتخاب کنید تا همراه یادداشت ذخیره شود.</p></>}
-          {detail.transcript && detail.transcript !== detail.originalTranscript && <><h3>متن ویرایش‌شده</h3><p id="edited-transcript" className="pre" onMouseUp={captureTranscriptSelection}>{transcriptWithHighlight(detail.transcript)}</p><p className="muted">بخشی از متن را انتخاب کنید تا همراه یادداشت ذخیره شود.</p></>}
+          {detail.originalTranscript && <><h3>متن اصلی</h3><p id={searchHighlightQuery && searchHighlightField === "متن اصلی" ? "search-highlight-target" : "original-transcript"} className="pre" onMouseUp={captureTranscriptSelection}>{searchHighlightQuery ? highlightSearchText(detail.originalTranscript) : transcriptWithHighlight(detail.originalTranscript)}</p><p className="muted">بخشی از متن را انتخاب کنید تا همراه یادداشت ذخیره شود.</p></>}
+          {detail.transcript && detail.transcript !== detail.originalTranscript && <><h3>متن ویرایش‌شده</h3><p id={searchHighlightQuery && searchHighlightField === "متن ویرایش‌شده" ? "search-highlight-target" : "edited-transcript"} className="pre" onMouseUp={captureTranscriptSelection}>{searchHighlightQuery ? highlightSearchText(detail.transcript) : transcriptWithHighlight(detail.transcript)}</p><p className="muted">بخشی از متن را انتخاب کنید تا همراه یادداشت ذخیره شود.</p></>}
         </article>}
       </section>
     </div>
@@ -1361,6 +1482,43 @@ function formatDuration(milliseconds: number) {
   const seconds = totalSeconds % 60;
   return hours > 0 ? `${hours}:${String(minutes).padStart(2, "0")}:${String(seconds).padStart(2, "0")}` : `${minutes}:${String(seconds).padStart(2, "0")}`;
 }
+function normalizeWebSearchWithOffsets(source: string): { text: string; offsets: number[] } {
+  let text = "";
+  const offsets: number[] = [];
+  let pendingSpace: number | null = null;
+  let sourceOffset = 0;
+  Array.from(source).forEach(original => {
+    const index = sourceOffset;
+    sourceOffset += original.length;
+    const code = original.codePointAt(0) ?? 0;
+    let mapped = original.toLocaleLowerCase();
+    if (mapped === "ي") mapped = "ی";
+    else if (mapped === "ك") mapped = "ک";
+    else if (mapped === "ۀ" || mapped === "ة") mapped = "ه";
+    else if (mapped === "ؤ") mapped = "و";
+    else if (mapped === "إ" || mapped === "أ" || mapped === "آ") mapped = "ا";
+    if ((code >= 0x064b && code <= 0x065f) || code === 0x0670 || code === 0x200f ||
+        (code >= 0x202a && code <= 0x202e)) return;
+    if (code === 0x200c || /\s/.test(original)) {
+      if (text.length && pendingSpace == null) pendingSpace = index;
+      return;
+    }
+    if (pendingSpace != null && text.length) {
+      text += " ";
+      offsets.push(pendingSpace);
+    }
+    pendingSpace = null;
+    text += mapped;
+    for (let i = 0; i < mapped.length; i++) offsets.push(index);
+  });
+  const trimmed = text.trimEnd();
+  return { text: trimmed, offsets: offsets.slice(0, trimmed.length) };
+}
+
+function normalizeWebSearchText(source: string): string {
+  return normalizeWebSearchWithOffsets(source).text;
+}
+
 function roleLabel(roles: string[]) {
   if (roles.includes("super_admin")) return "مدیر اصلی";
   if (roles.includes("teacher")) return "استاد";
