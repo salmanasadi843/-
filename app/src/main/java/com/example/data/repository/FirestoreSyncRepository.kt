@@ -12,7 +12,6 @@ import com.google.android.gms.tasks.Task
 import com.google.firebase.firestore.DocumentSnapshot
 import com.google.firebase.firestore.FieldValue
 import com.google.firebase.firestore.FirebaseFirestore
-import org.json.JSONObject
 import kotlinx.coroutines.suspendCancellableCoroutine
 import kotlin.coroutines.resume
 import kotlin.coroutines.resumeWithException
@@ -67,50 +66,22 @@ class FirestoreSyncRepository(
      * Older shared documents are read-only fallback sources. They are imported
      * only if they contain all three expected arrays, then migrated privately.
      */
+    /**
+     * Published materials are not a private backup. They may contain only a
+     * subset of the teacher's published classes, so importing them by replacing
+     * Room would silently discard private classes and unpublished sessions.
+     *
+     * If this legacy document exists but no private backup exists, stop the
+     * first-run sync and preserve both sides. Published content is still handled
+     * by CloudMaterialsSync's separate read-only feed.
+     */
     suspend fun restoreLegacySharedMaterials(uid: String): Boolean {
         val snapshot = firestore.collection(SHARED_MATERIALS).document(uid).get().awaitResult()
         if (!snapshot.exists()) return false
-        val data = snapshot.data
-            ?: throw IllegalStateException("سند قدیمی فضای ابری خالی است؛ برای جلوگیری از بازنویسی، همگام‌سازی متوقف شد.")
 
-        // Older app versions stored the published snapshot as a JSON string in
-        // shared_materials/{uid}.payload, not as top-level Firestore arrays.
-        // Accept both known legacy layouts; reject unknown layouts without uploading.
-        if (data["classes"] is List<*> &&
-            data["courses"] is List<*> &&
-            data["lectures"] is List<*>
-        ) {
-            restoreSnapshot(snapshot, requireAllCollections = true)
-            return true
-        }
-
-        val payloadText = data["payload"] as? String
-            ?: throw IllegalStateException("ساختار پشتیبان قدیمی شناخته نشد؛ اطلاعات محلی و ابری دست‌نخورده باقی ماندند.")
-        val payload = runCatching { JSONObject(payloadText) }.getOrElse {
-            throw IllegalStateException("محتوای پشتیبان قدیمی قابل‌خواندن نیست؛ همگام‌سازی برای حفظ اطلاعات متوقف شد.")
-        }
-        if (payload.optString("format") != "darsyar-shared-materials") {
-            throw IllegalStateException("قالب پشتیبان قدیمی معتبر نیست؛ همگام‌سازی برای حفظ اطلاعات متوقف شد.")
-        }
-
-        val classRows = payload.optJSONArray("classes")
-            ?: throw IllegalStateException("فهرست کلاس‌ها در پشتیبان قدیمی وجود ندارد.")
-        val courseRows = payload.optJSONArray("courses")
-            ?: throw IllegalStateException("فهرست درس‌ها در پشتیبان قدیمی وجود ندارد.")
-        val lectureRows = payload.optJSONArray("lectures")
-            ?: throw IllegalStateException("فهرست جلسه‌ها در پشتیبان قدیمی وجود ندارد.")
-
-        val classes = (0 until classRows.length()).map { index ->
-            classRows.getJSONObject(index).toStringKeyMap().toClassEntity()
-        }
-        val courses = (0 until courseRows.length()).map { index ->
-            courseRows.getJSONObject(index).toStringKeyMap().toCourseEntity()
-        }
-        val lectures = (0 until lectureRows.length()).map { index ->
-            lectureRows.getJSONObject(index).toStringKeyMap().toLectureEntity()
-        }
-        validateAndReplaceLocalData(classes, courses, lectures)
-        return true
+        throw IllegalStateException(
+            "مطالب منتشرشدهٔ ابری، پشتیبان کامل شخصی نیستند؛ برای جلوگیری از جایگزینی اطلاعات، همگام‌سازی متوقف شد. بازیابی پشتیبان خصوصی باید جداگانه بررسی شود."
+        )
     }
 
     suspend fun uploadSnapshot(uid: String) {
@@ -370,12 +341,6 @@ class FirestoreSyncRepository(
         parentFolderId = nullableNumber("parentFolderId"),
         createdAtMillis = number("createdAtMillis", System.currentTimeMillis())
     )
-
-    private fun JSONObject.toStringKeyMap(): Map<String, Any?> =
-        keys().asSequence().associate { key ->
-            val value = opt(key)
-            key to if (value == JSONObject.NULL) null else value
-        }
 
     private fun Map<*, *>.asStringMap(): Map<String, Any?>? {
         if (keys.any { it !is String }) return null
