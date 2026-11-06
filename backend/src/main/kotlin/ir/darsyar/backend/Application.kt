@@ -382,6 +382,20 @@ data class AiAnswerApiRecord(
 )
 
 @Serializable
+data class AdminUserApiRecord(
+    val userId: String,
+    val displayName: String,
+    val email: String?,
+    val status: String,
+    val roles: List<String>,
+    val teacherApprovalStatus: String?
+)
+
+private fun AdminUserRecord.toApiRecord() = AdminUserApiRecord(
+    userId, displayName, email, status, roles, teacherApprovalStatus
+)
+
+@Serializable
 data class MeApiResponse(val userId: String, val roles: List<String>)
 
 @Serializable
@@ -515,6 +529,7 @@ fun Application.module(
     val courseRepository = TeachingCourseRepository(dataSource)
     val classAccessRepository = ClassAccessRepository(dataSource)
     val teacherAdministrationRepository = TeacherAdministrationRepository(dataSource)
+    val adminUserRepository = AdminUserRepository(dataSource)
     val forumRepository = ClassForumRepository(dataSource)
     val announcementRepository = ClassAnnouncementRepository(dataSource)
 
@@ -745,6 +760,27 @@ fun Application.module(
                     call.respond(HttpStatusCode.BadRequest, ApiError("invalid_teacher_application"))
                 } catch (_: IllegalStateException) {
                     call.respond(HttpStatusCode.Conflict, ApiError("teacher_application_not_allowed"))
+                }
+            }
+
+            route("/api/v1/admin/users") {
+                get {
+                    val principal = call.principal<DarsyarPrincipal>()
+                    if (principal == null) {
+                        call.respond(HttpStatusCode.Unauthorized, ApiError("unauthorized"))
+                        return@get
+                    }
+                    if (AppRole.SUPER_ADMIN !in principal.roles) {
+                        call.respond(HttpStatusCode.Forbidden, ApiError("admin_required"))
+                        return@get
+                    }
+                    val limit = call.request.queryParameters["limit"]?.toIntOrNull() ?: 50
+                    val offset = call.request.queryParameters["offset"]?.toIntOrNull() ?: 0
+                    if (limit !in 1..100 || offset < 0) {
+                        call.respond(HttpStatusCode.BadRequest, ApiError("invalid_pagination"))
+                        return@get
+                    }
+                    call.respond(adminUserRepository.listUsers(limit, offset).map { it.toApiRecord() })
                 }
             }
 
