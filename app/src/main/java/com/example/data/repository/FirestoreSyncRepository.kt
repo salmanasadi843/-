@@ -110,7 +110,7 @@ class FirestoreSyncRepository(
             lectureRows.getJSONObject(index).toStringKeyMap().toLectureEntity()
         }
         validateAndReplaceLocalData(classes, courses, lectures)
-        true
+        return true
     }
 
     suspend fun uploadSnapshot(uid: String) {
