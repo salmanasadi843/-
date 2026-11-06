@@ -24,6 +24,11 @@ jobs:
   build:
     name: Build Debug APK
     runs-on: ubuntu-latest
+    # Optional: set the repository Actions variable DARSYAR_API_BASE_URL
+    # to enable the server-backed public/private class browser. Empty keeps
+    # the existing Firebase/Room-only behavior unchanged.
+    env:
+      DARSYAR_API_BASE_URL: ${{ vars.DARSYAR_API_BASE_URL }}
 
     steps:
       - name: Checkout
