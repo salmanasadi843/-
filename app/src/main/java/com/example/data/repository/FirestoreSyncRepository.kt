@@ -83,8 +83,10 @@ class FirestoreSyncRepository(
             .filter { it.id > 0L && (it.ownerUid.isBlank() || it.ownerUid == uid) }
             .associateBy { it.id }
         val localClassIds = localClasses.keys
+        // Only compare sessions attached to one of this teacher's owned core classes.
+        // Unassigned/orphan sessions and shared/experimental rows must not inflate the match.
         val localLectures = lectureDao.getAllForBackup()
-            .filter { it.id > 0L && (it.classId == null || it.classId in localClassIds) }
+            .filter { it.id > 0L && it.classId != null && it.classId in localClassIds }
             .associateBy { it.id }
         val localCourses = courseDao.getAllForBackup()
             .filter { it.id > 0L && it.classId in localClassIds }
@@ -103,8 +105,12 @@ class FirestoreSyncRepository(
         var sharedCourseMatched = 0
         var sharedLectureMatched = 0
         var sharedLectureContentDifferences = 0
+        val payloadOwnerUid = shared.getString("ownerUid")
         val payloadSummary = if (payloadText.isNullOrBlank()) {
             "absent"
+        } else if (payloadOwnerUid != uid) {
+            // Never compare/import a published payload whose owner cannot be verified.
+            "owner-mismatch"
         } else {
             runCatching {
                 val payload = JSONObject(payloadText)
