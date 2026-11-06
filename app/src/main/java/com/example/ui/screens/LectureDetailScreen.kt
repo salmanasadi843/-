@@ -85,19 +85,108 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.layout.onGloballyPositioned
+import androidx.compose.ui.layout.positionInParent
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.SpanStyle
+import androidx.compose.ui.text.TextLayoutResult
+import androidx.compose.ui.text.buildAnnotatedString
+import androidx.compose.ui.text.withStyle
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.example.data.local.LectureEntity
 import java.io.File
 import java.util.Locale
+import kotlin.math.roundToInt
 import com.example.ui.theme.TagPillBg
 import com.example.ui.theme.TagPillText
+
+@Composable
+private fun FormattedHandoutContent(
+    content: String,
+    bodyFontSize: Float,
+    headingScale: Float,
+    lineSpacingScale: Float,
+    modifier: Modifier = Modifier
+) {
+    val numberPattern = Regex("""^([0-9۰-۹]+(?:[ـ.-][0-9۰-۹]+)*[.)]?)\s+(.+)$""")
+    val letterPattern = Regex("""^([الفبپتثجچحخدذرزژسشصضطظعغفقکگلمنوهی])[).ـ]\s*(.+)$""")
+
+    Column(modifier = modifier) {
+        content.lines().forEach { rawLine ->
+            val line = rawLine.trim()
+            if (line.isEmpty()) {
+                Spacer(Modifier.height(7.dp))
+            } else {
+                val markdownLevel = line.takeWhile { it == '#' }.length
+                val cleanLine = line.dropWhile { it == '#' }.trim().removeSurrounding("**")
+                val numbered = numberPattern.matchEntire(cleanLine)
+                val lettered = letterPattern.matchEntire(cleanLine)
+
+                when {
+                    markdownLevel > 0 -> {
+                        Text(
+                            text = cleanLine,
+                            color = Color.Black,
+                            fontSize = (when (markdownLevel) {
+                                1 -> 25f
+                                2 -> 22f
+                                3 -> 19f
+                                else -> 17f
+                            } * headingScale).sp,
+                            fontWeight = FontWeight.Bold,
+                            lineHeight = 32.sp,
+                            modifier = Modifier.padding(top = 10.dp, bottom = 5.dp)
+                        )
+                    }
+                    numbered != null -> {
+                        val prefix = numbered.groupValues[1]
+                        val level = prefix.trimEnd('.', ')').split(Regex("[ـ.-]")).size
+                        Text(
+                            text = cleanLine,
+                            color = Color.Black,
+                            fontSize = (when (level) {
+                                1 -> 24f
+                                2 -> 21f
+                                3 -> 18f
+                                else -> 16f
+                            } * headingScale).sp,
+                            fontWeight = FontWeight.Bold,
+                            lineHeight = 30.sp,
+                            modifier = Modifier.padding(
+                                top = if (level == 1) 12.dp else 8.dp,
+                                bottom = 4.dp
+                            )
+                        )
+                    }
+                    lettered != null -> {
+                        Text(
+                            text = cleanLine,
+                            color = Color.Black,
+                            fontSize = (16f * headingScale).sp,
+                            fontWeight = FontWeight.SemiBold,
+                            lineHeight = 27.sp,
+                            modifier = Modifier.padding(top = 5.dp, bottom = 2.dp)
+                        )
+                    }
+                    else -> {
+                        Text(
+                            text = cleanLine,
+                            color = MaterialTheme.colorScheme.onSurface,
+                            fontSize = bodyFontSize.sp,
+                            lineHeight = (bodyFontSize * 1.7f * lineSpacingScale).sp
+                        )
+                    }
+                }
+            }
+        }
+    }
+}
 
 private fun formatDuration(milliseconds: Long): String {
     val totalSeconds = (milliseconds / 1000L).coerceAtLeast(0L)
@@ -118,7 +207,8 @@ fun LectureDetailScreen(
     viewModel: MainViewModel,
     onNavigateBack: () -> Unit,
     onNavigateToEdit: (Long) -> Unit,
-    isTeacher: Boolean = true
+    isTeacher: Boolean = true,
+    initialSearchQuery: String = ""
 ) {
     val lecture by viewModel.selectedLecture.collectAsState()
     val context = LocalContext.current
@@ -140,7 +230,6 @@ fun LectureDetailScreen(
     var showExportDialog by remember { mutableStateOf(false) }
     var exportOriginalTranscript by remember { mutableStateOf(false) }
     var chatInputText by remember { mutableStateOf("") }
-
     if (lecture == null) {
         Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
             CircularProgressIndicator()
@@ -323,6 +412,7 @@ fun LectureDetailScreen(
             val playableAudio = currentLecture.audioFilePath?.takeIf { File(it).exists() } ?: currentLecture.audioUrl
             TranscriptTab(
                 lecture = currentLecture,
+                searchQuery = initialSearchQuery,
                 onEditClick = { onNavigateToEdit(lectureId) },
                 onCopyClick = { textToCopy ->
                     val clipboard = context.getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager
@@ -518,18 +608,54 @@ fun AudioPlayerCard(
 @Composable
 fun TranscriptTab(
     lecture: LectureEntity,
+    searchQuery: String = "",
     onEditClick: () -> Unit,
     onCopyClick: (String) -> Unit,
     audioContent: (@Composable () -> Unit)? = null,
     audioLinkContent: (@Composable () -> Unit)? = null
 ) {
     val scrollState = rememberScrollState()
-    var selectedTextTab by remember(lecture.id) { mutableStateOf(0) }
+    var transcriptTopPx by remember(lecture.id) { mutableStateOf(0f) }
+    var transcriptLayout by remember(lecture.id) { mutableStateOf<TextLayoutResult?>(null) }
     val originalText = lecture.originalTranscript.ifBlank { lecture.transcript }
     val correctedText = lecture.transcript
+    var selectedTextTab by remember(lecture.id, searchQuery) {
+        mutableStateOf(if (searchQuery.isNotBlank() && !containsSearchTerm(originalText, searchQuery) && containsSearchTerm(correctedText, searchQuery)) 1 else 0)
+    }
     val displayedTranscript = if (selectedTextTab == 0) originalText else correctedText
+    val highlightedTranscript = highlightSearchTerms(
+        displayedTranscript,
+        searchQuery,
+        MaterialTheme.colorScheme.tertiaryContainer,
+        MaterialTheme.colorScheme.onTertiaryContainer
+    )
     val hasText = originalText.isNotBlank() || correctedText.isNotBlank()
+
+    LaunchedEffect(lecture.id, searchQuery, selectedTextTab, transcriptLayout, transcriptTopPx) {
+        if (searchQuery.isNotBlank() && transcriptLayout != null) {
+            val offset = findFirstSearchOffset(displayedTranscript, searchQuery)
+            if (offset != null) {
+                val line = transcriptLayout!!.getLineForOffset(offset.coerceIn(0, displayedTranscript.length))
+                val target = (transcriptTopPx + transcriptLayout!!.getLineTop(line)).roundToInt()
+                scrollState.animateScrollTo(target.coerceAtLeast(0))
+            }
+        }
+    }
     val tags = lecture.tags.split(",").map { it.trim() }.filter { it.isNotBlank() }
+    val context = LocalContext.current
+    var showHandoutTypographySettings by remember(lecture.id) { mutableStateOf(false) }
+    val handoutPrefs = remember(context) {
+        context.getSharedPreferences("darsyar_handout_display", Context.MODE_PRIVATE)
+    }
+    var handoutBodyFontSize by remember(lecture.id) {
+        mutableStateOf(handoutPrefs.getFloat("body_font_size", 17f).coerceIn(14f, 24f))
+    }
+    var handoutHeadingScale by remember(lecture.id) {
+        mutableStateOf(handoutPrefs.getFloat("heading_scale", 1f).coerceIn(0.8f, 1.4f))
+    }
+    var handoutLineSpacing by remember(lecture.id) {
+        mutableStateOf(handoutPrefs.getFloat("line_spacing", 1f).coerceIn(0.85f, 1.3f))
+    }
 
     Column(
         modifier = Modifier
@@ -605,6 +731,21 @@ fun TranscriptTab(
         }
 
         Spacer(Modifier.height(12.dp))
+        if (searchQuery.isNotBlank()) {
+            Surface(
+                modifier = Modifier.fillMaxWidth(),
+                shape = RoundedCornerShape(12.dp),
+                color = MaterialTheme.colorScheme.secondaryContainer
+            ) {
+                Text(
+                    text = "نتیجه جست‌وجو: $searchQuery",
+                    modifier = Modifier.padding(horizontal = 12.dp, vertical = 9.dp),
+                    color = MaterialTheme.colorScheme.onSecondaryContainer,
+                    style = MaterialTheme.typography.labelLarge
+                )
+            }
+            Spacer(Modifier.height(8.dp))
+        }
 
         if (!hasText) {
             Surface(
@@ -638,13 +779,16 @@ fun TranscriptTab(
             }
         } else {
             Surface(
-                modifier = Modifier.fillMaxWidth(),
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .onGloballyPositioned { coordinates -> transcriptTopPx = coordinates.positionInParent().y },
                 shape = RoundedCornerShape(18.dp),
                 color = MaterialTheme.colorScheme.surface
             ) {
                 Text(
-                    text = displayedTranscript,
+                    text = highlightedTranscript,
                     modifier = Modifier.padding(horizontal = 18.dp, vertical = 20.dp),
+                    onTextLayout = { transcriptLayout = it },
                     style = MaterialTheme.typography.bodyLarge.copy(lineHeight = 32.sp),
                     textAlign = TextAlign.Start
                 )
@@ -653,26 +797,84 @@ fun TranscriptTab(
 
         // خلاصه دقیقاً بعد از متن اصلی قرار می‌گیرد.
         Spacer(Modifier.height(28.dp))
-        Text(
-            text = "خلاصه بحث",
-            style = MaterialTheme.typography.titleLarge,
-            fontWeight = FontWeight.Bold
-        )
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.SpaceBetween,
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            Text(
+                text = "خلاصه بحث",
+                style = MaterialTheme.typography.titleLarge,
+                fontWeight = FontWeight.Bold
+            )
+            TextButton(onClick = {
+                showHandoutTypographySettings = !showHandoutTypographySettings
+            }) {
+                Text(if (showHandoutTypographySettings) "بستن تنظیمات قلم" else "تنظیم اندازه قلم")
+            }
+        }
+        AnimatedVisibility(visible = showHandoutTypographySettings) {
+            Card(
+                modifier = Modifier.fillMaxWidth(),
+                shape = RoundedCornerShape(12.dp),
+                colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant)
+            ) {
+                Column(modifier = Modifier.padding(12.dp)) {
+                    Text("اندازه متن: ${handoutBodyFontSize.toInt()}", fontWeight = FontWeight.SemiBold)
+                    Slider(
+                        value = handoutBodyFontSize,
+                        onValueChange = {
+                            handoutBodyFontSize = it
+                            handoutPrefs.edit().putFloat("body_font_size", it).apply()
+                        },
+                        valueRange = 14f..24f
+                    )
+                    Text("اندازه عنوان‌ها: ${(handoutHeadingScale * 100).toInt()}٪", fontWeight = FontWeight.SemiBold)
+                    Slider(
+                        value = handoutHeadingScale,
+                        onValueChange = {
+                            handoutHeadingScale = it
+                            handoutPrefs.edit().putFloat("heading_scale", it).apply()
+                        },
+                        valueRange = 0.8f..1.4f
+                    )
+                    Text("فاصله خطوط: ${(handoutLineSpacing * 100).toInt()}٪", fontWeight = FontWeight.SemiBold)
+                    Slider(
+                        value = handoutLineSpacing,
+                        onValueChange = {
+                            handoutLineSpacing = it
+                            handoutPrefs.edit().putFloat("line_spacing", it).apply()
+                        },
+                        valueRange = 0.85f..1.3f
+                    )
+                    TextButton(onClick = {
+                        handoutBodyFontSize = 17f
+                        handoutHeadingScale = 1f
+                        handoutLineSpacing = 1f
+                        handoutPrefs.edit()
+                            .putFloat("body_font_size", 17f)
+                            .putFloat("heading_scale", 1f)
+                            .putFloat("line_spacing", 1f)
+                            .apply()
+                    }) {
+                        Text("بازگشت به اندازه پیش‌فرض")
+                    }
+                }
+            }
+        }
         Spacer(Modifier.height(8.dp))
         Surface(
             modifier = Modifier.fillMaxWidth(),
             shape = RoundedCornerShape(16.dp),
             color = MaterialTheme.colorScheme.surface
         ) {
-            Text(
-                text = lecture.aiSummary?.takeIf { it.isNotBlank() }
+            FormattedHandoutContent(
+                content = lecture.aiSummary?.takeIf { it.isNotBlank() }
                     ?: "هنوز خلاصه‌ای برای این جلسه تولید نشده است.",
-                modifier = Modifier.padding(16.dp),
-                style = MaterialTheme.typography.bodyLarge.copy(lineHeight = 28.sp),
-                color = if (lecture.aiSummary.isNullOrBlank())
-                    MaterialTheme.colorScheme.onSurfaceVariant
-                else
-                    MaterialTheme.colorScheme.onPrimaryContainer
+                bodyFontSize = handoutBodyFontSize,
+                headingScale = handoutHeadingScale,
+                lineSpacingScale = handoutLineSpacing,
+                modifier = Modifier.padding(16.dp)
             )
         }
 
@@ -1150,3 +1352,92 @@ fun ChatWithLectureTab(
         }
     }
 }
+
+
+private fun normalizeSearchForHighlight(value: String): String =
+    value.lowercase(Locale.ROOT)
+        .replace('ي', 'ی').replace('ك', 'ک').replace('ۀ', 'ه').replace('ة', 'ه')
+        .replace('ؤ', 'و').replace('إ', 'ا').replace('أ', 'ا').replace('آ', 'ا')
+        .replace(Regex("[\\u064B-\\u065F\\u0670]"), "")
+        .replace(Regex("[\\u200C\\u200F\\u202A-\\u202E]"), " ")
+        .replace(Regex("\\s+"), " ")
+        .trim()
+
+private fun findFirstSearchOffset(content: String, query: String): Int? {
+    val normalized = StringBuilder()
+    val originalIndexes = mutableListOf<Int>()
+    content.forEachIndexed { index, char ->
+        normalizeSearchForHighlight(char.toString()).forEach { normalizedChar ->
+            normalized.append(normalizedChar)
+            originalIndexes += index
+        }
+    }
+    val terms = normalizeSearchForHighlight(query).split(Regex("\\s+"))
+        .filter { it.length >= 2 }.distinct()
+    val firstNormalizedIndex = terms.mapNotNull { term ->
+        normalized.indexOf(term).takeIf { it >= 0 }
+    }.minOrNull() ?: return null
+    return originalIndexes.getOrNull(firstNormalizedIndex)
+}
+
+private fun containsSearchTerm(content: String, query: String): Boolean {
+    val normalized = normalizeSearchForHighlight(content)
+    return normalizeSearchForHighlight(query).split(Regex("\\s+"))
+        .filter { it.isNotBlank() }.any(normalized::contains)
+}
+
+private fun highlightSearchTerms(
+    content: String,
+    query: String,
+    background: androidx.compose.ui.graphics.Color,
+    foreground: androidx.compose.ui.graphics.Color
+) = buildAnnotatedString {
+    if (query.isBlank() || content.isBlank()) {
+        append(content)
+        return@buildAnnotatedString
+    }
+
+    val normalized = StringBuilder()
+    val originalIndexes = mutableListOf<Int>()
+    content.forEachIndexed { index, char ->
+        val normalizedChar = normalizeSearchForHighlight(char.toString())
+        normalizedChar.forEach { outputChar ->
+            normalized.append(outputChar)
+            originalIndexes += index
+        }
+    }
+
+    val terms = normalizeSearchForHighlight(query).split(Regex("\\s+"))
+        .filter { it.length >= 2 }.distinct()
+    val ranges = mutableListOf<IntRange>()
+    terms.forEach { term ->
+        var from = 0
+        while (from <= normalized.length - term.length) {
+            val found = normalized.indexOf(term, from)
+            if (found < 0) break
+            val start = originalIndexes.getOrNull(found)
+            val end = originalIndexes.getOrNull(found + term.length - 1)?.plus(1)
+            if (start != null && end != null && end > start) ranges += start until end
+            from = found + term.length
+        }
+    }
+
+    val merged = ranges.sortedBy { it.first }.fold(mutableListOf<IntRange>()) { acc, range ->
+        val last = acc.lastOrNull()
+        if (last != null && range.first <= last.last + 1) {
+            acc[acc.lastIndex] = last.first..maxOf(last.last, range.last)
+        } else acc += range
+        acc
+    }
+
+    var cursor = 0
+    merged.forEach { range ->
+        if (range.first > cursor) append(content.substring(cursor, range.first))
+        withStyle(SpanStyle(background = background, color = foreground)) {
+            append(content.substring(range.first, range.last + 1))
+        }
+        cursor = range.last + 1
+    }
+    if (cursor < content.length) append(content.substring(cursor))
+}
+
