@@ -85,6 +85,15 @@ data class FilterCriteria(
     val onlyAi: Boolean = false
 )
 
+data class AdvancedSearchState(
+    val isOpen: Boolean = false,
+    val query: String = "",
+    val matchMode: String = "all",
+    val selectedProfessor: String = "همه استادان",
+    val selectedCourse: String = "همه درس‌ها",
+    val selectedClassId: Long? = null
+)
+
 class MainViewModel(application: Application) : AndroidViewModel(application) {
 
     private val TAG = "MainViewModel"
@@ -250,6 +259,27 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
     private val classParentContexts = mutableMapOf<Long, Pair<String, String>>()
     private val _currentScreen = MutableStateFlow<Screen>(Screen.Home)
     val currentScreen: StateFlow<Screen> = _currentScreen.asStateFlow()
+
+    private val _advancedSearchState = MutableStateFlow(AdvancedSearchState())
+    val advancedSearchState: StateFlow<AdvancedSearchState> = _advancedSearchState.asStateFlow()
+
+    fun updateAdvancedSearchState(state: AdvancedSearchState) {
+        _advancedSearchState.value = state
+    }
+
+    fun setAdvancedSearchOpen(open: Boolean) {
+        _advancedSearchState.value = _advancedSearchState.value.copy(isOpen = open)
+    }
+
+    fun resetAdvancedSearchFilters() {
+        _advancedSearchState.value = _advancedSearchState.value.copy(
+            query = "",
+            matchMode = "all",
+            selectedProfessor = "همه استادان",
+            selectedCourse = "همه درس‌ها",
+            selectedClassId = null
+        )
+    }
 
     // Unified Filter Criteria State
     private val _filterCriteria = MutableStateFlow(FilterCriteria())
