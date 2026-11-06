@@ -171,65 +171,30 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
 
     /** Restore cloud data first, then autosave subsequent Room changes. */
     @OptIn(FlowPreview::class)
+    /**
+     * Recovery phase: only inspect Firestore metadata. No restore, upload, delete,
+     * Room replacement, or automatic published-material sync is allowed here.
+     */
     fun startCloudSync() {
         if (_userRole.value != UserRole.TEACHER) {
-            _cloudSyncStatus.value = "همگام‌سازی خصوصی فقط برای حساب استاد فعال است."
+            _cloudSyncStatus.value = "بررسی پشتیبان فقط برای حساب استاد فعال است."
             return
         }
         val app = getApplication<Application>()
         val uid = AuthPreferences.currentUid(app)
         if (uid.isNullOrBlank()) {
-            _cloudSyncStatus.value = "حساب کاربری وارد نشده است؛ برای همگام‌سازی دوباره وارد شوید."
+            _cloudSyncStatus.value = "حساب کاربری وارد نشده است؛ ابتدا وارد شوید."
             return
         }
         cloudSyncJob?.cancel()
-        _cloudSyncStatus.value = "در حال بررسی و همگام‌سازی با فضای ابری…"
+        _cloudSyncStatus.value = "در حال خواندن فقط‌خواندنی اطلاعات پشتیبان ابری…"
         cloudSyncJob = viewModelScope.launch {
             try {
-                // Verify approval against Firestore before restoring or uploading anything.
-                if (!teacherPermissionGranted()) {
-                    denyTeacherMutation()
-                    _cloudSyncStatus.value = "مجوز استاد لغو شده است؛ همگام‌سازی متوقف شد و اطلاعات محلی ارسال نشد."
-                    return@launch
-                }
-                val restored = cloudSyncRepository.restoreFromCloud(uid)
-                if (!restored) {
-                    // Keep old published material untouched; import it only if it
-                    // follows the known snapshot shape, then create private backup.
-                    cloudSyncRepository.restoreLegacySharedMaterials(uid)
-                    cloudSyncRepository.uploadSnapshot(uid)
-                    _cloudSyncStatus.value = "پشتیبان‌گیری ابری موفق بود؛ تغییرات بعدی نیز خودکار ارسال می‌شوند."
-                } else {
-                    _cloudSyncStatus.value = "بازیابی اطلاعات از فضای ابری موفق بود؛ تغییرات بعدی خودکار ارسال می‌شوند."
-                }
-
-                combine(
-                    repository.allLectures,
-                    repository.allClasses,
-                    repository.allCoursesDetailed,
-                    database.teacherFolderDao().observeFolders(uid)
-                ) { _, _, _, _ -> Unit }
-                    .debounce(1200)
-                    .collect {
-                        try {
-                            // Approval can be revoked while autosave is waiting in debounce.
-                            if (!teacherPermissionGranted()) {
-                                denyTeacherMutation()
-                                _cloudSyncStatus.value = "مجوز استاد لغو شده است؛ ارسال تغییرات متوقف شد."
-                                cloudSyncJob?.cancel()
-                                return@collect
-                            }
-                            cloudSyncRepository.uploadSnapshot(uid)
-                            _cloudSyncStatus.value = "همگام‌سازی ابری موفق — آخرین ارسال انجام شد."
-                        } catch (e: Exception) {
-                            Log.e(TAG, "Teacher cloud backup failed", e)
-                            _cloudSyncStatus.value = "همگام‌سازی ناموفق بود: ${e.localizedMessage ?: "خطای نامشخص"}"
-                        }
-                    }
-            } catch (e: Exception) {
-                // A failed cloud read must never trigger a destructive local upload.
-                Log.e(TAG, "Teacher cloud restore failed; local data was kept", e)
-                _cloudSyncStatus.value = "اتصال یا بازیابی ابری ناموفق بود: ${e.localizedMessage ?: "خطای نامشخص"}. اطلاعات محلی حفظ شد."
+                _cloudSyncStatus.value = cloudSyncRepository.diagnoseCloudState(uid)
+            } catch (error: Exception) {
+                Log.e(TAG, "Read-only cloud diagnostic failed", error)
+                _cloudSyncStatus.value =
+                    "بررسی فقط‌خواندنی ناموفق بود: \${error.localizedMessage ?: "خطای نامشخص"}. هیچ تغییری در اطلاعات محلی یا ابری انجام نشد."
             }
         }
     }
