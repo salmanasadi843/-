@@ -78,16 +78,28 @@ class FirestoreSyncRepository(
         fun listSize(value: Any?): Int = (value as? List<*>)?.size ?: 0
 
         val payloadText = shared.getString("payload")
+        val sharedClassRows = mutableListOf<String>()
+        val sharedLectureRows = mutableListOf<String>()
         val payloadSummary = if (payloadText.isNullOrBlank()) {
             "absent"
         } else {
             runCatching {
                 val payload = JSONObject(payloadText)
+                val classArray = payload.optJSONArray("classes")
+                val lectureArray = payload.optJSONArray("lectures")
+                for (i in 0 until (classArray?.length() ?: 0)) {
+                    val item = classArray!!.optJSONObject(i) ?: continue
+                    sharedClassRows += "${item.optLong("id")}:${item.optString("name")}:${item.optString("teacherName")}"
+                }
+                for (i in 0 until (lectureArray?.length() ?: 0)) {
+                    val item = lectureArray!!.optJSONObject(i) ?: continue
+                    sharedLectureRows += "${item.optLong("id")}:${item.optString("title")}:class=${item.optLong("classId", -1)}"
+                }
                 "format=" + payload.optString("format", "unknown") +
                     ",version=" + payload.optInt("version", -1) +
-                    ",classes=" + (payload.optJSONArray("classes")?.length() ?: 0) +
+                    ",classes=" + (classArray?.length() ?: 0) +
                     ",courses=" + (payload.optJSONArray("courses")?.length() ?: 0) +
-                    ",lectures=" + (payload.optJSONArray("lectures")?.length() ?: 0)
+                    ",lectures=" + (lectureArray?.length() ?: 0)
             }.getOrElse { "invalid-json" }
         }
 
@@ -123,6 +135,8 @@ class FirestoreSyncRepository(
             appendLine("sharedDoc.ownerUid=" + (shared.getString("ownerUid") ?: "absent"))
             appendLine("sharedDoc.payloadChars=" + (payloadText?.length ?: 0))
             appendLine("sharedDoc.payloadSummary=" + payloadSummary)
+            appendLine("sharedDoc.classRows=" + sharedClassRows.joinToString(";"))
+            appendLine("sharedDoc.lectureRows=" + sharedLectureRows.joinToString(";"))
             appendLine("sharedDoc.legacyArrays.classes=" + listSize(shared.get("classes")))
             appendLine("sharedDoc.legacyArrays.courses=" + listSize(shared.get("courses")))
             appendLine("sharedDoc.legacyArrays.lectures=" + listSize(shared.get("lectures")))
