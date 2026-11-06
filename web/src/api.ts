@@ -33,6 +33,10 @@ export type SessionSummary = {
   professorName: string; dateMs: number | null; audioDurationMs: number; tags: string;
   isPublished: boolean; lastEditedMs: number | null; sortOrder: number; version: number;
 };
+export type SessionSearchResult = {
+  id: string; classId: string; classTitle: string; title: string; courseName: string;
+  professorName: string; dateMs: number | null; matchedIn: string; excerpt: string;
+};
 export type SessionDetail = SessionSummary & {
   transcript: string; originalTranscript: string; aiSummary: string | null; aiKeyPoints: string | null;
   aiQuizJson?: string | null;
@@ -126,6 +130,10 @@ export const api = {
     request<ClassRecord>("/api/v1/classes", token, { method: "POST", body: JSON.stringify(data) }),
   updateClass: (classId: string, data: NewClass, token: string) =>
     request<ClassRecord>(`/api/v1/classes/${encodeURIComponent(classId)}`, token, { method: "PATCH", body: JSON.stringify(data) }),
+  reorderClass: (classId: string, direction: "up" | "down", token: string) =>
+    request<ClassRecord[]>(`/api/v1/classes/${encodeURIComponent(classId)}/reorder`, token, {
+      method: "POST", body: JSON.stringify({ direction }),
+    }),
   deleteClass: (classId: string, token: string) =>
     request<void>(`/api/v1/classes/${encodeURIComponent(classId)}`, token, { method: "DELETE" }),
   deletedClasses: (token: string) => request<ClassRecord[]>("/api/v1/classes/deleted", token),
@@ -143,6 +151,8 @@ export const api = {
     request<void>(`/api/v1/courses/${encodeURIComponent(courseId)}`, token, { method: "DELETE" }),
   deletedSessions: (token: string) => request<SessionSummary[]>("/api/v1/sessions/deleted", token),
   sessions: (classId: string, token: string) => request<SessionSummary[]>(`/api/v1/classes/${encodeURIComponent(classId)}/sessions`, token),
+  searchSessions: (query: string, mode: "all" | "phrase", token: string) =>
+    request<SessionSearchResult[]>(`/api/v1/sessions/search?q=${encodeURIComponent(query)}&mode=${mode}`, token),
   session: (classId: string, sessionId: string, token: string) =>
     request<SessionDetail>(`/api/v1/classes/${encodeURIComponent(classId)}/sessions/${encodeURIComponent(sessionId)}`, token),
   sessionState: (classId: string, sessionId: string, token: string) =>
