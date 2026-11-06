@@ -166,37 +166,39 @@ class FirestoreSyncRepository(
         courses.forEach { desired["course_${it.id}"] = mapOf("recordType" to "course") + it.toCloudMap() }
         lectures.forEach { desired["lecture_${it.id}"] = mapOf("recordType" to "lecture") + it.toCloudMap() }
 
-        // Read existing keys so deleted local records are also removed from cloud.
+        // During recovery, never infer cloud deletions from a possibly partial local DB.
+        // Upsert local records only; stale cloud records remain available until an explicit,
+        // separately verified deletion/tombstone workflow is implemented.
         val existing = records.get().awaitResult().documents
         if (desired.isEmpty() && existing.isNotEmpty()) {
             throw IllegalStateException(
                 "ارسال پشتیبان خالی متوقف شد؛ در فضای ابری ${existing.size} رکورد موجود است اما در دستگاه هیچ رکورد مالکانه‌ای یافت نشد. ابتدا بازیابی و تطبیق اطلاعات لازم است."
             )
         }
-        val staleRefs = existing.filter { it.id !in desired.keys }.map { it.reference }
 
-        val operations = mutableListOf<Pair<com.google.firebase.firestore.DocumentReference, Map<String, Any?>?>>()
-        desired.forEach { (id, data) -> operations += records.document(id) to data }
-        staleRefs.forEach { operations += it to null }
+        val operations = desired.map { (id, data) ->
+            records.document(id) to data
+        }
 
         // Firestore batches have a 500-write maximum; leave room below the limit.
         operations.chunked(BATCH_LIMIT).forEach { chunk ->
             val batch = firestore.batch()
-            chunk.forEach { (ref, data) ->
-                if (data == null) batch.delete(ref) else batch.set(ref, data)
-            }
+            chunk.forEach { (ref, data) -> batch.set(ref, data) }
             batch.commit().awaitResult()
         }
 
+        // Count the union because pre-existing cloud records are intentionally preserved.
+        val mergedRecordCount = (existing.map { it.id }.toSet() + desired.keys).size
+
         // Keep folder metadata in the existing owner document, avoiding new Firebase rule paths.
-        val folderRows = teacherFolderDao?.observeFoldersForBackup()?.filter { it.ownerUid == uid }.orEmpty()
+        val folderRows = teacherFolderDao.observeFoldersForBackup().filter { it.ownerUid == uid }
 
         // Commit the version marker only after all individual records were written.
         root.set(
             mapOf(
                 "schemaVersion" to SCHEMA_VERSION,
                 "ownerUid" to uid,
-                "recordCount" to desired.size,
+                "recordCount" to mergedRecordCount,
                 "folders" to folderRows.map { it.toCloudMap() },
                 "updatedAt" to FieldValue.serverTimestamp()
             )
