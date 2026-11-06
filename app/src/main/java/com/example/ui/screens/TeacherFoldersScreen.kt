@@ -60,7 +60,9 @@ fun TeacherFoldersScreen(
     val allClasses by viewModel.repository.allClasses.collectAsState(initial = emptyList())
     val syncStatus by viewModel.studentMaterialsSyncStatus.collectAsState()
     val isPrimaryAdmin = AuthPreferences.isPrimaryTeacher(context)
-    val canManage = userRole == UserRole.TEACHER || isPrimaryAdmin
+    // Use the persisted role when the navigation argument is stale.
+    val persistedRole = AuthPreferences.currentRole(context)
+    val canManage = userRole == UserRole.TEACHER || persistedRole == UserRole.TEACHER || isPrimaryAdmin
     val studentReady = canManage || (
         syncStatus != "مطالب آنلاین هنوز بررسی نشده‌اند." &&
         !syncStatus.contains("در حال دریافت") &&
@@ -97,7 +99,8 @@ fun TeacherFoldersScreen(
     val rows = remember(visibleClasses, deletedKeys, hiddenKeys, showHidden, uid) {
         val groups = visibleClasses.groupBy { teacherFolderKey(it, uid) }
         val teacherRows = groups.entries
-            .filter { it.key !in deletedKeys }
+            // The signed-in teacher's own folder must remain visible.
+            .filter { (canManage && it.key == uid) || it.key !in deletedKeys }
             .map { (key, classes) ->
                 TeacherFolderRow(
                     key = key,
@@ -120,9 +123,11 @@ fun TeacherFoldersScreen(
             )
         }
         val visibleTeacherRows = teacherRows
-            .filter { showHidden || it.key !in hiddenKeys }
+            .filter { (canManage && it.key == uid) || showHidden || it.key !in hiddenKeys }
             .sortedBy { it.title.lowercase() }
-        val unfiledClasses = visibleClasses.filter { teacherFolderKey(it, uid) in deletedKeys }
+        val unfiledClasses = visibleClasses.filter {
+            teacherFolderKey(it, uid) in deletedKeys && !(canManage && teacherFolderKey(it, uid) == uid)
+        }
         val result = visibleTeacherRows.toMutableList()
         if (unfiledClasses.isNotEmpty()) {
             result.add(0, TeacherFolderRow(UNFILED_TEACHERS_KEY, "بدون پوشه", unfiledClasses, true))
