@@ -15,6 +15,8 @@ interface DarsyarCommunityApi {
     suspend fun createAccessCode(@Path("classId") classId:String,@Body body:AccessCodeCreateDto,@Header("Authorization") auth:String):Response<BackendCreatedAccessCodeDto>
     @DELETE("api/v1/access-codes/{codeId}")
     suspend fun revokeAccessCode(@Path("codeId") codeId:String,@Header("Authorization") auth:String):Response<Unit>
+    @POST("api/v1/class-memberships/redeem")
+    suspend fun redeemAccessCode(@Body body:RedeemAccessCodeDto,@Header("Authorization") auth:String):Response<BackendMembershipDto>
     @GET("api/v1/classes/{classId}/memberships")
     suspend fun members(@Path("classId") classId:String,@Header("Authorization") auth:String):Response<List<BackendMembershipDto>>
     @DELETE("api/v1/classes/{classId}/memberships/{studentUserId}")
@@ -74,6 +76,8 @@ data class BackendCreatedAccessCodeDto(
 )
 @JsonClass(generateAdapter=true)
 data class AccessCodeCreateDto(val expiresAtMs:Long?=null,val maxUses:Int?=null)
+@JsonClass(generateAdapter=true)
+data class RedeemAccessCodeDto(val code:String)
 @JsonClass(generateAdapter=true)
 data class BackendMembershipDto(
     val classId:String,val studentUserId:String,val status:String,val joinedAtMs:Long?,val alreadyActive:Boolean
@@ -147,6 +151,10 @@ class DarsyarCommunityRepository(private val api:DarsyarCommunityApi) {
     suspend fun revokeAccessCode(token:String,codeId:String) {
         val response=api.revokeAccessCode(codeId,"Bearer $token")
         if(!response.isSuccessful) throw BackendHttpException(response.code(),"access-codes/revoke")
+    }
+    suspend fun redeemAccessCode(token:String,code:String):BackendMembershipDto {
+        require(code.isNotBlank()) { "کد ورود را وارد کنید." }
+        return checked(api.redeemAccessCode(RedeemAccessCodeDto(code.trim()),"Bearer $token"),"class-memberships/redeem")
     }
     suspend fun members(token:String,classId:String)=checked(api.members(classId,"Bearer $token"),"memberships")
     suspend fun revokeMembership(token:String,classId:String,studentUserId:String) {
