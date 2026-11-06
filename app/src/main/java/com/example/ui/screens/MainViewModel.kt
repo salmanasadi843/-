@@ -194,7 +194,7 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
             } catch (error: Exception) {
                 Log.e(TAG, "Read-only cloud diagnostic failed", error)
                 _cloudSyncStatus.value =
-                    "بررسی فقط‌خواندنی ناموفق بود: \${error.localizedMessage ?: "خطای نامشخص"}. هیچ تغییری در اطلاعات محلی یا ابری انجام نشد."
+                    "بررسی فقط‌خواندنی ناموفق بود: ${error.localizedMessage ?: "خطای نامشخص"}. هیچ تغییری در اطلاعات محلی یا ابری انجام نشد."
             }
         }
     }
