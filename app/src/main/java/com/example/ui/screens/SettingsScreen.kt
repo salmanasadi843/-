@@ -20,6 +20,7 @@ import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
+import androidx.compose.foundation.text.selection.SelectionContainer
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.AutoAwesome
@@ -112,14 +113,9 @@ fun SettingsScreen(
         }
     }
     val runCloudSync = {
-        backupScope.launch {
-            cloudBusy = true
-            cloudStatus = null
-            val result = withContext(Dispatchers.IO) { runCatching { CloudMaterialsSync.sync(context) } }
-            cloudBusy = false
-            cloudError = result.isFailure
-            cloudStatus = result.getOrElse { "همگام‌سازی آنلاین ناموفق بود: ${it.localizedMessage}" }
-        }
+        cloudBusy = false
+        cloudError = true
+        cloudStatus = "انتشار آنلاین تا پایان بررسی بازیابی موقتاً غیرفعال است؛ هیچ داده‌ای ارسال نشد."
     }
     val restoreBackup = rememberLauncherForActivityResult(ActivityResultContracts.OpenDocument()) { uri ->
         if (uri != null) backupScope.launch {
@@ -168,13 +164,13 @@ fun SettingsScreen(
     if (showPublishConfirm) {
         androidx.compose.material3.AlertDialog(
             onDismissRequest = { showPublishConfirm = false },
-            title = { Text("انتشار آنلاین مطالب") },
+            title = { Text("انتشار آنلاین مطالب (موقتاً غیرفعال)") },
             text = { Text("متن، خلاصه، کلیدواژه‌ها، اطلاعات کلاس و لینک صوت همه جلسات این حساب برای کاربران واردشده به درس‌یار قابل مشاهده خواهد شد. فایل صوتی اصلی ارسال نمی‌شود. آیا ادامه می‌دهید؟") },
             confirmButton = {
                 Button(onClick = {
                     showPublishConfirm = false
                     runCloudSync()
-                }) { Text("انتشار و ادامه") }
+                }) { Text("متوجه شدم") }
             },
             dismissButton = {
                 OutlinedButton(onClick = { showPublishConfirm = false }) { Text("انصراف") }
@@ -217,19 +213,19 @@ fun SettingsScreen(
                     Row(verticalAlignment = Alignment.CenterVertically) {
                         Icon(Icons.Filled.NetworkCheck, contentDescription = null)
                         Spacer(Modifier.width(8.dp))
-                        Text("وضعیت پشتیبان‌گیری ابری", style = MaterialTheme.typography.titleLarge)
+                        Text("گزارش تشخیصی فضای ابری", style = MaterialTheme.typography.titleLarge)
                     }
                     Spacer(Modifier.height(8.dp))
-                    Text(cloudSyncStatus, style = MaterialTheme.typography.bodyMedium)
+                    SelectionContainer { Text(cloudSyncStatus, style = MaterialTheme.typography.bodyMedium) }
                     Spacer(Modifier.height(12.dp))
                     OutlinedButton(
                         onClick = { viewModel.startCloudSync() },
                         enabled = !cloudBusy
                     ) {
-                        Text("بررسی و تلاش دوباره")
+                        Text("اجرای بررسی فقط‌خواندنی")
                     }
                     Text(
-                        "موفقیت این بخش یعنی برنامه توانسته عملیات ابری را انجام دهد؛ برای تأیید نهایی ذخیره داده‌ها می‌توان بعداً فایربیس را هم بررسی کرد.",
+                        "این نسخه فقط فراداده‌های ابری را می‌خواند؛ هیچ داده‌ای در گوشی یا Firebase بازیابی، ویرایش یا حذف نمی‌شود. برای کپی گزارش، روی متن نگه دارید.",
                         style = MaterialTheme.typography.bodySmall,
                         color = MaterialTheme.colorScheme.onSurfaceVariant
                     )
