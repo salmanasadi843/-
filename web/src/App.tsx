@@ -124,7 +124,11 @@ export default function App() {
   useEffect(() => {
     let cancelled = false;
     async function load() {
-      if (!user) { setMe(null); setTeachers([]); setClasses([]); setFolders([]); setNotifications([]); return; }
+      if (!user) {
+        setMe(null); setTeachers([]); setClasses([]); setFolders([]); setNotifications([]);
+        setSessionSearchResults([]); setSearchHighlightQuery(""); setSearchHighlightField("");
+        return;
+      }
       setBusy(true); setError("");
       try {
         const token = await user.getIdToken();
