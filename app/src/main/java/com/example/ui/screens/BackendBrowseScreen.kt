@@ -714,6 +714,14 @@ fun BackendBrowseScreen(onBack: () -> Unit) {
                     color = MaterialTheme.colorScheme.onSurfaceVariant
                 )
             }
+            if ("student" in accountRoles) {
+                item {
+                    BackendPrivateClassJoinPanel(onJoined = { classId ->
+                        status = "عضویت کلاس ثبت شد؛ در حال دریافت فهرست جدید…"
+                        loadDirectory()
+                    })
+                }
+            }
             item {
                 BackendTeacherApplicationsPanel(
                     accountRoles = accountRoles,
