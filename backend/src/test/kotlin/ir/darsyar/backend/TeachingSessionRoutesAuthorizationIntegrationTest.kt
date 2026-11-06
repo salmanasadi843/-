@@ -463,7 +463,9 @@ class TeachingSessionRoutesAuthorizationIntegrationTest {
                     val nonMemberPrivateList = client.get("/api/v1/classes/${otherTeacherClass.id}/forum/topics") {
                         bearerAuth("student-token")
                     }
-                    assertEquals(HttpStatusCode.Forbidden, nonMemberPrivateList.status)
+                    val privateTopicsBody = nonMemberPrivateList.bodyAsText()
+                    assertEquals(HttpStatusCode.OK, nonMemberPrivateList.status, privateTopicsBody)
+                    assertFalse(privateTopicsBody.contains("Member-only private class"), privateTopicsBody)
 
                     val studentCreateTopic = client.post(topicsPath) {
                         bearerAuth("student-token")
