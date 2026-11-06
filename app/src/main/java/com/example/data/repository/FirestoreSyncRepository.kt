@@ -5,7 +5,6 @@ import com.example.data.local.AppDatabase
 import com.example.data.local.ClassEntity
 import com.example.data.local.CourseEntity
 import com.example.data.local.LectureEntity
-import com.example.data.local.TeacherFolderDao
 import com.example.data.local.TeacherFolderEntity
 import com.google.android.gms.tasks.Task
 import com.google.firebase.firestore.DocumentSnapshot
@@ -260,11 +259,22 @@ class FirestoreSyncRepository(
         }
         if (folders != null) {
             val folderIds = folders.map { it.id }
+            val foldersById = folders.associateBy { it.id }
             if (folderIds.size != folderIds.toSet().size ||
                 folders.any { it.id <= 0L || it.ownerUid != ownerUid ||
                     (it.parentFolderId != null && it.parentFolderId !in folderIds) }
             ) {
                 throw IllegalStateException("ساختار یا مالکیت پوشه‌های پشتیبان معتبر نیست.")
+            }
+            folders.forEach { folder ->
+                val visited = mutableSetOf<Long>()
+                var parentId = folder.parentFolderId
+                while (parentId != null) {
+                    if (!visited.add(parentId) || parentId == folder.id) {
+                        throw IllegalStateException("ساختار پوشه‌های پشتیبان دارای چرخه است؛ بازیابی متوقف شد.")
+                    }
+                    parentId = foldersById[parentId]?.parentFolderId
+                }
             }
         }
 
