@@ -192,6 +192,13 @@ class ClassAccessCodeRoutesIntegrationTest {
             assertTrue(adminListBody.contains(adminCodeId), adminListBody)
             assertFalse(adminListBody.contains(adminCode), "Listing must not reveal the admin-created raw secret.")
 
+            val teacherRedeem = client.post("/api/v1/class-memberships/redeem") {
+                header(HttpHeaders.Authorization, "Bearer other-teacher-token")
+                contentType(ContentType.Application.Json)
+                setBody("""{"code":"$adminCode"}""")
+            }
+            assertEquals(HttpStatusCode.Forbidden, teacherRedeem.status, teacherRedeem.bodyAsText())
+
             val adminDeactivate = client.delete("/api/v1/access-codes/$adminCodeId") {
                 header(HttpHeaders.Authorization, "Bearer admin-token")
             }
