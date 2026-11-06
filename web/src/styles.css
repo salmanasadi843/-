@@ -62,3 +62,15 @@
 .session-search-result:hover{background:#f8fafc}
 .session-search-highlight{background:#ffe08a;color:#332600;border-radius:3px;padding:0 2px}
 @media(max-width:600px){.session-search-panel{padding:14px}.session-search-controls{grid-template-columns:1fr 1fr}.session-search-controls input{grid-column:1/-1}.session-search-controls button{grid-column:1/-1}}
+
+
+.admin-user-search{display:grid;gap:6px;margin:10px 0 14px;font-size:13px;color:#46566e}
+.admin-user-search input{width:100%;border:1px solid #dce3ec;border-radius:9px;padding:10px 12px;background:#fff;color:#1b2940}
+.admin-user-row{display:flex;justify-content:space-between;align-items:flex-start;gap:14px;padding:13px 4px;border-top:1px solid #edf0f4}
+.admin-user-main,.admin-user-meta{display:grid;gap:4px;min-width:0}
+.admin-user-main strong{font-size:14px;color:#263650}
+.admin-user-main span,.admin-user-meta small{font-size:12px;color:#6f7d91;overflow-wrap:anywhere}
+.admin-user-roles{font-size:12px;color:#34445d;font-weight:700}
+.admin-user-pagination{display:flex;align-items:center;justify-content:space-between;gap:10px;padding-top:14px;margin-top:8px;border-top:1px solid #edf0f4}
+.admin-user-pagination .ghost{white-space:nowrap}
+@media(max-width:600px){.admin-user-row{flex-direction:column}.admin-user-meta{width:100%}.admin-user-pagination{flex-wrap:wrap}.admin-user-pagination span{order:-1;width:100%;text-align:center}}
