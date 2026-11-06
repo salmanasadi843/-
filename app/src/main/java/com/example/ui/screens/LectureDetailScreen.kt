@@ -1422,7 +1422,7 @@ private fun containsSearchTerm(content: String, query: String, matchMode: String
     return if (matchMode == "phrase") {
         normalizedQuery.isNotBlank() && normalized.contains(normalizedQuery)
     } else {
-        normalizedQuery.split(Regex("\\s+")).filter { it.isNotBlank() }.any(normalized::contains)
+        normalizedQuery.split(Regex("\\s+")).filter { it.isNotBlank() }.all(normalized::contains)
     }
 }
 
