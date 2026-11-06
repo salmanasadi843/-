@@ -96,7 +96,7 @@ class AdminUserDirectoryRoutesIntegrationTest {
 
                 val limited = client.get("$path?limit=1&offset=1") { bearerAuth("admin-token") }
                 assertEquals(200, limited.status.value)
-                assertEquals(1, Regex("\\"userId\\":").findAll(limited.bodyAsText()).count())
+                assertEquals(1, Regex("""\"userId\":""").findAll(limited.bodyAsText()).count())
 
                 val invalidLimit = client.get("$path?limit=101") { bearerAuth("admin-token") }
                 assertEquals(400, invalidLimit.status.value)
