@@ -330,12 +330,8 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
 
     init {
         GeminiApiService.configure(application)
-
-        viewModelScope.launch {
-            if (AuthPreferences.currentUid(application) == null) {
-                repository.seedInitialDataIfEmpty()
-            }
-        }
+        // Recovery diagnostic build: keep a fresh Room database truly empty.
+        // Demo sessions must not be mistaken for the user's recoverable records.
     }
 
     // Filtered lectures
