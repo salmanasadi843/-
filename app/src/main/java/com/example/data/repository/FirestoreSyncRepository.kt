@@ -1,10 +1,9 @@
 package com.example.data.repository
 
-import com.example.data.local.ClassDao
+import androidx.room.withTransaction
+import com.example.data.local.AppDatabase
 import com.example.data.local.ClassEntity
-import com.example.data.local.CourseDao
 import com.example.data.local.CourseEntity
-import com.example.data.local.LectureDao
 import com.example.data.local.LectureEntity
 import com.example.data.local.TeacherFolderDao
 import com.example.data.local.TeacherFolderEntity
@@ -25,12 +24,13 @@ import kotlin.coroutines.resumeWithException
  * the previous version-1 snapshot available for recovery.
  */
 class FirestoreSyncRepository(
-    private val lectureDao: LectureDao,
-    private val classDao: ClassDao,
-    private val courseDao: CourseDao,
-    private val teacherFolderDao: TeacherFolderDao? = null,
+    private val database: AppDatabase,
     private val firestore: FirebaseFirestore = FirebaseFirestore.getInstance()
 ) {
+    private val lectureDao get() = database.lectureDao()
+    private val classDao get() = database.classDao()
+    private val courseDao get() = database.courseDao()
+    private val teacherFolderDao get() = database.teacherFolderDao()
     private companion object {
         const val SCHEMA_VERSION = 2L
         const val LEGACY_SCHEMA_VERSION = 1L
@@ -48,7 +48,7 @@ class FirestoreSyncRepository(
         return when (snapshot.getLong("schemaVersion")) {
             LEGACY_SCHEMA_VERSION -> {
                 // Validate and restore the old snapshot before migrating it.
-                restoreSnapshot(snapshot, requireAllCollections = true)
+                restoreSnapshot(snapshot, requireAllCollections = true, ownerUid = uid)
                 uploadSnapshot(uid)
                 true
             }
@@ -158,11 +158,20 @@ class FirestoreSyncRepository(
                 "پشتیبان ابری ناقص دریافت شد (انتظار ${expectedCount} رکورد، دریافت ${documents.size})؛ اطلاعات محلی تغییر نکرد."
             )
         }
-        val folders = teacherFolderDao?.let {
-            (rootSnapshot.get("folders") as? List<*>)?.mapNotNull { value ->
-                (value as? Map<*, *>)?.asStringMap()?.toFolderEntity()
-            }.orEmpty()
-        }.orEmpty()
+        val rawFolders = rootSnapshot.get("folders")
+        val folders = when (rawFolders) {
+            null -> emptyList()
+            is List<*> -> rawFolders.map { value ->
+                val row = (value as? Map<*, *>)?.asStringMap()
+                    ?: throw IllegalStateException("ساختار پوشه‌های پشتیبان معتبر نیست؛ اطلاعات محلی تغییر نکرد.")
+                row.toFolderEntity().also { folder ->
+                    if (folder.id <= 0L || folder.ownerUid != uid) {
+                        throw IllegalStateException("مالکیت یا شناسه یکی از پوشه‌های پشتیبان معتبر نیست.")
+                    }
+                }
+            }
+            else -> throw IllegalStateException("فهرست پوشه‌های پشتیبان معتبر نیست؛ اطلاعات محلی تغییر نکرد.")
+        }
 
         documents.forEach { document ->
             val data = document.data ?: throw IllegalStateException(
@@ -177,17 +186,18 @@ class FirestoreSyncRepository(
                 )
             }
         }
-        validateAndReplaceLocalData(classes, courses, lectures)
-        teacherFolderDao?.let { dao ->
-            dao.clearForRestore()
-            if (folders.isNotEmpty()) dao.insertAllForRestore(folders)
-        }
+        validateAndReplaceLocalData(classes, courses, lectures, folders, uid)
     }
 
     private suspend fun restoreSnapshot(
         snapshot: DocumentSnapshot,
-        requireAllCollections: Boolean
+        requireAllCollections: Boolean,
+        ownerUid: String
     ) {
+        val storedOwner = snapshot.getString("ownerUid")
+        if (!storedOwner.isNullOrBlank() && storedOwner != ownerUid) {
+            throw IllegalStateException("مالک پشتیبان قدیمی با حساب فعلی تطبیق ندارد؛ اطلاعات محلی تغییر نکرد.")
+        }
         val rawClasses = snapshot.get("classes") as? List<*>
         val rawCourses = snapshot.get("courses") as? List<*>
         val rawLectures = snapshot.get("lectures") as? List<*>
@@ -201,8 +211,11 @@ class FirestoreSyncRepository(
         }
 
         val classes = rawClasses.orEmpty().map {
-            (it as? Map<*, *>)?.asStringMap()?.toClassEntity()
+            val row = (it as? Map<*, *>)?.asStringMap()
                 ?: throw IllegalStateException("رکورد کلاس در پشتیبان ابری معتبر نیست.")
+            row.toClassEntity().let { entity ->
+                if (entity.ownerUid.isBlank()) entity.copy(ownerUid = ownerUid) else entity
+            }
         }
         val courses = rawCourses.orEmpty().map {
             (it as? Map<*, *>)?.asStringMap()?.toCourseEntity()
@@ -212,25 +225,66 @@ class FirestoreSyncRepository(
             (it as? Map<*, *>)?.asStringMap()?.toLectureEntity()
                 ?: throw IllegalStateException("رکورد جلسه در پشتیبان ابری معتبر نیست.")
         }
-        validateAndReplaceLocalData(classes, courses, lectures)
+        validateAndReplaceLocalData(classes, courses, lectures, ownerUid = ownerUid)
     }
 
     private suspend fun validateAndReplaceLocalData(
         classes: List<ClassEntity>,
         courses: List<CourseEntity>,
-        lectures: List<LectureEntity>
+        lectures: List<LectureEntity>,
+        folders: List<TeacherFolderEntity>? = null,
+        ownerUid: String
     ) {
-        if (classes.any { it.id == 0L } || courses.any { it.id == 0L } || lectures.any { it.id == 0L }) {
-            throw IllegalStateException("شناسه یکی از رکوردهای پشتیبان ابری خالی است.")
+        val classIds = classes.map { it.id }
+        val courseIds = courses.map { it.id }
+        if (classIds.any { it <= 0L } || courseIds.any { it <= 0L } || lectures.any { it.id <= 0L }) {
+            throw IllegalStateException("شناسه یکی از رکوردهای پشتیبان معتبر نیست.")
+        }
+        if (classIds.size != classIds.toSet().size || courseIds.size != courseIds.toSet().size ||
+            lectures.map { it.id }.toSet().size != lectures.size
+        ) {
+            throw IllegalStateException("شناسه تکراری در پشتیبان وجود دارد؛ اطلاعات محلی تغییر نکرد.")
+        }
+        if (classes.any { it.ownerUid.isNotBlank() && it.ownerUid != ownerUid }) {
+            throw IllegalStateException("یکی از کلاس‌ها متعلق به حساب دیگری است؛ بازیابی متوقف شد.")
+        }
+        if (courses.any { it.classId !in classIds }) {
+            throw IllegalStateException("یکی از درس‌ها به کلاس موجود در پشتیبان متصل نیست.")
+        }
+        if (lectures.any { lecture ->
+                (lecture.classId != null && lecture.classId !in classIds) ||
+                    (lecture.courseId != null && lecture.courseId !in courseIds)
+            }
+        ) {
+            throw IllegalStateException("ارتباط یکی از جلسه‌ها با کلاس یا درس معتبر نیست.")
+        }
+        if (folders != null) {
+            val folderIds = folders.map { it.id }
+            if (folderIds.size != folderIds.toSet().size ||
+                folders.any { it.id <= 0L || it.ownerUid != ownerUid ||
+                    (it.parentFolderId != null && it.parentFolderId !in folderIds) }
+            ) {
+                throw IllegalStateException("ساختار یا مالکیت پوشه‌های پشتیبان معتبر نیست.")
+            }
         }
 
-        // Validate everything before deleting local data; delete children first.
-        lectureDao.clearForRestore()
-        courseDao.clearForRestore()
-        classDao.clearForRestore()
-        if (classes.isNotEmpty()) classDao.insertAllForRestore(classes)
-        if (courses.isNotEmpty()) courseDao.insertAllForRestore(courses)
-        if (lectures.isNotEmpty()) lectureDao.insertAllForRestore(lectures)
+        // Validate the complete snapshot before any local deletion, then replace all
+        // related Room tables atomically so an interrupted restore cannot leave a
+        // half-empty database.
+        database.withTransaction {
+            lectureDao.clearForRestore()
+            courseDao.clearForRestore()
+            classDao.clearForRestore()
+            if (classes.isNotEmpty()) classDao.insertAllForRestore(
+                classes.map { if (it.ownerUid.isBlank()) it.copy(ownerUid = ownerUid) else it }
+            )
+            if (courses.isNotEmpty()) courseDao.insertAllForRestore(courses)
+            if (lectures.isNotEmpty()) lectureDao.insertAllForRestore(lectures)
+            if (folders != null) {
+                teacherFolderDao.clearForRestore()
+                if (folders.isNotEmpty()) teacherFolderDao.insertAllForRestore(folders)
+            }
+        }
     }
 
     private fun ClassEntity.toCloudMap(): Map<String, Any?> = mapOf(
