@@ -165,7 +165,7 @@ fun SettingsScreen(
         androidx.compose.material3.AlertDialog(
             onDismissRequest = { showPublishConfirm = false },
             title = { Text("انتشار آنلاین مطالب (موقتاً غیرفعال)") },
-            text = { Text("متن، خلاصه، کلیدواژه‌ها، اطلاعات کلاس و لینک صوت همه جلسات این حساب برای کاربران واردشده به درس‌یار قابل مشاهده خواهد شد. فایل صوتی اصلی ارسال نمی‌شود. آیا ادامه می‌دهید؟") },
+            text = { Text("به دلیل بررسی بازیابی اطلاعات، انتشار آنلاین موقتاً غیرفعال است. هیچ داده‌ای ارسال نخواهد شد.") },
             confirmButton = {
                 Button(onClick = {
                     showPublishConfirm = false
@@ -749,7 +749,7 @@ fun SettingsScreen(
                         if (cloudBusy) CircularProgressIndicator(modifier = Modifier.size(18.dp), strokeWidth = 2.dp)
                         else Icon(Icons.Default.NetworkCheck, contentDescription = null)
                         Spacer(Modifier.width(8.dp))
-                        Text(if (cloudBusy) "در حال همگام‌سازی..." else if (AuthPreferences.currentRole(context) == UserRole.TEACHER) "انتشار و همگام‌سازی مطالب استاد" else "دریافت مطالب آنلاین")
+                        Text(if (cloudBusy) "در حال همگام‌سازی..." else if (AuthPreferences.currentRole(context) == UserRole.TEACHER) "انتشار آنلاین موقتاً غیرفعال" else "دریافت مطالب آنلاین موقتاً غیرفعال")
                     }
                     if (cloudStatus != null) {
                         Spacer(Modifier.height(10.dp))
