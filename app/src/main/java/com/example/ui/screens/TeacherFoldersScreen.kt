@@ -76,6 +76,7 @@ fun TeacherFoldersScreen(
     var hiddenKeys by remember(uid) { mutableStateOf(prefs.getStringSet("hidden_keys", emptySet())?.toSet().orEmpty()) }
     var deletedKeys by remember(uid) { mutableStateOf(prefs.getStringSet("deleted_keys", emptySet())?.toSet().orEmpty()) }
     var showHidden by remember { mutableStateOf(false) }
+    var showVisibilityDiagnostics by remember { mutableStateOf(false) }
     var folderToDelete by remember { mutableStateOf<TeacherFolderRow?>(null) }
     val scope = rememberCoroutineScope()
 
@@ -135,6 +136,54 @@ fun TeacherFoldersScreen(
         result
     }
 
+    if (showVisibilityDiagnostics) {
+        val ownClasses = allClasses.filter { it.id > 0L && it.ownerUid == uid }
+        val blankOwnerClasses = allClasses.filter { it.id > 0L && it.ownerUid.isBlank() }
+        val foreignClasses = allClasses.filter { it.id > 0L && it.ownerUid.isNotBlank() && it.ownerUid != uid }
+        val sharedClasses = allClasses.filter { it.id < 0L }
+        val ownTeacherNameClasses = allClasses.filter {
+            it.teacherName.trim().equals(AuthPreferences.currentName(context).trim(), ignoreCase = true)
+        }
+        val report = buildString {
+            appendLine("Darsyar class visibility diagnostic v1")
+            appendLine("login=${AuthPreferences.isLoggedIn(context)}")
+            appendLine("primaryAdmin=$isPrimaryAdmin")
+            appendLine("navigationRole=$userRole")
+            appendLine("persistedRole=$persistedRole")
+            appendLine("effectiveCanManage=$canManage")
+            appendLine("roomTotal=${allClasses.size}")
+            appendLine("roomPositive=${allClasses.count { it.id > 0L }}")
+            appendLine("roomOwnedByCurrentUid=${ownClasses.size}")
+            appendLine("roomPositiveBlankOwner=${blankOwnerClasses.size}")
+            appendLine("roomPositiveForeignOwner=${foreignClasses.size}")
+            appendLine("roomNegativeShared=${sharedClasses.size}")
+            appendLine("roomPublished=${allClasses.count { it.isPublished }}")
+            appendLine("roomOwnTeacherName=${ownTeacherNameClasses.size}")
+            appendLine("ownFolderInRows=${rows.any { it.key == uid }}")
+            appendLine("ownFolderClassCount=${rows.firstOrNull { it.key == uid }?.classes?.size ?: 0}")
+            appendLine("ownFolderHidden=${uid in hiddenKeys}")
+            appendLine("ownFolderDeleted=${uid in deletedKeys}")
+            appendLine("backendConfigured=${com.example.data.api.BackendEndpointConfig.isConfigured}")
+            appendLine("syncStatus=${syncStatus.take(120).replace('\\n', ' ')}")
+            appendLine("note=Counts only; no UID, email, class title, or lesson content.")
+        }
+        AlertDialog(
+            onDismissRequest = { showVisibilityDiagnostics = false },
+            title = { Text("گزارش عیب‌یابی نمایش کلاس‌ها") },
+            text = { Text(report) },
+            confirmButton = {
+                TextButton(onClick = {
+                    val clipboard = context.getSystemService(android.content.ClipboardManager::class.java)
+                    clipboard?.setPrimaryClip(android.content.ClipData.newPlainText("Darsyar diagnostics", report))
+                    showVisibilityDiagnostics = false
+                }) { Text("کپی گزارش") }
+            },
+            dismissButton = {
+                TextButton(onClick = { showVisibilityDiagnostics = false }) { Text("بستن") }
+            }
+        )
+    }
+
     Scaffold(
         topBar = {
             TopAppBar(
@@ -159,6 +208,11 @@ fun TeacherFoldersScreen(
                             onOpenTeacher(uid, AuthPreferences.currentName(context).ifBlank { "کلاس‌های من" })
                         }) {
                             Text("کلاس جدید +")
+                        }
+                    }
+                    if (canManage) {
+                        TextButton(onClick = { showVisibilityDiagnostics = true }) {
+                            Text("گزارش عیب‌یابی")
                         }
                     }
                     TextButton(onClick = { showHidden = !showHidden }) {
