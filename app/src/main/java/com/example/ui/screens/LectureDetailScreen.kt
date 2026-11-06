@@ -1367,6 +1367,18 @@ private fun normalizeSearchForHighlight(value: String): String =
         .replace(Regex("\\s+"), " ")
         .trim()
 
+private fun normalizeSearchCharacterForHighlight(character: Char): String = when {
+    character.isWhitespace() || character.code == 0x200C -> " "
+    character.code in 0x064B..0x065F || character.code == 0x0670 ||
+        character.code == 0x200F || character.code in 0x202A..0x202E -> ""
+    character == 'ي' -> "ی"
+    character == 'ك' -> "ک"
+    character == 'ۀ' || character == 'ة' -> "ه"
+    character == 'ؤ' -> "و"
+    character == 'إ' || character == 'أ' || character == 'آ' -> "ا"
+    else -> character.lowercaseChar().toString()
+}
+
 private fun appendNormalizedSearchCharacter(
     normalized: StringBuilder,
     originalIndexes: MutableList<Int>,
@@ -1391,7 +1403,7 @@ private fun findFirstSearchOffset(content: String, query: String, matchMode: Str
     val originalIndexes = mutableListOf<Int>()
     content.forEachIndexed { index, char ->
         appendNormalizedSearchCharacter(
-            normalized, originalIndexes, normalizeSearchForHighlight(char.toString()), index
+            normalized, originalIndexes, normalizeSearchCharacterForHighlight(char), index
         )
     }
     val normalizedQuery = normalizeSearchForHighlight(query).trim()
