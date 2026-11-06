@@ -78,22 +78,83 @@ class FirestoreSyncRepository(
         fun listSize(value: Any?): Int = (value as? List<*>)?.size ?: 0
 
         val payloadText = shared.getString("payload")
+        // Read-only comparison: neither Firestore nor Room is modified.
+        val localClasses = classDao.getAllForBackup()
+            .filter { it.id > 0L && (it.ownerUid.isBlank() || it.ownerUid == uid) }
+            .associateBy { it.id }
+        val localClassIds = localClasses.keys
+        val localLectures = lectureDao.getAllForBackup()
+            .filter { it.id > 0L && (it.classId == null || it.classId in localClassIds) }
+            .associateBy { it.id }
+        val localCourses = courseDao.getAllForBackup()
+            .filter { it.id > 0L && it.classId in localClassIds }
+            .associateBy { it.id }
+
         val sharedClassRows = mutableListOf<String>()
         val sharedLectureRows = mutableListOf<String>()
+        val sharedMissingClasses = mutableListOf<String>()
+        val sharedClassConflicts = mutableListOf<String>()
+        val sharedMissingLectures = mutableListOf<String>()
+        val sharedLectureConflicts = mutableListOf<String>()
+        var sharedClassCount = 0
+        var sharedCourseCount = 0
+        var sharedLectureCount = 0
+        var sharedClassMatched = 0
+        var sharedCourseMatched = 0
+        var sharedLectureMatched = 0
+        var sharedLectureContentDifferences = 0
         val payloadSummary = if (payloadText.isNullOrBlank()) {
             "absent"
         } else {
             runCatching {
                 val payload = JSONObject(payloadText)
                 val classArray = payload.optJSONArray("classes")
+                val courseArray = payload.optJSONArray("courses")
                 val lectureArray = payload.optJSONArray("lectures")
-                for (i in 0 until (classArray?.length() ?: 0)) {
-                    val item = classArray!!.optJSONObject(i) ?: continue
-                    sharedClassRows += "${item.optLong("id")}:${item.optString("name")}:${item.optString("teacherName")}"
+                val sharedClassIds = (0 until (classArray?.length() ?: 0)).mapNotNull { index ->
+                    val item = classArray!!.optJSONObject(index) ?: return@mapNotNull null
+                    val id = item.optLong("id")
+                    if (id <= 0L) return@mapNotNull null
+                    sharedClassCount++
+                    val existing = localClasses[id]
+                    if (existing == null) {
+                        sharedMissingClasses += id.toString() + ":" + item.optString("name")
+                    } else if (existing.name != item.optString("name") ||
+                        existing.teacherName != item.optString("teacherName")) {
+                        sharedClassConflicts += id.toString() + ":" + item.optString("name")
+                    } else {
+                        sharedClassMatched++
+                    }
+                    sharedClassRows += id.toString() + ":" + item.optString("name") + ":" + item.optString("teacherName")
+                    id
+                }.toSet()
+                for (i in 0 until (courseArray?.length() ?: 0)) {
+                    val item = courseArray!!.optJSONObject(i) ?: continue
+                    val id = item.optLong("id")
+                    if (id <= 0L) continue
+                    sharedCourseCount++
+                    if (localCourses.containsKey(id)) sharedCourseMatched++
                 }
                 for (i in 0 until (lectureArray?.length() ?: 0)) {
                     val item = lectureArray!!.optJSONObject(i) ?: continue
-                    sharedLectureRows += "${item.optLong("id")}:${item.optString("title")}:class=${item.optLong("classId", -1)}"
+                    val id = item.optLong("id")
+                    val classId = if (item.has("classId") && !item.isNull("classId")) item.optLong("classId") else null
+                    if (id <= 0L || classId == null || classId !in sharedClassIds) continue
+                    sharedLectureCount++
+                    val existing = localLectures[id]
+                    if (existing == null) {
+                        sharedMissingLectures += id.toString() + ":" + item.optString("title") + ":class=" + classId
+                    } else if (existing.title != item.optString("title") || existing.classId != classId) {
+                        sharedLectureConflicts += id.toString() + ":" + item.optString("title") + ":class=" + classId
+                    } else {
+                        sharedLectureMatched++
+                        if (existing.transcript != item.optString("transcript") ||
+                            existing.courseName != item.optString("courseName") ||
+                            existing.dateMillis != item.optLong("dateMillis")) {
+                            sharedLectureContentDifferences++
+                        }
+                    }
+                    sharedLectureRows += id.toString() + ":" + item.optString("title") + ":class=" + classId
                 }
                 "format=" + payload.optString("format", "unknown") +
                     ",version=" + payload.optInt("version", -1) +
@@ -137,6 +198,24 @@ class FirestoreSyncRepository(
             appendLine("sharedDoc.payloadSummary=" + payloadSummary)
             appendLine("sharedDoc.classRows=" + sharedClassRows.joinToString(";"))
             appendLine("sharedDoc.lectureRows=" + sharedLectureRows.joinToString(";"))
+            appendLine("local.ownedClasses=" + localClasses.size)
+            appendLine("local.ownedCourses=" + localCourses.size)
+            appendLine("local.ownedLectures=" + localLectures.size)
+            appendLine("sharedCompare.classes.total=" + sharedClassCount)
+            appendLine("sharedCompare.classes.matched=" + sharedClassMatched)
+            appendLine("sharedCompare.classes.missing=" + sharedMissingClasses.size)
+            appendLine("sharedCompare.classes.conflicts=" + sharedClassConflicts.size)
+            appendLine("sharedCompare.classes.missingRows=" + sharedMissingClasses.joinToString(";"))
+            appendLine("sharedCompare.classes.conflictRows=" + sharedClassConflicts.joinToString(";"))
+            appendLine("sharedCompare.courses.total=" + sharedCourseCount)
+            appendLine("sharedCompare.courses.matchedById=" + sharedCourseMatched)
+            appendLine("sharedCompare.lectures.total=" + sharedLectureCount)
+            appendLine("sharedCompare.lectures.matchedByIdTitleClass=" + sharedLectureMatched)
+            appendLine("sharedCompare.lectures.missing=" + sharedMissingLectures.size)
+            appendLine("sharedCompare.lectures.conflicts=" + sharedLectureConflicts.size)
+            appendLine("sharedCompare.lectures.contentDifferences=" + sharedLectureContentDifferences)
+            appendLine("sharedCompare.lectures.missingRows=" + sharedMissingLectures.joinToString(";"))
+            appendLine("sharedCompare.lectures.conflictRows=" + sharedLectureConflicts.joinToString(";"))
             appendLine("sharedDoc.legacyArrays.classes=" + listSize(shared.get("classes")))
             appendLine("sharedDoc.legacyArrays.courses=" + listSize(shared.get("courses")))
             appendLine("sharedDoc.legacyArrays.lectures=" + listSize(shared.get("lectures")))
