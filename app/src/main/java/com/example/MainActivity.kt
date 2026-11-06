@@ -1,13 +1,20 @@
 package com.example
 
+import android.content.ClipData
+import android.content.ClipboardManager
 import android.os.Bundle
+import android.os.Process
+import android.util.Log
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.BackHandler
 import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
 import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
+import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.CompositionLocalProvider
@@ -38,10 +45,16 @@ import com.example.ui.screens.UserRole
 import com.example.ui.theme.AppThemeMode
 import com.example.ui.theme.MyApplicationTheme
 import com.example.ui.theme.ThemePreferences
+import java.io.PrintWriter
+import java.io.StringWriter
+
+private const val CRASH_PREFS = "darsyar_crash_diagnostics"
+private const val LAST_CRASH_KEY = "last_crash"
 
 class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
+        installCrashDiagnostics()
         enableEdgeToEdge()
         AuthPreferences.attach(this)
         setContent {
@@ -66,6 +79,31 @@ class MainActivity : ComponentActivity() {
             }
         }
     }
+
+    private fun installCrashDiagnostics() {
+        val previousHandler = Thread.getDefaultUncaughtExceptionHandler()
+        Thread.setDefaultUncaughtExceptionHandler { thread, throwable ->
+            try {
+                val trace = StringWriter().also { writer ->
+                    throwable.printStackTrace(PrintWriter(writer))
+                }.toString()
+                getSharedPreferences(CRASH_PREFS, MODE_PRIVATE)
+                    .edit()
+                    .putString(LAST_CRASH_KEY, trace.takeLast(16_000))
+                    .commit()
+                Log.e("DarsyarCrash", "Uncaught exception on thread ${thread.name}", throwable)
+            } catch (diagnosticError: Throwable) {
+                Log.e("DarsyarCrash", "Could not persist crash diagnostics", diagnosticError)
+            }
+
+            if (previousHandler != null) {
+                previousHandler.uncaughtException(thread, throwable)
+            } else {
+                Process.killProcess(Process.myPid())
+                kotlin.system.exitProcess(10)
+            }
+        }
+    }
 }
 
 @Composable
@@ -74,6 +112,46 @@ fun OstadYarApp(
     onThemeChanged: (AppThemeMode) -> Unit = {}
 ) {
     val context = LocalContext.current
+    val crashPrefs = remember(context) {
+        context.getSharedPreferences(CRASH_PREFS, android.content.Context.MODE_PRIVATE)
+    }
+    var previousCrash by remember {
+        mutableStateOf(crashPrefs.getString(LAST_CRASH_KEY, null))
+    }
+
+    if (!previousCrash.isNullOrBlank()) {
+        AlertDialog(
+            onDismissRequest = {
+                crashPrefs.edit().remove(LAST_CRASH_KEY).apply()
+                previousCrash = null
+            },
+            title = { Text("گزارش بسته‌شدن قبلی برنامه") },
+            text = {
+                Text("یک خطای ثبت‌نشده باعث بسته‌شدن برنامه شده است. گزارش فنی ذخیره شده؛ آن را کپی کنید و در همین گفتگو بفرستید تا علت دقیق بررسی شود.")
+            },
+            confirmButton = {
+                TextButton(onClick = {
+                    val clipboard = context.getSystemService(ClipboardManager::class.java)
+                    clipboard?.setPrimaryClip(
+                        ClipData.newPlainText("گزارش خطای درس‌یار", previousCrash.orEmpty())
+                    )
+                    crashPrefs.edit().remove(LAST_CRASH_KEY).apply()
+                    previousCrash = null
+                }) {
+                    Text("کپی گزارش و بستن")
+                }
+            },
+            dismissButton = {
+                TextButton(onClick = {
+                    crashPrefs.edit().remove(LAST_CRASH_KEY).apply()
+                    previousCrash = null
+                }) {
+                    Text("فعلاً نه")
+                }
+            }
+        )
+    }
+
     var authenticated by remember { mutableStateOf(AuthPreferences.isLoggedIn(context)) }
     var guestBrowsing by remember { mutableStateOf(false) }
     var userRole by remember { mutableStateOf(AuthPreferences.currentRole(context)) }
