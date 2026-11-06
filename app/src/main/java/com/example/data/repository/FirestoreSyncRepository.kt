@@ -12,6 +12,7 @@ import com.google.android.gms.tasks.Task
 import com.google.firebase.firestore.DocumentSnapshot
 import com.google.firebase.firestore.FieldValue
 import com.google.firebase.firestore.FirebaseFirestore
+import org.json.JSONObject
 import kotlinx.coroutines.suspendCancellableCoroutine
 import kotlin.coroutines.resume
 import kotlin.coroutines.resumeWithException
@@ -69,18 +70,47 @@ class FirestoreSyncRepository(
     suspend fun restoreLegacySharedMaterials(uid: String): Boolean {
         val snapshot = firestore.collection(SHARED_MATERIALS).document(uid).get().awaitResult()
         if (!snapshot.exists()) return false
-        val data = snapshot.data ?: return false
-        if (data["classes"] !is List<*> ||
-            data["courses"] !is List<*> ||
-            data["lectures"] !is List<*>
-        ) return false
+        val data = snapshot.data
+            ?: throw IllegalStateException("سند قدیمی فضای ابری خالی است؛ برای جلوگیری از بازنویسی، همگام‌سازی متوقف شد.")
 
-        return try {
+        // Older app versions stored the published snapshot as a JSON string in
+        // shared_materials/{uid}.payload, not as top-level Firestore arrays.
+        // Accept both known legacy layouts; reject unknown layouts without uploading.
+        if (data["classes"] is List<*> &&
+            data["courses"] is List<*> &&
+            data["lectures"] is List<*>
+        ) {
             restoreSnapshot(snapshot, requireAllCollections = true)
-            true
-        } catch (_: IllegalStateException) {
-            false
+            return true
         }
+
+        val payloadText = data["payload"] as? String
+            ?: throw IllegalStateException("ساختار پشتیبان قدیمی شناخته نشد؛ اطلاعات محلی و ابری دست‌نخورده باقی ماندند.")
+        val payload = runCatching { JSONObject(payloadText) }.getOrElse {
+            throw IllegalStateException("محتوای پشتیبان قدیمی قابل‌خواندن نیست؛ همگام‌سازی برای حفظ اطلاعات متوقف شد.")
+        }
+        if (payload.optString("format") != "darsyar-shared-materials") {
+            throw IllegalStateException("قالب پشتیبان قدیمی معتبر نیست؛ همگام‌سازی برای حفظ اطلاعات متوقف شد.")
+        }
+
+        val classRows = payload.optJSONArray("classes")
+            ?: throw IllegalStateException("فهرست کلاس‌ها در پشتیبان قدیمی وجود ندارد.")
+        val courseRows = payload.optJSONArray("courses")
+            ?: throw IllegalStateException("فهرست درس‌ها در پشتیبان قدیمی وجود ندارد.")
+        val lectureRows = payload.optJSONArray("lectures")
+            ?: throw IllegalStateException("فهرست جلسه‌ها در پشتیبان قدیمی وجود ندارد.")
+
+        val classes = (0 until classRows.length()).map { index ->
+            classRows.getJSONObject(index).toStringKeyMap().toClassEntity()
+        }
+        val courses = (0 until courseRows.length()).map { index ->
+            courseRows.getJSONObject(index).toStringKeyMap().toCourseEntity()
+        }
+        val lectures = (0 until lectureRows.length()).map { index ->
+            lectureRows.getJSONObject(index).toStringKeyMap().toLectureEntity()
+        }
+        validateAndReplaceLocalData(classes, courses, lectures)
+        true
     }
 
     suspend fun uploadSnapshot(uid: String) {
@@ -93,10 +123,6 @@ class FirestoreSyncRepository(
         }
         val lectures = lectureDao.getAllForBackup()
             .filter { it.id > 0L && it.classId in ownedClassIds }
-            .filterNot {
-                it.title == "جلسه ۴: شبکه‌های عصبی و یادگیری عمیق" ||
-                    it.title == "جلسه ۷: سری و تبدیل فوریه و کاربرد در سیگنال"
-            }
 
         val root = firestore.collection(TEACHER_DATA).document(uid)
         val records = root.collection(RECORDS)
@@ -107,6 +133,11 @@ class FirestoreSyncRepository(
 
         // Read existing keys so deleted local records are also removed from cloud.
         val existing = records.get().awaitResult().documents
+        if (desired.isEmpty() && existing.isNotEmpty()) {
+            throw IllegalStateException(
+                "ارسال پشتیبان خالی متوقف شد؛ در فضای ابری ${existing.size} رکورد موجود است اما در دستگاه هیچ رکورد مالکانه‌ای یافت نشد. ابتدا بازیابی و تطبیق اطلاعات لازم است."
+            )
+        }
         val staleRefs = existing.filter { it.id !in desired.keys }.map { it.reference }
 
         val operations = mutableListOf<Pair<com.google.firebase.firestore.DocumentReference, Map<String, Any?>?>>()
@@ -149,6 +180,17 @@ class FirestoreSyncRepository(
         val courses = mutableListOf<CourseEntity>()
         val lectures = mutableListOf<LectureEntity>()
         val rootSnapshot = firestore.collection(TEACHER_DATA).document(uid).get().awaitResult()
+        val storedOwner = rootSnapshot.getString("ownerUid")
+        if (!storedOwner.isNullOrBlank() && storedOwner != uid) {
+            throw IllegalStateException("مالک پشتیبان ابری با حساب فعلی تطبیق ندارد؛ اطلاعات محلی دست‌نخورده باقی ماند.")
+        }
+        val expectedCount = rootSnapshot.getLong("recordCount")
+            ?: throw IllegalStateException("تعداد رکوردهای پشتیبان ابری مشخص نیست؛ بازیابی برای حفظ اطلاعات متوقف شد.")
+        if (expectedCount != documents.size.toLong()) {
+            throw IllegalStateException(
+                "پشتیبان ابری ناقص دریافت شد (انتظار ${expectedCount} رکورد، دریافت ${documents.size})؛ اطلاعات محلی تغییر نکرد."
+            )
+        }
         val folders = teacherFolderDao?.let {
             (rootSnapshot.get("folders") as? List<*>)?.mapNotNull { value ->
                 (value as? Map<*, *>)?.asStringMap()?.toFolderEntity()
@@ -328,6 +370,12 @@ class FirestoreSyncRepository(
         parentFolderId = nullableNumber("parentFolderId"),
         createdAtMillis = number("createdAtMillis", System.currentTimeMillis())
     )
+
+    private fun JSONObject.toStringKeyMap(): Map<String, Any?> =
+        keys().asSequence().associate { key ->
+            val value = opt(key)
+            key to if (value == JSONObject.NULL) null else value
+        }
 
     private fun Map<*, *>.asStringMap(): Map<String, Any?>? {
         if (keys.any { it !is String }) return null
