@@ -16,17 +16,26 @@ import java.security.MessageDigest
  * Audio binaries are never uploaded; only an optional audio URL is shared.
  */
 object CloudMaterialsSync {
-    fun sync(context: Context): String = syncInternal(context, receiveOnly = false)
+    /**
+     * Recovery diagnostic build: teacher publishing is disabled until cloud records
+     * have been compared with the user's backup. Student read-only retrieval remains enabled.
+     */
+    fun sync(context: Context): String {
+        if (AuthPreferences.currentRole(context) == UserRole.TEACHER) {
+            return "انتشار آنلاین استاد تا پایان بررسی بازیابی موقتاً غیرفعال است؛ هیچ داده‌ای ارسال نشد."
+        }
+        return syncInternal(context, receiveOnly = false)
+    }
 
     /**
-     * Allows a secondary teacher to read other teachers' published materials without
-     * publishing their own snapshot. Imported rows retain negative IDs and are read-only.
+     * Teacher-side published-feed retrieval is also paused in this diagnostic build
+     * so Room remains unchanged while the private and shared cloud snapshots are inspected.
      */
     fun syncPublishedForTeacher(context: Context): String {
         require(AuthPreferences.currentRole(context) == UserRole.TEACHER) {
             "این همگام‌سازی فقط برای حساب استاد است."
         }
-        return syncInternal(context, receiveOnly = true)
+        return "دریافت مطالب منتشرشده در نسخه تشخیصی موقتاً متوقف است؛ اطلاعات محلی تغییر نکرد."
     }
 
     private fun syncInternal(context: Context, receiveOnly: Boolean): String {
