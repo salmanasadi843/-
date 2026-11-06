@@ -59,6 +59,7 @@ fun TeacherFoldersScreen(
     val prefs = remember(uid) { teacherFolderPrefs(context, uid) }
     val allClasses by viewModel.repository.allClasses.collectAsState(initial = emptyList())
     val syncStatus by viewModel.studentMaterialsSyncStatus.collectAsState()
+    val cloudSyncStatus by viewModel.cloudSyncStatus.collectAsState()
     val isPrimaryAdmin = AuthPreferences.isPrimaryTeacher(context)
     // Use the persisted role when the navigation argument is stale.
     val persistedRole = AuthPreferences.currentRole(context)
@@ -97,7 +98,7 @@ fun TeacherFoldersScreen(
         }
     }
 
-    val rows = remember(visibleClasses, deletedKeys, hiddenKeys, showHidden, uid) {
+    val rows = remember(visibleClasses, deletedKeys, hiddenKeys, showHidden, uid, canManage) {
         val groups = visibleClasses.groupBy { teacherFolderKey(it, uid) }
         val teacherRows = groups.entries
             // The signed-in teacher's own folder must remain visible.
@@ -164,7 +165,8 @@ fun TeacherFoldersScreen(
             appendLine("ownFolderHidden=${uid in hiddenKeys}")
             appendLine("ownFolderDeleted=${uid in deletedKeys}")
             appendLine("backendConfigured=${com.example.data.api.BackendEndpointConfig.isConfigured}")
-            appendLine("syncStatus=${syncStatus.take(120).replace('\\n', ' ')}")
+            appendLine("studentSyncStatus=${syncStatus.take(100).replace(10.toChar(), ' ')}")
+            appendLine("cloudSyncStatus=${cloudSyncStatus.take(100).replace(10.toChar(), ' ')}")
             appendLine("note=Counts only; no UID, email, class title, or lesson content.")
         }
         AlertDialog(
