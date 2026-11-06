@@ -18,6 +18,10 @@ export type UserNotification = {
 };
 export type Me = { userId: string; roles: string[] };
 export type Teacher = { userId: string; displayName: string };
+export type AdminUser = {
+  userId: string; displayName: string; email: string | null; status: string;
+  roles: string[]; teacherApprovalStatus: string | null;
+};
 export type TeacherApplication = {
   userId: string; displayName: string; email: string | null;
   teachingField: string | null; institutionName: string | null; approvalStatus: string;
@@ -112,6 +116,8 @@ export const api = {
   me: (token: string) => request<Me>("/api/v1/me", token),
   submitTeacherApplication: (data: { teachingField?: string | null; institutionName?: string | null }, token: string) =>
     request<TeacherApplication>("/api/v1/teacher-applications", token, { method: "POST", body: JSON.stringify(data) }),
+  adminUsers: (limit: number, offset: number, token: string) =>
+    request<AdminUser[]>(`/api/v1/admin/users?limit=${limit}&offset=${offset}`, token),
   pendingTeacherApplications: (token: string) =>
     request<TeacherApplication[]>("/api/v1/admin/teacher-applications", token),
   decideTeacherApplication: (userId: string, decision: "approved" | "rejected", token: string) =>
