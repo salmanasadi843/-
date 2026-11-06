@@ -289,6 +289,22 @@ class TeachingSessionRoutesAuthorizationIntegrationTest {
                     assertEquals(HttpStatusCode.OK, studentNotes.status)
                     assertContains(studentNotes.bodyAsText(), noteId!!)
 
+                    // The cross-session "my notes" endpoint must preserve the same user isolation.
+                    val guestAllNotes = client.get("/api/v1/me/notes")
+                    assertEquals(HttpStatusCode.Unauthorized, guestAllNotes.status)
+
+                    val studentAllNotes = client.get("/api/v1/me/notes") {
+                        bearerAuth("student-token")
+                    }
+                    assertEquals(HttpStatusCode.OK, studentAllNotes.status)
+                    assertContains(studentAllNotes.bodyAsText(), noteId)
+
+                    val ownerAllNotes = client.get("/api/v1/me/notes") {
+                        bearerAuth("owner-token")
+                    }
+                    assertEquals(HttpStatusCode.OK, ownerAllNotes.status)
+                    assertFalse(ownerAllNotes.bodyAsText().contains(noteId))
+
                     val ownerNotes = client.get(notesPath) { bearerAuth("owner-token") }
                     assertEquals(HttpStatusCode.OK, ownerNotes.status)
                     assertFalse(ownerNotes.bodyAsText().contains(noteId))
