@@ -71,7 +71,9 @@ fun HomeScreen(
     val context = LocalContext.current
     // The primary administrator keeps management access even if a stale local role has not refreshed.
     val isPrimaryTeacher = AuthPreferences.isPrimaryTeacher(context)
-    val isTeacher = userRole == UserRole.TEACHER || isPrimaryTeacher
+    // Prefer the persisted authenticated role when the navigation argument is stale.
+    val persistedRole = AuthPreferences.currentRole(context)
+    val isTeacher = userRole == UserRole.TEACHER || persistedRole == UserRole.TEACHER || isPrimaryTeacher
     LaunchedEffect(isTeacher, isPrimaryTeacher) {
         if (!isTeacher) viewModel.startStudentMaterialsSync()
         else if (isPrimaryTeacher) viewModel.syncPublishedMaterialsForTeacher()
