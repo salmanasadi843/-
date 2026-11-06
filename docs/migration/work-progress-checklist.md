@@ -543,3 +543,11 @@
 - [x] ماتریس مجوز با نتیجه CI و لینک runها به‌روزرسانی شد (commit مستندات ماتریس `5d3ad8da`).
 - [ ] خانه‌های باقی‌مانده route × role × operation (teachers، redeem و course listing) و پذیرش staging/security هنوز انجام نشده‌اند.
 - **Roadmap رسمی بدون تغییر: 17/40 (42.5٪).**
+
+
+## پوشش تکمیلی teacher directory و access-code redeem — 2026-11-06
+
+- [x] GET `/api/v1/teachers` مهمان=401 افزوده شد.
+- [x] redeem کد ورود توسط نقش teacher=403 افزوده شد (student=200 و guest=401 قبلاً آزموده شده).
+- [ ] CI روی commit `f2f829e574f29d32865ef9758b29c3ca33920f83` در انتظار است؛ تأیید آزمون فقط پس از Backend CI سبز.
+- Roadmap رسمی: 17/40 (42.5٪)، بدون تغییر.
