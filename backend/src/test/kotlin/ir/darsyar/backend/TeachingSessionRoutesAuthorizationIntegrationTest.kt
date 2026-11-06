@@ -91,6 +91,10 @@ class TeachingSessionRoutesAuthorizationIntegrationTest {
                 otherTeacher.toString(),
                 CreateTeachingClass(otherTeacher.toString(), "Unpublished public class", "", "", "public", false)
             )
+            val deletedOwnerClass = classRepository.create(
+                owner.toString(), CreateTeachingClass(owner.toString(), "Deleted owner class", "", "", "private", true)
+            )
+            classRepository.setDeleted(owner.toString(), setOf(AppRole.TEACHER), deletedOwnerClass.id, true)
             dataSource.connection.use { connection ->
                 connection.prepareStatement(
                     "INSERT INTO class_memberships(class_id, student_user_id, status) VALUES (?::uuid, ?, 'active')"
@@ -201,6 +205,52 @@ class TeachingSessionRoutesAuthorizationIntegrationTest {
                             ): AiAnswerResult = AiAnswerResult(answer = "پاسخ آزمون مستند")
                         }
                     )
+                }
+
+                suspend fun verifyDeletedRecoveryListAuthorization() {
+                    val guestClasses = client.get("/api/v1/classes/deleted")
+                    assertEquals(HttpStatusCode.Unauthorized, guestClasses.status)
+                    val studentClasses = client.get("/api/v1/classes/deleted") {
+                        bearerAuth("student-token")
+                    }
+                    assertEquals(HttpStatusCode.Forbidden, studentClasses.status)
+                    val ownerClasses = client.get("/api/v1/classes/deleted") {
+                        bearerAuth("owner-token")
+                    }
+                    assertEquals(HttpStatusCode.OK, ownerClasses.status, ownerClasses.bodyAsText())
+                    assertContains(ownerClasses.bodyAsText(), deletedOwnerClass.id)
+                    val otherTeacherClasses = client.get("/api/v1/classes/deleted") {
+                        bearerAuth("other-teacher-token")
+                    }
+                    assertEquals(HttpStatusCode.OK, otherTeacherClasses.status, otherTeacherClasses.bodyAsText())
+                    assertFalse(otherTeacherClasses.bodyAsText().contains(deletedOwnerClass.id))
+                    val adminClasses = client.get("/api/v1/classes/deleted") {
+                        bearerAuth("admin-token")
+                    }
+                    assertEquals(HttpStatusCode.OK, adminClasses.status, adminClasses.bodyAsText())
+                    assertContains(adminClasses.bodyAsText(), deletedOwnerClass.id)
+
+                    val guestSessions = client.get("/api/v1/sessions/deleted")
+                    assertEquals(HttpStatusCode.Unauthorized, guestSessions.status)
+                    val studentSessions = client.get("/api/v1/sessions/deleted") {
+                        bearerAuth("student-token")
+                    }
+                    assertEquals(HttpStatusCode.Forbidden, studentSessions.status)
+                    val ownerSessions = client.get("/api/v1/sessions/deleted") {
+                        bearerAuth("owner-token")
+                    }
+                    assertEquals(HttpStatusCode.OK, ownerSessions.status, ownerSessions.bodyAsText())
+                    assertContains(ownerSessions.bodyAsText(), deletedSession.id)
+                    val otherTeacherSessions = client.get("/api/v1/sessions/deleted") {
+                        bearerAuth("other-teacher-token")
+                    }
+                    assertEquals(HttpStatusCode.OK, otherTeacherSessions.status, otherTeacherSessions.bodyAsText())
+                    assertFalse(otherTeacherSessions.bodyAsText().contains(deletedSession.id))
+                    val adminSessions = client.get("/api/v1/sessions/deleted") {
+                        bearerAuth("admin-token")
+                    }
+                    assertEquals(HttpStatusCode.OK, adminSessions.status, adminSessions.bodyAsText())
+                    assertContains(adminSessions.bodyAsText(), deletedSession.id)
                 }
 
                 suspend fun verifyAiAnswerAuthorization() {
@@ -1201,6 +1251,7 @@ class TeachingSessionRoutesAuthorizationIntegrationTest {
 
                 // Verify the original public/private visibility before the admin move
                 // changes foreignSession's parent class later in the mutation scenarios.
+                verifyDeletedRecoveryListAuthorization()
                 verifyAiAnswerAuthorization()
                 verifyAudioSourceAuthorization()
                 verifyPersonalNotesAndStateAuthorization()
