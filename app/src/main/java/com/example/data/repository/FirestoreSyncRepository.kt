@@ -10,6 +10,7 @@ import com.google.android.gms.tasks.Task
 import com.google.firebase.firestore.DocumentSnapshot
 import com.google.firebase.firestore.FieldValue
 import com.google.firebase.firestore.FirebaseFirestore
+import org.json.JSONObject
 import kotlinx.coroutines.suspendCancellableCoroutine
 import kotlin.coroutines.resume
 import kotlin.coroutines.resumeWithException
@@ -58,6 +59,74 @@ class FirestoreSyncRepository(
             else -> throw IllegalStateException(
                 "نسخه پشتیبان ابری قابل‌شناسایی نیست؛ برای جلوگیری از حذف اطلاعات، بازیابی متوقف شد."
             )
+        }
+    }
+
+    /**
+     * Read-only recovery diagnostic. This method must never write to Firestore or Room.
+     * It reports metadata only; transcript/audio contents are deliberately excluded.
+     */
+    suspend fun diagnoseCloudState(uid: String): String {
+        val rootRef = firestore.collection(TEACHER_DATA).document(uid)
+        val root = rootRef.get().awaitResult()
+        val recordDocuments = rootRef.collection(RECORDS).get().awaitResult().documents
+        val shared = firestore.collection(SHARED_MATERIALS).document(uid).get().awaitResult()
+        val typeCounts = recordDocuments.groupingBy {
+            it.getString("recordType") ?: "unknown"
+        }.eachCount()
+
+        fun listSize(value: Any?): Int = (value as? List<*>)?.size ?: 0
+
+        val payloadText = shared.getString("payload")
+        val payloadSummary = if (payloadText.isNullOrBlank()) {
+            "absent"
+        } else {
+            runCatching {
+                val payload = JSONObject(payloadText)
+                "format=" + payload.optString("format", "unknown") +
+                    ",version=" + payload.optInt("version", -1) +
+                    ",classes=" + (payload.optJSONArray("classes")?.length() ?: 0) +
+                    ",courses=" + (payload.optJSONArray("courses")?.length() ?: 0) +
+                    ",lectures=" + (payload.optJSONArray("lectures")?.length() ?: 0)
+            }.getOrElse { "invalid-json" }
+        }
+
+        val classRows = recordDocuments
+            .filter { it.getString("recordType") == "class" }
+            .take(30)
+            .joinToString(";") { doc ->
+                doc.id + ":" + (doc.getString("name") ?: doc.getString("title") ?: "")
+            }
+        val lectureRows = recordDocuments
+            .filter { it.getString("recordType") == "lecture" }
+            .take(60)
+            .joinToString(";") { doc ->
+                doc.id + ":" + (doc.getString("title") ?: "")
+            }
+
+        return buildString {
+            appendLine("DARSYAR_READ_ONLY_DIAGNOSTIC_V1")
+            appendLine("uid=" + uid)
+            appendLine("privateRoot.exists=" + root.exists())
+            appendLine("privateRoot.schemaVersion=" + (root.getLong("schemaVersion") ?: -1L))
+            appendLine("privateRoot.ownerUid=" + (root.getString("ownerUid") ?: "absent"))
+            appendLine("privateRoot.recordCount=" + (root.getLong("recordCount") ?: -1L))
+            appendLine("privateRoot.folders=" + listSize(root.get("folders")))
+            appendLine("privateRecords.total=" + recordDocuments.size)
+            appendLine("privateRecords.classes=" + (typeCounts["class"] ?: 0))
+            appendLine("privateRecords.courses=" + (typeCounts["course"] ?: 0))
+            appendLine("privateRecords.lectures=" + (typeCounts["lecture"] ?: 0))
+            appendLine("privateRecords.unknown=" + (typeCounts["unknown"] ?: 0))
+            appendLine("privateRecords.classRows=" + classRows)
+            appendLine("privateRecords.lectureRows=" + lectureRows)
+            appendLine("sharedDoc.exists=" + shared.exists())
+            appendLine("sharedDoc.ownerUid=" + (shared.getString("ownerUid") ?: "absent"))
+            appendLine("sharedDoc.payloadChars=" + (payloadText?.length ?: 0))
+            appendLine("sharedDoc.payloadSummary=" + payloadSummary)
+            appendLine("sharedDoc.legacyArrays.classes=" + listSize(shared.get("classes")))
+            appendLine("sharedDoc.legacyArrays.courses=" + listSize(shared.get("courses")))
+            appendLine("sharedDoc.legacyArrays.lectures=" + listSize(shared.get("lectures")))
+            appendLine("NOTE=no Firestore or local data was changed")
         }
     }
 
