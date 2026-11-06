@@ -75,6 +75,10 @@ class ClassAccessCodeRoutesIntegrationTest {
                 ownerId.toString(),
                 CreateTeachingClass(ownerId.toString(), "کلاس عمومی", "", "", "public", true)
             )
+            val foreignTeacherClass = classes.create(
+                otherTeacherId.toString(),
+                CreateTeachingClass(otherTeacherId.toString(), "کلاس استاد دیگر", "", "", "private", true)
+            )
 
             val identities = mapOf(
                 "admin-token" to (adminId.toString() to setOf(AppRole.SUPER_ADMIN)),
@@ -192,6 +196,33 @@ class ClassAccessCodeRoutesIntegrationTest {
                 header(HttpHeaders.Authorization, "Bearer admin-token")
             }
             assertEquals(HttpStatusCode.NoContent, adminDeactivate.status, adminDeactivate.bodyAsText())
+            // Main admin must manage access codes for a class owned by another teacher.
+            val adminForeignCreate = client.post("/api/v1/classes/${foreignTeacherClass.id}/access-codes") {
+                header(HttpHeaders.Authorization, "Bearer admin-token")
+                contentType(ContentType.Application.Json)
+                setBody("""{"maxUses":1}""")
+            }
+            val adminForeignBody = adminForeignCreate.bodyAsText()
+            assertEquals(HttpStatusCode.Created, adminForeignCreate.status, adminForeignBody)
+            val adminForeignCodeId = Regex("""\"id\":\"([^\"]+)\"""").find(adminForeignBody)?.groupValues?.get(1)
+            assertNotNull(adminForeignCodeId, adminForeignBody)
+
+            val adminForeignList = client.get("/api/v1/classes/${foreignTeacherClass.id}/access-codes") {
+                header(HttpHeaders.Authorization, "Bearer admin-token")
+            }
+            assertEquals(HttpStatusCode.OK, adminForeignList.status, adminForeignList.bodyAsText())
+            assertTrue(adminForeignList.bodyAsText().contains(adminForeignCodeId), adminForeignList.bodyAsText())
+
+            val ownerCannotManageForeignCodes = client.get("/api/v1/classes/${foreignTeacherClass.id}/access-codes") {
+                header(HttpHeaders.Authorization, "Bearer owner-token")
+            }
+            assertEquals(HttpStatusCode.Forbidden, ownerCannotManageForeignCodes.status, ownerCannotManageForeignCodes.bodyAsText())
+
+            val adminForeignDeactivate = client.delete("/api/v1/access-codes/$adminForeignCodeId") {
+                header(HttpHeaders.Authorization, "Bearer admin-token")
+            }
+            assertEquals(HttpStatusCode.NoContent, adminForeignDeactivate.status, adminForeignDeactivate.bodyAsText())
+
 
             val deactivatedRedeem = client.post("/api/v1/class-memberships/redeem") {
                 header(HttpHeaders.Authorization, "Bearer student-token")
