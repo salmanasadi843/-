@@ -283,7 +283,7 @@ class FirestoreSyncRepository(
                 )
             }
         }
-        validateAndReplaceLocalData(classes, courses, lectures, folders, uid)
+        mergeCloudData(classes, courses, lectures, folders, uid)
     }
 
     private suspend fun restoreSnapshot(
@@ -322,87 +322,125 @@ class FirestoreSyncRepository(
             (it as? Map<*, *>)?.asStringMap()?.toLectureEntity()
                 ?: throw IllegalStateException("رکورد جلسه در پشتیبان ابری معتبر نیست.")
         }
-        validateAndReplaceLocalData(classes, courses, lectures, ownerUid = ownerUid)
+        mergeCloudData(classes, courses, lectures, ownerUid = ownerUid)
     }
 
-    private suspend fun validateAndReplaceLocalData(
+    /**
+     * Merge a validated private cloud snapshot into Room without deleting or overwriting
+     * local records. Existing IDs must match exactly; any conflict aborts the transaction.
+     */
+    private suspend fun mergeCloudData(
         classes: List<ClassEntity>,
         courses: List<CourseEntity>,
         lectures: List<LectureEntity>,
         folders: List<TeacherFolderEntity>? = null,
         ownerUid: String
     ) {
-        if (classes.isEmpty() && courses.isEmpty() && lectures.isEmpty()) {
-            val localHasData = classDao.getAllForBackup().isNotEmpty() ||
-                courseDao.getAllForBackup().isNotEmpty() ||
-                lectureDao.getAllForBackup().isNotEmpty()
-            if (localHasData) {
-                throw IllegalStateException(
-                    "پشتیبان ابری خالی است اما اطلاعاتی روی دستگاه وجود دارد؛ برای جلوگیری از پاک‌شدن اطلاعات، بازیابی متوقف شد."
-                )
+        val normalizedClasses = classes.map {
+            if (it.ownerUid.isBlank()) it.copy(ownerUid = ownerUid) else it
+        }
+        require(normalizedClasses.all { it.id > 0L && it.ownerUid == ownerUid }) {
+            "مالکیت یا شناسه یکی از کلاس‌های پشتیبان معتبر نیست؛ اطلاعات محلی تغییر نکرد."
+        }
+        require(courses.all { it.id > 0L } && lectures.all { it.id > 0L }) {
+            "شناسه یکی از رکوردهای پشتیبان معتبر نیست؛ اطلاعات محلی تغییر نکرد."
+        }
+        require(normalizedClasses.map { it.id }.distinct().size == normalizedClasses.size &&
+            courses.map { it.id }.distinct().size == courses.size &&
+            lectures.map { it.id }.distinct().size == lectures.size
+        ) {
+            "شناسه تکراری در پشتیبان وجود دارد؛ اطلاعات محلی تغییر نکرد."
+        }
+
+        val normalizedFolders = folders?.map {
+            if (it.ownerUid.isBlank()) it.copy(ownerUid = ownerUid) else it
+        }
+        if (normalizedFolders != null) {
+            require(normalizedFolders.all { it.id > 0L && it.ownerUid == ownerUid } &&
+                normalizedFolders.map { it.id }.distinct().size == normalizedFolders.size
+            ) {
+                "مالکیت یا شناسه یکی از پوشه‌های پشتیبان معتبر نیست؛ اطلاعات محلی تغییر نکرد."
             }
         }
 
-        val classIds = classes.map { it.id }
-        val courseIds = courses.map { it.id }
-        if (classIds.any { it <= 0L } || courseIds.any { it <= 0L } || lectures.any { it.id <= 0L }) {
-            throw IllegalStateException("شناسه یکی از رکوردهای پشتیبان معتبر نیست.")
-        }
-        if (classIds.size != classIds.toSet().size || courseIds.size != courseIds.toSet().size ||
-            lectures.map { it.id }.toSet().size != lectures.size
-        ) {
-            throw IllegalStateException("شناسه تکراری در پشتیبان وجود دارد؛ اطلاعات محلی تغییر نکرد.")
-        }
-        if (classes.any { it.ownerUid.isNotBlank() && it.ownerUid != ownerUid }) {
-            throw IllegalStateException("یکی از کلاس‌ها متعلق به حساب دیگری است؛ بازیابی متوقف شد.")
-        }
-        if (courses.any { it.classId !in classIds }) {
-            throw IllegalStateException("یکی از درس‌ها به کلاس موجود در پشتیبان متصل نیست.")
-        }
-        if (lectures.any { lecture ->
-                (lecture.classId != null && lecture.classId !in classIds) ||
-                    (lecture.courseId != null && lecture.courseId !in courseIds)
+        database.withTransaction {
+            val existingClasses = classDao.getAllForBackup().associateBy { it.id }
+            val existingCourses = courseDao.getAllForBackup().associateBy { it.id }
+            val existingLectures = lectureDao.getAllForBackup().associateBy { it.id }
+            val existingFolders = teacherFolderDao.observeFoldersForBackup().associateBy { it.id }
+
+            val incomingClassIds = normalizedClasses.map { it.id }.toSet()
+            val allClassIds = existingClasses.keys + incomingClassIds
+            val incomingCourseIds = courses.map { it.id }.toSet()
+            val allCourseIds = existingCourses.keys + incomingCourseIds
+            val incomingFolderIds = normalizedFolders.orEmpty().map { it.id }.toSet()
+            val allFolderIds = existingFolders.keys + incomingFolderIds
+
+            require(courses.all { it.classId in allClassIds }) {
+                "یکی از درس‌ها به کلاسی متصل است که در دستگاه یا پشتیبان وجود ندارد."
             }
-        ) {
-            throw IllegalStateException("ارتباط یکی از جلسه‌ها با کلاس یا درس معتبر نیست.")
-        }
-        if (folders != null) {
-            val folderIds = folders.map { it.id }
-            val foldersById = folders.associateBy { it.id }
-            if (folderIds.size != folderIds.toSet().size ||
-                folders.any { it.id <= 0L || it.ownerUid != ownerUid ||
-                    (it.parentFolderId != null && it.parentFolderId !in folderIds) }
-            ) {
-                throw IllegalStateException("ساختار یا مالکیت پوشه‌های پشتیبان معتبر نیست.")
+            require(lectures.all {
+                (it.classId == null || it.classId in allClassIds) &&
+                    (it.courseId == null || it.courseId in allCourseIds)
+            }) {
+                "ارتباط یکی از جلسه‌ها با کلاس یا درس معتبر نیست."
             }
-            folders.forEach { folder ->
-                val visited = mutableSetOf<Long>()
-                var parentId = folder.parentFolderId
-                while (parentId != null) {
-                    if (!visited.add(parentId) || parentId == folder.id) {
-                        throw IllegalStateException("ساختار پوشه‌های پشتیبان دارای چرخه است؛ بازیابی متوقف شد.")
+            if (normalizedFolders != null) {
+                require(normalizedFolders.all {
+                    it.parentFolderId == null || it.parentFolderId in allFolderIds
+                }) { "ساختار پوشه‌های پشتیبان کامل نیست." }
+                normalizedClasses.forEach { item ->
+                    require(item.folderId == null || item.folderId in allFolderIds) {
+                        "یکی از کلاس‌ها به پوشه‌ای متصل است که در دستگاه یا پشتیبان وجود ندارد."
                     }
-                    parentId = foldersById[parentId]?.parentFolderId
+                }
+                val foldersById = (existingFolders.values + normalizedFolders).associateBy { it.id }
+                normalizedFolders.forEach { folder ->
+                    val visited = mutableSetOf<Long>()
+                    var parentId = folder.parentFolderId
+                    while (parentId != null) {
+                        require(visited.add(parentId) && parentId != folder.id) {
+                            "ساختار پوشه‌های پشتیبان دارای چرخه است؛ اطلاعات محلی تغییر نکرد."
+                        }
+                        parentId = foldersById[parentId]?.parentFolderId
+                    }
                 }
             }
-        }
 
-        // Validate the complete snapshot before any local deletion, then replace all
-        // related Room tables atomically so an interrupted restore cannot leave a
-        // half-empty database.
-        database.withTransaction {
-            lectureDao.clearForRestore()
-            courseDao.clearForRestore()
-            classDao.clearForRestore()
-            if (classes.isNotEmpty()) classDao.insertAllForRestore(
-                classes.map { if (it.ownerUid.isBlank()) it.copy(ownerUid = ownerUid) else it }
-            )
-            if (courses.isNotEmpty()) courseDao.insertAllForRestore(courses)
-            if (lectures.isNotEmpty()) lectureDao.insertAllForRestore(lectures)
-            if (folders != null) {
-                teacherFolderDao.clearForRestore()
-                if (folders.isNotEmpty()) teacherFolderDao.insertAllForRestore(folders)
+            normalizedClasses.forEach { item ->
+                val existing = existingClasses[item.id]
+                require(existing == null || existing == item) {
+                    "شناسه کلاس ${item.id} در دستگاه با اطلاعات متفاوتی وجود دارد؛ هیچ تغییری اعمال نشد."
+                }
             }
+            courses.forEach { item ->
+                val existing = existingCourses[item.id]
+                require(existing == null || existing == item) {
+                    "شناسه درس ${item.id} در دستگاه با اطلاعات متفاوتی وجود دارد؛ هیچ تغییری اعمال نشد."
+                }
+            }
+            lectures.forEach { item ->
+                val existing = existingLectures[item.id]
+                require(existing == null || existing == item) {
+                    "شناسه جلسه ${item.id} در دستگاه با محتوای متفاوتی وجود دارد؛ هیچ تغییری اعمال نشد."
+                }
+            }
+            normalizedFolders.orEmpty().forEach { item ->
+                val existing = existingFolders[item.id]
+                require(existing == null || existing == item) {
+                    "شناسه پوشه ${item.id} در دستگاه با اطلاعات متفاوتی وجود دارد؛ هیچ تغییری اعمال نشد."
+                }
+            }
+
+            val newClasses = normalizedClasses.filter { it.id !in existingClasses }
+            val newCourses = courses.filter { it.id !in existingCourses }
+            val newLectures = lectures.filter { it.id !in existingLectures }
+            val newFolders = normalizedFolders.orEmpty().filter { it.id !in existingFolders }
+
+            if (newClasses.isNotEmpty()) classDao.insertAllForRestore(newClasses)
+            if (newCourses.isNotEmpty()) courseDao.insertAllForRestore(newCourses)
+            if (newLectures.isNotEmpty()) lectureDao.insertAllForRestore(newLectures)
+            if (newFolders.isNotEmpty()) teacherFolderDao.insertAllForRestore(newFolders)
         }
     }
 
