@@ -175,6 +175,19 @@ class FirestoreSyncRepository(
                 "ارسال پشتیبان خالی متوقف شد؛ در فضای ابری ${existing.size} رکورد موجود است اما در دستگاه هیچ رکورد مالکانه‌ای یافت نشد. ابتدا بازیابی و تطبیق اطلاعات لازم است."
             )
         }
+        if (existing.isNotEmpty()) {
+            val rootSnapshot = root.get().awaitResult()
+            val storedCount = rootSnapshot.getLong("recordCount")
+            if (!rootSnapshot.exists() ||
+                rootSnapshot.getLong("schemaVersion") != SCHEMA_VERSION ||
+                rootSnapshot.getString("ownerUid") != uid ||
+                storedCount != existing.size.toLong()
+            ) {
+                throw IllegalStateException(
+                    "ساختار پشتیبان ابری با رکوردهای موجود تطبیق ندارد؛ برای جلوگیری از بازنویسی، ارسال متوقف شد."
+                )
+            }
+        }
 
         val operations = desired.map { (id, data) ->
             records.document(id) to data
