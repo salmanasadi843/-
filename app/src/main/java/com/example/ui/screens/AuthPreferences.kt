@@ -47,7 +47,8 @@ object AuthPreferences {
         auth(context).currentUser != null
 
     fun currentRole(context: Context): UserRole =
-        if (context.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
+        if (isPrimaryTeacher(context) ||
+            context.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
                 .getString(ROLE, UserRole.STUDENT.name) == UserRole.TEACHER.name
         ) UserRole.TEACHER else UserRole.STUDENT
 

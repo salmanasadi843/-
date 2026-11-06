@@ -68,24 +68,28 @@ fun HomeScreen(
     val allClasses by viewModel.repository.allClasses.collectAsState(initial = emptyList())
     val allLectures by viewModel.repository.allLectures.collectAsState(initial = emptyList())
     val studentSyncStatus by viewModel.studentMaterialsSyncStatus.collectAsState()
-    LaunchedEffect(userRole) { if (userRole == UserRole.STUDENT) viewModel.startStudentMaterialsSync() }
+    val context = LocalContext.current
+    // The primary administrator keeps management access even if a stale local role has not refreshed.
+    val isPrimaryTeacher = AuthPreferences.isPrimaryTeacher(context)
+    val isTeacher = userRole == UserRole.TEACHER || isPrimaryTeacher
+    LaunchedEffect(isTeacher, isPrimaryTeacher) {
+        if (!isTeacher) viewModel.startStudentMaterialsSync()
+        else if (isPrimaryTeacher) viewModel.syncPublishedMaterialsForTeacher()
+    }
     // While refreshing, do not expose stale cached classes whose publication may have been revoked.
-    val studentFeedReady = userRole != UserRole.STUDENT || (
+    val studentFeedReady = isTeacher || (
         studentSyncStatus != "مطالب آنلاین هنوز بررسی نشده‌اند." &&
         !studentSyncStatus.contains("در حال دریافت") &&
         !studentSyncStatus.contains("دریافت خودکار مطالب انجام نشد")
     )
-    val classes = if (userRole == UserRole.STUDENT) {
+    val classes = if (!isTeacher) {
         if (studentFeedReady) allClasses.filter { it.id < 0L && it.isPublished }
         else emptyList()
     } else allClasses
     val visibleClassIds = classes.map { it.id }.toSet()
-    val lectures = if (userRole == UserRole.STUDENT) {
+    val lectures = if (!isTeacher) {
         allLectures.filter { it.id < 0L && it.isPublished && it.classId in visibleClassIds }
     } else allLectures
-    val isTeacher = userRole == UserRole.TEACHER
-    val isPrimaryTeacher = isTeacher && AuthPreferences.isPrimaryTeacher(LocalContext.current)
-    val context = LocalContext.current
     val isOnline = rememberNetworkConnection()
     var showBulkExportDialog by androidx.compose.runtime.remember { androidx.compose.runtime.mutableStateOf(false) }
     val advancedSearchState by viewModel.advancedSearchState.collectAsState()
@@ -243,7 +247,7 @@ fun HomeScreen(
                 actions = {
                     IconButton(onClick = { viewModel.setAdvancedSearchOpen(true) }) { Icon(Icons.Default.Search, contentDescription = "جستجوی پیشرفته در درس‌ها") }
                     if (isTeacher) IconButton(onClick = { showBulkExportDialog = true }) { Icon(Icons.Default.Share, contentDescription = "ارسال گروهی مطالب") }
-                    IconButton(onClick = viewModel::openClasses) { Icon(Icons.Default.School, "کلاس‌ها") }
+                    IconButton(onClick = viewModel::openClasses) { Icon(Icons.Default.School, "پوشه‌های استادان") }
                     if (BackendEndpointConfig.isConfigured) {
                         IconButton(onClick = onNavigateToBackendBrowse) {
                             Icon(Icons.Default.Cloud, contentDescription = "مرور کلاس‌های استادان")
@@ -323,7 +327,7 @@ fun HomeScreen(
                             Modifier.weight(1f),
                             Icons.Default.School,
                             "کلاس جدید",
-                            "ایجاد کلاس و افزودن جلسات",
+                            "انتخاب استاد، سپس کلاس و جلسه",
                             onNavigateToAdd
                         )
                     }
@@ -345,7 +349,7 @@ fun HomeScreen(
                             Button(onClick = viewModel::openClasses, Modifier.fillMaxWidth(), colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.secondary, contentColor = MaterialTheme.colorScheme.onSecondary)) {
                                 Icon(Icons.Default.School, null)
                                 Spacer(Modifier.width(7.dp))
-                                Text("مشاهده کلاس‌ها")
+                                Text("مشاهده پوشه‌های استادان و کلاس‌ها")
                             }
                         }
                     }
@@ -355,7 +359,7 @@ fun HomeScreen(
             item {
                 Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.SpaceBetween) {
                     Column {
-                        Text("کلاس‌های من", style = MaterialTheme.typography.headlineSmall, fontWeight = FontWeight.Bold)
+                        Text("دسترسی سریع به کلاس‌ها", style = MaterialTheme.typography.headlineSmall, fontWeight = FontWeight.Bold)
                         Text(
                             if (isTeacher) "کلاس‌ها را مدیریت و جلسات را ثبت کنید." else "کلاس‌ها و جلسات برای مطالعه",
                             style = MaterialTheme.typography.bodySmall,

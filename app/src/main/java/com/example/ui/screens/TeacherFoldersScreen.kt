@@ -59,14 +59,15 @@ fun TeacherFoldersScreen(
     val prefs = remember(uid) { teacherFolderPrefs(context, uid) }
     val allClasses by viewModel.repository.allClasses.collectAsState(initial = emptyList())
     val syncStatus by viewModel.studentMaterialsSyncStatus.collectAsState()
-    val canManage = userRole == UserRole.TEACHER || AuthPreferences.isPrimaryTeacher(context)
+    val isPrimaryAdmin = AuthPreferences.isPrimaryTeacher(context)
+    val canManage = userRole == UserRole.TEACHER || isPrimaryAdmin
     val studentReady = canManage || (
         syncStatus != "مطالب آنلاین هنوز بررسی نشده‌اند." &&
         !syncStatus.contains("در حال دریافت") &&
         !syncStatus.contains("دریافت خودکار مطالب انجام نشد")
     )
-    LaunchedEffect(userRole) {
-        if (userRole == UserRole.STUDENT) viewModel.startStudentMaterialsSync()
+    LaunchedEffect(canManage) {
+        if (!canManage) viewModel.startStudentMaterialsSync()
         else viewModel.syncPublishedMaterialsForTeacher()
     }
 
@@ -195,7 +196,7 @@ fun TeacherFoldersScreen(
                                     color = MaterialTheme.colorScheme.onSurfaceVariant
                                 )
                             }
-                            if (!row.unfiled) {
+                            if (!row.unfiled && (row.key == uid || isPrimaryAdmin)) {
                                 IconButton(onClick = {
                                     if (row.key in hiddenKeys) {
                                         hiddenKeys = hiddenKeys - row.key
@@ -209,9 +210,9 @@ fun TeacherFoldersScreen(
                                         contentDescription = if (row.key in hiddenKeys) "نمایش پوشه" else "پنهان‌کردن پوشه"
                                     )
                                 }
-                                if (row.key != uid) {
+                                if (isPrimaryAdmin && row.key != uid) {
                                     IconButton(onClick = { folderToDelete = row }) {
-                                        Icon(Icons.Default.Delete, contentDescription = "حذف پوشه")
+                                        Icon(Icons.Default.Delete, contentDescription = "حذف پوشه از فهرست مدیر")
                                     }
                                 }
                             }
