@@ -234,6 +234,17 @@ class FirestoreSyncRepository(
         folders: List<TeacherFolderEntity>? = null,
         ownerUid: String
     ) {
+        if (classes.isEmpty() && courses.isEmpty() && lectures.isEmpty()) {
+            val localHasData = classDao.getAllForBackup().isNotEmpty() ||
+                courseDao.getAllForBackup().isNotEmpty() ||
+                lectureDao.getAllForBackup().isNotEmpty()
+            if (localHasData) {
+                throw IllegalStateException(
+                    "پشتیبان ابری خالی است اما اطلاعاتی روی دستگاه وجود دارد؛ برای جلوگیری از پاک‌شدن اطلاعات، بازیابی متوقف شد."
+                )
+            }
+        }
+
         val classIds = classes.map { it.id }
         val courseIds = courses.map { it.id }
         if (classIds.any { it <= 0L } || courseIds.any { it <= 0L } || lectures.any { it.id <= 0L }) {
