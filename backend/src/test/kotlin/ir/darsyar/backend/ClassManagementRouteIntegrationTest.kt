@@ -101,6 +101,9 @@ class ClassManagementRouteIntegrationTest {
 
             application { module(dataSource, verifier, users) }
 
+            val guestTeachersResponse = client.get("/api/v1/teachers")
+            assertEquals(HttpStatusCode.Unauthorized, guestTeachersResponse.status, guestTeachersResponse.bodyAsText())
+
             // The directory and class-list HTTP endpoints must preserve the teacher -> class hierarchy.
             val adminTeachersResponse = client.get("/api/v1/teachers") {
                 header(HttpHeaders.Authorization, "Bearer admin-token")
