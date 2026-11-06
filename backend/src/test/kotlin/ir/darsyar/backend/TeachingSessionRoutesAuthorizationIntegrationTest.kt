@@ -161,6 +161,8 @@ class TeachingSessionRoutesAuthorizationIntegrationTest {
                 )
             )
 
+            var aiAvailable = true
+
             testApplication {
                 application {
                     module(
@@ -189,8 +191,58 @@ class TeachingSessionRoutesAuthorizationIntegrationTest {
                                 )
                                 else -> null
                             }
+                        },
+                        aiAnswerService = object : AiAnswerService {
+                            override fun isAvailable(): Boolean = aiAvailable
+                            override fun answer(
+                                transcript: String,
+                                question: String,
+                                selectedText: String?
+                            ): AiAnswerResult = AiAnswerResult(answer = "پاسخ آزمون مستند")
                         }
                     )
+                }
+
+                suspend fun verifyAiAnswerAuthorization() {
+                    val ownerPath = "/api/v1/classes/${ownerClass.id}/sessions/${activeSession.id}/ai/answer"
+                    val guest = client.post(ownerPath) {
+                        contentType(ContentType.Application.Json)
+                        setBody("""{"question":"موضوع جلسه چیست؟"}""")
+                    }
+                    assertEquals(HttpStatusCode.Unauthorized, guest.status)
+
+                    val privateForeignPath = "/api/v1/classes/${otherTeacherClass.id}/sessions/${foreignSession.id}/ai/answer"
+                    val nonMember = client.post(privateForeignPath) {
+                        bearerAuth("student-token")
+                        contentType(ContentType.Application.Json)
+                        setBody("""{"question":"موضوع جلسه چیست؟"}""")
+                    }
+                    assertEquals(HttpStatusCode.NotFound, nonMember.status)
+
+                    val ownerAnswer = client.post(ownerPath) {
+                        bearerAuth("owner-token")
+                        contentType(ContentType.Application.Json)
+                        setBody("""{"question":"موضوع جلسه چیست؟"}""")
+                    }
+                    assertEquals(HttpStatusCode.OK, ownerAnswer.status, ownerAnswer.bodyAsText())
+                    assertContains(ownerAnswer.bodyAsText(), "پاسخ آزمون مستند")
+
+                    val activeMemberPath = "/api/v1/classes/${memberPrivateClass.id}/sessions/${memberPrivateSession.id}/ai/answer"
+                    val activeMemberAnswer = client.post(activeMemberPath) {
+                        bearerAuth("student-token")
+                        contentType(ContentType.Application.Json)
+                        setBody("""{"question":"موضوع جلسه چیست؟"}""")
+                    }
+                    assertEquals(HttpStatusCode.OK, activeMemberAnswer.status, activeMemberAnswer.bodyAsText())
+
+                    aiAvailable = false
+                    val unavailable = client.post(ownerPath) {
+                        bearerAuth("owner-token")
+                        contentType(ContentType.Application.Json)
+                        setBody("""{"question":"موضوع جلسه چیست؟"}""")
+                    }
+                    assertEquals(HttpStatusCode.ServiceUnavailable, unavailable.status)
+                    aiAvailable = true
                 }
 
                 suspend fun verifyAudioSourceAuthorization() {
@@ -1149,6 +1201,7 @@ class TeachingSessionRoutesAuthorizationIntegrationTest {
 
                 // Verify the original public/private visibility before the admin move
                 // changes foreignSession's parent class later in the mutation scenarios.
+                verifyAiAnswerAuthorization()
                 verifyAudioSourceAuthorization()
                 verifyPersonalNotesAndStateAuthorization()
                 verifyAnnouncementAuthorization()
