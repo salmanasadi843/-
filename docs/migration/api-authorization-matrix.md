@@ -120,3 +120,10 @@
 - آزمون‌های AI و recovery در فایل `TeachingSessionRoutesAuthorizationIntegrationTest.kt` در head `ed6cb47aad1d9a63d36377b5e177998d612ed236` حاضر هستند.
 - Backend CI run [42176514178](https://github.com/salmanasadi843/-/actions/runs/42176514178)، Android [42176514153](https://github.com/salmanasadi843/-/actions/runs/42176514153)، Web [42176514244](https://github.com/salmanasadi843/-/actions/runs/42176514244) و Legacy Inventory [42176514146](https://github.com/salmanasadi843/-/actions/runs/42176514146) همگی روی همان head موفق شدند.
 - این نتیجه، آزمون‌های افزوده را از نظر CI تأیید می‌کند؛ پذیرش واقعی staging و امنیت مستقل همچنان لازم است.
+
+
+### تکمیل دو خانه کوچک ماتریس — commit `f2f829e5`
+
+- آزمون GET `/api/v1/teachers` برای مهمان=401 افزوده شد؛ پاسخ مدیر و استاد authenticated در آزمون قبلی موجود بود.
+- آزمون POST `/api/v1/class-memberships/redeem` برای نقش استاد=403 افزوده شد؛ دانشجو موفق، مهمان=401، کد نامعتبر/غیرفعال=400 و تکرار عضویت نیز قبلاً آزموده شده‌اند.
+- Backend CI روی head `f2f829e574f29d32865ef9758b29c3ca33920f83` هنوز pending است؛ این دو assertion تا سبز شدن CI تأیید نمی‌شوند.
