@@ -3,7 +3,7 @@ package ir.darsyar.backend
 import com.zaxxer.hikari.HikariConfig
 import com.zaxxer.hikari.HikariDataSource
 import io.ktor.client.request.bearerAuth
-import io.ktor.client.request.contentType
+import io.ktor.http.contentType
 import io.ktor.client.request.get
 import io.ktor.client.request.patch
 import io.ktor.client.request.post
