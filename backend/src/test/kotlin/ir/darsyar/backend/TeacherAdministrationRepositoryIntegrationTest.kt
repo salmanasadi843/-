@@ -50,6 +50,15 @@ class TeacherAdministrationRepositoryIntegrationTest {
             assertEquals("pending", submitted.approvalStatus)
             assertEquals(1, repository.listPendingApplications().size)
 
+            val rejected = assertNotNull(
+                repository.decideApplication(adminId.toString(), teacherId.toString(), "rejected")
+            )
+            assertEquals("rejected", rejected.approvalStatus)
+
+            val resubmitted = repository.submitApplication(teacherId.toString(), "اصول فقه", null)
+            assertEquals("pending", resubmitted.approvalStatus)
+            assertEquals(1, repository.listPendingApplications().size)
+
             val approved = assertNotNull(repository.decideApplication(adminId.toString(), teacherId.toString(), "approved"))
             assertEquals("approved", approved.approvalStatus)
             dataSource.connection.use { connection ->
@@ -74,7 +83,7 @@ class TeacherAdministrationRepositoryIntegrationTest {
                     "SELECT count(*) FROM audit_log WHERE entity_type = 'teacher_profile' AND owner_user_id = ?"
                 ).use { st ->
                     st.setObject(1, teacherId)
-                    st.executeQuery().use { rs -> rs.next(); assertEquals(3, rs.getInt(1)) }
+                    st.executeQuery().use { rs -> rs.next(); assertEquals(5, rs.getInt(1)) }
                 }
             }
             assertFailsWith<IllegalStateException> {
