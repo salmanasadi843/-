@@ -73,15 +73,15 @@
 | سلامت و نسخه | GET `/health/live`, `/health/ready`, `/api/v1` | Backend CI | بررسی health/version در CI؛ این‌ها endpointهای عمومی‌اند. |
 | کاتالوگ عمومی | GET `/api/v1/public/classes`, `/classes/{classId}/sessions`, `/sessions/{sessionId}` | `TeachingSessionRoutesAuthorizationIntegrationTest` | مهمان و مرز انتشار عمومی/خصوصی و تطبیق classId/sessionId آزموده شده‌اند. |
 | هویت و یادداشت‌های کاربر | GET `/api/v1/me`, GET `/api/v1/me/notes` | `AuthenticationTest`, `TeachingSessionRoutesAuthorizationIntegrationTest` | هویت نامعتبر/غیرفعال و جداسازی فهرست یادداشت شخصی آزموده شده؛ CI فعلی سبز است. |
-| پاسخ AI | POST `/api/v1/classes/{classId}/sessions/{sessionId}/ai/answer` | `TeachingSessionRoutesAuthorizationIntegrationTest` + `AiAnswerServiceTest` | آزمون HTTP افزوده‌شده: مهمان=401، دانشجوی غیرعضو=404، مالک و عضو فعال=200، سرویس خاموش=503؛ commit `0b9c423d`؛ CI در انتظار. |
+| پاسخ AI | POST `/api/v1/classes/{classId}/sessions/{sessionId}/ai/answer` | `TeachingSessionRoutesAuthorizationIntegrationTest` + `AiAnswerServiceTest` | آزمون HTTP افزوده‌شده: مهمان=401، دانشجوی غیرعضو=404، مالک و عضو فعال=200، سرویس خاموش=503؛ commit `0b9c423d`؛ Backend CI روی head نهایی `ed6cb47a` موفق شد. |
 | درخواست استاد | POST `/api/v1/teacher-applications`; GET/PATCH `/api/v1/admin/teacher-applications` | `TeacherAdministrationRoutesAuthorizationIntegrationTest` | مهمان/دانشجو/استاد غیرمدیر و مدیر، submit، approve، حذف از pending، تصمیم نامعتبر و شناسه ناموجود آزموده شده‌اند. |
 | فهرست استادها | GET `/api/v1/teachers` | `ClassManagementRouteIntegrationTest` | درخواست HTTP وجود دارد؛ ماتریس پاسخ‌های مهمان/دانشجو/استاد/مدیر و حالت شناسه نامعتبر به‌صورت مستقل و کامل مستند نشده است. |
 | پوشه استاد | GET/POST `/api/v1/teacher-folders`; PATCH/DELETE `/api/v1/teacher-folders/{folderId}` | `TeacherFolderManagementRouteIntegrationTest`, `TeachingSessionRoutesAuthorizationIntegrationTest` | مالک/مدیر، استاد غیرمالک، ساخت برای مالک دیگر، والد/چرخه، مخفی‌سازی، حذف پوشه خالی و منع حذف پوشه دارای فرزند پوشش دارند؛ ماتریس جامع پاسخ‌های 401/403/404 برای همه متدها هنوز یکپارچه نیست. |
 | کد ورود | GET/POST `/api/v1/classes/{classId}/access-codes`; DELETE `/api/v1/access-codes/{codeId}`; POST `/api/v1/class-memberships/redeem` | `ClassAccessCodeRoutesIntegrationTest` | مالک/مدیر/استاد غیرمالک/دانشجو/مهمان و redeem دانشجو، کد غیرفعال و کلاس عمومی آزموده شده‌اند؛ redeem با نقش استاد و همه حالت‌های منبع ناموجود هنوز پوشش صریح ندارند. |
 | عضویت | GET/DELETE `/api/v1/classes/{classId}/memberships` | `TeachingSessionRoutesAuthorizationIntegrationTest` | مالک/مدیر مجاز، استاد غیرمالک/دانشجو/مهمان ممنوع و قطع دسترسی پس از لغو عضویت آزموده شده‌اند. |
-| کلاس‌های حذف‌شده | GET `/api/v1/classes/deleted` | `TeachingSessionRoutesAuthorizationIntegrationTest` | مهمان=401، دانشجو=403، مالک/مدیر=200؛ استاد دیگر=200 با جداسازی داده مالکیت؛ commit `0b9c423d`؛ CI در انتظار. |
+| کلاس‌های حذف‌شده | GET `/api/v1/classes/deleted` | `TeachingSessionRoutesAuthorizationIntegrationTest` | مهمان=401، دانشجو=403، مالک/مدیر=200؛ استاد دیگر=200 با جداسازی داده مالکیت؛ commit `0b9c423d`؛ Backend CI روی head نهایی `ed6cb47a` موفق شد. |
 | دوره | GET/POST `/api/v1/classes/{classId}/courses`; PATCH/DELETE `/api/v1/courses/{courseId}` | `CourseManagementRouteIntegrationTest`, `TeachingSessionRoutesAuthorizationIntegrationTest` | فهرست/ایجاد/ویرایش/حذف و مرز مالک/مدیر/دانشجو/استاد غیرمالک آزموده شده‌اند؛ آزمون مستقل GET فهرست دوره برای مهمان/عضو/غیرعضو به ماتریس کامل نیاز دارد. |
-| جلسه‌های حذف‌شده | GET `/api/v1/sessions/deleted` | `TeachingSessionRoutesAuthorizationIntegrationTest` | مهمان=401، دانشجو=403، مالک/مدیر=200؛ استاد دیگر=200 با جداسازی داده مالکیت؛ commit `0b9c423d`؛ CI در انتظار. |
+| جلسه‌های حذف‌شده | GET `/api/v1/sessions/deleted` | `TeachingSessionRoutesAuthorizationIntegrationTest` | مهمان=401، دانشجو=403، مالک/مدیر=200؛ استاد دیگر=200 با جداسازی داده مالکیت؛ commit `0b9c423d`؛ Backend CI روی head نهایی `ed6cb47a` موفق شد. |
 | یادداشت جلسه | GET/POST `/api/v1/classes/{classId}/sessions/{sessionId}/notes`; PATCH/DELETE `/api/v1/session-notes/{noteId}` | `TeachingSessionRoutesAuthorizationIntegrationTest` | مالکیت یادداشت و منع مشاهده/ویرایش/حذف یادداشت کاربر دیگر آزموده شده؛ فهرست شخصی نیز برای مهمان/دانشجو/مالک آزمون دارد. |
 | وضعیت جلسه | GET/PUT `/api/v1/classes/{classId}/sessions/{sessionId}/state` | `TeachingSessionRoutesAuthorizationIntegrationTest` | جداسازی وضعیت کاربرها آزموده شده است. |
 | منابع صوتی | GET/POST `/api/v1/sessions/{sessionId}/audio-sources`; PATCH/DELETE `/{sourceId}` | `TeachingSessionRoutesAuthorizationIntegrationTest` | مشاهده و تغییر برای دانشجو/مالک/مدیر/استاد غیرمالک و منع تغییر غیرمجاز آزموده شده است. |
@@ -91,8 +91,8 @@
 
 ### شکاف‌های اثبات‌شده و ترتیب رفع
 
-1. [x] آزمون HTTP AI افزوده شد: guest=401، دانشجوی غیرعضو=404، مالک/عضو=200 و سرویس خاموش=503؛ commit `0b9c423d`، CI در انتظار.
-2. [x] آزمون HTTP GET فهرست کلاس و جلسه حذف‌شده افزوده شد؛ مهمان=401، دانشجو=403، مالک/مدیر=200 و استاد دیگر فقط داده خود را می‌بیند؛ commit `0b9c423d`، CI در انتظار.
+1. [x] آزمون HTTP AI افزوده شد: guest=401، دانشجوی غیرعضو=404، مالک/عضو=200 و سرویس خاموش=503؛ commit `0b9c423d`، Backend CI روی head نهایی `ed6cb47a` موفق شد.
+2. [x] آزمون HTTP GET فهرست کلاس و جلسه حذف‌شده افزوده شد؛ مهمان=401، دانشجو=403، مالک/مدیر=200 و استاد دیگر فقط داده خود را می‌بیند؛ commit `0b9c423d`، Backend CI روی head نهایی `ed6cb47a` موفق شد.
 3. **P1 — تکمیل خانه‌های ماتریس:** برای `/api/v1/teachers`، redeem کد ورود و فهرست دوره‌ها، پاسخ نقش‌های نامجاز و منابع خارج از scope به‌صورت صریح ثبت شود.
 4. **P1 — یکپارچه‌سازی:** برای routeهای دارای آزمون، statusهای 401/403/404/موفقیت را متدبه‌متد علامت‌گذاری کن؛ عنوان کلی «آزمون HTTP موجود» به معنی پوشش تمام خانه‌ها نیست.
 
@@ -114,3 +114,9 @@
 - از fake AI service استفاده شده؛ هیچ provider خارجی فراخوانی نمی‌شود.
 - Backend CI و Android CI روی این head هنوز در حال اجرا/صف هستند؛ Web در حال اجرا و Legacy Inventory موفق شده است. تست‌های جدید تا سبز شدن Backend CI تأییدشده محسوب نمی‌شوند.
 - Roadmap رسمی همچنان 17/40 (42.5٪) است؛ مرحله 08 باز می‌ماند.
+
+### تأیید نهایی CI آزمون‌های شکاف — 2026-11-06
+
+- آزمون‌های AI و recovery در فایل `TeachingSessionRoutesAuthorizationIntegrationTest.kt` در head `ed6cb47aad1d9a63d36377b5e177998d612ed236` حاضر هستند.
+- Backend CI run [42176514178](https://github.com/salmanasadi843/-/actions/runs/42176514178)، Android [42176514153](https://github.com/salmanasadi843/-/actions/runs/42176514153)، Web [42176514244](https://github.com/salmanasadi843/-/actions/runs/42176514244) و Legacy Inventory [42176514146](https://github.com/salmanasadi843/-/actions/runs/42176514146) همگی روی همان head موفق شدند.
+- این نتیجه، آزمون‌های افزوده را از نظر CI تأیید می‌کند؛ پذیرش واقعی staging و امنیت مستقل همچنان لازم است.
