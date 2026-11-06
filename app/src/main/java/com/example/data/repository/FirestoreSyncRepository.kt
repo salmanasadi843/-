@@ -63,10 +63,6 @@ class FirestoreSyncRepository(
     }
 
     /**
-     * Older shared documents are read-only fallback sources. They are imported
-     * only if they contain all three expected arrays, then migrated privately.
-     */
-    /**
      * Published materials are not a private backup. They may contain only a
      * subset of the teacher's published classes, so importing them by replacing
      * Room would silently discard private classes and unpublished sessions.
