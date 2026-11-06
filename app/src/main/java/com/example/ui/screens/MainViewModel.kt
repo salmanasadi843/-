@@ -130,10 +130,9 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
      * from private backup sync, so shared records cannot become owned teacher data.
      */
     fun syncPublishedMaterialsForTeacher() {
-        if (_userRole.value != UserRole.TEACHER) return
-        if (teacherPublishedSyncJob?.isActive == true) return
-
         val app = getApplication<Application>()
+        if (_userRole.value != UserRole.TEACHER && AuthPreferences.currentRole(app) != UserRole.TEACHER) return
+        if (teacherPublishedSyncJob?.isActive == true) return
         if (AuthPreferences.currentUid(app).isNullOrBlank()) return
 
         teacherPublishedSyncJob = viewModelScope.launch {
