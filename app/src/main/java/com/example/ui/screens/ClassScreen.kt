@@ -38,7 +38,9 @@ fun ClassScreen(
     val context = LocalContext.current
     val ownerUid = AuthPreferences.currentUid(context).orEmpty()
     val isPrimaryAdmin = AuthPreferences.isPrimaryTeacher(context)
-    val canManageClasses = userRole == UserRole.TEACHER || isPrimaryAdmin
+    // Use the persisted signed-in role when the navigation argument is stale.
+    val persistedRole = AuthPreferences.currentRole(context)
+    val canManageClasses = userRole == UserRole.TEACHER || persistedRole == UserRole.TEACHER || isPrimaryAdmin
     // An administrator may inspect another teacher's folder tree, but those rows remain read-only.
     val folderOwnerUid = if (
         isPrimaryAdmin && !teacherKey.isNullOrBlank() &&
@@ -97,12 +99,10 @@ fun ClassScreen(
             else -> allVisibleClasses.filter { teacherFolderKey(it, ownerUid.ifBlank { "local" }) == teacherKey }
         }
     }
-    // Refresh the published feed whenever a student opens the class list so revoked visibility is applied.
-    LaunchedEffect(userRole) {
-        when (userRole) {
-            UserRole.STUDENT -> viewModel.startStudentMaterialsSync()
-            UserRole.TEACHER -> viewModel.syncPublishedMaterialsForTeacher()
-        }
+    // Refresh the correct feed using the effective role, not a potentially stale navigation value.
+    LaunchedEffect(userRole, persistedRole, canManageClasses) {
+        if (canManageClasses) viewModel.syncPublishedMaterialsForTeacher()
+        else viewModel.startStudentMaterialsSync()
     }
     val folderDao = remember(folderOwnerUid) { AppDatabase.getDatabase(context).teacherFolderDao() }
     val classDao = remember { AppDatabase.getDatabase(context).classDao() }
