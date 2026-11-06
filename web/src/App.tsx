@@ -1,6 +1,6 @@
 import { FormEvent, MouseEvent, useEffect, useMemo, useState } from "react";
 import { onAuthStateChanged, sendPasswordResetEmail, signInWithEmailAndPassword, signOut, User } from "firebase/auth";
-import { api, AccessCode, AudioSource, ClassAnnouncement, ClassMember, ClassRecord, CourseRecord, ForumPost, ForumTopic, Me, SessionDetail, SessionNote, GlobalSessionNote, SessionState, SessionSummary, SessionSearchResult, Teacher, TeacherApplication, TeacherFolder, UserNotification } from "./api";
+import { api, AccessCode, AdminUser, AudioSource, ClassAnnouncement, ClassMember, ClassRecord, CourseRecord, ForumPost, ForumTopic, Me, SessionDetail, SessionNote, GlobalSessionNote, SessionState, SessionSummary, SessionSearchResult, Teacher, TeacherApplication, TeacherFolder, UserNotification } from "./api";
 import { auth, firebaseConfigured } from "./firebase";
 
 export default function App() {
@@ -104,6 +104,10 @@ export default function App() {
   const [applicationInstitution, setApplicationInstitution] = useState("");
   const [pendingTeacherApplications, setPendingTeacherApplications] = useState<TeacherApplication[]>([]);
   const [loadingTeacherApplications, setLoadingTeacherApplications] = useState(false);
+  const [adminUsers, setAdminUsers] = useState<AdminUser[]>([]);
+  const [loadingAdminUsers, setLoadingAdminUsers] = useState(false);
+  const [adminUserQuery, setAdminUserQuery] = useState("");
+  const [adminUserOffset, setAdminUserOffset] = useState(0);
 
   useEffect(() => {
     if (!highlightedForumPostId || !forumPosts.some(post => post.id === highlightedForumPostId)) return;
@@ -188,6 +192,23 @@ export default function App() {
     void loadApplications();
     return () => { cancelled = true; };
   }, [user, isAdmin]);
+  useEffect(() => {
+    let cancelled = false;
+    async function loadAdminUsers() {
+      if (!user || !isAdmin) { setAdminUsers([]); return; }
+      setLoadingAdminUsers(true);
+      try {
+        const items = await api.adminUsers(20, adminUserOffset, await user.getIdToken());
+        if (!cancelled) setAdminUsers(items);
+      } catch (e) {
+        if (!cancelled) setError(message(e));
+      } finally {
+        if (!cancelled) setLoadingAdminUsers(false);
+      }
+    }
+    void loadAdminUsers();
+    return () => { cancelled = true; };
+  }, [user, isAdmin, adminUserOffset]);
   const canCreateClass = isAdmin || (me?.roles.includes("teacher") ?? false);
   const canRedeemCode = me?.roles.includes("student") ?? false;
   const browseFolderIds = useMemo(() => {
@@ -1195,6 +1216,37 @@ export default function App() {
         <label>نام مرکز آموزشی یا مؤسسه (اختیاری)<input value={applicationInstitution} onChange={event => setApplicationInstitution(event.target.value)} maxLength={200} placeholder="نام مدرسه، دانشگاه یا مؤسسه" /></label>
         <button disabled={busy || (!applicationTeachingField.trim() && !applicationInstitution.trim())}>{busy ? "در حال ثبت…" : "ثبت درخواست همکاری"}</button>
       </form>
+    </section>}
+    {isAdmin && <section className="panel content admin-users-panel">
+      <div className="section-head">
+        <div><h2>فهرست کاربران</h2><p className="muted">مشاهدهٔ حساب‌ها و نقش‌ها؛ این بخش امکان تغییر نقش یا سطح دسترسی ندارد.</p></div>
+        <button type="button" className="ghost" disabled={loadingAdminUsers} onClick={() => { setAdminUserOffset(0); setAdminUserQuery(""); }}>تازه‌سازی</button>
+      </div>
+      <label className="admin-user-search">جست‌وجو در کاربران این صفحه
+        <input value={adminUserQuery} onChange={event => setAdminUserQuery(event.target.value)} placeholder="نام، ایمیل یا شناسه کاربر…" />
+      </label>
+      {loadingAdminUsers && <p className="muted">در حال دریافت فهرست کاربران…</p>}
+      {!loadingAdminUsers && adminUsers.filter(item => [item.displayName, item.email ?? "", item.userId, ...item.roles].join(" ").toLocaleLowerCase().includes(adminUserQuery.trim().toLocaleLowerCase())).map(item => (
+        <article className="admin-user-row" key={item.userId}>
+          <div className="admin-user-main">
+            <strong>{item.displayName || "کاربر بدون نام"}</strong>
+            <span>{item.email || "بدون ایمیل"}</span>
+            <small className="muted">شناسه: {item.userId}</small>
+          </div>
+          <div className="admin-user-meta">
+            <span className="admin-user-roles">{item.roles.length ? item.roles.map(role => role === "super_admin" ? "مدیر اصلی" : role === "teacher" ? "استاد" : role === "student" ? "دانشجو" : role).join("، ") : "بدون نقش"}</span>
+            <small>وضعیت حساب: {item.status}</small>
+            {item.teacherApprovalStatus && <small>وضعیت تأیید استاد: {item.teacherApprovalStatus}</small>}
+          </div>
+        </article>
+      ))}
+      {!loadingAdminUsers && !adminUsers.length && <p className="muted">کاربری در این صفحه وجود ندارد.</p>}
+      {!loadingAdminUsers && !!adminUsers.length && !adminUsers.some(item => [item.displayName, item.email ?? "", item.userId, ...item.roles].join(" ").toLocaleLowerCase().includes(adminUserQuery.trim().toLocaleLowerCase())) && <p className="muted">کاربری با این عبارت در صفحهٔ فعلی پیدا نشد.</p>}
+      <div className="admin-user-pagination">
+        <button type="button" className="ghost" disabled={loadingAdminUsers || adminUserOffset === 0} onClick={() => setAdminUserOffset(value => Math.max(0, value - 20))}>صفحه قبل</button>
+        <span className="muted">نمایش کاربران {adminUserOffset + 1} تا {adminUserOffset + adminUsers.length}</span>
+        <button type="button" className="ghost" disabled={loadingAdminUsers || adminUsers.length < 20} onClick={() => setAdminUserOffset(value => value + 20)}>صفحه بعد</button>
+      </div>
     </section>}
     {isAdmin && <section className="panel content teacher-applications-panel">
       <div className="section-head"><div><h2>درخواست‌های همکاری استادان</h2><p className="muted">با تأیید درخواست، نقش استاد برای حساب کاربر فعال می‌شود.</p></div><span className="muted">{pendingTeacherApplications.length} درخواست در انتظار</span></div>
