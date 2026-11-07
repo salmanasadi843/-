@@ -120,28 +120,21 @@ object CloudMaterialsSync {
             val allLectures = mutableListOf<LectureEntity>()
             // Validate every feed completely before the transaction clears the previous snapshot.
             val validPayloads = documents.map { document ->
-                val storedOwner = document.getString("ownerUid")?.takeIf { it.isNotBlank() }
-                if (storedOwner != null && storedOwner != document.id) {
-                    error("شناسه مالک فهرست آنلاین با شناسه سند تطبیق ندارد؛ مطالب قبلی دستگاه حفظ شدند.")
-                }
-                val owner = storedOwner ?: document.id
-                if (owner.isBlank()) {
-                    error("شناسه مالک یکی از فهرست‌های آنلاین معتبر نیست؛ مطالب قبلی دستگاه حفظ شدند.")
-                }
+                val storedOwner = document.getString("ownerUid")
                 val payloadText = document.getString("payload")
                     ?.takeIf { it.isNotBlank() }
                     ?: error("فهرست آنلاین یکی از استادها ناقص است؛ برای جلوگیری از حذف مطالب قبلی، دریافت متوقف شد.")
                 val payload = runCatching { JSONObject(payloadText) }.getOrElse {
                     error("ساختار فهرست آنلاین یکی از استادها خراب است؛ مطالب قبلی دستگاه حفظ شدند.")
                 }
-                if (payload.optString("format") != "darsyar-shared-materials") {
-                    error("قالب فهرست آنلاین یکی از استادها ناشناخته است؛ مطالب قبلی دستگاه حفظ شدند.")
-                }
-                listOf("classes", "courses", "lectures").forEach { key ->
-                    if (payload.optJSONArray(key) == null) {
-                        error("بخش $key در فهرست آنلاین استاد ناقص است؛ مطالب قبلی دستگاه حفظ شدند.")
-                    }
-                }
+                val owner = validateSharedFeedEnvelope(
+                    documentId = document.id,
+                    storedOwner = storedOwner,
+                    payloadFormat = payload.optString("format"),
+                    hasClasses = payload.optJSONArray("classes") != null,
+                    hasCourses = payload.optJSONArray("courses") != null,
+                    hasLectures = payload.optJSONArray("lectures") != null
+                )
                 owner to payload
             }
 
@@ -322,6 +315,35 @@ object CloudMaterialsSync {
             }
             "مطالب آنلاین به‌روزرسانی شد: ${uniqueLectures.size} جلسه یکتا از ${documents.size} حساب استاد."
         }
+    }
+
+    /**
+     * Validates the envelope for one shared feed before any local snapshot replacement.
+     * Empty arrays are valid (an explicit empty published feed); missing arrays are not.
+     * Kept pure so the fail-closed boundary is covered by JVM unit tests.
+     */
+    internal fun validateSharedFeedEnvelope(
+        documentId: String,
+        storedOwner: String?,
+        payloadFormat: String,
+        hasClasses: Boolean,
+        hasCourses: Boolean,
+        hasLectures: Boolean
+    ): String {
+        val owner = storedOwner?.takeIf { it.isNotBlank() } ?: documentId
+        check(storedOwner.isNullOrBlank() || storedOwner == documentId) {
+            "شناسه مالک فهرست آنلاین با شناسه سند تطبیق ندارد؛ مطالب قبلی دستگاه حفظ شدند."
+        }
+        check(owner.isNotBlank()) {
+            "شناسه مالک یکی از فهرست‌های آنلاین معتبر نیست؛ مطالب قبلی دستگاه حفظ شدند."
+        }
+        check(payloadFormat == "darsyar-shared-materials") {
+            "قالب فهرست آنلاین یکی از استادها ناشناخته است؛ مطالب قبلی دستگاه حفظ شدند."
+        }
+        check(hasClasses) { "بخش classes در فهرست آنلاین استاد ناقص است؛ مطالب قبلی دستگاه حفظ شدند." }
+        check(hasCourses) { "بخش courses در فهرست آنلاین استاد ناقص است؛ مطالب قبلی دستگاه حفظ شدند." }
+        check(hasLectures) { "بخش lectures در فهرست آنلاین استاد ناقص است؛ مطالب قبلی دستگاه حفظ شدند." }
+        return owner
     }
 
     /** Filters a JSON array without mutating its source objects. */
