@@ -157,6 +157,8 @@ object DatabaseBackup {
                             existing.audioUrl == item.audioUrl &&
                             existing.audioDurationMs == item.audioDurationMs &&
                             existing.transcript == item.transcript &&
+                            existing.originalTranscript == item.originalTranscript &&
+                            existing.isPublished == item.isPublished &&
                             existing.aiSummary == item.aiSummary &&
                             existing.aiKeyPoints == item.aiKeyPoints &&
                             existing.aiQuizJson == item.aiQuizJson &&
@@ -243,7 +245,8 @@ object DatabaseBackup {
         .put("professorName", professorName).put("classId", classId ?: JSONObject.NULL)
         .put("courseId", courseId ?: JSONObject.NULL).put("dateMillis", dateMillis)
         .put("audioUrl", audioUrl ?: JSONObject.NULL).put("audioDurationMs", audioDurationMs)
-        .put("transcript", transcript).put("aiSummary", aiSummary ?: JSONObject.NULL)
+        .put("transcript", transcript).put("originalTranscript", originalTranscript)
+        .put("isPublished", isPublished).put("aiSummary", aiSummary ?: JSONObject.NULL)
         .put("aiKeyPoints", aiKeyPoints ?: JSONObject.NULL).put("aiQuizJson", aiQuizJson ?: JSONObject.NULL)
         .put("tags", tags).put("isFavorite", isFavorite).put("lastEditedMillis", lastEditedMillis).put("sortOrder", sortOrder)
 
@@ -253,6 +256,8 @@ object DatabaseBackup {
         courseId = optNullableLong("courseId"), dateMillis = optLong("dateMillis"),
         audioFilePath = null, audioUrl = optNullableString("audioUrl"),
         audioDurationMs = optLong("audioDurationMs"), transcript = optString("transcript"),
+        originalTranscript = optString("originalTranscript"),
+        isPublished = optBoolean("isPublished", true),
         aiSummary = optNullableString("aiSummary"), aiKeyPoints = optNullableString("aiKeyPoints"),
         aiQuizJson = optNullableString("aiQuizJson"), tags = optString("tags"),
         isFavorite = optBoolean("isFavorite"), lastEditedMillis = optLong("lastEditedMillis", System.currentTimeMillis()),
