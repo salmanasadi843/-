@@ -339,10 +339,8 @@ fun ClassScreen(
                                                 Icon(Icons.Default.School, contentDescription = "انتقال به پوشه", tint = MaterialTheme.colorScheme.secondary)
                                             }
                                             IconButton(onClick = {
-                                                scope.launch {
-                                                    if (item.ownerUid == ownerUid && ownerUid.isNotBlank()) {
-                                                        classDao.update(item.copy(isPublished = !item.isPublished))
-                                                    }
+                                                if (item.ownerUid == ownerUid && ownerUid.isNotBlank()) {
+                                                    viewModel.setClassPublished(item, !item.isPublished)
                                                 }
                                             }) {
                                                 Icon(
