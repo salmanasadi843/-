@@ -12,19 +12,21 @@ import org.json.JSONObject
 import java.security.MessageDigest
 
 /**
- * Publishes and retrieves lesson text metadata through Firestore.
+ * Synchronizes published lesson metadata through Firestore.
+ * Teachers publish their owned, published records using an additive merge that
+ * retains cloud records missing from the local snapshot; students retrieve feeds.
  * Audio binaries are never uploaded; only an optional audio URL is shared.
  */
 object CloudMaterialsSync {
     /**
-     * Recovery diagnostic build: teacher publishing is disabled until cloud records
-     * have been compared with the user's backup. Student read-only retrieval remains enabled.
+     * Teachers publish their owned published materials with a guarded additive merge.
+     * Students retrieve published materials from other teachers.
      */
     fun sync(context: Context): String = syncInternal(context, receiveOnly = false)
 
     /**
-     * Teacher-side published-feed retrieval is also paused in this diagnostic build
-     * so Room remains unchanged while the private and shared cloud snapshots are inspected.
+     * Refreshes other teachers' published feed for a teacher account in read-only mode.
+     * Imported records retain their source ownership and cannot be republished as local data.
      */
     fun syncPublishedForTeacher(context: Context): String {
         require(AuthPreferences.currentRole(context) == UserRole.TEACHER) {
