@@ -54,8 +54,9 @@ object CloudMaterialsSync {
             // A row absent from this device is not treated as deleted: it may simply
             // belong to another device or an incomplete local restore.
             val revokedClassIds = ownedClasses.filterNot { it.isPublished }.map { it.id }.toSet()
+            val ownedClassIds = ownedClasses.map { it.id }.toSet()
             val ownedLectures = allLectures.filter { lecture ->
-                lecture.id > 0L && lecture.classId?.let { it in ownedClasses.map(ClassEntity::id) } == true
+                lecture.id > 0L && lecture.classId?.let { it in ownedClassIds } == true
             }
             val revokedLectureIds = ownedLectures.filterNot { it.isPublished }.map { it.id }.toSet()
             val courses = allCourses.filter { it.id > 0L && it.classId > 0L && it.classId in visibleClassIds }
@@ -103,7 +104,7 @@ object CloudMaterialsSync {
                 "payload" to payload.toString(),
                 "updatedAt" to System.currentTimeMillis()
             )))
-            "انتشار امن انجام شد؛ موارد قبلیِ غایب از گوشی حذف نشدند. برای حذف آنلاین باید حذف/لغو انتشار جداگانه انجام شود."
+            "انتشار امن انجام شد؛ کلاس‌ها و جلسه‌هایی که صریحاً لغو انتشار شده‌اند از فهرست آنلاین خارج شدند و رکوردهای غایب از گوشی حفظ شدند."
         } else {
             val documents = Tasks.await(firestore.collection("shared_materials").get()).documents
                 .filter { it.id != uid }
