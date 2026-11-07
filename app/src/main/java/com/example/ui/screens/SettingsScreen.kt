@@ -20,6 +20,7 @@ import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
+import androidx.compose.foundation.text.selection.SelectionContainer
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.AutoAwesome
@@ -118,7 +119,7 @@ fun SettingsScreen(
             val result = withContext(Dispatchers.IO) { runCatching { CloudMaterialsSync.sync(context) } }
             cloudBusy = false
             cloudError = result.isFailure
-            cloudStatus = result.getOrElse { "همگام‌سازی آنلاین ناموفق بود: ${it.localizedMessage}" }
+            cloudStatus = result.getOrElse { "انتشار ناموفق بود: ${it.localizedMessage}" }
         }
     }
     val restoreBackup = rememberLauncherForActivityResult(ActivityResultContracts.OpenDocument()) { uri ->
@@ -169,12 +170,12 @@ fun SettingsScreen(
         androidx.compose.material3.AlertDialog(
             onDismissRequest = { showPublishConfirm = false },
             title = { Text("انتشار آنلاین مطالب") },
-            text = { Text("متن، خلاصه، کلیدواژه‌ها، اطلاعات کلاس و لینک صوت همه جلسات این حساب برای کاربران واردشده به درس‌یار قابل مشاهده خواهد شد. فایل صوتی اصلی ارسال نمی‌شود. آیا ادامه می‌دهید؟") },
+            text = { Text("متن، خلاصه، کلیدواژه‌ها، اطلاعات کلاس و لینک صوت جلسات منتشرشده برای کاربران واردشده قابل مشاهده می‌شود. فایل صوتی اصلی ارسال نمی‌شود. ادامه می‌دهید؟") },
             confirmButton = {
                 Button(onClick = {
                     showPublishConfirm = false
                     runCloudSync()
-                }) { Text("انتشار و ادامه") }
+                }) { Text("متوجه شدم") }
             },
             dismissButton = {
                 OutlinedButton(onClick = { showPublishConfirm = false }) { Text("انصراف") }
@@ -217,19 +218,19 @@ fun SettingsScreen(
                     Row(verticalAlignment = Alignment.CenterVertically) {
                         Icon(Icons.Filled.NetworkCheck, contentDescription = null)
                         Spacer(Modifier.width(8.dp))
-                        Text("وضعیت پشتیبان‌گیری ابری", style = MaterialTheme.typography.titleLarge)
+                        Text("همگام‌سازی پشتیبان خصوصی", style = MaterialTheme.typography.titleLarge)
                     }
                     Spacer(Modifier.height(8.dp))
-                    Text(cloudSyncStatus, style = MaterialTheme.typography.bodyMedium)
+                    SelectionContainer { Text(cloudSyncStatus, style = MaterialTheme.typography.bodyMedium) }
                     Spacer(Modifier.height(12.dp))
                     OutlinedButton(
                         onClick = { viewModel.startCloudSync() },
                         enabled = !cloudBusy
                     ) {
-                        Text("بررسی و تلاش دوباره")
+                        Text("همگام‌سازی امن با Firebase")
                     }
                     Text(
-                        "موفقیت این بخش یعنی برنامه توانسته عملیات ابری را انجام دهد؛ برای تأیید نهایی ذخیره داده‌ها می‌توان بعداً فایربیس را هم بررسی کرد.",
+                        "ابتدا داده‌های ابری بدون حذف یا بازنویسی با گوشی ادغام می‌شوند؛ سپس رکوردهای متعلق به شما به‌صورت افزایشی ارسال می‌شوند. رکوردهای ابریِ غایب از گوشی حذف نمی‌شوند.",
                         style = MaterialTheme.typography.bodySmall,
                         color = MaterialTheme.colorScheme.onSurfaceVariant
                     )
@@ -753,7 +754,7 @@ fun SettingsScreen(
                         if (cloudBusy) CircularProgressIndicator(modifier = Modifier.size(18.dp), strokeWidth = 2.dp)
                         else Icon(Icons.Default.NetworkCheck, contentDescription = null)
                         Spacer(Modifier.width(8.dp))
-                        Text(if (cloudBusy) "در حال همگام‌سازی..." else if (AuthPreferences.currentRole(context) == UserRole.TEACHER) "انتشار و همگام‌سازی مطالب استاد" else "دریافت مطالب آنلاین")
+                        Text(if (cloudBusy) "در حال همگام‌سازی..." else if (AuthPreferences.currentRole(context) == UserRole.TEACHER) "انتشار مطالب در Firebase" else "دریافت مطالب آنلاین")
                     }
                     if (cloudStatus != null) {
                         Spacer(Modifier.height(10.dp))
@@ -780,7 +781,7 @@ fun SettingsScreen(
                     Text("پشتیبان‌گیری و بازیابی", style = MaterialTheme.typography.titleLarge)
                     Spacer(Modifier.height(6.dp))
                     Text(
-                        "برای جلوگیری از پاک شدن جزوه‌ها با حذف برنامه، یک فایل پشتیبان بسازید و آن را در فضای ابری یا حافظه‌ای امن نگه دارید. بازیابی، اطلاعات فعلی را با اطلاعات فایل پشتیبان جایگزین می‌کند.",
+                        "برای جلوگیری از پاک شدن جزوه‌ها با حذف برنامه، یک فایل پشتیبان بسازید و آن را در فضای ابری یا حافظه‌ای امن نگه دارید. بازیابی امن، فقط رکوردهای متعلق به حساب شما را که در دستگاه وجود ندارند اضافه می‌کند؛ اطلاعات فعلی حذف یا بازنویسی نمی‌شوند. رکوردهای متعلق به استادان دیگر نادیده گرفته می‌شوند.",
                         style = MaterialTheme.typography.bodyMedium,
                         color = MaterialTheme.colorScheme.onSurfaceVariant
                     )
