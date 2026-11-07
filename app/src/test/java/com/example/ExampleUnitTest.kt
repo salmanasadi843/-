@@ -1,13 +1,9 @@
 package com.example
 
 import com.example.data.local.DatabaseBackup
-import org.json.JSONObject
 import org.junit.Assert.*
 import org.junit.Test
-import org.junit.runner.RunWith
-import org.robolectric.RobolectricTestRunner
 
-@RunWith(RobolectricTestRunner::class)
 class ExampleUnitTest {
     @Test
     fun addition_isCorrect() {
@@ -16,23 +12,23 @@ class ExampleUnitTest {
 
     @Test
     fun backupWithAllCollectionsIncludingEmptyArraysIsAccepted() {
-        val root = JSONObject()
-            .put("lectures", org.json.JSONArray())
-            .put("classes", org.json.JSONArray())
-            .put("courses", org.json.JSONArray())
-            .put("folders", org.json.JSONArray())
-
-        DatabaseBackup.validateBackupCollections(root)
+        val required = setOf("lectures", "classes", "courses", "folders")
+        DatabaseBackup.validateBackupCollections(
+            presentKeys = required,
+            arrayKeys = required
+        )
     }
 
     @Test
     fun backupMissingAnyCollectionIsRejected() {
-        val required = listOf("lectures", "classes", "courses", "folders")
+        val required = setOf("lectures", "classes", "courses", "folders")
         required.forEach { missing ->
-            val root = JSONObject()
-            required.filterNot { it == missing }.forEach { root.put(it, org.json.JSONArray()) }
-
-            val error = runCatching { DatabaseBackup.validateBackupCollections(root) }.exceptionOrNull()
+            val error = runCatching {
+                DatabaseBackup.validateBackupCollections(
+                    presentKeys = required - missing,
+                    arrayKeys = required - missing
+                )
+            }.exceptionOrNull()
             assertNotNull("Missing $missing must reject the backup", error)
             assertTrue(error is IllegalArgumentException)
             assertTrue(error!!.message!!.contains(missing))
@@ -41,12 +37,16 @@ class ExampleUnitTest {
 
     @Test
     fun backupCollectionWithWrongJsonTypeIsRejected() {
-        val root = JSONObject()
-            .put("lectures", org.json.JSONArray())
-            .put("classes", org.json.JSONArray())
-            .put("courses", org.json.JSONArray())
-            .put("folders", JSONObject())
-
-        assertTrue(runCatching { DatabaseBackup.validateBackupCollections(root) }.isFailure)
+        val required = setOf("lectures", "classes", "courses", "folders")
+        val error = runCatching {
+            DatabaseBackup.validateBackupCollections(
+                presentKeys = required,
+                arrayKeys = required - "folders"
+            )
+        }.exceptionOrNull()
+        assertNotNull(error)
+        assertTrue(error is IllegalArgumentException)
+        assertTrue(error!!.message!!.contains("folders"))
     }
+
 }
