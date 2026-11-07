@@ -81,6 +81,33 @@ jobs:
         with:
           gradle-version: '9.3.1'
 
+      - name: Configure persistent APK signing when secrets are available
+        if: github.event_name == 'workflow_dispatch' || steps.android_changes.outputs.build == 'true'
+        shell: bash
+        env:
+          DARSYAR_KEYSTORE_BASE64: ${{ secrets.DARSYAR_KEYSTORE_BASE64 }}
+          DARSYAR_STORE_PASSWORD: ${{ secrets.DARSYAR_STORE_PASSWORD }}
+          DARSYAR_KEY_ALIAS: ${{ secrets.DARSYAR_KEY_ALIAS }}
+          DARSYAR_KEY_PASSWORD: ${{ secrets.DARSYAR_KEY_PASSWORD }}
+        run: |
+          if [[ -z "$DARSYAR_KEYSTORE_BASE64" && -z "$DARSYAR_STORE_PASSWORD" && -z "$DARSYAR_KEY_ALIAS" && -z "$DARSYAR_KEY_PASSWORD" ]]; then
+            echo "::warning::Persistent signing is not configured yet; this APK will use the temporary default debug key."
+            exit 0
+          fi
+
+          if [[ -z "$DARSYAR_KEYSTORE_BASE64" || -z "$DARSYAR_STORE_PASSWORD" || -z "$DARSYAR_KEY_ALIAS" || -z "$DARSYAR_KEY_PASSWORD" ]]; then
+            echo "::error::Persistent signing secrets are incomplete. Configure all four DARSYAR_* secrets."
+            exit 1
+          fi
+
+          KEYSTORE_FILE="$RUNNER_TEMP/darsyar-signing-key.jks"
+          printf '%s' "$DARSYAR_KEYSTORE_BASE64" | base64 --decode > "$KEYSTORE_FILE"
+          test -s "$KEYSTORE_FILE"
+          echo "KEYSTORE_PATH=$KEYSTORE_FILE" >> "$GITHUB_ENV"
+          echo "STORE_PASSWORD=$DARSYAR_STORE_PASSWORD" >> "$GITHUB_ENV"
+          echo "KEY_ALIAS=$DARSYAR_KEY_ALIAS" >> "$GITHUB_ENV"
+          echo "KEY_PASSWORD=$DARSYAR_KEY_PASSWORD" >> "$GITHUB_ENV"
+
       - name: Run Android unit tests
         if: github.event_name == 'workflow_dispatch' || steps.android_changes.outputs.build == 'true'
         run: gradle testDebugUnitTest --stacktrace
@@ -88,6 +115,13 @@ jobs:
       - name: Build Debug APK
         if: github.event_name == 'workflow_dispatch' || steps.android_changes.outputs.build == 'true'
         run: gradle assembleDebug --stacktrace
+
+      - name: Verify APK signature
+        if: github.event_name == 'workflow_dispatch' || steps.android_changes.outputs.build == 'true'
+        shell: bash
+        run: |
+          APK_PATH="$(find app/build/outputs/apk/debug -name '*.apk' -print -quit)"
+          "$ANDROID_HOME/build-tools/36.0.0/apksigner" verify --print-certs "$APK_PATH"
 
       - name: Upload APK
         if: github.event_name == 'workflow_dispatch' || steps.android_changes.outputs.build == 'true'
