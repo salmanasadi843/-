@@ -47,12 +47,20 @@ object CloudMaterialsSync {
             val allLectures = runBlocking { db.lectureDao().getAllForBackup() }
             // Imported/shared records use stable negative IDs. They belong to their
             // original teacher and must never be republished or managed by this account.
-            val classes = allClasses.filter { it.id > 0L && it.ownerUid == uid && it.isPublished }
+            val ownedClasses = allClasses.filter { it.id > 0L && it.ownerUid == uid }
+            val classes = ownedClasses.filter { it.isPublished }
             val visibleClassIds = classes.map { it.id }.toSet()
+            // Only an explicit local unpublished state revokes an existing cloud entry.
+            // A row absent from this device is not treated as deleted: it may simply
+            // belong to another device or an incomplete local restore.
+            val revokedClassIds = ownedClasses.filterNot { it.isPublished }.map { it.id }.toSet()
+            val ownedLectures = allLectures.filter { lecture ->
+                lecture.id > 0L && lecture.classId?.let { it in ownedClasses.map(ClassEntity::id) } == true
+            }
+            val revokedLectureIds = ownedLectures.filterNot { it.isPublished }.map { it.id }.toSet()
             val courses = allCourses.filter { it.id > 0L && it.classId > 0L && it.classId in visibleClassIds }
-            val lectures = allLectures.filter { lecture ->
-                lecture.id > 0L && lecture.isPublished &&
-                    lecture.classId?.let { it > 0L && it in visibleClassIds } == true
+            val lectures = ownedLectures.filter { lecture ->
+                lecture.isPublished && lecture.classId?.let { it in visibleClassIds } == true
             }
             val payload = JSONObject()
                 .put("format", "darsyar-shared-materials")
@@ -80,10 +88,15 @@ object CloudMaterialsSync {
                     error("قالب سند آنلاین ناشناخته است؛ انتشار امن متوقف شد.")
                 }
                 // Additive merge by stable record ID. Missing local rows are retained
-                // online; explicit unpublish/removal must be a separate intentional action.
-                payload.put("classes", mergeById(previous.optJSONArray("classes"), payload.optJSONArray("classes")))
-                payload.put("courses", mergeById(previous.optJSONArray("courses"), payload.optJSONArray("courses")))
-                payload.put("lectures", mergeById(previous.optJSONArray("lectures"), payload.optJSONArray("lectures")))
+                // online; only rows explicitly marked unpublished on this device are revoked.
+                val mergedClasses = mergeById(previous.optJSONArray("classes"), payload.optJSONArray("classes"))
+                val mergedCourses = mergeById(previous.optJSONArray("courses"), payload.optJSONArray("courses"))
+                val mergedLectures = mergeById(previous.optJSONArray("lectures"), payload.optJSONArray("lectures"))
+                payload.put("classes", filterJsonArray(mergedClasses) { it.optLong("id") !in revokedClassIds })
+                payload.put("courses", filterJsonArray(mergedCourses) { it.optLong("classId") !in revokedClassIds })
+                payload.put("lectures", filterJsonArray(mergedLectures) {
+                    it.optLong("id") !in revokedLectureIds && it.optLong("classId") !in revokedClassIds
+                })
             }
             Tasks.await(feedRef.set(mapOf(
                 "ownerUid" to uid,
@@ -279,6 +292,16 @@ object CloudMaterialsSync {
             }
             "مطالب آنلاین به‌روزرسانی شد: ${uniqueLectures.size} جلسه یکتا از ${documents.size} حساب استاد."
         }
+    }
+
+    /** Filters a JSON array without mutating its source objects. */
+    private fun filterJsonArray(array: JSONArray, keep: (JSONObject) -> Boolean): JSONArray {
+        val filtered = JSONArray()
+        for (index in 0 until array.length()) {
+            val item = array.optJSONObject(index) ?: error("رکورد آنلاین خراب است؛ انتشار متوقف شد.")
+            if (keep(item)) filtered.put(JSONObject(item.toString()))
+        }
+        return filtered
     }
 
     /** Keeps old feed entries absent from this device's snapshot; local IDs update existing entries. */
