@@ -360,7 +360,7 @@ object CloudMaterialsSync {
                     result.put("transcript", old.optString("transcript"))
                 }
                 if (old != null) {
-                    listOf("aiSummary", "aiKeyPoints", "tags", "audioUrl").forEach { field ->
+                    listOf("originalTranscript", "aiSummary", "aiKeyPoints", "tags", "audioUrl").forEach { field ->
                         if ((!result.has(field) || result.isNull(field) || result.optString(field).isBlank())
                             && old.has(field) && !old.isNull(field) && old.optString(field).isNotBlank()) {
                             result.put(field, old.get(field))
