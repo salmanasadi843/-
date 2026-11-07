@@ -111,11 +111,24 @@ object CloudMaterialsSync {
             val allClasses = mutableListOf<ClassEntity>()
             val allCourses = mutableListOf<CourseEntity>()
             val allLectures = mutableListOf<LectureEntity>()
-            val validPayloads = documents.mapNotNull { document ->
-                val owner = document.getString("ownerUid") ?: document.id
-                val payloadText = document.getString("payload") ?: return@mapNotNull null
-                val payload = runCatching { JSONObject(payloadText) }.getOrNull() ?: return@mapNotNull null
-                if (payload.optString("format") != "darsyar-shared-materials") null else owner to payload
+            // Fail closed before replacing the local shared snapshot. Silently skipping
+            // one malformed/missing teacher document would make the rebuilt feed incomplete;
+            // the transaction below clears old shared rows, so preserve them on any bad input.
+            val validPayloads = documents.map { document ->
+                val owner = document.getString("ownerUid")?.takeIf { it.isNotBlank() } ?: document.id
+                if (owner.isBlank()) {
+                    error("شناسه مالک یکی از فهرست‌های آنلاین معتبر نیست؛ مطالب قبلی دستگاه حفظ شدند.")
+                }
+                val payloadText = document.getString("payload")
+                    ?.takeIf { it.isNotBlank() }
+                    ?: error("فهرست آنلاین یکی از استادها ناقص است؛ برای جلوگیری از حذف مطالب قبلی، دریافت متوقف شد.")
+                val payload = runCatching { JSONObject(payloadText) }.getOrElse {
+                    error("ساختار فهرست آنلاین یکی از استادها خراب است؛ مطالب قبلی دستگاه حفظ شدند.")
+                }
+                if (payload.optString("format") != "darsyar-shared-materials") {
+                    error("قالب فهرست آنلاین یکی از استادها ناشناخته است؛ مطالب قبلی دستگاه حفظ شدند.")
+                }
+                owner to payload
             }
 
             // Merge duplicate class cards by normalized name + teacher + term, but remap
