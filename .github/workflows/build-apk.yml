@@ -48,7 +48,7 @@ jobs:
         shell: bash
         run: |
           changed_files="$(git diff --name-only HEAD^ HEAD)"
-          if printf '%s\\n' "$changed_files" | grep -Eq '^(app/|gradle/|build.gradle.kts$|settings.gradle.kts$|gradle.properties$|gradlew$|\\.github/workflows/build-apk\\.yml$)'; then
+          if printf '%s\n' "$changed_files" | grep -Eq '^(app/|gradle/|build.gradle.kts$|settings.gradle.kts$|gradle.properties$|gradlew$|\.github/workflows/build-apk\.yml$)'; then
             echo "build=true" >> "$GITHUB_OUTPUT"
           else
             echo "build=false" >> "$GITHUB_OUTPUT"
