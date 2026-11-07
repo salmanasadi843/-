@@ -59,4 +59,86 @@ class ExampleUnitTest {
         assertFalse(isPrivateBackupLecture(-4L, null, ownedClassIds))
     }
 
+    @Test
+    fun sharedFeedAcceptsCompleteEmptyArrays() {
+        assertEquals(
+            "teacher-1",
+            com.example.data.local.CloudMaterialsSync.validateSharedFeedEnvelope(
+                documentId = "teacher-1",
+                storedOwner = "teacher-1",
+                payloadFormat = "darsyar-shared-materials",
+                hasClasses = true,
+                hasCourses = true,
+                hasLectures = true
+            )
+        )
+    }
+
+    @Test
+    fun sharedFeedRejectsMismatchedOwner() {
+        val error = runCatching {
+            com.example.data.local.CloudMaterialsSync.validateSharedFeedEnvelope(
+                documentId = "teacher-1",
+                storedOwner = "teacher-2",
+                payloadFormat = "darsyar-shared-materials",
+                hasClasses = true,
+                hasCourses = true,
+                hasLectures = true
+            )
+        }.exceptionOrNull()
+        assertTrue(error is IllegalStateException)
+    }
+
+    @Test
+    fun sharedFeedRejectsBlankDocumentId() {
+        val error = runCatching {
+            com.example.data.local.CloudMaterialsSync.validateSharedFeedEnvelope(
+                documentId = " ",
+                storedOwner = null,
+                payloadFormat = "darsyar-shared-materials",
+                hasClasses = true,
+                hasCourses = true,
+                hasLectures = true
+            )
+        }.exceptionOrNull()
+        assertTrue(error is IllegalStateException)
+    }
+
+    @Test
+    fun sharedFeedRejectsUnknownFormat() {
+        val error = runCatching {
+            com.example.data.local.CloudMaterialsSync.validateSharedFeedEnvelope(
+                documentId = "teacher-1",
+                storedOwner = null,
+                payloadFormat = "unknown",
+                hasClasses = true,
+                hasCourses = true,
+                hasLectures = true
+            )
+        }.exceptionOrNull()
+        assertTrue(error is IllegalStateException)
+    }
+
+    @Test
+    fun sharedFeedRejectsEachMissingCollection() {
+        val missingCollectionCases = listOf(
+            Triple(false, true, true),
+            Triple(true, false, true),
+            Triple(true, true, false)
+        )
+        missingCollectionCases.forEach { (classes, courses, lectures) ->
+            val error = runCatching {
+                com.example.data.local.CloudMaterialsSync.validateSharedFeedEnvelope(
+                    documentId = "teacher-1",
+                    storedOwner = null,
+                    payloadFormat = "darsyar-shared-materials",
+                    hasClasses = classes,
+                    hasCourses = courses,
+                    hasLectures = lectures
+                )
+            }.exceptionOrNull()
+            assertTrue(error is IllegalStateException)
+        }
+    }
+
 }
