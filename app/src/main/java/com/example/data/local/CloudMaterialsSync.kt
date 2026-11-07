@@ -256,7 +256,9 @@ object CloudMaterialsSync {
                 }
 
                 payload.optJSONArray("lectures")?.let { array ->
-                    val teacherLectures = (0 until array.length()).map { array.getJSONObject(it).toLecture() }
+                    val teacherLectures = (0 until array.length())
+                        .map { array.getJSONObject(it).toLecture() }
+                        .filter { it.isPublished } // Never import an unpublished/revoked session.
                     val teacherName = payload.optString("teacherName", "استاد")
                     val legacyClassId = stableId(owner, "class:legacy")
                     if (teacherLectures.any { it.classId == null } && allClasses.none { it.id == legacyClassId }) {
