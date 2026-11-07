@@ -1,17 +1,16 @@
 package com.example.data.repository
 
-import com.example.data.local.ClassDao
+import androidx.room.withTransaction
+import com.example.data.local.AppDatabase
 import com.example.data.local.ClassEntity
-import com.example.data.local.CourseDao
 import com.example.data.local.CourseEntity
-import com.example.data.local.LectureDao
 import com.example.data.local.LectureEntity
-import com.example.data.local.TeacherFolderDao
 import com.example.data.local.TeacherFolderEntity
 import com.google.android.gms.tasks.Task
 import com.google.firebase.firestore.DocumentSnapshot
 import com.google.firebase.firestore.FieldValue
 import com.google.firebase.firestore.FirebaseFirestore
+import org.json.JSONObject
 import kotlinx.coroutines.suspendCancellableCoroutine
 import kotlin.coroutines.resume
 import kotlin.coroutines.resumeWithException
@@ -25,12 +24,13 @@ import kotlin.coroutines.resumeWithException
  * the previous version-1 snapshot available for recovery.
  */
 class FirestoreSyncRepository(
-    private val lectureDao: LectureDao,
-    private val classDao: ClassDao,
-    private val courseDao: CourseDao,
-    private val teacherFolderDao: TeacherFolderDao? = null,
+    private val database: AppDatabase,
     private val firestore: FirebaseFirestore = FirebaseFirestore.getInstance()
 ) {
+    private val lectureDao get() = database.lectureDao()
+    private val classDao get() = database.classDao()
+    private val courseDao get() = database.courseDao()
+    private val teacherFolderDao get() = database.teacherFolderDao()
     private companion object {
         const val SCHEMA_VERSION = 2L
         const val LEGACY_SCHEMA_VERSION = 1L
@@ -48,7 +48,7 @@ class FirestoreSyncRepository(
         return when (snapshot.getLong("schemaVersion")) {
             LEGACY_SCHEMA_VERSION -> {
                 // Validate and restore the old snapshot before migrating it.
-                restoreSnapshot(snapshot, requireAllCollections = true)
+                restoreSnapshot(snapshot, requireAllCollections = true, ownerUid = uid)
                 uploadSnapshot(uid)
                 true
             }
@@ -63,24 +63,188 @@ class FirestoreSyncRepository(
     }
 
     /**
-     * Older shared documents are read-only fallback sources. They are imported
-     * only if they contain all three expected arrays, then migrated privately.
+     * Read-only recovery diagnostic. This method must never write to Firestore or Room.
+     * It reports metadata only; transcript/audio contents are deliberately excluded.
+     */
+    suspend fun diagnoseCloudState(uid: String): String {
+        val rootRef = firestore.collection(TEACHER_DATA).document(uid)
+        val root = rootRef.get().awaitResult()
+        val recordDocuments = rootRef.collection(RECORDS).get().awaitResult().documents
+        val shared = firestore.collection(SHARED_MATERIALS).document(uid).get().awaitResult()
+        val typeCounts = recordDocuments.groupingBy {
+            it.getString("recordType") ?: "unknown"
+        }.eachCount()
+
+        fun listSize(value: Any?): Int = (value as? List<*>)?.size ?: 0
+
+        val payloadText = shared.getString("payload")
+        // Read-only comparison: neither Firestore nor Room is modified.
+        val localClasses = classDao.getAllForBackup()
+            .filter { it.id > 0L && (it.ownerUid.isBlank() || it.ownerUid == uid) }
+            .associateBy { it.id }
+        val localClassIds = localClasses.keys
+        // Only compare sessions attached to one of this teacher's owned core classes.
+        // Unassigned/orphan sessions and shared/experimental rows must not inflate the match.
+        val localLectures = lectureDao.getAllForBackup()
+            .filter { it.id > 0L && it.classId != null && it.classId in localClassIds }
+            .associateBy { it.id }
+        val localCourses = courseDao.getAllForBackup()
+            .filter { it.id > 0L && it.classId in localClassIds }
+            .associateBy { it.id }
+
+        val sharedClassRows = mutableListOf<String>()
+        val sharedLectureRows = mutableListOf<String>()
+        val sharedMissingClasses = mutableListOf<String>()
+        val sharedClassConflicts = mutableListOf<String>()
+        val sharedMissingLectures = mutableListOf<String>()
+        val sharedLectureConflicts = mutableListOf<String>()
+        var sharedClassCount = 0
+        var sharedCourseCount = 0
+        var sharedLectureCount = 0
+        var sharedClassMatched = 0
+        var sharedCourseMatched = 0
+        var sharedLectureMatched = 0
+        var sharedLectureContentDifferences = 0
+        val payloadOwnerUid = shared.getString("ownerUid")
+        val payloadSummary = if (payloadText.isNullOrBlank()) {
+            "absent"
+        } else if (payloadOwnerUid != uid) {
+            // Never compare/import a published payload whose owner cannot be verified.
+            "owner-mismatch"
+        } else {
+            runCatching {
+                val payload = JSONObject(payloadText)
+                val classArray = payload.optJSONArray("classes")
+                val courseArray = payload.optJSONArray("courses")
+                val lectureArray = payload.optJSONArray("lectures")
+                val sharedClassIds = (0 until (classArray?.length() ?: 0)).mapNotNull { index ->
+                    val item = classArray!!.optJSONObject(index) ?: return@mapNotNull null
+                    val id = item.optLong("id")
+                    if (id <= 0L) return@mapNotNull null
+                    sharedClassCount++
+                    val existing = localClasses[id]
+                    if (existing == null) {
+                        sharedMissingClasses += id.toString() + ":" + item.optString("name")
+                    } else if (existing.name != item.optString("name") ||
+                        existing.teacherName != item.optString("teacherName")) {
+                        sharedClassConflicts += id.toString() + ":" + item.optString("name")
+                    } else {
+                        sharedClassMatched++
+                    }
+                    sharedClassRows += id.toString() + ":" + item.optString("name") + ":" + item.optString("teacherName")
+                    id
+                }.toSet()
+                for (i in 0 until (courseArray?.length() ?: 0)) {
+                    val item = courseArray!!.optJSONObject(i) ?: continue
+                    val id = item.optLong("id")
+                    if (id <= 0L) continue
+                    sharedCourseCount++
+                    if (localCourses.containsKey(id)) sharedCourseMatched++
+                }
+                for (i in 0 until (lectureArray?.length() ?: 0)) {
+                    val item = lectureArray!!.optJSONObject(i) ?: continue
+                    val id = item.optLong("id")
+                    val classId = if (item.has("classId") && !item.isNull("classId")) item.optLong("classId") else null
+                    if (id <= 0L || classId == null || classId !in sharedClassIds) continue
+                    sharedLectureCount++
+                    val existing = localLectures[id]
+                    if (existing == null) {
+                        sharedMissingLectures += id.toString() + ":" + item.optString("title") + ":class=" + classId
+                    } else if (existing.title != item.optString("title") || existing.classId != classId) {
+                        sharedLectureConflicts += id.toString() + ":" + item.optString("title") + ":class=" + classId
+                    } else {
+                        sharedLectureMatched++
+                        if (existing.transcript != item.optString("transcript") ||
+                            existing.courseName != item.optString("courseName") ||
+                            existing.dateMillis != item.optLong("dateMillis")) {
+                            sharedLectureContentDifferences++
+                        }
+                    }
+                    sharedLectureRows += id.toString() + ":" + item.optString("title") + ":class=" + classId
+                }
+                "format=" + payload.optString("format", "unknown") +
+                    ",version=" + payload.optInt("version", -1) +
+                    ",classes=" + (classArray?.length() ?: 0) +
+                    ",courses=" + (payload.optJSONArray("courses")?.length() ?: 0) +
+                    ",lectures=" + (lectureArray?.length() ?: 0)
+            }.getOrElse { "invalid-json" }
+        }
+
+        val classRows = recordDocuments
+            .filter { it.getString("recordType") == "class" }
+            .take(30)
+            .joinToString(";") { doc ->
+                doc.id + ":" + (doc.getString("name") ?: doc.getString("title") ?: "")
+            }
+        val lectureRows = recordDocuments
+            .filter { it.getString("recordType") == "lecture" }
+            .take(60)
+            .joinToString(";") { doc ->
+                doc.id + ":" + (doc.getString("title") ?: "")
+            }
+
+        return buildString {
+            appendLine("DARSYAR_READ_ONLY_DIAGNOSTIC_V1")
+            appendLine("uid=" + uid)
+            appendLine("privateRoot.exists=" + root.exists())
+            appendLine("privateRoot.schemaVersion=" + (root.getLong("schemaVersion") ?: -1L))
+            appendLine("privateRoot.ownerUid=" + (root.getString("ownerUid") ?: "absent"))
+            appendLine("privateRoot.recordCount=" + (root.getLong("recordCount") ?: -1L))
+            appendLine("privateRoot.folders=" + listSize(root.get("folders")))
+            appendLine("privateRecords.total=" + recordDocuments.size)
+            appendLine("privateRecords.classes=" + (typeCounts["class"] ?: 0))
+            appendLine("privateRecords.courses=" + (typeCounts["course"] ?: 0))
+            appendLine("privateRecords.lectures=" + (typeCounts["lecture"] ?: 0))
+            appendLine("privateRecords.unknown=" + (typeCounts["unknown"] ?: 0))
+            appendLine("privateRecords.classRows=" + classRows)
+            appendLine("privateRecords.lectureRows=" + lectureRows)
+            appendLine("sharedDoc.exists=" + shared.exists())
+            appendLine("sharedDoc.ownerUid=" + (shared.getString("ownerUid") ?: "absent"))
+            appendLine("sharedDoc.payloadChars=" + (payloadText?.length ?: 0))
+            appendLine("sharedDoc.payloadSummary=" + payloadSummary)
+            appendLine("sharedDoc.classRows=" + sharedClassRows.joinToString(";"))
+            appendLine("sharedDoc.lectureRows=" + sharedLectureRows.joinToString(";"))
+            appendLine("local.ownedClasses=" + localClasses.size)
+            appendLine("local.ownedCourses=" + localCourses.size)
+            appendLine("local.ownedLectures=" + localLectures.size)
+            appendLine("sharedCompare.classes.total=" + sharedClassCount)
+            appendLine("sharedCompare.classes.matched=" + sharedClassMatched)
+            appendLine("sharedCompare.classes.missing=" + sharedMissingClasses.size)
+            appendLine("sharedCompare.classes.conflicts=" + sharedClassConflicts.size)
+            appendLine("sharedCompare.classes.missingRows=" + sharedMissingClasses.joinToString(";"))
+            appendLine("sharedCompare.classes.conflictRows=" + sharedClassConflicts.joinToString(";"))
+            appendLine("sharedCompare.courses.total=" + sharedCourseCount)
+            appendLine("sharedCompare.courses.matchedById=" + sharedCourseMatched)
+            appendLine("sharedCompare.lectures.total=" + sharedLectureCount)
+            appendLine("sharedCompare.lectures.matchedByIdTitleClass=" + sharedLectureMatched)
+            appendLine("sharedCompare.lectures.missing=" + sharedMissingLectures.size)
+            appendLine("sharedCompare.lectures.conflicts=" + sharedLectureConflicts.size)
+            appendLine("sharedCompare.lectures.contentDifferences=" + sharedLectureContentDifferences)
+            appendLine("sharedCompare.lectures.missingRows=" + sharedMissingLectures.joinToString(";"))
+            appendLine("sharedCompare.lectures.conflictRows=" + sharedLectureConflicts.joinToString(";"))
+            appendLine("sharedDoc.legacyArrays.classes=" + listSize(shared.get("classes")))
+            appendLine("sharedDoc.legacyArrays.courses=" + listSize(shared.get("courses")))
+            appendLine("sharedDoc.legacyArrays.lectures=" + listSize(shared.get("lectures")))
+            appendLine("NOTE=no Firestore or local data was changed")
+        }
+    }
+
+    /**
+     * Published materials are not a private backup. They may contain only a
+     * subset of the teacher's published classes, so importing them by replacing
+     * Room would silently discard private classes and unpublished sessions.
+     *
+     * If this legacy document exists but no private backup exists, stop the
+     * first-run sync and preserve both sides. Published content is still handled
+     * by CloudMaterialsSync's separate read-only feed.
      */
     suspend fun restoreLegacySharedMaterials(uid: String): Boolean {
         val snapshot = firestore.collection(SHARED_MATERIALS).document(uid).get().awaitResult()
         if (!snapshot.exists()) return false
-        val data = snapshot.data ?: return false
-        if (data["classes"] !is List<*> ||
-            data["courses"] !is List<*> ||
-            data["lectures"] !is List<*>
-        ) return false
 
-        return try {
-            restoreSnapshot(snapshot, requireAllCollections = true)
-            true
-        } catch (_: IllegalStateException) {
-            false
-        }
+        throw IllegalStateException(
+            "مطالب منتشرشدهٔ ابری، پشتیبان کامل شخصی نیستند؛ برای جلوگیری از جایگزینی اطلاعات، همگام‌سازی متوقف شد. بازیابی پشتیبان خصوصی باید جداگانه بررسی شود."
+        )
     }
 
     suspend fun uploadSnapshot(uid: String) {
@@ -93,10 +257,6 @@ class FirestoreSyncRepository(
         }
         val lectures = lectureDao.getAllForBackup()
             .filter { it.id > 0L && it.classId in ownedClassIds }
-            .filterNot {
-                it.title == "جلسه ۴: شبکه‌های عصبی و یادگیری عمیق" ||
-                    it.title == "جلسه ۷: سری و تبدیل فوریه و کاربرد در سیگنال"
-            }
 
         val root = firestore.collection(TEACHER_DATA).document(uid)
         val records = root.collection(RECORDS)
@@ -105,32 +265,52 @@ class FirestoreSyncRepository(
         courses.forEach { desired["course_${it.id}"] = mapOf("recordType" to "course") + it.toCloudMap() }
         lectures.forEach { desired["lecture_${it.id}"] = mapOf("recordType" to "lecture") + it.toCloudMap() }
 
-        // Read existing keys so deleted local records are also removed from cloud.
+        // During recovery, never infer cloud deletions from a possibly partial local DB.
+        // Upsert local records only; stale cloud records remain available until an explicit,
+        // separately verified deletion/tombstone workflow is implemented.
         val existing = records.get().awaitResult().documents
-        val staleRefs = existing.filter { it.id !in desired.keys }.map { it.reference }
+        if (desired.isEmpty() && existing.isNotEmpty()) {
+            throw IllegalStateException(
+                "ارسال پشتیبان خالی متوقف شد؛ در فضای ابری ${existing.size} رکورد موجود است اما در دستگاه هیچ رکورد مالکانه‌ای یافت نشد. ابتدا بازیابی و تطبیق اطلاعات لازم است."
+            )
+        }
+        if (existing.isNotEmpty()) {
+            val rootSnapshot = root.get().awaitResult()
+            val storedCount = rootSnapshot.getLong("recordCount")
+            if (!rootSnapshot.exists() ||
+                rootSnapshot.getLong("schemaVersion") != SCHEMA_VERSION ||
+                rootSnapshot.getString("ownerUid") != uid ||
+                storedCount != existing.size.toLong()
+            ) {
+                throw IllegalStateException(
+                    "ساختار پشتیبان ابری با رکوردهای موجود تطبیق ندارد؛ برای جلوگیری از بازنویسی، ارسال متوقف شد."
+                )
+            }
+        }
 
-        val operations = mutableListOf<Pair<com.google.firebase.firestore.DocumentReference, Map<String, Any?>?>>()
-        desired.forEach { (id, data) -> operations += records.document(id) to data }
-        staleRefs.forEach { operations += it to null }
+        val operations = desired.map { (id, data) ->
+            records.document(id) to data
+        }
 
         // Firestore batches have a 500-write maximum; leave room below the limit.
         operations.chunked(BATCH_LIMIT).forEach { chunk ->
             val batch = firestore.batch()
-            chunk.forEach { (ref, data) ->
-                if (data == null) batch.delete(ref) else batch.set(ref, data)
-            }
+            chunk.forEach { (ref, data) -> batch.set(ref, data) }
             batch.commit().awaitResult()
         }
 
+        // Count the union because pre-existing cloud records are intentionally preserved.
+        val mergedRecordCount = (existing.map { it.id }.toSet() + desired.keys).size
+
         // Keep folder metadata in the existing owner document, avoiding new Firebase rule paths.
-        val folderRows = teacherFolderDao?.observeFoldersForBackup()?.filter { it.ownerUid == uid }.orEmpty()
+        val folderRows = teacherFolderDao.observeFoldersForBackup().filter { it.ownerUid == uid }
 
         // Commit the version marker only after all individual records were written.
         root.set(
             mapOf(
                 "schemaVersion" to SCHEMA_VERSION,
                 "ownerUid" to uid,
-                "recordCount" to desired.size,
+                "recordCount" to mergedRecordCount,
                 "folders" to folderRows.map { it.toCloudMap() },
                 "updatedAt" to FieldValue.serverTimestamp()
             )
@@ -149,11 +329,31 @@ class FirestoreSyncRepository(
         val courses = mutableListOf<CourseEntity>()
         val lectures = mutableListOf<LectureEntity>()
         val rootSnapshot = firestore.collection(TEACHER_DATA).document(uid).get().awaitResult()
-        val folders = teacherFolderDao?.let {
-            (rootSnapshot.get("folders") as? List<*>)?.mapNotNull { value ->
-                (value as? Map<*, *>)?.asStringMap()?.toFolderEntity()
-            }.orEmpty()
-        }.orEmpty()
+        val storedOwner = rootSnapshot.getString("ownerUid")
+        if (!storedOwner.isNullOrBlank() && storedOwner != uid) {
+            throw IllegalStateException("مالک پشتیبان ابری با حساب فعلی تطبیق ندارد؛ اطلاعات محلی دست‌نخورده باقی ماند.")
+        }
+        val expectedCount = rootSnapshot.getLong("recordCount")
+            ?: throw IllegalStateException("تعداد رکوردهای پشتیبان ابری مشخص نیست؛ بازیابی برای حفظ اطلاعات متوقف شد.")
+        if (expectedCount != documents.size.toLong()) {
+            throw IllegalStateException(
+                "پشتیبان ابری ناقص دریافت شد (انتظار ${expectedCount} رکورد، دریافت ${documents.size})؛ اطلاعات محلی تغییر نکرد."
+            )
+        }
+        val rawFolders = rootSnapshot.get("folders")
+        val folders = when (rawFolders) {
+            null -> emptyList()
+            is List<*> -> rawFolders.map { value ->
+                val row = (value as? Map<*, *>)?.asStringMap()
+                    ?: throw IllegalStateException("ساختار پوشه‌های پشتیبان معتبر نیست؛ اطلاعات محلی تغییر نکرد.")
+                row.toFolderEntity().also { folder ->
+                    if (folder.id <= 0L || folder.ownerUid != uid) {
+                        throw IllegalStateException("مالکیت یا شناسه یکی از پوشه‌های پشتیبان معتبر نیست.")
+                    }
+                }
+            }
+            else -> throw IllegalStateException("فهرست پوشه‌های پشتیبان معتبر نیست؛ اطلاعات محلی تغییر نکرد.")
+        }
 
         documents.forEach { document ->
             val data = document.data ?: throw IllegalStateException(
@@ -168,17 +368,18 @@ class FirestoreSyncRepository(
                 )
             }
         }
-        validateAndReplaceLocalData(classes, courses, lectures)
-        teacherFolderDao?.let { dao ->
-            dao.clearForRestore()
-            if (folders.isNotEmpty()) dao.insertAllForRestore(folders)
-        }
+        mergeCloudData(classes, courses, lectures, folders, uid)
     }
 
     private suspend fun restoreSnapshot(
         snapshot: DocumentSnapshot,
-        requireAllCollections: Boolean
+        requireAllCollections: Boolean,
+        ownerUid: String
     ) {
+        val storedOwner = snapshot.getString("ownerUid")
+        if (!storedOwner.isNullOrBlank() && storedOwner != ownerUid) {
+            throw IllegalStateException("مالک پشتیبان قدیمی با حساب فعلی تطبیق ندارد؛ اطلاعات محلی تغییر نکرد.")
+        }
         val rawClasses = snapshot.get("classes") as? List<*>
         val rawCourses = snapshot.get("courses") as? List<*>
         val rawLectures = snapshot.get("lectures") as? List<*>
@@ -192,8 +393,11 @@ class FirestoreSyncRepository(
         }
 
         val classes = rawClasses.orEmpty().map {
-            (it as? Map<*, *>)?.asStringMap()?.toClassEntity()
+            val row = (it as? Map<*, *>)?.asStringMap()
                 ?: throw IllegalStateException("رکورد کلاس در پشتیبان ابری معتبر نیست.")
+            row.toClassEntity().let { entity ->
+                if (entity.ownerUid.isBlank()) entity.copy(ownerUid = ownerUid) else entity
+            }
         }
         val courses = rawCourses.orEmpty().map {
             (it as? Map<*, *>)?.asStringMap()?.toCourseEntity()
@@ -203,25 +407,126 @@ class FirestoreSyncRepository(
             (it as? Map<*, *>)?.asStringMap()?.toLectureEntity()
                 ?: throw IllegalStateException("رکورد جلسه در پشتیبان ابری معتبر نیست.")
         }
-        validateAndReplaceLocalData(classes, courses, lectures)
+        mergeCloudData(classes, courses, lectures, ownerUid = ownerUid)
     }
 
-    private suspend fun validateAndReplaceLocalData(
+    /**
+     * Merge a validated private cloud snapshot into Room without deleting or overwriting
+     * local records. Existing IDs must match exactly; any conflict aborts the transaction.
+     */
+    private suspend fun mergeCloudData(
         classes: List<ClassEntity>,
         courses: List<CourseEntity>,
-        lectures: List<LectureEntity>
+        lectures: List<LectureEntity>,
+        folders: List<TeacherFolderEntity>? = null,
+        ownerUid: String
     ) {
-        if (classes.any { it.id == 0L } || courses.any { it.id == 0L } || lectures.any { it.id == 0L }) {
-            throw IllegalStateException("شناسه یکی از رکوردهای پشتیبان ابری خالی است.")
+        val normalizedClasses = classes.map {
+            if (it.ownerUid.isBlank()) it.copy(ownerUid = ownerUid) else it
+        }
+        require(normalizedClasses.all { it.id > 0L && it.ownerUid == ownerUid }) {
+            "مالکیت یا شناسه یکی از کلاس‌های پشتیبان معتبر نیست؛ اطلاعات محلی تغییر نکرد."
+        }
+        require(courses.all { it.id > 0L } && lectures.all { it.id > 0L }) {
+            "شناسه یکی از رکوردهای پشتیبان معتبر نیست؛ اطلاعات محلی تغییر نکرد."
+        }
+        require(normalizedClasses.map { it.id }.distinct().size == normalizedClasses.size &&
+            courses.map { it.id }.distinct().size == courses.size &&
+            lectures.map { it.id }.distinct().size == lectures.size
+        ) {
+            "شناسه تکراری در پشتیبان وجود دارد؛ اطلاعات محلی تغییر نکرد."
         }
 
-        // Validate everything before deleting local data; delete children first.
-        lectureDao.clearForRestore()
-        courseDao.clearForRestore()
-        classDao.clearForRestore()
-        if (classes.isNotEmpty()) classDao.insertAllForRestore(classes)
-        if (courses.isNotEmpty()) courseDao.insertAllForRestore(courses)
-        if (lectures.isNotEmpty()) lectureDao.insertAllForRestore(lectures)
+        val normalizedFolders = folders?.map {
+            if (it.ownerUid.isBlank()) it.copy(ownerUid = ownerUid) else it
+        }
+        if (normalizedFolders != null) {
+            require(normalizedFolders.all { it.id > 0L && it.ownerUid == ownerUid } &&
+                normalizedFolders.map { it.id }.distinct().size == normalizedFolders.size
+            ) {
+                "مالکیت یا شناسه یکی از پوشه‌های پشتیبان معتبر نیست؛ اطلاعات محلی تغییر نکرد."
+            }
+        }
+
+        database.withTransaction {
+            val existingClasses = classDao.getAllForBackup().associateBy { it.id }
+            val existingCourses = courseDao.getAllForBackup().associateBy { it.id }
+            val existingLectures = lectureDao.getAllForBackup().associateBy { it.id }
+            val existingFolders = teacherFolderDao.observeFoldersForBackup().associateBy { it.id }
+
+            val incomingClassIds = normalizedClasses.map { it.id }.toSet()
+            val allClassIds = existingClasses.keys + incomingClassIds
+            val incomingCourseIds = courses.map { it.id }.toSet()
+            val allCourseIds = existingCourses.keys + incomingCourseIds
+            val incomingFolderIds = normalizedFolders.orEmpty().map { it.id }.toSet()
+            val allFolderIds = existingFolders.keys + incomingFolderIds
+
+            require(courses.all { it.classId in allClassIds }) {
+                "یکی از درس‌ها به کلاسی متصل است که در دستگاه یا پشتیبان وجود ندارد."
+            }
+            require(lectures.all {
+                (it.classId == null || it.classId in allClassIds) &&
+                    (it.courseId == null || it.courseId in allCourseIds)
+            }) {
+                "ارتباط یکی از جلسه‌ها با کلاس یا درس معتبر نیست."
+            }
+            if (normalizedFolders != null) {
+                require(normalizedFolders.all {
+                    it.parentFolderId == null || it.parentFolderId in allFolderIds
+                }) { "ساختار پوشه‌های پشتیبان کامل نیست." }
+                normalizedClasses.forEach { item ->
+                    require(item.folderId == null || item.folderId in allFolderIds) {
+                        "یکی از کلاس‌ها به پوشه‌ای متصل است که در دستگاه یا پشتیبان وجود ندارد."
+                    }
+                }
+                val foldersById = (existingFolders.values + normalizedFolders).associateBy { it.id }
+                normalizedFolders.forEach { folder ->
+                    val visited = mutableSetOf<Long>()
+                    var parentId = folder.parentFolderId
+                    while (parentId != null) {
+                        require(visited.add(parentId) && parentId != folder.id) {
+                            "ساختار پوشه‌های پشتیبان دارای چرخه است؛ اطلاعات محلی تغییر نکرد."
+                        }
+                        parentId = foldersById[parentId]?.parentFolderId
+                    }
+                }
+            }
+
+            normalizedClasses.forEach { item ->
+                val existing = existingClasses[item.id]
+                require(existing == null || existing == item) {
+                    "شناسه کلاس ${item.id} در دستگاه با اطلاعات متفاوتی وجود دارد؛ هیچ تغییری اعمال نشد."
+                }
+            }
+            courses.forEach { item ->
+                val existing = existingCourses[item.id]
+                require(existing == null || existing == item) {
+                    "شناسه درس ${item.id} در دستگاه با اطلاعات متفاوتی وجود دارد؛ هیچ تغییری اعمال نشد."
+                }
+            }
+            lectures.forEach { item ->
+                val existing = existingLectures[item.id]
+                require(existing == null || existing == item) {
+                    "شناسه جلسه ${item.id} در دستگاه با محتوای متفاوتی وجود دارد؛ هیچ تغییری اعمال نشد."
+                }
+            }
+            normalizedFolders.orEmpty().forEach { item ->
+                val existing = existingFolders[item.id]
+                require(existing == null || existing == item) {
+                    "شناسه پوشه ${item.id} در دستگاه با اطلاعات متفاوتی وجود دارد؛ هیچ تغییری اعمال نشد."
+                }
+            }
+
+            val newClasses = normalizedClasses.filter { it.id !in existingClasses }
+            val newCourses = courses.filter { it.id !in existingCourses }
+            val newLectures = lectures.filter { it.id !in existingLectures }
+            val newFolders = normalizedFolders.orEmpty().filter { it.id !in existingFolders }
+
+            if (newClasses.isNotEmpty()) classDao.insertAllForRestore(newClasses)
+            if (newCourses.isNotEmpty()) courseDao.insertAllForRestore(newCourses)
+            if (newLectures.isNotEmpty()) lectureDao.insertAllForRestore(newLectures)
+            if (newFolders.isNotEmpty()) teacherFolderDao.insertAllForRestore(newFolders)
+        }
     }
 
     private fun ClassEntity.toCloudMap(): Map<String, Any?> = mapOf(
