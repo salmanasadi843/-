@@ -171,13 +171,10 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
 
     /** Restore cloud data first, then autosave subsequent Room changes. */
     @OptIn(FlowPreview::class)
-    /**
-     * Recovery phase: only inspect Firestore metadata. No restore, upload, delete,
-     * Room replacement, or automatic published-material sync is allowed here.
-     */
+    /** Safely merge private cloud records into Room, then upsert local owned records to cloud. */
     fun startCloudSync() {
         if (_userRole.value != UserRole.TEACHER) {
-            _cloudSyncStatus.value = "بررسی پشتیبان فقط برای حساب استاد فعال است."
+            _cloudSyncStatus.value = "پشتیبان ابری فقط برای حساب استاد فعال است."
             return
         }
         val app = getApplication<Application>()
@@ -187,14 +184,18 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
             return
         }
         cloudSyncJob?.cancel()
-        _cloudSyncStatus.value = "در حال خواندن فقط‌خواندنی اطلاعات پشتیبان ابری…"
+        _cloudSyncStatus.value = "در حال ادغام امن و همگام‌سازی پشتیبان خصوصی…"
         cloudSyncJob = viewModelScope.launch {
             try {
-                _cloudSyncStatus.value = cloudSyncRepository.diagnoseCloudState(uid)
+                val result = withContext(Dispatchers.IO) {
+                    cloudSyncRepository.restoreFromCloud(uid)
+                    cloudSyncRepository.uploadSnapshot(uid)
+                    "همگام‌سازی امن انجام شد؛ اطلاعات ابری ادغام و داده‌های متعلق به شما ارسال شد. هیچ رکوردی به علت نبودن در گوشی حذف نشد."
+                }
+                _cloudSyncStatus.value = result
             } catch (error: Exception) {
-                Log.e(TAG, "Read-only cloud diagnostic failed", error)
-                _cloudSyncStatus.value =
-                    "بررسی فقط‌خواندنی ناموفق بود: ${error.localizedMessage ?: "خطای نامشخص"}. هیچ تغییری در اطلاعات محلی یا ابری انجام نشد."
+                Log.e(TAG, "Safe cloud sync failed", error)
+                _cloudSyncStatus.value = "همگام‌سازی متوقف شد تا اطلاعات حفظ شود: ${error.localizedMessage ?: "خطای نامشخص"}"
             }
         }
     }
