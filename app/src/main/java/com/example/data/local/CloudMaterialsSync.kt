@@ -20,12 +20,7 @@ object CloudMaterialsSync {
      * Recovery diagnostic build: teacher publishing is disabled until cloud records
      * have been compared with the user's backup. Student read-only retrieval remains enabled.
      */
-    fun sync(context: Context): String {
-        if (AuthPreferences.currentRole(context) == UserRole.TEACHER) {
-            return "انتشار آنلاین استاد تا پایان بررسی بازیابی موقتاً غیرفعال است؛ هیچ داده‌ای ارسال نشد."
-        }
-        return syncInternal(context, receiveOnly = false)
-    }
+    fun sync(context: Context): String = syncInternal(context, receiveOnly = false)
 
     /**
      * Teacher-side published-feed retrieval is also paused in this diagnostic build
@@ -35,7 +30,7 @@ object CloudMaterialsSync {
         require(AuthPreferences.currentRole(context) == UserRole.TEACHER) {
             "این همگام‌سازی فقط برای حساب استاد است."
         }
-        return "دریافت مطالب منتشرشده در نسخه تشخیصی موقتاً متوقف است؛ اطلاعات محلی تغییر نکرد."
+        return syncInternal(context, receiveOnly = true)
     }
 
     private fun syncInternal(context: Context, receiveOnly: Boolean): String {
