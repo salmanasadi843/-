@@ -53,7 +53,11 @@ object DatabaseBackup {
         val root = JSONObject(text)
         require(root.optString("format") == "darsyar-backup") { "این فایل، پشتیبان معتبر درس‌یار نیست." }
         require(root.optInt("version") in 1..1) { "نسخه فایل پشتیبان پشتیبانی نمی‌شود." }
-        validateBackupCollections(root)
+        val requiredCollections = listOf("lectures", "classes", "courses", "folders")
+        validateBackupCollections(
+            presentKeys = requiredCollections.filter { root.has(it) }.toSet(),
+            arrayKeys = requiredCollections.filter { root.optJSONArray(it) != null }.toSet()
+        )
 
         val sourceLectures = root.optJSONArray("lectures").toEntitiesTyped { it.toLecture() }
         val sourceClasses = root.optJSONArray("classes").toEntitiesTyped { it.toClassEntity() }
@@ -197,10 +201,13 @@ object DatabaseBackup {
     }
 
     /** Reject incomplete backups before reading records or opening a Room transaction. */
-    internal fun validateBackupCollections(root: JSONObject) {
+    internal fun validateBackupCollections(
+        presentKeys: Set<String>,
+        arrayKeys: Set<String>
+    ) {
         listOf("lectures", "classes", "courses", "folders").forEach { key ->
-            require(root.optJSONArray(key) != null) {
-                "بخش $key در فایل پشتیبان وجود ندارد؛ بازیابی متوقف شد و اطلاعات دستگاه تغییر نکرد."
+            require(key in presentKeys && key in arrayKeys) {
+                "بخش $key در فایل پشتیبان وجود ندارد یا آرایه معتبر نیست؛ بازیابی متوقف شد و اطلاعات دستگاه تغییر نکرد."
             }
         }
     }
