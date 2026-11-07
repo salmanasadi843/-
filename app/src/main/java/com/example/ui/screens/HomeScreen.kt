@@ -382,7 +382,36 @@ fun HomeScreen(
                     }
                 }
             } else {
-                items(classes, key = { it.id }) { classItem ->
+                // Present the required hierarchy: teacher -> class -> sessions.
+                // Keep teachers separate by owner UID; legacy rows without an owner
+                // are grouped by the stored teacher name instead of being hidden.
+                val teacherGroups = classes.groupBy { classItem ->
+                    classItem.ownerUid.takeIf { it.isNotBlank() }
+                        ?.let { "owner:$it" }
+                        ?: "legacy:${classItem.teacherName.trim().ifBlank { "استاد نامشخص" }}"
+                }
+                teacherGroups.forEach { (teacherKey, teacherClasses) ->
+                    val teacherName = teacherClasses.first().teacherName.trim().ifBlank { "استاد نامشخص" }
+                    item(key = "teacher-section-$teacherKey") {
+                        Surface(
+                            modifier = Modifier.fillMaxWidth(),
+                            shape = RoundedCornerShape(16.dp),
+                            color = MaterialTheme.colorScheme.secondaryContainer
+                        ) {
+                            Row(
+                                modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 12.dp),
+                                verticalAlignment = Alignment.CenterVertically
+                            ) {
+                                Icon(Icons.Default.School, contentDescription = null, tint = MaterialTheme.colorScheme.onSecondaryContainer)
+                                Spacer(Modifier.width(10.dp))
+                                Column(Modifier.weight(1f)) {
+                                    Text("استاد: $teacherName", fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.onSecondaryContainer)
+                                    Text("${teacherClasses.size} کلاس درس", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSecondaryContainer)
+                                }
+                            }
+                        }
+                    }
+                    items(teacherClasses, key = { it.id }) { classItem ->
                     val classLectures = lectures.filter { it.classId == classItem.id }.sortedByDescending { it.dateMillis }
                     Card(
                         Modifier.fillMaxWidth().clickable { viewModel.openClass(classItem.id) },
@@ -397,10 +426,7 @@ fun HomeScreen(
                                 }
                                 Spacer(Modifier.width(12.dp))
                                 Column(Modifier.weight(1f)) {
-                                    Text(classItem.name, style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
-                                    if (classItem.teacherName.isNotBlank()) {
-                                        Text("استاد: " + classItem.teacherName, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
-                                    }
+                                    Text("کلاس درس: " + classItem.name, style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
                                 }
                             }
                             Spacer(Modifier.height(12.dp))
@@ -447,6 +473,7 @@ fun HomeScreen(
                                 Text("مشاهده جلسات  ›", color = MaterialTheme.colorScheme.primary, fontWeight = FontWeight.SemiBold)
                             }
                         }
+                    }
                     }
                 }
             }
