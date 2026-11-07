@@ -83,8 +83,8 @@ class FirestoreSyncRepository(
             .filter { it.id > 0L && (it.ownerUid.isBlank() || it.ownerUid == uid) }
             .associateBy { it.id }
         val localClassIds = localClasses.keys
-        // Only compare sessions attached to one of this teacher's owned core classes.
-        // Unassigned/orphan sessions and shared/experimental rows must not inflate the match.
+        // Include standalone personal sessions as well as sessions attached to owned classes.
+        // Orphans attached to foreign/missing classes and negative shared rows remain excluded.
         val localLectures = lectureDao.getAllForBackup()
             .filter { isPrivateBackupLecture(it.id, it.classId, localClassIds) }
             .associateBy { it.id }
