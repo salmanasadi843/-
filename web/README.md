@@ -55,3 +55,26 @@ Firebase remains the current primary identity/data environment. The shared backe
 This is a staging client only. It is not yet a publicly deployed production website and does not authorize server deployment or migration. Firebase production, the current Iran server, DNS and existing user data remain unchanged.
 
 Never add Firebase Admin credentials or other private secrets to `.env.local` or any `VITE_*` variable; Vite variables are bundled into browser code. The Firebase values above are browser app public configuration, not a service-account credential. The backend URL is centralized in `src/api.ts`; do not hardcode hostnames in UI components.
+
+
+## Stage 18 — manual web role acceptance (pending)
+
+This stage is a private/staging acceptance check, not a production deployment. Do not publish the site or point it at production data to complete these checks.
+
+### Preconditions
+- Build the current branch and serve its `web/dist` output only in a controlled preview.
+- Configure the preview API base URL to a disposable staging backend with test data and test identities. Do not use Firebase production credentials or a production backend URL.
+- Prepare separate test identities: primary administrator, class-owning teacher, non-owning teacher, enrolled student, non-enrolled student, and signed-out guest.
+
+### Acceptance matrix
+- Administrator: list teachers and their classes/sessions; create/edit/move/hide/restore/delete test classes and sessions belonging to another teacher; confirm owner UID and record IDs remain unchanged.
+- Owning teacher: manage only their own classes/folders/sessions; verify public and private class visibility.
+- Non-owning teacher: view permitted public content only; verify all edit/delete/move/reorder/folder-management controls and API operations are denied for another teacher's content.
+- Enrolled student: open a published private class and its published sessions; after membership revocation, verify access is denied.
+- Non-enrolled student: verify private class/session details are not exposed.
+- Guest: verify only published, non-hidden public classes and published sessions are accessible; private, hidden, deleted, draft and personal endpoints remain inaccessible.
+- Transcript search: test all-words and exact-phrase modes, Persian/Arabic letter normalization, half-space and diacritics; open a result and verify navigation/highlight targets the correct original or edited transcript.
+- Transfers and ordering: move a session between permitted classes and reorder classes/sessions; reload the page and verify stable IDs, ownership, order and no duplicates.
+
+### Evidence required to close Stage 18
+Record the tested build commit, preview/API environment (without secrets), role used, operation, expected result, actual result and any defect. Attach redacted screenshots or request/response evidence where useful. A successful CI build alone does not close this stage.
