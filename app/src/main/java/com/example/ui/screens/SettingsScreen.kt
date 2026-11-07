@@ -60,6 +60,7 @@ import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.text.input.VisualTransformation
 import androidx.compose.ui.unit.dp
 import com.example.data.local.DatabaseBackup
+import com.example.data.local.CloudMaterialsSync
 import com.example.data.api.GeminiApiService
 import com.example.data.api.GroqApiService
 import com.example.data.api.SpeechmaticsApiService
@@ -112,9 +113,14 @@ fun SettingsScreen(
         }
     }
     val runCloudSync = {
-        cloudBusy = false
-        cloudError = true
-        cloudStatus = "انتشار آنلاین تا پایان بررسی بازیابی موقتاً غیرفعال است؛ هیچ داده‌ای ارسال نشد."
+        backupScope.launch {
+            cloudBusy = true
+            cloudStatus = null
+            val result = withContext(Dispatchers.IO) { runCatching { CloudMaterialsSync.sync(context) } }
+            cloudBusy = false
+            cloudError = result.isFailure
+            cloudStatus = result.getOrElse { "انتشار ناموفق بود: ${it.localizedMessage}" }
+        }
     }
     val restoreBackup = rememberLauncherForActivityResult(ActivityResultContracts.OpenDocument()) { uri ->
         if (uri != null) backupScope.launch {
@@ -163,8 +169,8 @@ fun SettingsScreen(
     if (showPublishConfirm) {
         androidx.compose.material3.AlertDialog(
             onDismissRequest = { showPublishConfirm = false },
-            title = { Text("انتشار آنلاین مطالب (موقتاً غیرفعال)") },
-            text = { Text("به دلیل بررسی بازیابی اطلاعات، انتشار آنلاین موقتاً غیرفعال است. هیچ داده‌ای ارسال نخواهد شد.") },
+            title = { Text("انتشار آنلاین مطالب") },
+            text = { Text("متن، خلاصه، کلیدواژه‌ها، اطلاعات کلاس و لینک صوت جلسات منتشرشده برای کاربران واردشده قابل مشاهده می‌شود. فایل صوتی اصلی ارسال نمی‌شود. ادامه می‌دهید؟") },
             confirmButton = {
                 Button(onClick = {
                     showPublishConfirm = false
@@ -212,7 +218,7 @@ fun SettingsScreen(
                     Row(verticalAlignment = Alignment.CenterVertically) {
                         Icon(Icons.Filled.NetworkCheck, contentDescription = null)
                         Spacer(Modifier.width(8.dp))
-                        Text("گزارش تشخیصی فضای ابری", style = MaterialTheme.typography.titleLarge)
+                        Text("همگام‌سازی پشتیبان خصوصی", style = MaterialTheme.typography.titleLarge)
                     }
                     Spacer(Modifier.height(8.dp))
                     SelectionContainer { Text(cloudSyncStatus, style = MaterialTheme.typography.bodyMedium) }
@@ -221,10 +227,10 @@ fun SettingsScreen(
                         onClick = { viewModel.startCloudSync() },
                         enabled = !cloudBusy
                     ) {
-                        Text("اجرای بررسی فقط‌خواندنی")
+                        Text("همگام‌سازی امن با Firebase")
                     }
                     Text(
-                        "این نسخه فقط فراداده‌های ابری را می‌خواند؛ هیچ داده‌ای در گوشی یا Firebase بازیابی، ویرایش یا حذف نمی‌شود. برای کپی گزارش، روی متن نگه دارید.",
+                        "ابتدا داده‌های ابری بدون حذف یا بازنویسی با گوشی ادغام می‌شوند؛ سپس رکوردهای متعلق به شما به‌صورت افزایشی ارسال می‌شوند. رکوردهای ابریِ غایب از گوشی حذف نمی‌شوند.",
                         style = MaterialTheme.typography.bodySmall,
                         color = MaterialTheme.colorScheme.onSurfaceVariant
                     )
@@ -748,7 +754,7 @@ fun SettingsScreen(
                         if (cloudBusy) CircularProgressIndicator(modifier = Modifier.size(18.dp), strokeWidth = 2.dp)
                         else Icon(Icons.Default.NetworkCheck, contentDescription = null)
                         Spacer(Modifier.width(8.dp))
-                        Text(if (cloudBusy) "در حال همگام‌سازی..." else if (AuthPreferences.currentRole(context) == UserRole.TEACHER) "انتشار آنلاین موقتاً غیرفعال" else "دریافت مطالب آنلاین موقتاً غیرفعال")
+                        Text(if (cloudBusy) "در حال همگام‌سازی..." else if (AuthPreferences.currentRole(context) == UserRole.TEACHER) "انتشار مطالب در Firebase" else "دریافت مطالب آنلاین")
                     }
                     if (cloudStatus != null) {
                         Spacer(Modifier.height(10.dp))
