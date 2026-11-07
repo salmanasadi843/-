@@ -86,7 +86,7 @@ class FirestoreSyncRepository(
         // Only compare sessions attached to one of this teacher's owned core classes.
         // Unassigned/orphan sessions and shared/experimental rows must not inflate the match.
         val localLectures = lectureDao.getAllForBackup()
-            .filter { it.id > 0L && it.classId != null && it.classId in localClassIds }
+            .filter { isPrivateBackupLecture(it.id, it.classId, localClassIds) }
             .associateBy { it.id }
         val localCourses = courseDao.getAllForBackup()
             .filter { it.id > 0L && it.classId in localClassIds }
@@ -256,7 +256,7 @@ class FirestoreSyncRepository(
             it.id > 0L && it.classId in ownedClassIds
         }
         val lectures = lectureDao.getAllForBackup()
-            .filter { it.id > 0L && it.classId in ownedClassIds }
+            .filter { isPrivateBackupLecture(it.id, it.classId, ownedClassIds) }
 
         val root = firestore.collection(TEACHER_DATA).document(uid)
         val records = root.collection(RECORDS)
@@ -659,3 +659,11 @@ class FirestoreSyncRepository(
             }
         }
 }
+
+
+/** Include positive-ID personal sessions; negative IDs belong to imported shared feeds. */
+internal fun isPrivateBackupLecture(
+    id: Long,
+    classId: Long?,
+    ownedClassIds: Set<Long>
+): Boolean = id > 0L && (classId == null || classId in ownedClassIds)
