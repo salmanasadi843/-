@@ -18,6 +18,8 @@ permissions:
 jobs:
   build:
     runs-on: ubuntu-latest
+    env:
+      VITE_DARSYAR_API_BASE_URL: ${{ vars.DARSYAR_STAGING_API_BASE_URL }}
     defaults:
       run:
         working-directory: web
