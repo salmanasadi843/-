@@ -62,6 +62,9 @@ Never add Firebase Admin credentials or other private secrets to `.env.local` or
 This stage is a private/staging acceptance check, not a production deployment. Do not publish the site or point it at production data to complete these checks.
 
 ### Preconditions
+- The Web workflow uploads `web/dist` as the `darsyar-web-preview` Actions artifact for 7 days.
+- If the repository Actions variable `DARSYAR_STAGING_API_BASE_URL` is set, the workflow injects it as `VITE_DARSYAR_API_BASE_URL` at build time. If it is absent, the generated site has no API base URL and role-based API tests cannot pass.
+- The staging backend must allow the preview's exact origin through CORS and must contain disposable test identities/data.
 - Build the current branch and serve its `web/dist` output only in a controlled preview.
 - Configure the preview API base URL to a disposable staging backend with test data and test identities. Do not use Firebase production credentials or a production backend URL.
 - Prepare separate test identities: primary administrator, class-owning teacher, non-owning teacher, enrolled student, non-enrolled student, and signed-out guest.
