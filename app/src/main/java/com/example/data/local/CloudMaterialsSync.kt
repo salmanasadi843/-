@@ -411,7 +411,8 @@ object CloudMaterialsSync {
         .put("professorName", professorName).put("classId", classId ?: JSONObject.NULL)
         .put("courseId", courseId ?: JSONObject.NULL).put("dateMillis", dateMillis)
         .put("audioUrl", audioUrl ?: JSONObject.NULL).put("audioDurationMs", audioDurationMs)
-        .put("transcript", transcript).put("aiSummary", aiSummary ?: JSONObject.NULL)
+        .put("transcript", transcript).put("originalTranscript", originalTranscript)
+        .put("aiSummary", aiSummary ?: JSONObject.NULL)
         .put("aiKeyPoints", aiKeyPoints ?: JSONObject.NULL).put("tags", tags)
         .put("isPublished", isPublished).put("lastEditedMillis", lastEditedMillis)
         .put("sortOrder", sortOrder)
@@ -422,6 +423,7 @@ object CloudMaterialsSync {
         courseId = nullableLong("courseId"), dateMillis = optLong("dateMillis"),
         audioFilePath = null, audioUrl = nullableString("audioUrl"),
         audioDurationMs = optLong("audioDurationMs"), transcript = optString("transcript"),
+        originalTranscript = optString("originalTranscript"),
         aiSummary = nullableString("aiSummary"), aiKeyPoints = nullableString("aiKeyPoints"),
         tags = optString("tags"), isPublished = optBoolean("isPublished", true), lastEditedMillis = optLong("lastEditedMillis"),
         sortOrder = optInt("sortOrder", 0)
