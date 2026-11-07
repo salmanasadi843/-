@@ -18,6 +18,12 @@ val escapedDarsyarApiBaseUrl = darsyarApiBaseUrl
     .replace("\\", "\\\\")
     .replace("\"", "\\\"")
 
+// GitHub Actions can provide a persistent keystore for repeatable Debug APK
+// signatures. Local builds keep using Android's normal debug keystore.
+val stableDebugSigningConfigured =
+    listOf("KEYSTORE_PATH", "STORE_PASSWORD", "KEY_ALIAS", "KEY_PASSWORD")
+        .all { !System.getenv(it).isNullOrBlank() }
+
 android {
     namespace = "com.example"
 
@@ -44,7 +50,7 @@ android {
 
             storeFile = file(keystorePath)
             storePassword = System.getenv("STORE_PASSWORD")
-            keyAlias = "upload"
+            keyAlias = System.getenv("KEY_ALIAS") ?: "upload"
             keyPassword = System.getenv("KEY_PASSWORD")
         }
     }
@@ -62,10 +68,13 @@ android {
             signingConfig = signingConfigs.getByName("release")
         }
 
-        // از Debug Keystore پیش‌فرض Android استفاده می‌شود.
-        // نیازی به debug.keystore داخل Repository نیست.
+        // Use the persistent CI keystore when GitHub Actions secrets are set.
+        // Otherwise local development continues to use Android's default debug key.
         debug {
             isMinifyEnabled = false
+            if (stableDebugSigningConfigured) {
+                signingConfig = signingConfigs.getByName("release")
+            }
         }
     }
 
