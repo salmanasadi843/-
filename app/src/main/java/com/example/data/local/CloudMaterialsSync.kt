@@ -12,15 +12,21 @@ import org.json.JSONObject
 import java.security.MessageDigest
 
 /**
- * Publishes and retrieves lesson text metadata through Firestore.
+ * Synchronizes published lesson metadata through Firestore.
+ * Teachers publish their owned, published records using an additive merge that
+ * retains cloud records missing from the local snapshot; students retrieve feeds.
  * Audio binaries are never uploaded; only an optional audio URL is shared.
  */
 object CloudMaterialsSync {
+    /**
+     * Teachers publish their owned published materials with a guarded additive merge.
+     * Students retrieve published materials from other teachers.
+     */
     fun sync(context: Context): String = syncInternal(context, receiveOnly = false)
 
     /**
-     * Allows a secondary teacher to read other teachers' published materials without
-     * publishing their own snapshot. Imported rows retain negative IDs and are read-only.
+     * Refreshes other teachers' published feed for a teacher account in read-only mode.
+     * Imported records retain their source ownership and cannot be republished as local data.
      */
     fun syncPublishedForTeacher(context: Context): String {
         require(AuthPreferences.currentRole(context) == UserRole.TEACHER) {
@@ -41,12 +47,21 @@ object CloudMaterialsSync {
             val allLectures = runBlocking { db.lectureDao().getAllForBackup() }
             // Imported/shared records use stable negative IDs. They belong to their
             // original teacher and must never be republished or managed by this account.
-            val classes = allClasses.filter { it.id > 0L && it.ownerUid == uid && it.isPublished }
+            val ownedClasses = allClasses.filter { it.id > 0L && it.ownerUid == uid }
+            val classes = ownedClasses.filter { it.isPublished }
             val visibleClassIds = classes.map { it.id }.toSet()
+            // Only an explicit local unpublished state revokes an existing cloud entry.
+            // A row absent from this device is not treated as deleted: it may simply
+            // belong to another device or an incomplete local restore.
+            val revokedClassIds = ownedClasses.filterNot { it.isPublished }.map { it.id }.toSet()
+            val ownedClassIds = ownedClasses.map { it.id }.toSet()
+            val ownedLectures = allLectures.filter { lecture ->
+                lecture.id > 0L && lecture.classId?.let { it in ownedClassIds } == true
+            }
+            val revokedLectureIds = ownedLectures.filterNot { it.isPublished }.map { it.id }.toSet()
             val courses = allCourses.filter { it.id > 0L && it.classId > 0L && it.classId in visibleClassIds }
-            val lectures = allLectures.filter { lecture ->
-                lecture.id > 0L && lecture.isPublished &&
-                    lecture.classId?.let { it > 0L && it in visibleClassIds } == true
+            val lectures = ownedLectures.filter { lecture ->
+                lecture.isPublished && lecture.classId?.let { it in visibleClassIds } == true
             }
             val payload = JSONObject()
                 .put("format", "darsyar-shared-materials")
@@ -55,22 +70,72 @@ object CloudMaterialsSync {
                 .put("classes", JSONArray().apply { classes.forEach { put(it.copy(ownerUid = uid).toJson()) } })
                 .put("courses", JSONArray().apply { courses.forEach { put(it.toJson()) } })
                 .put("lectures", JSONArray().apply { lectures.map { it.toJson() }.forEach { put(it) } })
-            Tasks.await(
-                firestore.collection("shared_materials").document(uid)
-                    .set(mapOf("ownerUid" to uid, "payload" to payload.toString(), "updatedAt" to System.currentTimeMillis()))
-            )
-            "مطالب متنی و لینک‌های صوت با موفقیت در فضای آنلاین به‌روزرسانی شد."
+            // Fail closed: never replace a published feed with a partial local snapshot.
+            val feedRef = firestore.collection("shared_materials").document(uid)
+            val previousDoc = Tasks.await(feedRef.get())
+            val previousOwner = previousDoc.getString("ownerUid")
+            if (previousDoc.exists() && previousOwner != uid) {
+                error("مالکیت سند مطالب آنلاین با حساب فعلی تطبیق ندارد؛ برای جلوگیری از حذف اطلاعات، انتشار متوقف شد.")
+            }
+            val previousText = previousDoc.getString("payload")
+            if (previousDoc.exists() && previousText.isNullOrBlank()) {
+                error("سند قبلی مطالب آنلاین قابل خواندن نیست؛ انتشار امن متوقف شد.")
+            }
+            if (!previousText.isNullOrBlank()) {
+                val previous = runCatching { JSONObject(previousText) }.getOrElse {
+                    error("ساختار مطالب آنلاین قبلی خراب است؛ برای جلوگیری از حذف اطلاعات، انتشار متوقف شد.")
+                }
+                if (previous.optString("format") != "darsyar-shared-materials") {
+                    error("قالب سند آنلاین ناشناخته است؛ انتشار امن متوقف شد.")
+                }
+                // Additive merge by stable record ID. Missing local rows are retained
+                // online; only rows explicitly marked unpublished on this device are revoked.
+                val mergedClasses = mergeById(previous.optJSONArray("classes"), payload.optJSONArray("classes"))
+                val mergedCourses = mergeById(previous.optJSONArray("courses"), payload.optJSONArray("courses"))
+                val mergedLectures = mergeById(previous.optJSONArray("lectures"), payload.optJSONArray("lectures"))
+                payload.put("classes", filterJsonArray(mergedClasses) { it.optLong("id") !in revokedClassIds })
+                payload.put("courses", filterJsonArray(mergedCourses) { it.optLong("classId") !in revokedClassIds })
+                payload.put("lectures", filterJsonArray(mergedLectures) {
+                    it.optLong("id") !in revokedLectureIds && it.optLong("classId") !in revokedClassIds
+                })
+            }
+            Tasks.await(feedRef.set(mapOf(
+                "ownerUid" to uid,
+                "payload" to payload.toString(),
+                "updatedAt" to System.currentTimeMillis()
+            )))
+            "انتشار امن انجام شد؛ کلاس‌ها و جلسه‌هایی که صریحاً لغو انتشار شده‌اند از فهرست آنلاین خارج شدند و رکوردهای غایب از گوشی حفظ شدند."
         } else {
             val documents = Tasks.await(firestore.collection("shared_materials").get()).documents
                 .filter { it.id != uid }
+            // An empty collection is not proof that every previously downloaded
+            // teacher explicitly unpublished their materials. Keep the last known-good
+            // snapshot instead of interpreting an empty query as a delete-all command.
+            if (documents.isEmpty()) {
+                return "فهرست آنلاین فعلاً خالی است؛ مطالب قبلی این دستگاه برای جلوگیری از حذف ناخواسته حفظ شدند."
+            }
+
             val allClasses = mutableListOf<ClassEntity>()
             val allCourses = mutableListOf<CourseEntity>()
             val allLectures = mutableListOf<LectureEntity>()
-            val validPayloads = documents.mapNotNull { document ->
-                val owner = document.getString("ownerUid") ?: document.id
-                val payloadText = document.getString("payload") ?: return@mapNotNull null
-                val payload = runCatching { JSONObject(payloadText) }.getOrNull() ?: return@mapNotNull null
-                if (payload.optString("format") != "darsyar-shared-materials") null else owner to payload
+            // Validate every feed completely before the transaction clears the previous snapshot.
+            val validPayloads = documents.map { document ->
+                val storedOwner = document.getString("ownerUid")
+                val payloadText = document.getString("payload")
+                    ?.takeIf { it.isNotBlank() }
+                    ?: error("فهرست آنلاین یکی از استادها ناقص است؛ برای جلوگیری از حذف مطالب قبلی، دریافت متوقف شد.")
+                val payload = runCatching { JSONObject(payloadText) }.getOrElse {
+                    error("ساختار فهرست آنلاین یکی از استادها خراب است؛ مطالب قبلی دستگاه حفظ شدند.")
+                }
+                val owner = validateSharedFeedEnvelope(
+                    documentId = document.id,
+                    storedOwner = storedOwner,
+                    payloadFormat = payload.optString("format"),
+                    hasClasses = payload.optJSONArray("classes") != null,
+                    hasCourses = payload.optJSONArray("courses") != null,
+                    hasLectures = payload.optJSONArray("lectures") != null
+                )
+                owner to payload
             }
 
             // Merge duplicate class cards by normalized name + teacher + term, but remap
@@ -184,7 +249,9 @@ object CloudMaterialsSync {
                 }
 
                 payload.optJSONArray("lectures")?.let { array ->
-                    val teacherLectures = (0 until array.length()).map { array.getJSONObject(it).toLecture() }
+                    val teacherLectures = (0 until array.length())
+                        .map { array.getJSONObject(it).toLecture() }
+                        .filter { it.isPublished } // Never import an unpublished/revoked session.
                     val teacherName = payload.optString("teacherName", "استاد")
                     val legacyClassId = stableId(owner, "class:legacy")
                     if (teacherLectures.any { it.classId == null } && allClasses.none { it.id == legacyClassId }) {
@@ -250,6 +317,87 @@ object CloudMaterialsSync {
         }
     }
 
+    /**
+     * Validates the envelope for one shared feed before any local snapshot replacement.
+     * Empty arrays are valid (an explicit empty published feed); missing arrays are not.
+     * Kept pure so the fail-closed boundary is covered by JVM unit tests.
+     */
+    internal fun validateSharedFeedEnvelope(
+        documentId: String,
+        storedOwner: String?,
+        payloadFormat: String,
+        hasClasses: Boolean,
+        hasCourses: Boolean,
+        hasLectures: Boolean
+    ): String {
+        val owner = storedOwner?.takeIf { it.isNotBlank() } ?: documentId
+        check(storedOwner.isNullOrBlank() || storedOwner == documentId) {
+            "شناسه مالک فهرست آنلاین با شناسه سند تطبیق ندارد؛ مطالب قبلی دستگاه حفظ شدند."
+        }
+        check(owner.isNotBlank()) {
+            "شناسه مالک یکی از فهرست‌های آنلاین معتبر نیست؛ مطالب قبلی دستگاه حفظ شدند."
+        }
+        check(payloadFormat == "darsyar-shared-materials") {
+            "قالب فهرست آنلاین یکی از استادها ناشناخته است؛ مطالب قبلی دستگاه حفظ شدند."
+        }
+        check(hasClasses) { "بخش classes در فهرست آنلاین استاد ناقص است؛ مطالب قبلی دستگاه حفظ شدند." }
+        check(hasCourses) { "بخش courses در فهرست آنلاین استاد ناقص است؛ مطالب قبلی دستگاه حفظ شدند." }
+        check(hasLectures) { "بخش lectures در فهرست آنلاین استاد ناقص است؛ مطالب قبلی دستگاه حفظ شدند." }
+        return owner
+    }
+
+    /** Filters a JSON array without mutating its source objects. */
+    private fun filterJsonArray(array: JSONArray, keep: (JSONObject) -> Boolean): JSONArray {
+        val filtered = JSONArray()
+        for (index in 0 until array.length()) {
+            val item = array.optJSONObject(index) ?: error("رکورد آنلاین خراب است؛ انتشار متوقف شد.")
+            if (keep(item)) filtered.put(JSONObject(item.toString()))
+        }
+        return filtered
+    }
+
+    /** Keeps old feed entries absent from this device's snapshot; local IDs update existing entries. */
+    private fun mergeById(oldArray: JSONArray?, newArray: JSONArray?): JSONArray {
+        val merged = linkedMapOf<String, JSONObject>()
+        fun key(item: JSONObject): String {
+            val id = item.optLong("id", Long.MIN_VALUE)
+            require(id != Long.MIN_VALUE) { "رکورد آنلاین بدون شناسه است؛ انتشار متوقف شد." }
+            return id.toString()
+        }
+        oldArray?.let { arr ->
+            for (i in 0 until arr.length()) {
+                val item = arr.optJSONObject(i) ?: error("رکورد قبلی آنلاین خراب است؛ انتشار متوقف شد.")
+                merged[key(item)] = JSONObject(item.toString())
+            }
+        }
+        newArray?.let { arr ->
+            for (i in 0 until arr.length()) {
+                val item = arr.optJSONObject(i) ?: error("رکورد محلی انتشار خراب است.")
+                val id = key(item)
+                val old = merged[id]
+                // For lectures, don't overwrite rich online text with an empty local copy.
+                val result = JSONObject(item.toString())
+                if (old != null && item.has("transcript") && item.optString("transcript").isBlank()
+                    && old.optString("transcript").isNotBlank()) {
+                    result.put("transcript", old.optString("transcript"))
+                }
+                if (old != null) {
+                    listOf("originalTranscript", "aiSummary", "aiKeyPoints", "tags", "audioUrl").forEach { field ->
+                        if ((!result.has(field) || result.isNull(field) || result.optString(field).isBlank())
+                            && old.has(field) && !old.isNull(field) && old.optString(field).isNotBlank()) {
+                            result.put(field, old.get(field))
+                        }
+                    }
+                    if (result.optLong("lastEditedMillis") < old.optLong("lastEditedMillis")) {
+                        result.put("lastEditedMillis", old.optLong("lastEditedMillis"))
+                    }
+                }
+                merged[id] = result
+            }
+        }
+        return JSONArray().apply { merged.values.forEach { put(it) } }
+    }
+
     private fun stableId(owner: String, key: String): Long {
         val bytes = MessageDigest.getInstance("SHA-256").digest("$owner:$key".toByteArray(Charsets.UTF_8))
         var value = 0L
@@ -285,7 +433,8 @@ object CloudMaterialsSync {
         .put("professorName", professorName).put("classId", classId ?: JSONObject.NULL)
         .put("courseId", courseId ?: JSONObject.NULL).put("dateMillis", dateMillis)
         .put("audioUrl", audioUrl ?: JSONObject.NULL).put("audioDurationMs", audioDurationMs)
-        .put("transcript", transcript).put("aiSummary", aiSummary ?: JSONObject.NULL)
+        .put("transcript", transcript).put("originalTranscript", originalTranscript)
+        .put("aiSummary", aiSummary ?: JSONObject.NULL)
         .put("aiKeyPoints", aiKeyPoints ?: JSONObject.NULL).put("tags", tags)
         .put("isPublished", isPublished).put("lastEditedMillis", lastEditedMillis)
         .put("sortOrder", sortOrder)
@@ -296,6 +445,7 @@ object CloudMaterialsSync {
         courseId = nullableLong("courseId"), dateMillis = optLong("dateMillis"),
         audioFilePath = null, audioUrl = nullableString("audioUrl"),
         audioDurationMs = optLong("audioDurationMs"), transcript = optString("transcript"),
+        originalTranscript = optString("originalTranscript"),
         aiSummary = nullableString("aiSummary"), aiKeyPoints = nullableString("aiKeyPoints"),
         tags = optString("tags"), isPublished = optBoolean("isPublished", true), lastEditedMillis = optLong("lastEditedMillis"),
         sortOrder = optInt("sortOrder", 0)

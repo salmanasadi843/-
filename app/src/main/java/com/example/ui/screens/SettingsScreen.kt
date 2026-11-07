@@ -231,7 +231,7 @@ fun SettingsScreen(
                     Row(verticalAlignment = Alignment.CenterVertically) {
                         Icon(Icons.Filled.NetworkCheck, contentDescription = null)
                         Spacer(Modifier.width(8.dp))
-                        Text("وضعیت پشتیبان‌گیری ابری", style = MaterialTheme.typography.titleLarge)
+                        Text("همگام‌سازی پشتیبان خصوصی", style = MaterialTheme.typography.titleLarge)
                     }
                     Spacer(Modifier.height(8.dp))
                     Text(cloudSyncStatus, style = MaterialTheme.typography.bodyMedium)
@@ -240,10 +240,10 @@ fun SettingsScreen(
                         onClick = { viewModel.startCloudSync() },
                         enabled = !cloudBusy
                     ) {
-                        Text("بررسی و تلاش دوباره")
+                        Text("همگام‌سازی امن با Firebase")
                     }
                     Text(
-                        "موفقیت این بخش یعنی برنامه توانسته عملیات ابری را انجام دهد؛ برای تأیید نهایی ذخیره داده‌ها می‌توان بعداً فایربیس را هم بررسی کرد.",
+                        "ابتدا داده‌های ابری بدون حذف یا بازنویسی با گوشی ادغام می‌شوند؛ سپس رکوردهای متعلق به شما به‌صورت افزایشی ارسال می‌شوند. رکوردهای ابریِ غایب از گوشی حذف نمی‌شوند.",
                         style = MaterialTheme.typography.bodySmall,
                         color = MaterialTheme.colorScheme.onSurfaceVariant
                     )

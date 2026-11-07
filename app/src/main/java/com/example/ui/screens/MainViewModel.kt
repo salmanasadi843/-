@@ -179,38 +179,41 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
         }
     }
 
-    /** Restore cloud data first, then autosave subsequent Room changes. */
+    /** Safely merge the private cloud backup, then autosave owned Room records. */
     @OptIn(FlowPreview::class)
     fun startCloudSync() {
         if (_userRole.value != UserRole.TEACHER) {
-            _cloudSyncStatus.value = "همگام‌سازی خصوصی فقط برای حساب استاد فعال است."
+            _cloudSyncStatus.value = "پشتیبان ابری فقط برای حساب استاد فعال است."
             return
         }
         val app = getApplication<Application>()
         val uid = AuthPreferences.currentUid(app)
         if (uid.isNullOrBlank()) {
-            _cloudSyncStatus.value = "حساب کاربری وارد نشده است؛ برای همگام‌سازی دوباره وارد شوید."
+            _cloudSyncStatus.value = "حساب کاربری وارد نشده است؛ ابتدا وارد شوید."
             return
         }
         cloudSyncJob?.cancel()
-        _cloudSyncStatus.value = "در حال بررسی و همگام‌سازی با فضای ابری…"
+        _cloudSyncStatus.value = "در حال بازیابی و ادغام امن پشتیبان خصوصی…"
         cloudSyncJob = viewModelScope.launch {
             try {
-                // Verify approval against Firestore before restoring or uploading anything.
+                // Re-check teacher approval before any cloud read/write.
                 if (!teacherPermissionGranted()) {
                     denyTeacherMutation()
                     _cloudSyncStatus.value = "مجوز استاد لغو شده است؛ همگام‌سازی متوقف شد و اطلاعات محلی ارسال نشد."
                     return@launch
                 }
-                val restored = cloudSyncRepository.restoreFromCloud(uid)
-                if (!restored) {
-                    // Keep old published material untouched; import it only if it
-                    // follows the known snapshot shape, then create private backup.
-                    cloudSyncRepository.restoreLegacySharedMaterials(uid)
+
+                val restored = withContext(Dispatchers.IO) {
+                    cloudSyncRepository.restoreFromCloud(uid)
+                }
+                // Upsert only. Missing local rows never imply cloud deletion.
+                withContext(Dispatchers.IO) {
                     cloudSyncRepository.uploadSnapshot(uid)
-                    _cloudSyncStatus.value = "پشتیبان‌گیری ابری موفق بود؛ تغییرات بعدی نیز خودکار ارسال می‌شوند."
+                }
+                _cloudSyncStatus.value = if (restored) {
+                    "بازیابی و همگام‌سازی افزایشی موفق بود؛ داده‌های ابری و محلی ادغام شدند و رکورد غایب حذف نشد."
                 } else {
-                    _cloudSyncStatus.value = "بازیابی اطلاعات از فضای ابری موفق بود؛ تغییرات بعدی خودکار ارسال می‌شوند."
+                    "پشتیبان خصوصی تازه ایجاد شد؛ داده‌های موجود محلی به‌صورت افزایشی ارسال شدند."
                 }
 
                 combine(
@@ -229,26 +232,25 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
                                 cloudSyncJob?.cancel()
                                 return@collect
                             }
-                            cloudSyncRepository.uploadSnapshot(uid)
-                            _cloudSyncStatus.value = "همگام‌سازی ابری موفق — آخرین ارسال انجام شد."
+                            withContext(Dispatchers.IO) {
+                                cloudSyncRepository.uploadSnapshot(uid)
+                            }
+                            _cloudSyncStatus.value = "همگام‌سازی افزایشی موفق — آخرین تغییرات ارسال شد."
                         } catch (e: Exception) {
                             Log.e(TAG, "Teacher cloud backup failed", e)
                             _cloudSyncStatus.value = "همگام‌سازی ناموفق بود: ${e.localizedMessage ?: "خطای نامشخص"}"
                         }
                     }
             } catch (e: Exception) {
-                // A failed cloud read must never trigger a destructive local upload.
                 Log.e(TAG, "Teacher cloud restore failed; local data was kept", e)
-                _cloudSyncStatus.value = "اتصال یا بازیابی ابری ناموفق بود: ${e.localizedMessage ?: "خطای نامشخص"}. اطلاعات محلی حفظ شد."
+                _cloudSyncStatus.value = "بازیابی/همگام‌سازی ابری متوقف شد تا اطلاعات حفظ شود: ${e.localizedMessage ?: "خطای نامشخص"}. اطلاعات محلی حذف نشد."
             }
         }
     }
 
     private val database = AppDatabase.getDatabase(application)
     val repository = LectureRepository(database.lectureDao(), database.classDao(), database.courseDao())
-    private val cloudSyncRepository = FirestoreSyncRepository(
-        database.lectureDao(), database.classDao(), database.courseDao(), database.teacherFolderDao()
-    )
+    private val cloudSyncRepository = FirestoreSyncRepository(database)
     private var cloudSyncJob: Job? = null
 
     val audioPlayer = AudioPlayerManager(application)
