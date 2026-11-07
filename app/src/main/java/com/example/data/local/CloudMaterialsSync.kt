@@ -108,14 +108,23 @@ object CloudMaterialsSync {
         } else {
             val documents = Tasks.await(firestore.collection("shared_materials").get()).documents
                 .filter { it.id != uid }
+            // An empty collection is not proof that every previously downloaded
+            // teacher explicitly unpublished their materials. Keep the last known-good
+            // snapshot instead of interpreting an empty query as a delete-all command.
+            if (documents.isEmpty()) {
+                return "فهرست آنلاین فعلاً خالی است؛ مطالب قبلی این دستگاه برای جلوگیری از حذف ناخواسته حفظ شدند."
+            }
+
             val allClasses = mutableListOf<ClassEntity>()
             val allCourses = mutableListOf<CourseEntity>()
             val allLectures = mutableListOf<LectureEntity>()
-            // Fail closed before replacing the local shared snapshot. Silently skipping
-            // one malformed/missing teacher document would make the rebuilt feed incomplete;
-            // the transaction below clears old shared rows, so preserve them on any bad input.
+            // Validate every feed completely before the transaction clears the previous snapshot.
             val validPayloads = documents.map { document ->
-                val owner = document.getString("ownerUid")?.takeIf { it.isNotBlank() } ?: document.id
+                val storedOwner = document.getString("ownerUid")?.takeIf { it.isNotBlank() }
+                if (storedOwner != null && storedOwner != document.id) {
+                    error("شناسه مالک فهرست آنلاین با شناسه سند تطبیق ندارد؛ مطالب قبلی دستگاه حفظ شدند.")
+                }
+                val owner = storedOwner ?: document.id
                 if (owner.isBlank()) {
                     error("شناسه مالک یکی از فهرست‌های آنلاین معتبر نیست؛ مطالب قبلی دستگاه حفظ شدند.")
                 }
@@ -127,6 +136,11 @@ object CloudMaterialsSync {
                 }
                 if (payload.optString("format") != "darsyar-shared-materials") {
                     error("قالب فهرست آنلاین یکی از استادها ناشناخته است؛ مطالب قبلی دستگاه حفظ شدند.")
+                }
+                listOf("classes", "courses", "lectures").forEach { key ->
+                    if (payload.optJSONArray(key) == null) {
+                        error("بخش $key در فهرست آنلاین استاد ناقص است؛ مطالب قبلی دستگاه حفظ شدند.")
+                    }
                 }
                 owner to payload
             }
