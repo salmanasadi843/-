@@ -53,6 +53,13 @@ object DatabaseBackup {
         val root = JSONObject(text)
         require(root.optString("format") == "darsyar-backup") { "این فایل، پشتیبان معتبر درس‌یار نیست." }
         require(root.optInt("version") in 1..1) { "نسخه فایل پشتیبان پشتیبانی نمی‌شود." }
+        // A valid backup must contain every top-level collection. Missing arrays
+        // indicate a partial/old malformed file, not an intentionally empty dataset.
+        listOf("lectures", "classes", "courses", "folders").forEach { key ->
+            require(root.optJSONArray(key) != null) {
+                "بخش $key در فایل پشتیبان وجود ندارد؛ بازیابی متوقف شد و اطلاعات دستگاه تغییر نکرد."
+            }
+        }
 
         val sourceLectures = root.optJSONArray("lectures").toEntitiesTyped { it.toLecture() }
         val sourceClasses = root.optJSONArray("classes").toEntitiesTyped { it.toClassEntity() }
