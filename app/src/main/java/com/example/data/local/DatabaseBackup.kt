@@ -53,13 +53,7 @@ object DatabaseBackup {
         val root = JSONObject(text)
         require(root.optString("format") == "darsyar-backup") { "این فایل، پشتیبان معتبر درس‌یار نیست." }
         require(root.optInt("version") in 1..1) { "نسخه فایل پشتیبان پشتیبانی نمی‌شود." }
-        // A valid backup must contain every top-level collection. Missing arrays
-        // indicate a partial/old malformed file, not an intentionally empty dataset.
-        listOf("lectures", "classes", "courses", "folders").forEach { key ->
-            require(root.optJSONArray(key) != null) {
-                "بخش $key در فایل پشتیبان وجود ندارد؛ بازیابی متوقف شد و اطلاعات دستگاه تغییر نکرد."
-            }
-        }
+        validateBackupCollections(root)
 
         val sourceLectures = root.optJSONArray("lectures").toEntitiesTyped { it.toLecture() }
         val sourceClasses = root.optJSONArray("classes").toEntitiesTyped { it.toClassEntity() }
@@ -200,6 +194,15 @@ object DatabaseBackup {
         }
 
         return "ادغام امن انجام شد: $addedClasses کلاس، $addedLectures جلسه، $addedCourses درس و $addedFolders پوشه جدید اضافه شد؛ $ignoredForeignClasses کلاس و $ignoredForeignLectures جلسه متعلق به حساب‌های دیگر نادیده گرفته شد. اطلاعات قبلی دستگاه حذف نشد."
+    }
+
+    /** Reject incomplete backups before reading records or opening a Room transaction. */
+    internal fun validateBackupCollections(root: JSONObject) {
+        listOf("lectures", "classes", "courses", "folders").forEach { key ->
+            require(root.optJSONArray(key) != null) {
+                "بخش $key در فایل پشتیبان وجود ندارد؛ بازیابی متوقف شد و اطلاعات دستگاه تغییر نکرد."
+            }
+        }
     }
 
     private suspend fun classDaoInsert(db: AppDatabase, items: List<ClassEntity>) {
