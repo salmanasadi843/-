@@ -89,6 +89,12 @@ fun HomeScreen(
     var pendingTeacherRequests by remember { mutableStateOf<List<TeacherRequestItem>>(emptyList()) }
     var teacherRequestsLoadError by remember { mutableStateOf<String?>(null) }
     var reviewingRequestUid by remember { mutableStateOf<String?>(null) }
+    var showAdminManagement by remember { mutableStateOf(false) }
+
+    if (showAdminManagement && isPrimaryTeacher) {
+        AdminManagementScreen(onBack = { showAdminManagement = false })
+        return
+    }
 
     DisposableEffect(isPrimaryTeacher) {
         var registration: ListenerRegistration? = null
@@ -271,6 +277,25 @@ fun HomeScreen(
                                     )
                                 }
                                 Text("بررسی", color = MaterialTheme.colorScheme.primary, fontWeight = FontWeight.Bold)
+                            }
+                        }
+                    }
+                    item {
+                        Card(
+                            modifier = Modifier.fillMaxWidth().clickable { showAdminManagement = true },
+                            colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.tertiaryContainer)
+                        ) {
+                            Row(
+                                Modifier.fillMaxWidth().padding(16.dp),
+                                verticalAlignment = Alignment.CenterVertically,
+                                horizontalArrangement = Arrangement.spacedBy(12.dp)
+                            ) {
+                                Icon(Icons.Default.Settings, contentDescription = null, tint = MaterialTheme.colorScheme.onTertiaryContainer)
+                                Column(Modifier.weight(1f)) {
+                                    Text("مدیریت اطلاعات استادان", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
+                                    Text("مشاهده، ویرایش و حذف امن کلاس‌ها و جلسات", style = MaterialTheme.typography.bodySmall)
+                                }
+                                Text("مدیریت", color = MaterialTheme.colorScheme.primary, fontWeight = FontWeight.Bold)
                             }
                         }
                     }

@@ -9,10 +9,14 @@ import com.example.data.local.LectureEntity
 import com.example.data.local.TeacherFolderDao
 import com.example.data.local.TeacherFolderEntity
 import com.google.android.gms.tasks.Task
+import androidx.room.withTransaction
+import com.example.data.local.AppDatabase
 import com.google.firebase.firestore.DocumentSnapshot
 import com.google.firebase.firestore.FieldValue
 import com.google.firebase.firestore.FirebaseFirestore
+import com.google.firebase.functions.FirebaseFunctions
 import kotlinx.coroutines.suspendCancellableCoroutine
+import java.util.UUID
 import kotlin.coroutines.resume
 import kotlin.coroutines.resumeWithException
 
@@ -29,7 +33,8 @@ class FirestoreSyncRepository(
     private val classDao: ClassDao,
     private val courseDao: CourseDao,
     private val teacherFolderDao: TeacherFolderDao? = null,
-    private val firestore: FirebaseFirestore = FirebaseFirestore.getInstance()
+    private val firestore: FirebaseFirestore = FirebaseFirestore.getInstance(),
+    private val database: AppDatabase
 ) {
     private companion object {
         const val SCHEMA_VERSION = 2L
@@ -38,6 +43,11 @@ class FirestoreSyncRepository(
         const val SHARED_MATERIALS = "shared_materials"
         const val RECORDS = "records"
         const val BATCH_LIMIT = 400
+    }
+
+    suspend fun isAdminRestorePending(uid: String): Boolean {
+        val snapshot = firestore.collection(TEACHER_DATA).document(uid).get().awaitResult()
+        return snapshot.getBoolean("adminPending") == true
     }
 
     suspend fun restoreFromCloud(uid: String): Boolean {
@@ -54,6 +64,15 @@ class FirestoreSyncRepository(
             }
             SCHEMA_VERSION -> {
                 restoreRecordDocuments(uid)
+                // Only administrator-edited snapshots require the trusted completion
+                // callable. Ordinary backups have no pending marker and must restore normally.
+                if (snapshot.getBoolean("adminPending") == true) {
+                    val expectedAdminVersion = snapshot.getLong("adminPendingVersion") ?: 0L
+                    FirebaseFunctions.getInstance("europe-west1")
+                        .getHttpsCallable("completeAdminRestore")
+                        .call(mapOf("expectedAdminPendingVersion" to expectedAdminVersion))
+                        .awaitResult()
+                }
                 true
             }
             else -> throw IllegalStateException(
@@ -84,57 +103,159 @@ class FirestoreSyncRepository(
     }
 
     suspend fun uploadSnapshot(uid: String) {
-        // Shared published records are imported with negative IDs. They belong to
-        // their original teachers and must never enter this account's private backup.
-        val classes = classDao.getAllForBackup().filter { it.id > 0L && (it.ownerUid == uid || it.ownerUid.isBlank()) }
-        val ownedClassIds = classes.map { it.id }.toSet()
-        val courses = courseDao.getAllForBackup().filter {
-            it.id > 0L && it.classId in ownedClassIds
-        }
-        val lectures = lectureDao.getAllForBackup()
-            .filter { it.id > 0L && it.classId in ownedClassIds }
-            .filterNot {
-                it.title == "جلسه ۴: شبکه‌های عصبی و یادگیری عمیق" ||
-                    it.title == "جلسه ۷: سری و تبدیل فوریه و کاربرد در سیگنال"
-            }
-
         val root = firestore.collection(TEACHER_DATA).document(uid)
         val records = root.collection(RECORDS)
-        val desired = linkedMapOf<String, Map<String, Any?>>()
-        classes.forEach { desired["class_${it.id}"] = mapOf("recordType" to "class") + it.toCloudMap() }
-        courses.forEach { desired["course_${it.id}"] = mapOf("recordType" to "course") + it.toCloudMap() }
-        lectures.forEach { desired["lecture_${it.id}"] = mapOf("recordType" to "lecture") + it.toCloudMap() }
+        val lockToken = UUID.randomUUID().toString()
+        val lockLeaseMillis = 10 * 60 * 1000L
 
-        // Read existing keys so deleted local records are also removed from cloud.
-        val existing = records.get().awaitResult().documents
-        val staleRefs = existing.filter { it.id !in desired.keys }.map { it.reference }
-
-        val operations = mutableListOf<Pair<com.google.firebase.firestore.DocumentReference, Map<String, Any?>?>>()
-        desired.forEach { (id, data) -> operations += records.document(id) to data }
-        staleRefs.forEach { operations += it to null }
-
-        // Firestore batches have a 500-write maximum; leave room below the limit.
-        operations.chunked(BATCH_LIMIT).forEach { chunk ->
-            val batch = firestore.batch()
-            chunk.forEach { (ref, data) ->
-                if (data == null) batch.delete(ref) else batch.set(ref, data)
+        // Acquire a server-visible lease before touching any record documents.
+        // Admin callables check the same root document inside their transaction.
+        val backupVersion = firestore.runTransaction { transaction ->
+            val current = transaction.get(root)
+            if (current.getBoolean("adminPending") == true) {
+                throw IllegalStateException(
+                    "مدیر اطلاعات این حساب را تغییر داده است؛ ابتدا بازیابی ابری را کامل کنید."
+                )
             }
-            batch.commit().awaitResult()
-        }
-
-        // Keep folder metadata in the existing owner document, avoiding new Firebase rule paths.
-        val folderRows = teacherFolderDao?.observeFoldersForBackup()?.filter { it.ownerUid == uid }.orEmpty()
-
-        // Commit the version marker only after all individual records were written.
-        root.set(
-            mapOf(
-                "schemaVersion" to SCHEMA_VERSION,
-                "ownerUid" to uid,
-                "recordCount" to desired.size,
-                "folders" to folderRows.map { it.toCloudMap() },
-                "updatedAt" to FieldValue.serverTimestamp()
+            val now = System.currentTimeMillis()
+            val activeLease = current.getLong("syncLockUntilMillis") ?: 0L
+            if (activeLease > now) {
+                throw IllegalStateException(
+                    "پشتیبان‌گیری دیگری در حال انجام است؛ کمی بعد دوباره تلاش کنید."
+                )
+            }
+            val version = current.getLong("adminPendingVersion") ?: 0L
+            val lockData = mutableMapOf<String, Any?>(
+                "syncLockToken" to lockToken,
+                "syncLockUntilMillis" to now + lockLeaseMillis
             )
-        ).awaitResult()
+            if (!current.exists()) {
+                // Bootstrap a valid schema-v2 root atomically with the first backup lease.
+                // These fields are required by the restricted Firestore create rule.
+                lockData["ownerUid"] = uid
+                lockData["schemaVersion"] = SCHEMA_VERSION
+                lockData["adminPending"] = false
+                lockData["adminPendingVersion"] = 0L
+                lockData["recordCount"] = 0
+                lockData["folders"] = emptyList<Map<String, Any?>>()
+            }
+            transaction.set(
+                root,
+                lockData,
+                com.google.firebase.firestore.SetOptions.merge()
+            )
+            version
+        }.awaitResult()
+
+        var completed = false
+        try {
+            // Shared published records are imported with negative IDs. They belong to
+            // their original teachers and must never enter this account's private backup.
+            val classes = classDao.getAllForBackup().filter { it.id > 0L && (it.ownerUid == uid || it.ownerUid.isBlank()) }
+            val ownedClassIds = classes.map { it.id }.toSet()
+            val courses = courseDao.getAllForBackup().filter {
+                it.id > 0L && it.classId in ownedClassIds
+            }
+            // Back up every locally owned positive-ID lecture. Never omit user
+            // content based on a hard-coded title.
+            val lectures = lectureDao.getAllForBackup()
+                .filter { it.id > 0L && it.classId in ownedClassIds }
+
+            val desired = linkedMapOf<String, Map<String, Any?>>()
+            classes.forEach { desired["class_${it.id}"] = mapOf("recordType" to "class") + it.toCloudMap() }
+            courses.forEach { desired["course_${it.id}"] = mapOf("recordType" to "course") + it.toCloudMap() }
+            lectures.forEach { desired["lecture_${it.id}"] = mapOf("recordType" to "lecture") + it.toCloudMap() }
+
+            // A missing local row is not proof of intentional deletion: local data
+            // may be incomplete after reinstall, partial restore, or offline use.
+            // Preserve cloud-only rows until a durable deletion-tombstone protocol
+            // exists. Ordinary backup is merge-only; deletion uses admin callables.
+            val existing = records.get().awaitResult().documents
+            val resultingRecordCount = (existing.map { it.id }.toSet() + desired.keys).size
+            val operations = desired.map { (id, data) -> records.document(id) to data }
+
+            // Renew the lease before each write batch. A live administrator operation
+            // cannot overlap these writes; an expired/crashed client lease is recoverable.
+            operations.chunked(BATCH_LIMIT).forEach { chunk ->
+                firestore.runTransaction { transaction ->
+                    val latest = transaction.get(root)
+                    val now = System.currentTimeMillis()
+                    if (latest.getString("syncLockToken") != lockToken ||
+                        (latest.getLong("syncLockUntilMillis") ?: 0L) <= now ||
+                        latest.getBoolean("adminPending") == true ||
+                        (latest.getLong("adminPendingVersion") ?: 0L) != backupVersion
+                    ) {
+                        throw IllegalStateException(
+                            "وضعیت پشتیبان هنگام ارسال تغییر کرده است؛ برای جلوگیری از بازنویسی، عملیات متوقف شد."
+                        )
+                    }
+                    transaction.update(root, "syncLockUntilMillis", now + lockLeaseMillis)
+                    true
+                }.awaitResult()
+
+                val batch = firestore.batch()
+                chunk.forEach { (ref, data) ->
+                    if (data == null) batch.delete(ref) else batch.set(ref, data)
+                }
+                batch.commit().awaitResult()
+            }
+
+            // Keep folder metadata in the existing owner document, avoiding new Firebase rule paths.
+            val folderRows = teacherFolderDao?.observeFoldersForBackup()?.filter { it.ownerUid == uid }.orEmpty()
+
+            // The final root update is conditional and atomic. If an admin operation
+            // won the race, this transaction fails and cannot clear its pending marker.
+            firestore.runTransaction { transaction ->
+                val latest = transaction.get(root)
+                val now = System.currentTimeMillis()
+                if (latest.getString("syncLockToken") != lockToken ||
+                    (latest.getLong("syncLockUntilMillis") ?: 0L) <= now ||
+                    latest.getBoolean("adminPending") == true ||
+                    (latest.getLong("adminPendingVersion") ?: 0L) != backupVersion
+                ) {
+                    throw IllegalStateException(
+                        "تغییر مدیریتی یا همگام‌سازی دیگری هم‌زمان انجام شده است؛ پشتیبان محلی روی نسخه ابری نوشته نشد."
+                    )
+                }
+                transaction.update(
+                    root,
+                    mapOf(
+                        "schemaVersion" to SCHEMA_VERSION,
+                        "ownerUid" to uid,
+                        "recordCount" to resultingRecordCount,
+                        "folders" to folderRows.map { it.toCloudMap() },
+                        "adminPending" to false,
+                        "adminPendingVersion" to backupVersion,
+                        "syncLockToken" to FieldValue.delete(),
+                        "syncLockUntilMillis" to FieldValue.delete(),
+                        "updatedAt" to FieldValue.serverTimestamp()
+                    )
+                )
+                true
+            }.awaitResult()
+            completed = true
+        } finally {
+            // On failure, deliberately leave the short lease in place: some record
+            // batches may already have committed. This prevents an admin edit from
+            // treating a partially-written snapshot as stable. The lease expires.
+            if (completed) {
+                runCatching {
+                    firestore.runTransaction { transaction ->
+                        val latest = transaction.get(root)
+                        if (latest.getString("syncLockToken") == lockToken) {
+                            transaction.update(
+                                root,
+                                mapOf(
+                                    "syncLockToken" to FieldValue.delete(),
+                                    "syncLockUntilMillis" to FieldValue.delete()
+                                )
+                            )
+                        }
+                        true
+                    }.awaitResult()
+                }
+            }
+        }
     }
 
     private suspend fun restoreRecordDocuments(uid: String) {
@@ -168,11 +289,7 @@ class FirestoreSyncRepository(
                 )
             }
         }
-        validateAndReplaceLocalData(classes, courses, lectures)
-        teacherFolderDao?.let { dao ->
-            dao.clearForRestore()
-            if (folders.isNotEmpty()) dao.insertAllForRestore(folders)
-        }
+        validateAndReplaceLocalData(classes, courses, lectures, folders)
     }
 
     private suspend fun restoreSnapshot(
@@ -209,19 +326,29 @@ class FirestoreSyncRepository(
     private suspend fun validateAndReplaceLocalData(
         classes: List<ClassEntity>,
         courses: List<CourseEntity>,
-        lectures: List<LectureEntity>
+        lectures: List<LectureEntity>,
+        folders: List<TeacherFolderEntity> = emptyList()
     ) {
         if (classes.any { it.id == 0L } || courses.any { it.id == 0L } || lectures.any { it.id == 0L }) {
             throw IllegalStateException("شناسه یکی از رکوردهای پشتیبان ابری خالی است.")
         }
 
-        // Validate everything before deleting local data; delete children first.
-        lectureDao.clearForRestore()
-        courseDao.clearForRestore()
-        classDao.clearForRestore()
-        if (classes.isNotEmpty()) classDao.insertAllForRestore(classes)
-        if (courses.isNotEmpty()) courseDao.insertAllForRestore(courses)
-        if (lectures.isNotEmpty()) lectureDao.insertAllForRestore(lectures)
+        // Replace all related Room tables as one atomic operation. If any insert
+        // fails (disk full, constraint violation, process interruption), Room rolls
+        // the transaction back and the previous local data remains intact.
+        database.withTransaction {
+            lectureDao.clearForRestore()
+            courseDao.clearForRestore()
+            classDao.clearForRestore()
+            if (classes.isNotEmpty()) classDao.insertAllForRestore(classes)
+            if (courses.isNotEmpty()) courseDao.insertAllForRestore(courses)
+            if (lectures.isNotEmpty()) lectureDao.insertAllForRestore(lectures)
+            teacherFolderDao?.let { dao ->
+                dao.clearForRestore()
+                val folderRows = folders
+                if (folderRows.isNotEmpty()) dao.insertAllForRestore(folderRows)
+            }
+        }
     }
 
     private fun ClassEntity.toCloudMap(): Map<String, Any?> = mapOf(

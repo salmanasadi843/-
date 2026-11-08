@@ -176,15 +176,45 @@ service cloud.firestore {
       allow read: if request.auth != null
                   && request.auth.uid == ownerUid;
 
-      allow create, update: if approvedTeacher(ownerUid)
-                            && request.resource.data.ownerUid == ownerUid;
-
-      allow delete: if approvedTeacher(ownerUid);
+      // The admin service sets adminPending through the Admin SDK. While that
+      // marker is active, the teacher client cannot overwrite the newer cloud
+      // snapshot with stale local records. The marker is cleared after restore.
+      allow create: if approvedTeacher(ownerUid)
+                    && request.resource.data.ownerUid == ownerUid
+                    && request.resource.data.schemaVersion == 2
+                    && request.resource.data.adminPending == false
+                    && request.resource.data.adminPendingVersion == 0
+                    && request.resource.data.diff({}).affectedKeys()
+                         .hasOnly([
+                           'ownerUid', 'schemaVersion', 'adminPending',
+                           'adminPendingVersion', 'recordCount', 'folders',
+                           'syncLockToken', 'syncLockUntilMillis', 'updatedAt'
+                         ]);
+      allow update: if approvedTeacher(ownerUid)
+                    && request.resource.data.ownerUid == ownerUid
+                    && (
+                      (
+                        resource.data.adminPending != true
+                        && request.resource.data.adminPending != true
+                        && request.resource.data.schemaVersion == 2
+                        && request.resource.data.schemaVersion == resource.data.schemaVersion
+                        && request.resource.data.adminPendingVersion == resource.data.adminPendingVersion
+                        && request.resource.data.diff(resource.data).affectedKeys()
+                             .hasOnly([
+                               'schemaVersion', 'recordCount', 'folders',
+                               'syncLockToken', 'syncLockUntilMillis', 'updatedAt'
+                             ])
+                      )
+                    );
+      // The root document is the recovery/coordination anchor for its records.
+      // Clients must never delete it; doing so would orphan the records subcollection.
+      allow delete: if false;
 
       match /records/{recordId} {
         allow read: if request.auth != null
                     && request.auth.uid == ownerUid;
-        allow create, update, delete: if approvedTeacher(ownerUid);
+        allow create, update, delete: if approvedTeacher(ownerUid)
+          && get(/databases/$(database)/documents/teacher_data/$(ownerUid)).data.adminPending != true;
       }
     }
   }
