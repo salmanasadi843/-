@@ -183,9 +183,20 @@ service cloud.firestore {
                     && request.resource.data.ownerUid == ownerUid
                     && request.resource.data.adminPending != true;
       allow update: if approvedTeacher(ownerUid)
-                    && resource.data.adminPending != true
                     && request.resource.data.ownerUid == ownerUid
-                    && request.resource.data.adminPending != true;
+                    && (
+                      (
+                        resource.data.adminPending != true
+                        && request.resource.data.adminPending != true
+                      )
+                      || (
+                        resource.data.adminPending == true
+                        && request.resource.data.adminPending == false
+                        && request.resource.data.adminPendingVersion == resource.data.adminPendingVersion
+                        && request.resource.data.diff(resource.data).affectedKeys()
+                             .hasOnly(['adminPending', 'adminPendingClearedAt'])
+                      )
+                    );
       allow delete: if approvedTeacher(ownerUid)
                     && resource.data.adminPending != true;
 
