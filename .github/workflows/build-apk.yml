@@ -103,6 +103,7 @@ jobs:
           KEYSTORE_PATH: ${{ runner.temp }}/darsyar-upload-key.jks
           STORE_PASSWORD: ${{ secrets.DARSYAR_STORE_PASSWORD }}
           KEY_PASSWORD: ${{ secrets.DARSYAR_KEY_PASSWORD }}
+          KEY_ALIAS: ${{ secrets.DARSYAR_KEY_ALIAS }}
         run: gradle assembleRelease --stacktrace
 
       - name: Verify APK signature
