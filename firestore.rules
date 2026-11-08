@@ -181,7 +181,15 @@ service cloud.firestore {
       // snapshot with stale local records. The marker is cleared after restore.
       allow create: if approvedTeacher(ownerUid)
                     && request.resource.data.ownerUid == ownerUid
-                    && request.resource.data.adminPending != true;
+                    && request.resource.data.schemaVersion == 2
+                    && request.resource.data.adminPending == false
+                    && request.resource.data.adminPendingVersion == 0
+                    && request.resource.data.diff({}).affectedKeys()
+                         .hasOnly([
+                           'ownerUid', 'schemaVersion', 'adminPending',
+                           'adminPendingVersion', 'recordCount', 'folders',
+                           'syncLockToken', 'syncLockUntilMillis', 'updatedAt'
+                         ]);
       allow update: if approvedTeacher(ownerUid)
                     && request.resource.data.ownerUid == ownerUid
                     && (
@@ -189,6 +197,11 @@ service cloud.firestore {
                         resource.data.adminPending != true
                         && request.resource.data.adminPending != true
                         && request.resource.data.adminPendingVersion == resource.data.adminPendingVersion
+                        && request.resource.data.diff(resource.data).affectedKeys()
+                             .hasOnly([
+                               'schemaVersion', 'recordCount', 'folders',
+                               'syncLockToken', 'syncLockUntilMillis', 'updatedAt'
+                             ])
                       )
                       || (
                         resource.data.adminPending == true
