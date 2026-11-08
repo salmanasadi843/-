@@ -10,7 +10,7 @@ It does not deploy itself and does not modify live Firestore data or security ru
 - Both operations require the existing primary administrator UID, matching email, and a verified email token.
 - The target must still have a TEACHER profile and an enabled/approved `approved_teachers/{uid}` document.
 - Original record ownership is preserved. IDs, ownerUid, classId, courseId, and folder relationships cannot be changed through the update endpoint.
-- Each successful operation creates an `admin_audit` record. A versioned `adminPending` marker prevents stale device uploads; after the teacher restores that exact version, the Android app republishes the updated shared-materials feed.
+- Each successful operation creates an `admin_audit` record. A versioned `adminPending` marker prevents stale device uploads; after the teacher restores that exact version, the Android app republishes the updated shared-materials feed. A short, renewable `syncLockToken` lease serializes teacher backup batches against admin mutations; admin callables refuse to run while a backup lease is active, and failed partial uploads leave the lease to expire rather than exposing an incomplete snapshot to admin edits.
 
 ## Build and tests
 
