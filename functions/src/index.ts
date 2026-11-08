@@ -1,6 +1,6 @@
 import { initializeApp } from "firebase-admin/app";
 import { FieldValue, getFirestore, QueryDocumentSnapshot } from "firebase-admin/firestore";
-import { HttpsError, onCall } from "firebase-functions/v2/https";
+import { CallableRequest, HttpsError, onCall } from "firebase-functions/v2/https";
 import { sanitizePatch, validateRecordId, validateRecordType, RecordType } from "./validation.js";
 
 initializeApp();
@@ -20,7 +20,7 @@ type AdminRequest = {
   patch?: unknown;
 };
 
-function requirePrimaryAdmin(request: { auth?: { uid: string; token: Record<string, unknown> } | undefined }): string {
+function requirePrimaryAdmin(request: CallableRequest<unknown>): string {
   const auth = request.auth;
   if (!auth) throw new HttpsError("unauthenticated", "برای این عملیات ابتدا وارد شوید.");
   if (
@@ -58,17 +58,16 @@ async function assertApprovedTeacher(uid: string): Promise<void> {
   }
 }
 
-async function getOwnedClass(
+async function assertOwnedClass(
   transaction: FirebaseFirestore.Transaction,
   teacherUid: string,
   classId: number,
-): Promise<QueryDocumentSnapshot> {
+): Promise<void> {
   const ref = db.collection(TEACHER_DATA).doc(teacherUid).collection(RECORDS).doc(recordKey("class", classId));
   const snapshot = await transaction.get(ref);
   if (!snapshot.exists || snapshot.get("recordType") !== "class" || snapshot.get("ownerUid") !== teacherUid) {
     throw new HttpsError("permission-denied", "مالکیت کلاس مقصد تأیید نشد.");
   }
-  return snapshot as QueryDocumentSnapshot;
 }
 
 function requireOwnedRecord(
@@ -112,14 +111,14 @@ export const adminUpdateTeacherRecord = onCall({ region: REGION, timeoutSeconds:
       if (typeof classId !== "number" || !Number.isSafeInteger(classId) || classId <= 0) {
         throw new HttpsError("failed-precondition", "ارتباط رکورد با کلاس معتبر نیست.");
       }
-      await getOwnedClass(transaction, teacherUid, classId);
+      await assertOwnedClass(transaction, teacherUid, classId);
     }
 
     transaction.update(recordRef, {
       ...patch,
       ...(type === "lecture" ? { lastEditedMillis: Date.now() } : {}),
     });
-    transaction.update(rootRef, { updatedAt: FieldValue.serverTimestamp() });
+    transaction.update(rootRef, { updatedAt: FieldValue.serverTimestamp(), adminPending: true });
     transaction.set(auditRef, {
       action: "update",
       adminUid,
@@ -165,19 +164,19 @@ export const adminDeleteTeacherRecord = onCall({ region: REGION, timeoutSeconds:
       throw new HttpsError("permission-denied", "مالکیت کلاس مقصد تأیید نشد.");
     }
     if (type === "course") {
-      const dependentLectures = await recordsRef.where("recordType", "==", "lecture")
-        .where("courseId", "==", id).limit(1).get();
-      if (!dependentLectures.empty) {
+      const dependentLectures = await recordsRef.where("courseId", "==", id).limit(1).get();
+      if (!dependentLectures.empty && dependentLectures.docs[0].get("recordType") === "lecture") {
         throw new HttpsError("failed-precondition", "این درس جلسه دارد؛ ابتدا جلسات آن را جابه‌جا یا حذف کنید.");
       }
     }
   } else {
     const classId = id;
-    const [courses, lectures] = await Promise.all([
-      recordsRef.where("recordType", "==", "course").where("classId", "==", classId).get(),
-      recordsRef.where("recordType", "==", "lecture").where("classId", "==", classId).get(),
-    ]);
-    toDelete = [recordRef, ...courses.docs.map((doc) => doc.ref), ...lectures.docs.map((doc) => doc.ref)];
+    const allRecords = await recordsRef.get();
+    const children = allRecords.docs.filter((doc) =>
+      (doc.get("recordType") === "course" || doc.get("recordType") === "lecture") &&
+      doc.get("classId") === classId
+    );
+    toDelete = [recordRef, ...children.map((doc) => doc.ref)];
     if (toDelete.length > 450) {
       throw new HttpsError("resource-exhausted", "تعداد رکوردهای این کلاس برای حذف یک‌مرحله‌ای زیاد است؛ عملیات متوقف شد و هیچ رکوردی حذف نشد.");
     }
@@ -188,6 +187,7 @@ export const adminDeleteTeacherRecord = onCall({ region: REGION, timeoutSeconds:
   batch.update(rootRef, {
     recordCount: Math.max(0, (root.get("recordCount") ?? toDelete.length) - toDelete.length),
     updatedAt: FieldValue.serverTimestamp(),
+    adminPending: true,
   });
   batch.set(auditRef, {
     action: "delete",
