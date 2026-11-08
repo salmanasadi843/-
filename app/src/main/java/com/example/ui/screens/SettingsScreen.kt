@@ -124,7 +124,7 @@ fun SettingsScreen(
     val restoreBackup = rememberLauncherForActivityResult(ActivityResultContracts.OpenDocument()) { uri ->
         if (uri != null) backupScope.launch {
             backupBusy = true; backupStatus = null
-            val result = withContext(Dispatchers.IO) { runCatching { DatabaseBackup.import(context, uri) } }
+            val result = withContext(Dispatchers.IO) { runCatching { DatabaseBackup.createPreRestoreSafetyCopy(context); DatabaseBackup.import(context, uri) + "\\nپشتیبان اضطراری داخلی نیز پیش از بازیابی ذخیره شد." } }
             backupBusy = false
             backupError = result.isFailure
             backupStatus = result.getOrElse { "بازیابی ناموفق بود: ${it.localizedMessage}" }
