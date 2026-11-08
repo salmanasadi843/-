@@ -88,6 +88,7 @@ fun SettingsScreen(
     var backupBusy by remember { mutableStateOf(false) }
     var backupStatus by remember { mutableStateOf<String?>(null) }
     var backupError by remember { mutableStateOf(false) }
+    var hasSafetyCopy by remember { mutableStateOf(java.io.File(context.filesDir, "darsyar-pre-restore-backup.json").let { it.exists() && it.length() > 0L }) }
     var cloudBusy by remember { mutableStateOf(false) }
     var cloudStatus by remember { mutableStateOf<String?>(null) }
     var cloudError by remember { mutableStateOf(false) }
@@ -111,6 +112,15 @@ fun SettingsScreen(
             backupStatus = if (result.isSuccess) "پشتیبان با موفقیت ذخیره شد. فایل را در فضای امن یا فضای ابری نگه دارید." else "ساخت پشتیبان ناموفق بود: ${result.exceptionOrNull()?.localizedMessage}"
         }
     }
+    val exportSafetyCopy = rememberLauncherForActivityResult(ActivityResultContracts.CreateDocument("application/json")) { uri ->
+        if (uri != null) backupScope.launch {
+            backupBusy = true; backupStatus = null
+            val result = withContext(Dispatchers.IO) { runCatching { DatabaseBackup.exportPreRestoreSafetyCopy(context, uri) } }
+            backupBusy = false
+            backupError = result.isFailure
+            backupStatus = if (result.isSuccess) "پشتیبان اضطراری قبلی در فایل جداگانه ذخیره شد؛ آن را خارج از برنامه نگه دارید." else "ذخیره پشتیبان اضطراری ناموفق بود: ${result.exceptionOrNull()?.localizedMessage}"
+        }
+    }
     val runCloudSync = {
         backupScope.launch {
             cloudBusy = true
@@ -127,6 +137,7 @@ fun SettingsScreen(
             val result = withContext(Dispatchers.IO) { runCatching { DatabaseBackup.createPreRestoreSafetyCopy(context); DatabaseBackup.import(context, uri) + "\nپشتیبان اضطراری داخلی نیز پیش از بازیابی ذخیره شد." } }
             backupBusy = false
             backupError = result.isFailure
+            if (result.isSuccess) hasSafetyCopy = true
             backupStatus = result.getOrElse { "بازیابی ناموفق بود: ${it.localizedMessage}" }
         }
     }
@@ -793,6 +804,16 @@ fun SettingsScreen(
                         Icon(Icons.Default.CheckCircle, contentDescription = null)
                         Spacer(Modifier.width(8.dp))
                         Text("ساخت فایل پشتیبان")
+                    }
+                    Spacer(Modifier.height(8.dp))
+                    OutlinedButton(
+                        onClick = { exportSafetyCopy.launch("darsyar-pre-restore-safety-copy.json") },
+                        enabled = !backupBusy && hasSafetyCopy,
+                        modifier = Modifier.fillMaxWidth()
+                    ) {
+                        Icon(Icons.Default.CheckCircle, contentDescription = null)
+                        Spacer(Modifier.width(8.dp))
+                        Text("ذخیره نسخه اضطراریِ قبل از بازیابی")
                     }
                     Spacer(Modifier.height(8.dp))
                     OutlinedButton(
