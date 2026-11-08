@@ -40,7 +40,7 @@ jobs:
       - name: Restore signing keystore
         shell: bash
         env:
-          KEYSTORE_BASE64: ${{ secrets.KEYSTORE_BASE64 }}
+          KEYSTORE_BASE64: ${{ secrets.DARSYAR_KEYSTORE_BASE64 }}
         run: |
           set -euo pipefail
           if [ -z "${KEYSTORE_BASE64:-}" ]; then
