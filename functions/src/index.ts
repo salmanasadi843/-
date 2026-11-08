@@ -83,6 +83,48 @@ function requireOwnedRecord(
   }
 }
 
+export const completeAdminRestore = onCall({ region: REGION, timeoutSeconds: 30 }, async (request) => {
+  const teacherUid = request.auth?.uid;
+  if (!teacherUid) throw new HttpsError("unauthenticated", "برای بازیابی ابتدا وارد شوید.");
+  const expectedVersion = request.data?.expectedAdminPendingVersion;
+  if (typeof expectedVersion !== "number" || !Number.isSafeInteger(expectedVersion) || expectedVersion < 0) {
+    throw new HttpsError("invalid-argument", "نسخه بازیابی معتبر نیست.");
+  }
+
+  const [profile, approval] = await Promise.all([
+    db.collection("users").doc(teacherUid).get(),
+    db.collection("approved_teachers").doc(teacherUid).get(),
+  ]);
+  const isPrimaryAdmin = teacherUid === PRIMARY_ADMIN_UID;
+  const isApproved = approval.get("enabled") === true || approval.get("approved") === true;
+  if (!profile.exists || profile.get("role") !== "TEACHER" || (!isPrimaryAdmin && !isApproved)) {
+    throw new HttpsError("permission-denied", "فقط حساب استاد مجاز می‌تواند بازیابی را تأیید کند.");
+  }
+
+  const rootRef = db.collection(TEACHER_DATA).doc(teacherUid);
+  await db.runTransaction(async (transaction) => {
+    const root = await transaction.get(rootRef);
+    if (!root.exists || root.get("ownerUid") !== teacherUid || root.get("schemaVersion") !== 2) {
+      throw new HttpsError("failed-precondition", "پشتیبان خصوصی معتبر نیست.");
+    }
+    if (root.get("adminPending") !== true) {
+      throw new HttpsError("failed-precondition", "بازیابی مدیریتی در انتظار تأیید نیست.");
+    }
+    if (root.get("adminPendingVersion") !== expectedVersion) {
+      throw new HttpsError("aborted", "نسخه اطلاعات تغییر کرده است؛ دوباره بازیابی ابری را اجرا کنید.");
+    }
+    if ((root.get("syncLockUntilMillis") ?? 0) > Date.now()) {
+      throw new HttpsError("aborted", "همگام‌سازی دیگری در حال انجام است؛ کمی بعد دوباره تلاش کنید.");
+    }
+    transaction.update(rootRef, {
+      adminPending: false,
+      adminPendingClearedAt: FieldValue.serverTimestamp(),
+    });
+  });
+
+  return { success: true, ownerUid: teacherUid, adminPendingVersion: expectedVersion };
+});
+
 export const adminUpdateTeacherRecord = onCall({ region: REGION, timeoutSeconds: 30 }, async (request) => {
   const adminUid = requirePrimaryAdmin(request);
   const data = (request.data ?? {}) as AdminRequest;
