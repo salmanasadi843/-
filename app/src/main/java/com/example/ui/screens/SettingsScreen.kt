@@ -88,6 +88,8 @@ fun SettingsScreen(
     var backupBusy by remember { mutableStateOf(false) }
     var backupStatus by remember { mutableStateOf<String?>(null) }
     var backupError by remember { mutableStateOf(false) }
+    var hasSafetyCopy by remember { mutableStateOf(java.io.File(context.filesDir, "darsyar-pre-restore-backup.json").let { it.exists() && it.length() > 0L }) }
+    var pendingRestoreUri by remember { mutableStateOf<android.net.Uri?>(null) }
     var cloudBusy by remember { mutableStateOf(false) }
     var cloudStatus by remember { mutableStateOf<String?>(null) }
     var cloudError by remember { mutableStateOf(false) }
@@ -111,6 +113,15 @@ fun SettingsScreen(
             backupStatus = if (result.isSuccess) "پشتیبان با موفقیت ذخیره شد. فایل را در فضای امن یا فضای ابری نگه دارید." else "ساخت پشتیبان ناموفق بود: ${result.exceptionOrNull()?.localizedMessage}"
         }
     }
+    val exportSafetyCopy = rememberLauncherForActivityResult(ActivityResultContracts.CreateDocument("application/json")) { uri ->
+        if (uri != null) backupScope.launch {
+            backupBusy = true; backupStatus = null
+            val result = withContext(Dispatchers.IO) { runCatching { DatabaseBackup.exportPreRestoreSafetyCopy(context, uri) } }
+            backupBusy = false
+            backupError = result.isFailure
+            backupStatus = if (result.isSuccess) "پشتیبان اضطراری قبلی در فایل جداگانه ذخیره شد؛ آن را خارج از برنامه نگه دارید." else "ذخیره پشتیبان اضطراری ناموفق بود: ${result.exceptionOrNull()?.localizedMessage}"
+        }
+    }
     val runCloudSync = {
         backupScope.launch {
             cloudBusy = true
@@ -121,13 +132,35 @@ fun SettingsScreen(
             cloudStatus = result.getOrElse { "همگام‌سازی آنلاین ناموفق بود: ${it.localizedMessage}" }
         }
     }
-    val restoreBackup = rememberLauncherForActivityResult(ActivityResultContracts.OpenDocument()) { uri ->
-        if (uri != null) backupScope.launch {
+    val exportCurrentBeforeRestore = rememberLauncherForActivityResult(ActivityResultContracts.CreateDocument("application/json")) { targetUri ->
+        val sourceUri = pendingRestoreUri
+        pendingRestoreUri = null
+        if (targetUri != null && sourceUri != null) backupScope.launch {
             backupBusy = true; backupStatus = null
-            val result = withContext(Dispatchers.IO) { runCatching { DatabaseBackup.import(context, uri) } }
+            val result = withContext(Dispatchers.IO) {
+                runCatching {
+                    // Never overwrite the selected source backup with the safety export.
+                    require(targetUri != sourceUri) { "محل ذخیرهٔ نسخهٔ فعلی باید با فایل انتخابیِ بازیابی متفاوت باشد." }
+                    // Preserve a user-accessible copy before any destructive replacement.
+                    DatabaseBackup.export(context, targetUri)
+                    DatabaseBackup.createPreRestoreSafetyCopy(context)
+                    DatabaseBackup.import(context, sourceUri) +
+                        "\nنسخهٔ فعلی پیش از بازیابی در محل انتخاب‌شده ذخیره شد."
+                }
+            }
             backupBusy = false
             backupError = result.isFailure
-            backupStatus = result.getOrElse { "بازیابی ناموفق بود: ${it.localizedMessage}" }
+            hasSafetyCopy = java.io.File(context.filesDir, "darsyar-pre-restore-backup.json").let { it.exists() && it.length() > 0L }
+            backupStatus = result.getOrElse { "بازیابی انجام نشد؛ تا پیش از موفقیت در ذخیرهٔ نسخهٔ مستقل، اطلاعات جایگزین نمی‌شوند: ${it.localizedMessage}" }
+        } else {
+            backupStatus = "ذخیرهٔ نسخهٔ پشتیبان فعلی لغو شد؛ هیچ اطلاعاتی بازیابی یا جایگزین نشد."
+            backupError = true
+        }
+    }
+    val restoreBackup = rememberLauncherForActivityResult(ActivityResultContracts.OpenDocument()) { uri ->
+        if (uri != null) {
+            pendingRestoreUri = uri
+            exportCurrentBeforeRestore.launch("darsyar-before-restore-backup.json")
         }
     }
 
@@ -780,7 +813,7 @@ fun SettingsScreen(
                     Text("پشتیبان‌گیری و بازیابی", style = MaterialTheme.typography.titleLarge)
                     Spacer(Modifier.height(6.dp))
                     Text(
-                        "برای جلوگیری از پاک شدن جزوه‌ها با حذف برنامه، یک فایل پشتیبان بسازید و آن را در فضای ابری یا حافظه‌ای امن نگه دارید. بازیابی، اطلاعات فعلی را با اطلاعات فایل پشتیبان جایگزین می‌کند.",
+                        "برای جلوگیری از پاک شدن جزوه‌ها با حذف برنامه، فایل پشتیبان را در فضای امن نگه دارید. بازیابی، اطلاعات محلی را به‌طور کامل با محتوای فایل انتخابی جایگزین می‌کند. پس از انتخاب فایل بازیابی، ابتدا باید محل ذخیرهٔ یک نسخهٔ مستقل از اطلاعات فعلی را انتخاب کنید؛ تا وقتی این فایل با موفقیت ذخیره نشود، بازیابی انجام نخواهد شد. نسخهٔ اضطراری داخلی نیز ساخته می‌شود، اما با حذف برنامه یا پاک‌کردن داده‌های آن از بین می‌رود.",
                         style = MaterialTheme.typography.bodyMedium,
                         color = MaterialTheme.colorScheme.onSurfaceVariant
                     )
@@ -793,6 +826,16 @@ fun SettingsScreen(
                         Icon(Icons.Default.CheckCircle, contentDescription = null)
                         Spacer(Modifier.width(8.dp))
                         Text("ساخت فایل پشتیبان")
+                    }
+                    Spacer(Modifier.height(8.dp))
+                    OutlinedButton(
+                        onClick = { exportSafetyCopy.launch("darsyar-pre-restore-safety-copy.json") },
+                        enabled = !backupBusy && hasSafetyCopy,
+                        modifier = Modifier.fillMaxWidth()
+                    ) {
+                        Icon(Icons.Default.CheckCircle, contentDescription = null)
+                        Spacer(Modifier.width(8.dp))
+                        Text("خروجی گرفتن از آخرین نسخهٔ اضطراری داخلی")
                     }
                     Spacer(Modifier.height(8.dp))
                     OutlinedButton(

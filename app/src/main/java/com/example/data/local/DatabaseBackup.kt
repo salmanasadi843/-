@@ -15,14 +15,35 @@ import java.io.OutputStreamWriter
  */
 object DatabaseBackup {
     fun export(context: Context, uri: Uri) {
+        val json = createBackupJson(context)
+        context.contentResolver.openOutputStream(uri, "wt")?.bufferedWriter(Charsets.UTF_8)?.use {
+            it.write(json)
+        } ?: error("فایل پشتیبان برای نوشتن باز نشد.")
+    }
+
+    /** Stores a private recovery snapshot before destructive import. */
+    fun createPreRestoreSafetyCopy(context: Context): java.io.File {
+        val file = java.io.File(context.filesDir, "darsyar-pre-restore-backup.json")
+        file.writeText(createBackupJson(context), Charsets.UTF_8)
+        require(file.length() > 0L) { "پشتیبان اضطراری خالی است؛ بازیابی متوقف شد." }
+        return file
+    }
+
+    /** Copies the last pre-restore snapshot to a user-selected document. */
+    fun exportPreRestoreSafetyCopy(context: Context, uri: Uri) {
+        val file = java.io.File(context.filesDir, "darsyar-pre-restore-backup.json")
+        require(file.exists() && file.length() > 0L) { "پشتیبان اضطراری داخلی پیدا نشد." }
+        context.contentResolver.openOutputStream(uri, "wt")?.bufferedWriter(Charsets.UTF_8)?.use {
+            file.inputStream().bufferedReader(Charsets.UTF_8).use { reader -> reader.copyTo(it) }
+        } ?: error("فایل مقصد برای ذخیره پشتیبان اضطراری باز نشد.")
+    }
+
+    private fun createBackupJson(context: Context): String {
         val db = AppDatabase.getDatabase(context)
         val lectures = kotlinx.coroutines.runBlocking { db.lectureDao().getAllForBackup() }
         val classes = kotlinx.coroutines.runBlocking { db.classDao().getAllForBackup() }
         val courses = kotlinx.coroutines.runBlocking { db.courseDao().getAllForBackup() }
-        val folders = kotlinx.coroutines.runBlocking {
-            db.teacherFolderDao().observeFoldersForBackup()
-        }
-
+        val folders = kotlinx.coroutines.runBlocking { db.teacherFolderDao().observeFoldersForBackup() }
         val root = JSONObject()
             .put("format", "darsyar-backup")
             .put("version", 1)
@@ -31,10 +52,7 @@ object DatabaseBackup {
             .put("classes", JSONArray().apply { classes.forEach { put(it.toJson()) } })
             .put("courses", JSONArray().apply { courses.forEach { put(it.toJson()) } })
             .put("folders", JSONArray().apply { folders.forEach { put(it.toJson()) } })
-
-        context.contentResolver.openOutputStream(uri, "wt")?.bufferedWriter(Charsets.UTF_8)?.use {
-            it.write(root.toString(2))
-        } ?: error("فایل پشتیبان برای نوشتن باز نشد.")
+        return root.toString(2)
     }
 
     fun import(context: Context, uri: Uri): String {
@@ -44,6 +62,10 @@ object DatabaseBackup {
         val root = JSONObject(text)
         require(root.optString("format") == "darsyar-backup") { "این فایل، پشتیبان معتبر درس‌یار نیست." }
         require(root.optInt("version") in 1..1) { "نسخه فایل پشتیبان پشتیبانی نمی‌شود." }
+        require(root.optJSONArray("lectures") != null && root.optJSONArray("classes") != null &&
+            root.optJSONArray("courses") != null && root.optJSONArray("folders") != null) {
+            "ساختار فایل پشتیبان ناقص است؛ برای جلوگیری از پاک شدن اطلاعات، بازیابی متوقف شد."
+        }
 
         val lectures = root.optJSONArray("lectures").toEntitiesTyped { it.toLecture() }
         val classes = root.optJSONArray("classes").toEntitiesTyped { it.toClassEntity() }
@@ -82,9 +104,11 @@ object DatabaseBackup {
         .put("professorName", professorName).put("classId", classId ?: JSONObject.NULL)
         .put("courseId", courseId ?: JSONObject.NULL).put("dateMillis", dateMillis)
         .put("audioUrl", audioUrl ?: JSONObject.NULL).put("audioDurationMs", audioDurationMs)
-        .put("transcript", transcript).put("aiSummary", aiSummary ?: JSONObject.NULL)
+        .put("transcript", transcript).put("originalTranscript", originalTranscript)
+        .put("aiSummary", aiSummary ?: JSONObject.NULL)
         .put("aiKeyPoints", aiKeyPoints ?: JSONObject.NULL).put("aiQuizJson", aiQuizJson ?: JSONObject.NULL)
-        .put("tags", tags).put("isFavorite", isFavorite).put("lastEditedMillis", lastEditedMillis).put("sortOrder", sortOrder)
+        .put("tags", tags).put("isFavorite", isFavorite).put("isPublished", isPublished)
+        .put("lastEditedMillis", lastEditedMillis).put("sortOrder", sortOrder)
 
     private fun JSONObject.toLecture() = LectureEntity(
         id = optLong("id"), title = getString("title"), courseName = optString("courseName"),
@@ -92,9 +116,11 @@ object DatabaseBackup {
         courseId = optNullableLong("courseId"), dateMillis = optLong("dateMillis"),
         audioFilePath = null, audioUrl = optNullableString("audioUrl"),
         audioDurationMs = optLong("audioDurationMs"), transcript = optString("transcript"),
+        originalTranscript = optString("originalTranscript", optString("transcript")),
         aiSummary = optNullableString("aiSummary"), aiKeyPoints = optNullableString("aiKeyPoints"),
         aiQuizJson = optNullableString("aiQuizJson"), tags = optString("tags"),
-        isFavorite = optBoolean("isFavorite"), lastEditedMillis = optLong("lastEditedMillis", System.currentTimeMillis()),
+        isFavorite = optBoolean("isFavorite"), isPublished = optBoolean("isPublished", true),
+        lastEditedMillis = optLong("lastEditedMillis", System.currentTimeMillis()),
         sortOrder = optInt("sortOrder", 0)
     )
 
