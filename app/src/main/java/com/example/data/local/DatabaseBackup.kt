@@ -15,14 +15,26 @@ import java.io.OutputStreamWriter
  */
 object DatabaseBackup {
     fun export(context: Context, uri: Uri) {
+        val json = createBackupJson(context)
+        context.contentResolver.openOutputStream(uri, "wt")?.bufferedWriter(Charsets.UTF_8)?.use {
+            it.write(json)
+        } ?: error("فایل پشتیبان برای نوشتن باز نشد.")
+    }
+
+    /** Stores a private recovery snapshot before destructive import. */
+    fun createPreRestoreSafetyCopy(context: Context): java.io.File {
+        val file = java.io.File(context.filesDir, "darsyar-pre-restore-backup.json")
+        file.writeText(createBackupJson(context), Charsets.UTF_8)
+        require(file.length() > 0L) { "پشتیبان اضطراری خالی است؛ بازیابی متوقف شد." }
+        return file
+    }
+
+    private fun createBackupJson(context: Context): String {
         val db = AppDatabase.getDatabase(context)
         val lectures = kotlinx.coroutines.runBlocking { db.lectureDao().getAllForBackup() }
         val classes = kotlinx.coroutines.runBlocking { db.classDao().getAllForBackup() }
         val courses = kotlinx.coroutines.runBlocking { db.courseDao().getAllForBackup() }
-        val folders = kotlinx.coroutines.runBlocking {
-            db.teacherFolderDao().observeFoldersForBackup()
-        }
-
+        val folders = kotlinx.coroutines.runBlocking { db.teacherFolderDao().observeFoldersForBackup() }
         val root = JSONObject()
             .put("format", "darsyar-backup")
             .put("version", 1)
@@ -31,10 +43,7 @@ object DatabaseBackup {
             .put("classes", JSONArray().apply { classes.forEach { put(it.toJson()) } })
             .put("courses", JSONArray().apply { courses.forEach { put(it.toJson()) } })
             .put("folders", JSONArray().apply { folders.forEach { put(it.toJson()) } })
-
-        context.contentResolver.openOutputStream(uri, "wt")?.bufferedWriter(Charsets.UTF_8)?.use {
-            it.write(root.toString(2))
-        } ?: error("فایل پشتیبان برای نوشتن باز نشد.")
+        return root.toString(2)
     }
 
     fun import(context: Context, uri: Uri): String {
