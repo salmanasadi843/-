@@ -205,13 +205,6 @@ service cloud.firestore {
                                'syncLockToken', 'syncLockUntilMillis', 'updatedAt'
                              ])
                       )
-                      || (
-                        resource.data.adminPending == true
-                        && request.resource.data.adminPending == false
-                        && request.resource.data.adminPendingVersion == resource.data.adminPendingVersion
-                        && request.resource.data.diff(resource.data).affectedKeys()
-                             .hasOnly(['adminPending', 'adminPendingClearedAt'])
-                      )
                     );
       // The root document is the recovery/coordination anchor for its records.
       // Clients must never delete it; doing so would orphan the records subcollection.
