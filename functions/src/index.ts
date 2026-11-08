@@ -104,6 +104,9 @@ export const adminUpdateTeacherRecord = onCall({ region: REGION, timeoutSeconds:
     if (!root.exists || root.get("ownerUid") !== teacherUid || root.get("schemaVersion") !== 2) {
       throw new HttpsError("failed-precondition", "پشتیبان خصوصی استاد آماده مدیریت نیست یا ساختار آن پشتیبانی نمی‌شود.");
     }
+    if ((root.get("syncLockUntilMillis") ?? 0) > Date.now()) {
+      throw new HttpsError("aborted", "پشتیبان‌گیری استاد در حال انجام است؛ کمی بعد دوباره تلاش کنید.");
+    }
     requireOwnedRecord(record, type, teacherUid);
 
     if (type !== "class") {
@@ -151,63 +154,68 @@ export const adminDeleteTeacherRecord = onCall({ region: REGION, timeoutSeconds:
   const recordRef = recordsRef.doc(recordKey(type, id));
   const auditRef = db.collection("admin_audit").doc();
 
-  const root = await rootRef.get();
-  const record = await recordRef.get();
-  if (!root.exists || root.get("ownerUid") !== teacherUid || root.get("schemaVersion") !== 2) {
-    throw new HttpsError("failed-precondition", "پشتیبان خصوصی استاد آماده مدیریت نیست یا ساختار آن پشتیبانی نمی‌شود.");
-  }
-  requireOwnedRecord(record, type, teacherUid);
+  const deletedRecordCount = await db.runTransaction(async (transaction) => {
+    const [root, record] = await Promise.all([
+      transaction.get(rootRef),
+      transaction.get(recordRef),
+    ]);
+    if (!root.exists || root.get("ownerUid") !== teacherUid || root.get("schemaVersion") !== 2) {
+      throw new HttpsError("failed-precondition", "پشتیبان خصوصی استاد آماده مدیریت نیست یا ساختار آن پشتیبانی نمی‌شود.");
+    }
+    if ((root.get("syncLockUntilMillis") ?? 0) > Date.now()) {
+      throw new HttpsError("aborted", "پشتیبان‌گیری استاد در حال انجام است؛ کمی بعد دوباره تلاش کنید.");
+    }
+    requireOwnedRecord(record, type, teacherUid);
 
-  let toDelete: FirebaseFirestore.DocumentReference[] = [recordRef];
-  if (type !== "class") {
-    const classId = record.get("classId");
-    if (typeof classId !== "number" || !Number.isSafeInteger(classId) || classId <= 0) {
-      throw new HttpsError("failed-precondition", "ارتباط رکورد با کلاس معتبر نیست.");
-    }
-    const classRecord = await recordsRef.doc(recordKey("class", classId)).get();
-    if (!classRecord.exists || classRecord.get("ownerUid") !== teacherUid) {
-      throw new HttpsError("permission-denied", "مالکیت کلاس مقصد تأیید نشد.");
-    }
-    if (type === "course") {
-      const dependentLectures = await recordsRef.where("courseId", "==", id).get();
-      if (dependentLectures.docs.some((doc) => doc.get("recordType") === "lecture")) {
-        throw new HttpsError("failed-precondition", "این درس جلسه دارد؛ ابتدا جلسات آن را جابه‌جا یا حذف کنید.");
+    let toDelete: FirebaseFirestore.DocumentReference[] = [recordRef];
+    if (type !== "class") {
+      const classId = record.get("classId");
+      if (typeof classId !== "number" || !Number.isSafeInteger(classId) || classId <= 0) {
+        throw new HttpsError("failed-precondition", "ارتباط رکورد با کلاس معتبر نیست.");
+      }
+      const classRecord = await transaction.get(recordsRef.doc(recordKey("class", classId)));
+      if (!classRecord.exists || classRecord.get("ownerUid") !== teacherUid) {
+        throw new HttpsError("permission-denied", "مالکیت کلاس مقصد تأیید نشد.");
+      }
+      if (type === "course") {
+        const dependentLectures = await transaction.get(recordsRef.where("courseId", "==", id));
+        if (dependentLectures.docs.some((doc) => doc.get("recordType") === "lecture")) {
+          throw new HttpsError("failed-precondition", "این درس جلسه دارد؛ ابتدا جلسات آن را جابه‌جا یا حذف کنید.");
+        }
+      }
+    } else {
+      const allRecords = await transaction.get(recordsRef);
+      const children = allRecords.docs.filter((doc) =>
+        (doc.get("recordType") === "course" || doc.get("recordType") === "lecture") &&
+        doc.get("classId") === id
+      );
+      toDelete = [recordRef, ...children.map((doc) => doc.ref)];
+      if (toDelete.length > 450) {
+        throw new HttpsError("resource-exhausted", "تعداد رکوردهای این کلاس برای حذف یک‌مرحله‌ای زیاد است؛ عملیات متوقف شد و هیچ رکوردی حذف نشد.");
       }
     }
-  } else {
-    const classId = id;
-    const allRecords = await recordsRef.get();
-    const children = allRecords.docs.filter((doc) =>
-      (doc.get("recordType") === "course" || doc.get("recordType") === "lecture") &&
-      doc.get("classId") === classId
-    );
-    toDelete = [recordRef, ...children.map((doc) => doc.ref)];
-    if (toDelete.length > 450) {
-      throw new HttpsError("resource-exhausted", "تعداد رکوردهای این کلاس برای حذف یک‌مرحله‌ای زیاد است؛ عملیات متوقف شد و هیچ رکوردی حذف نشد.");
-    }
-  }
 
-  const batch = db.batch();
-  toDelete.forEach((ref) => batch.delete(ref));
-  const storedCount = root.get("recordCount");
-  const pendingVersion = root.get("adminPendingVersion");
-  const currentCount = typeof storedCount === "number" ? storedCount : toDelete.length;
-  batch.update(rootRef, {
-    recordCount: Math.max(0, currentCount - toDelete.length),
-    updatedAt: FieldValue.serverTimestamp(),
-    adminPending: true,
-    adminPendingVersion: (typeof pendingVersion === "number" ? pendingVersion : 0) + 1,
+    toDelete.forEach((ref) => transaction.delete(ref));
+    const storedCount = root.get("recordCount");
+    const pendingVersion = root.get("adminPendingVersion");
+    const currentCount = typeof storedCount === "number" ? storedCount : toDelete.length;
+    transaction.update(rootRef, {
+      recordCount: Math.max(0, currentCount - toDelete.length),
+      updatedAt: FieldValue.serverTimestamp(),
+      adminPending: true,
+      adminPendingVersion: (typeof pendingVersion === "number" ? pendingVersion : 0) + 1,
+    });
+    transaction.set(auditRef, {
+      action: "delete",
+      adminUid,
+      targetTeacherUid: teacherUid,
+      recordType: type,
+      recordId: id,
+      deletedRecordCount: toDelete.length,
+      createdAt: FieldValue.serverTimestamp(),
+    });
+    return toDelete.length;
   });
-  batch.set(auditRef, {
-    action: "delete",
-    adminUid,
-    targetTeacherUid: teacherUid,
-    recordType: type,
-    recordId: id,
-    deletedRecordCount: toDelete.length,
-    createdAt: FieldValue.serverTimestamp(),
-  });
-  await batch.commit();
 
-  return { success: true, ownerUid: teacherUid, recordType: type, recordId: id, deletedRecordCount: toDelete.length };
+  return { success: true, ownerUid: teacherUid, recordType: type, recordId: id, deletedRecordCount };
 });
