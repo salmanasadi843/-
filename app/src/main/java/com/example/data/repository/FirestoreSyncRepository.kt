@@ -40,6 +40,11 @@ class FirestoreSyncRepository(
         const val BATCH_LIMIT = 400
     }
 
+    suspend fun isAdminRestorePending(uid: String): Boolean {
+        val snapshot = firestore.collection(TEACHER_DATA).document(uid).get().awaitResult()
+        return snapshot.getBoolean("adminPending") == true
+    }
+
     suspend fun restoreFromCloud(uid: String): Boolean {
         val root = firestore.collection(TEACHER_DATA).document(uid)
         val snapshot = root.get().awaitResult()
