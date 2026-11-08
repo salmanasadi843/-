@@ -184,10 +184,9 @@ export const adminDeleteTeacherRecord = onCall({ region: REGION, timeoutSeconds:
         }
       }
     } else {
-      const allRecords = await transaction.get(recordsRef);
-      const children = allRecords.docs.filter((doc) =>
-        (doc.get("recordType") === "course" || doc.get("recordType") === "lecture") &&
-        doc.get("classId") === id
+      const classChildren = await transaction.get(recordsRef.where("classId", "==", id));
+      const children = classChildren.docs.filter((doc) =>
+        doc.get("recordType") === "course" || doc.get("recordType") === "lecture"
       );
       toDelete = [recordRef, ...children.map((doc) => doc.ref)];
       if (toDelete.length > 450) {
