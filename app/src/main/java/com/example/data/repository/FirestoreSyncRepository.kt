@@ -152,25 +152,23 @@ class FirestoreSyncRepository(
             val courses = courseDao.getAllForBackup().filter {
                 it.id > 0L && it.classId in ownedClassIds
             }
+            // Back up every locally owned positive-ID lecture. Never omit user
+            // content based on a hard-coded title.
             val lectures = lectureDao.getAllForBackup()
                 .filter { it.id > 0L && it.classId in ownedClassIds }
-                .filterNot {
-                    it.title == "جلسه ۴: شبکه‌های عصبی و یادگیری عمیق" ||
-                        it.title == "جلسه ۷: سری و تبدیل فوریه و کاربرد در سیگنال"
-                }
 
             val desired = linkedMapOf<String, Map<String, Any?>>()
             classes.forEach { desired["class_${it.id}"] = mapOf("recordType" to "class") + it.toCloudMap() }
             courses.forEach { desired["course_${it.id}"] = mapOf("recordType" to "course") + it.toCloudMap() }
             lectures.forEach { desired["lecture_${it.id}"] = mapOf("recordType" to "lecture") + it.toCloudMap() }
 
-            // Read existing keys so deleted local records are also removed from cloud.
+            // A missing local row is not proof of intentional deletion: local data
+            // may be incomplete after reinstall, partial restore, or offline use.
+            // Preserve cloud-only rows until a durable deletion-tombstone protocol
+            // exists. Ordinary backup is merge-only; deletion uses admin callables.
             val existing = records.get().awaitResult().documents
-            val staleRefs = existing.filter { it.id !in desired.keys }.map { it.reference }
-
-            val operations = mutableListOf<Pair<com.google.firebase.firestore.DocumentReference, Map<String, Any?>?>>()
-            desired.forEach { (id, data) -> operations += records.document(id) to data }
-            staleRefs.forEach { operations += it to null }
+            val resultingRecordCount = (existing.map { it.id }.toSet() + desired.keys).size
+            val operations = desired.map { (id, data) -> records.document(id) to data }
 
             // Renew the lease before each write batch. A live administrator operation
             // cannot overlap these writes; an expired/crashed client lease is recoverable.
@@ -220,7 +218,7 @@ class FirestoreSyncRepository(
                     mapOf(
                         "schemaVersion" to SCHEMA_VERSION,
                         "ownerUid" to uid,
-                        "recordCount" to desired.size,
+                        "recordCount" to resultingRecordCount,
                         "folders" to folderRows.map { it.toCloudMap() },
                         "adminPending" to false,
                         "adminPendingVersion" to backupVersion,
