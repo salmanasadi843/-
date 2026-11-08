@@ -139,6 +139,8 @@ fun SettingsScreen(
             backupBusy = true; backupStatus = null
             val result = withContext(Dispatchers.IO) {
                 runCatching {
+                    // Never overwrite the selected source backup with the safety export.
+                    require(targetUri != sourceUri) { "محل ذخیرهٔ نسخهٔ فعلی باید با فایل انتخابیِ بازیابی متفاوت باشد." }
                     // Preserve a user-accessible copy before any destructive replacement.
                     DatabaseBackup.export(context, targetUri)
                     DatabaseBackup.createPreRestoreSafetyCopy(context)
