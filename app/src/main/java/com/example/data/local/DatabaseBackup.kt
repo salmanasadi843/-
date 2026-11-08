@@ -101,6 +101,8 @@ object DatabaseBackup {
         return "بازیابی انجام شد: ${lectures.size} جلسه، ${classes.size} کلاس و ${courses.size} درس."
     }
 
+        validateRestoreRelations(lectures, classes, courses, folders)
+
     private fun JSONArray?.toEntities(convert: (JSONObject) -> Any): List<Any> {
         if (this == null) return emptyList()
         return (0 until length()).map { convert(getJSONObject(it)) }
@@ -175,4 +177,84 @@ object DatabaseBackup {
 
     private fun JSONObject.optNullableLong(key: String): Long? =
         if (isNull(key) || !has(key)) null else optLong(key)
+}
+
+
+/**
+ * Validate the relationships in a parsed backup before the current database is cleared.
+ * Keeping this pure makes malformed restore files testable without touching a real database.
+ */
+internal fun validateRestoreRelations(
+    lectures: List<LectureEntity>,
+    classes: List<ClassEntity>,
+    courses: List<CourseEntity>,
+    folders: List<TeacherFolderEntity>
+) {
+    fun <T> requireUniqueIds(items: List<T>, id: (T) -> Long, label: String) {
+        require(items.map(id).toSet().size == items.size) {
+            "شناسه‌های تکراری در بخش $label وجود دارد؛ بازیابی متوقف شد."
+        }
+    }
+
+    requireUniqueIds(lectures, { it.id }, "جلسات")
+    requireUniqueIds(classes, { it.id }, "کلاس‌ها")
+    requireUniqueIds(courses, { it.id }, "درس‌ها")
+    requireUniqueIds(folders, { it.id }, "پوشه‌ها")
+
+    val classById = classes.associateBy { it.id }
+    val courseById = courses.associateBy { it.id }
+    val folderById = folders.associateBy { it.id }
+
+    courses.forEach { course ->
+        require(classById.containsKey(course.classId)) {
+            "یکی از درس‌ها به کلاسی اشاره می‌کند که در فایل پشتیبان وجود ندارد؛ بازیابی متوقف شد."
+        }
+    }
+
+    lectures.forEach { lecture ->
+        lecture.classId?.let { classId ->
+            require(classById.containsKey(classId)) {
+                "یکی از جلسات به کلاسی اشاره می‌کند که در فایل پشتیبان وجود ندارد؛ بازیابی متوقف شد."
+            }
+        }
+        lecture.courseId?.let { courseId ->
+            val course = courseById[courseId]
+                ?: error("یکی از جلسات به درسی اشاره می‌کند که در فایل پشتیبان وجود ندارد؛ بازیابی متوقف شد.")
+            require(lecture.classId == null || lecture.classId == course.classId) {
+                "کلاس و درس مرتبط با یکی از جلسات با هم سازگار نیستند؛ بازیابی متوقف شد."
+            }
+        }
+    }
+
+    folders.forEach { folder ->
+        folder.parentFolderId?.let { parentId ->
+            val parent = folderById[parentId]
+                ?: error("پوشه والد در فایل پشتیبان وجود ندارد؛ بازیابی متوقف شد.")
+            require(parent.ownerUid == folder.ownerUid && parent.id != folder.id) {
+                "ساختار مالکیت یا والد پوشه‌ها ناسازگار است؛ بازیابی متوقف شد."
+            }
+        }
+    }
+
+    // Reject folder cycles so the restored hierarchy cannot become recursive.
+    folders.forEach { folder ->
+        val visited = mutableSetOf<Long>()
+        var current: TeacherFolderEntity? = folder
+        while (current != null) {
+            require(visited.add(current.id)) {
+                "درخت پوشه‌ها در فایل پشتیبان حلقه دارد؛ بازیابی متوقف شد."
+            }
+            current = current.parentFolderId?.let(folderById::get)
+        }
+    }
+
+    classes.forEach { item ->
+        item.folderId?.let { folderId ->
+            val folder = folderById[folderId]
+                ?: error("یکی از کلاس‌ها به پوشه‌ای اشاره می‌کند که در فایل پشتیبان وجود ندارد؛ بازیابی متوقف شد.")
+            require(folder.ownerUid == item.ownerUid) {
+                "مالک پوشه و کلاس با هم مطابقت ندارند؛ بازیابی متوقف شد."
+            }
+        }
+    }
 }
