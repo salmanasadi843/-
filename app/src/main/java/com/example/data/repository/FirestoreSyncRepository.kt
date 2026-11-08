@@ -132,12 +132,23 @@ class FirestoreSyncRepository(
                 )
             }
             val version = current.getLong("adminPendingVersion") ?: 0L
+            val lockData = mutableMapOf<String, Any?>(
+                "syncLockToken" to lockToken,
+                "syncLockUntilMillis" to now + lockLeaseMillis
+            )
+            if (!current.exists()) {
+                // Bootstrap a valid schema-v2 root atomically with the first backup lease.
+                // These fields are required by the restricted Firestore create rule.
+                lockData["ownerUid"] = uid
+                lockData["schemaVersion"] = SCHEMA_VERSION
+                lockData["adminPending"] = false
+                lockData["adminPendingVersion"] = 0L
+                lockData["recordCount"] = 0
+                lockData["folders"] = emptyList<Map<String, Any?>>()
+            }
             transaction.set(
                 root,
-                mapOf(
-                    "syncLockToken" to lockToken,
-                    "syncLockUntilMillis" to now + lockLeaseMillis
-                ),
+                lockData,
                 com.google.firebase.firestore.SetOptions.merge()
             )
             version
