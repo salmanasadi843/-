@@ -106,13 +106,23 @@ jobs:
           KEY_ALIAS: ${{ secrets.DARSYAR_KEY_ALIAS }}
         run: gradle assembleRelease --stacktrace
 
-      - name: Verify APK signature
+      - name: Verify APK signature and update compatibility
         shell: bash
         run: |
           set -euo pipefail
           APK="app/build/outputs/apk/release/app-release.apk"
+          APKSIGNER="$ANDROID_HOME/build-tools/36.0.0/apksigner"
+          EXPECTED_CERT_SHA256="5af4fe44a501e2896ab361f37d0514a4a33199827ab8f1dc42b67fbb2c616c58"
           test -s "$APK"
-          "$ANDROID_HOME/build-tools/36.0.0/apksigner" verify --verbose "$APK"
+          "$APKSIGNER" verify --verbose "$APK"
+          ACTUAL_CERT_SHA256=$("$APKSIGNER" verify --print-certs "$APK" | awk -F': ' '/Signer #1 certificate SHA-256 digest:/ {print tolower($2)}')
+          if [ "$ACTUAL_CERT_SHA256" != "$EXPECTED_CERT_SHA256" ]; then
+            echo "::error::APK signing certificate does not match the previously installed stable release key."
+            echo "Expected certificate SHA-256: $EXPECTED_CERT_SHA256"
+            echo "Actual certificate SHA-256: ${ACTUAL_CERT_SHA256:-missing}"
+            exit 1
+          fi
+          echo "APK signing certificate matches the stable release key."
           sha256sum "$APK"
 
       - name: Upload signed APK
