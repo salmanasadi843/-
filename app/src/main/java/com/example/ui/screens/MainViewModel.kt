@@ -840,12 +840,21 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
         }
     }
 
-    fun flushTranscriptAutosave() {
-        val id = editingLectureId ?: return
+    fun flushTranscriptAutosave(onComplete: () -> Unit = {}) {
+        val id = editingLectureId
+        if (id == null) {
+            onComplete()
+            return
+        }
         val value = formTranscript.value
         transcriptAutosaveJob?.cancel()
         transcriptAutosaveJob = viewModelScope.launch {
-            persistTranscriptDraft(id, value)
+            try {
+                persistTranscriptDraft(id, value)
+            } finally {
+                // Do not leave the editor until the final pending write has finished.
+                onComplete()
+            }
         }
     }
 
@@ -854,12 +863,12 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
             _transcriptAutosaveStatus.value = "ذخیره خودکار انجام نشد؛ مجوز ویرایش ندارید."
             return
         }
-        val current = repository.getLecture(id)
-        if (current == null || current.id < 0L || current.classId?.let { it < 0L } == true) {
-            _transcriptAutosaveStatus.value = "ذخیره خودکار انجام نشد؛ این جلسه قابل ویرایش نیست."
-            return
-        }
         try {
+            val current = repository.getLecture(id)
+            if (current == null || current.id < 0L || current.classId?.let { it < 0L } == true) {
+                _transcriptAutosaveStatus.value = "ذخیره خودکار انجام نشد؛ این جلسه قابل ویرایش نیست."
+                return
+            }
             val updated = current.copy(
                 transcript = value,
                 lastEditedMillis = System.currentTimeMillis()
