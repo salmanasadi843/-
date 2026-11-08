@@ -169,8 +169,9 @@ fun AddEditLectureScreen(
 
                     IconButton(
                         onClick = {
-                            viewModel.flushTranscriptAutosave()
-                            onNavigateBack()
+                            viewModel.flushTranscriptAutosave {
+                                onNavigateBack()
+                            }
                         }
                     ) {
 
