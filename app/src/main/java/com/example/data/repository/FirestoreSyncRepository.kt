@@ -12,6 +12,7 @@ import com.google.android.gms.tasks.Task
 import com.google.firebase.firestore.DocumentSnapshot
 import com.google.firebase.firestore.FieldValue
 import com.google.firebase.firestore.FirebaseFirestore
+import com.google.firebase.functions.FirebaseFunctions
 import kotlinx.coroutines.suspendCancellableCoroutine
 import java.util.UUID
 import kotlin.coroutines.resume
@@ -63,23 +64,12 @@ class FirestoreSyncRepository(
                 // An administrator may have changed the cloud copy while this device
                 // was offline. Clear the guard only after the full restore succeeded.
                 val expectedAdminVersion = snapshot.getLong("adminPendingVersion") ?: 0L
-                firestore.runTransaction { transaction ->
-                    val latestRoot = transaction.get(root)
-                    val latestVersion = latestRoot.getLong("adminPendingVersion") ?: 0L
-                    if (latestVersion != expectedAdminVersion) {
-                        throw IllegalStateException(
-                            "در زمان بازیابی، مدیر دوباره اطلاعات را تغییر داده است؛ برای جلوگیری از بازنویسی، همگام‌سازی متوقف شد. دوباره بازیابی ابری را اجرا کنید."
-                        )
-                    }
-                    transaction.update(
-                        root,
-                        mapOf(
-                            "adminPending" to false,
-                            "adminPendingClearedAt" to FieldValue.serverTimestamp()
-                        )
-                    )
-                    true
-                }.awaitResult()
+                // Only the trusted server may clear the admin marker. This prevents
+                // a client from bypassing the restore guard with a direct Firestore write.
+                FirebaseFunctions.getInstance("europe-west1")
+                    .getHttpsCallable("completeAdminRestore")
+                    .call(mapOf("expectedAdminPendingVersion" to expectedAdminVersion))
+                    .awaitResult()
                 true
             }
             else -> throw IllegalStateException(
