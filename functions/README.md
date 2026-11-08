@@ -10,7 +10,7 @@ It does not deploy itself and does not modify live Firestore data or security ru
 - Both operations require the existing primary administrator UID, matching email, and a verified email token.
 - The target must still have a TEACHER profile and an enabled/approved `approved_teachers/{uid}` document.
 - Original record ownership is preserved. IDs, ownerUid, classId, courseId, and folder relationships cannot be changed through the update endpoint.
-- Each successful operation creates an `admin_audit` record. Admin SDK access bypasses client Firestore rules; no broader client rule is introduced.
+- Each successful operation creates an `admin_audit` record. A versioned `adminPending` marker prevents stale device uploads; after the teacher restores that exact version, the Android app republishes the updated shared-materials feed.
 
 ## Build and tests
 
