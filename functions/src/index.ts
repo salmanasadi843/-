@@ -230,7 +230,7 @@ export const adminListTeachers = onCall({ region: REGION, timeoutSeconds: 30 }, 
     if (approval.get("enabled") !== true && approval.get("approved") !== true) return null;
     return {
       uid,
-      name: profile.get("name") ?? "",
+      name: profile.get("teacherName") ?? profile.get("name") ?? "",
       email: profile.get("email") ?? "",
     };
   }));
