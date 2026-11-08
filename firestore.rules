@@ -196,6 +196,8 @@ service cloud.firestore {
                       (
                         resource.data.adminPending != true
                         && request.resource.data.adminPending != true
+                        && request.resource.data.schemaVersion == 2
+                        && request.resource.data.schemaVersion == resource.data.schemaVersion
                         && request.resource.data.adminPendingVersion == resource.data.adminPendingVersion
                         && request.resource.data.diff(resource.data).affectedKeys()
                              .hasOnly([
@@ -211,8 +213,9 @@ service cloud.firestore {
                              .hasOnly(['adminPending', 'adminPendingClearedAt'])
                       )
                     );
-      allow delete: if approvedTeacher(ownerUid)
-                    && resource.data.adminPending != true;
+      // The root document is the recovery/coordination anchor for its records.
+      // Clients must never delete it; doing so would orphan the records subcollection.
+      allow delete: if false;
 
       match /records/{recordId} {
         allow read: if request.auth != null
