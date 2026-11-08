@@ -63,6 +63,8 @@ fun AdminManagementScreen(onBack: () -> Unit) {
     var teachers by remember { mutableStateOf<List<AdminTeacherRow>>(emptyList()) }
     var records by remember { mutableStateOf<List<AdminRecordRow>>(emptyList()) }
     var selectedTeacher by remember { mutableStateOf<AdminTeacherRow?>(null) }
+    var selectedClass by remember { mutableStateOf<AdminRecordRow?>(null) }
+    var selectedCourse by remember { mutableStateOf<AdminRecordRow?>(null) }
     var selectedRecord by remember { mutableStateOf<AdminRecordDetails?>(null) }
     var loading by remember { mutableStateOf(false) }
     var error by remember { mutableStateOf<String?>(null) }
@@ -160,6 +162,8 @@ fun AdminManagementScreen(onBack: () -> Unit) {
     fun goBackOneLevel() {
         when {
             selectedRecord != null -> selectedRecord = null
+            selectedCourse != null -> selectedCourse = null
+            selectedClass != null -> selectedClass = null
             selectedTeacher != null -> { selectedTeacher = null; records = emptyList(); error = null }
             else -> onBack()
         }
@@ -171,7 +175,9 @@ fun AdminManagementScreen(onBack: () -> Unit) {
                 title = {
                     Text(when {
                         record != null -> "ویرایش اطلاعات"
-                        teacher != null -> "کلاس‌ها و جلسات " + teacher.name.ifBlank { "استاد" }
+                        selectedCourse != null -> "جلسات درس " + selectedCourse!!.title
+                        selectedClass != null -> "درس‌ها و جلسات " + selectedClass!!.title
+                        teacher != null -> "کلاس‌های " + teacher.name.ifBlank { "استاد" }
                         else -> "مدیریت استادان"
                     })
                 },
@@ -264,21 +270,61 @@ fun AdminManagementScreen(onBack: () -> Unit) {
                     )
                 }
 
-                teacher != null -> {
-                    Text("حساب استاد: " + teacher.email, style = MaterialTheme.typography.bodySmall)
-                    if (records.isEmpty() && !loading) Text("رکوردی برای نمایش پیدا نشد.")
-                    records.forEach { row ->
+                teacher != null && selectedCourse != null -> {
+                    Text("استاد: " + teacher.name + "  •  کلاس: " + (selectedClass?.title ?: ""), style = MaterialTheme.typography.bodySmall)
+                    val sessions = records.filter { it.type == "lecture" && it.courseId == selectedCourse?.id }
+                    if (sessions.isEmpty() && !loading) Text("جلسه‌ای برای این درس ثبت نشده است.")
+                    sessions.forEach { row ->
                         Card(Modifier.fillMaxWidth().clickable { openRecord(row, teacher) }) {
                             Column(Modifier.padding(14.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
-                                Text(row.title.ifBlank { "بدون عنوان" }, fontWeight = FontWeight.SemiBold)
-                                Text(
-                                    recordTypeLabel(row.type) + "  •  شناسه " + row.id +
-                                        (row.classId?.let { "  •  کلاس " + it } ?: ""),
-                                    style = MaterialTheme.typography.bodySmall
-                                )
-                                if (row.type == "class" || row.type == "lecture") {
-                                    Text(if (row.published) "منتشرشده" else "منتشرنشده", style = MaterialTheme.typography.bodySmall)
+                                Text(row.title.ifBlank { "جلسه بدون عنوان" }, fontWeight = FontWeight.SemiBold)
+                                Text("جلسه  •  شناسه " + row.id, style = MaterialTheme.typography.bodySmall)
+                                Text(if (row.published) "منتشرشده" else "منتشرنشده", style = MaterialTheme.typography.bodySmall)
+                            }
+                        }
+                    }
+                }
+
+                teacher != null && selectedClass != null -> {
+                    Text("استاد: " + teacher.name, style = MaterialTheme.typography.bodySmall)
+                    val coursesInClass = records.filter { it.type == "course" && it.classId == selectedClass?.id }
+                    val uncategorizedSessions = records.filter {
+                        it.type == "lecture" && it.classId == selectedClass?.id && it.courseId == null
+                    }
+                    if (coursesInClass.isEmpty() && uncategorizedSessions.isEmpty() && !loading) {
+                        Text("در این کلاس هنوز درس یا جلسه‌ای ثبت نشده است.")
+                    }
+                    coursesInClass.forEach { row ->
+                        Card(Modifier.fillMaxWidth().clickable { selectedCourse = row }) {
+                            Column(Modifier.padding(14.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                                Text(row.title.ifBlank { "درس بدون عنوان" }, fontWeight = FontWeight.SemiBold)
+                                Text("درس  •  شناسه " + row.id, style = MaterialTheme.typography.bodySmall)
+                            }
+                        }
+                    }
+                    if (uncategorizedSessions.isNotEmpty()) {
+                        Text("جلسات بدون درس", style = MaterialTheme.typography.titleSmall, fontWeight = FontWeight.Bold)
+                        uncategorizedSessions.forEach { row ->
+                            Card(Modifier.fillMaxWidth().clickable { openRecord(row, teacher) }) {
+                                Column(Modifier.padding(14.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                                    Text(row.title.ifBlank { "جلسه بدون عنوان" }, fontWeight = FontWeight.SemiBold)
+                                    Text("جلسه  •  شناسه " + row.id, style = MaterialTheme.typography.bodySmall)
                                 }
+                            }
+                        }
+                    }
+                }
+
+                teacher != null -> {
+                    Text("حساب استاد: " + teacher.email, style = MaterialTheme.typography.bodySmall)
+                    val classes = records.filter { it.type == "class" }
+                    if (classes.isEmpty() && !loading) Text("کلاسی برای این استاد پیدا نشد.")
+                    classes.forEach { row ->
+                        Card(Modifier.fillMaxWidth().clickable { selectedClass = row }) {
+                            Column(Modifier.padding(14.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                                Text(row.title.ifBlank { "کلاس بدون عنوان" }, fontWeight = FontWeight.SemiBold)
+                                Text("کلاس  •  شناسه " + row.id, style = MaterialTheme.typography.bodySmall)
+                                Text(if (row.published) "منتشرشده" else "منتشرنشده", style = MaterialTheme.typography.bodySmall)
                             }
                         }
                     }
