@@ -1,5 +1,5 @@
 import { initializeApp } from "firebase-admin/app";
-import { FieldValue, getFirestore, QueryDocumentSnapshot } from "firebase-admin/firestore";
+import { FieldValue, getFirestore } from "firebase-admin/firestore";
 import { CallableRequest, HttpsError, onCall } from "firebase-functions/v2/https";
 import { sanitizePatch, validateRecordId, validateRecordType, RecordType } from "./validation.js";
 
@@ -164,8 +164,8 @@ export const adminDeleteTeacherRecord = onCall({ region: REGION, timeoutSeconds:
       throw new HttpsError("permission-denied", "مالکیت کلاس مقصد تأیید نشد.");
     }
     if (type === "course") {
-      const dependentLectures = await recordsRef.where("courseId", "==", id).limit(1).get();
-      if (!dependentLectures.empty && dependentLectures.docs[0].get("recordType") === "lecture") {
+      const dependentLectures = await recordsRef.where("courseId", "==", id).get();
+      if (dependentLectures.docs.some((doc) => doc.get("recordType") === "lecture")) {
         throw new HttpsError("failed-precondition", "این درس جلسه دارد؛ ابتدا جلسات آن را جابه‌جا یا حذف کنید.");
       }
     }
@@ -184,8 +184,11 @@ export const adminDeleteTeacherRecord = onCall({ region: REGION, timeoutSeconds:
 
   const batch = db.batch();
   toDelete.forEach((ref) => batch.delete(ref));
+  const storedCount = root.get("recordCount");
   batch.update(rootRef, {
-    recordCount: Math.max(0, (root.get("recordCount") ?? toDelete.length) - toDelete.length),
+    recordCount: typeof storedCount === "number"
+      ? Math.max(0, storedCount - toDelete.length)
+      : toDelete.length === 1 ? 0 : 0,
     updatedAt: FieldValue.serverTimestamp(),
     adminPending: true,
   });
