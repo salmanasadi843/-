@@ -220,8 +220,9 @@ internal fun validateRestoreRelations(
             }
         }
         lecture.courseId?.let { courseId ->
-            val course = courseById[courseId]
-                ?: error("یکی از جلسات به درسی اشاره می‌کند که در فایل پشتیبان وجود ندارد؛ بازیابی متوقف شد.")
+            val course = requireNotNull(courseById[courseId]) {
+                "یکی از جلسات به درسی اشاره می‌کند که در فایل پشتیبان وجود ندارد؛ بازیابی متوقف شد."
+            }
             require(lecture.classId == null || lecture.classId == course.classId) {
                 "کلاس و درس مرتبط با یکی از جلسات با هم سازگار نیستند؛ بازیابی متوقف شد."
             }
@@ -230,15 +231,15 @@ internal fun validateRestoreRelations(
 
     folders.forEach { folder ->
         folder.parentFolderId?.let { parentId ->
-            val parent = folderById[parentId]
-                ?: error("پوشه والد در فایل پشتیبان وجود ندارد؛ بازیابی متوقف شد.")
+            val parent = requireNotNull(folderById[parentId]) {
+                "پوشه والد در فایل پشتیبان وجود ندارد؛ بازیابی متوقف شد."
+            }
             require(parent.ownerUid == folder.ownerUid && parent.id != folder.id) {
                 "ساختار مالکیت یا والد پوشه‌ها ناسازگار است؛ بازیابی متوقف شد."
             }
         }
     }
 
-    // Reject folder cycles so the restored hierarchy cannot become recursive.
     folders.forEach { folder ->
         val visited = mutableSetOf<Long>()
         var current: TeacherFolderEntity? = folder
@@ -252,8 +253,9 @@ internal fun validateRestoreRelations(
 
     classes.forEach { item ->
         item.folderId?.let { folderId ->
-            val folder = folderById[folderId]
-                ?: error("یکی از کلاس‌ها به پوشه‌ای اشاره می‌کند که در فایل پشتیبان وجود ندارد؛ بازیابی متوقف شد.")
+            val folder = requireNotNull(folderById[folderId]) {
+                "یکی از کلاس‌ها به پوشه‌ای اشاره می‌کند که در فایل پشتیبان وجود ندارد؛ بازیابی متوقف شد."
+            }
             require(folder.ownerUid == item.ownerUid) {
                 "مالک پوشه و کلاس با هم مطابقت ندارند؛ بازیابی متوقف شد."
             }
