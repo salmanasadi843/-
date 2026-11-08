@@ -13,6 +13,7 @@ import com.google.firebase.firestore.DocumentSnapshot
 import com.google.firebase.firestore.FieldValue
 import com.google.firebase.firestore.FirebaseFirestore
 import kotlinx.coroutines.suspendCancellableCoroutine
+import java.util.UUID
 import kotlin.coroutines.resume
 import kotlin.coroutines.resumeWithException
 
@@ -110,65 +111,149 @@ class FirestoreSyncRepository(
 
     suspend fun uploadSnapshot(uid: String) {
         val root = firestore.collection(TEACHER_DATA).document(uid)
-        val rootState = root.get().awaitResult()
-        if (rootState.getBoolean("adminPending") == true) {
-            throw IllegalStateException(
-                "مدیر اطلاعات این حساب را تغییر داده است؛ برای جلوگیری از بازنویسی تغییرات، ابتدا همگام‌سازی/بازیابی ابری را کامل کنید."
-            )
-        }
-
-        // Shared published records are imported with negative IDs. They belong to
-        // their original teachers and must never enter this account's private backup.
-        val classes = classDao.getAllForBackup().filter { it.id > 0L && (it.ownerUid == uid || it.ownerUid.isBlank()) }
-        val ownedClassIds = classes.map { it.id }.toSet()
-        val courses = courseDao.getAllForBackup().filter {
-            it.id > 0L && it.classId in ownedClassIds
-        }
-        val lectures = lectureDao.getAllForBackup()
-            .filter { it.id > 0L && it.classId in ownedClassIds }
-            .filterNot {
-                it.title == "جلسه ۴: شبکه‌های عصبی و یادگیری عمیق" ||
-                    it.title == "جلسه ۷: سری و تبدیل فوریه و کاربرد در سیگنال"
-            }
-
         val records = root.collection(RECORDS)
-        val desired = linkedMapOf<String, Map<String, Any?>>()
-        classes.forEach { desired["class_${it.id}"] = mapOf("recordType" to "class") + it.toCloudMap() }
-        courses.forEach { desired["course_${it.id}"] = mapOf("recordType" to "course") + it.toCloudMap() }
-        lectures.forEach { desired["lecture_${it.id}"] = mapOf("recordType" to "lecture") + it.toCloudMap() }
+        val lockToken = UUID.randomUUID().toString()
+        val lockLeaseMillis = 10 * 60 * 1000L
 
-        // Read existing keys so deleted local records are also removed from cloud.
-        val existing = records.get().awaitResult().documents
-        val staleRefs = existing.filter { it.id !in desired.keys }.map { it.reference }
-
-        val operations = mutableListOf<Pair<com.google.firebase.firestore.DocumentReference, Map<String, Any?>?>>()
-        desired.forEach { (id, data) -> operations += records.document(id) to data }
-        staleRefs.forEach { operations += it to null }
-
-        // Firestore batches have a 500-write maximum; leave room below the limit.
-        operations.chunked(BATCH_LIMIT).forEach { chunk ->
-            val batch = firestore.batch()
-            chunk.forEach { (ref, data) ->
-                if (data == null) batch.delete(ref) else batch.set(ref, data)
+        // Acquire a server-visible lease before touching any record documents.
+        // Admin callables check the same root document inside their transaction.
+        val backupVersion = firestore.runTransaction { transaction ->
+            val current = transaction.get(root)
+            if (current.getBoolean("adminPending") == true) {
+                throw IllegalStateException(
+                    "مدیر اطلاعات این حساب را تغییر داده است؛ ابتدا بازیابی ابری را کامل کنید."
+                )
             }
-            batch.commit().awaitResult()
-        }
-
-        // Keep folder metadata in the existing owner document, avoiding new Firebase rule paths.
-        val folderRows = teacherFolderDao?.observeFoldersForBackup()?.filter { it.ownerUid == uid }.orEmpty()
-
-        // Commit the version marker only after all individual records were written.
-        root.set(
-            mapOf(
-                "schemaVersion" to SCHEMA_VERSION,
-                "ownerUid" to uid,
-                "recordCount" to desired.size,
-                "folders" to folderRows.map { it.toCloudMap() },
-                "adminPending" to false,
-                "adminPendingVersion" to (rootState.getLong("adminPendingVersion") ?: 0L),
-                "updatedAt" to FieldValue.serverTimestamp()
+            val now = System.currentTimeMillis()
+            val activeLease = current.getLong("syncLockUntilMillis") ?: 0L
+            if (activeLease > now) {
+                throw IllegalStateException(
+                    "پشتیبان‌گیری دیگری در حال انجام است؛ کمی بعد دوباره تلاش کنید."
+                )
+            }
+            val version = current.getLong("adminPendingVersion") ?: 0L
+            transaction.set(
+                root,
+                mapOf(
+                    "syncLockToken" to lockToken,
+                    "syncLockUntilMillis" to now + lockLeaseMillis
+                ),
+                com.google.firebase.firestore.SetOptions.merge()
             )
-        ).awaitResult()
+            version
+        }.awaitResult()
+
+        var completed = false
+        try {
+            // Shared published records are imported with negative IDs. They belong to
+            // their original teachers and must never enter this account's private backup.
+            val classes = classDao.getAllForBackup().filter { it.id > 0L && (it.ownerUid == uid || it.ownerUid.isBlank()) }
+            val ownedClassIds = classes.map { it.id }.toSet()
+            val courses = courseDao.getAllForBackup().filter {
+                it.id > 0L && it.classId in ownedClassIds
+            }
+            val lectures = lectureDao.getAllForBackup()
+                .filter { it.id > 0L && it.classId in ownedClassIds }
+                .filterNot {
+                    it.title == "جلسه ۴: شبکه‌های عصبی و یادگیری عمیق" ||
+                        it.title == "جلسه ۷: سری و تبدیل فوریه و کاربرد در سیگنال"
+                }
+
+            val desired = linkedMapOf<String, Map<String, Any?>>()
+            classes.forEach { desired["class_${it.id}"] = mapOf("recordType" to "class") + it.toCloudMap() }
+            courses.forEach { desired["course_${it.id}"] = mapOf("recordType" to "course") + it.toCloudMap() }
+            lectures.forEach { desired["lecture_${it.id}"] = mapOf("recordType" to "lecture") + it.toCloudMap() }
+
+            // Read existing keys so deleted local records are also removed from cloud.
+            val existing = records.get().awaitResult().documents
+            val staleRefs = existing.filter { it.id !in desired.keys }.map { it.reference }
+
+            val operations = mutableListOf<Pair<com.google.firebase.firestore.DocumentReference, Map<String, Any?>?>>()
+            desired.forEach { (id, data) -> operations += records.document(id) to data }
+            staleRefs.forEach { operations += it to null }
+
+            // Renew the lease before each write batch. A live administrator operation
+            // cannot overlap these writes; an expired/crashed client lease is recoverable.
+            operations.chunked(BATCH_LIMIT).forEach { chunk ->
+                firestore.runTransaction { transaction ->
+                    val latest = transaction.get(root)
+                    val now = System.currentTimeMillis()
+                    if (latest.getString("syncLockToken") != lockToken ||
+                        (latest.getLong("syncLockUntilMillis") ?: 0L) <= now ||
+                        latest.getBoolean("adminPending") == true ||
+                        (latest.getLong("adminPendingVersion") ?: 0L) != backupVersion
+                    ) {
+                        throw IllegalStateException(
+                            "وضعیت پشتیبان هنگام ارسال تغییر کرده است؛ برای جلوگیری از بازنویسی، عملیات متوقف شد."
+                        )
+                    }
+                    transaction.update(root, "syncLockUntilMillis", now + lockLeaseMillis)
+                    true
+                }.awaitResult()
+
+                val batch = firestore.batch()
+                chunk.forEach { (ref, data) ->
+                    if (data == null) batch.delete(ref) else batch.set(ref, data)
+                }
+                batch.commit().awaitResult()
+            }
+
+            // Keep folder metadata in the existing owner document, avoiding new Firebase rule paths.
+            val folderRows = teacherFolderDao?.observeFoldersForBackup()?.filter { it.ownerUid == uid }.orEmpty()
+
+            // The final root update is conditional and atomic. If an admin operation
+            // won the race, this transaction fails and cannot clear its pending marker.
+            firestore.runTransaction { transaction ->
+                val latest = transaction.get(root)
+                val now = System.currentTimeMillis()
+                if (latest.getString("syncLockToken") != lockToken ||
+                    (latest.getLong("syncLockUntilMillis") ?: 0L) <= now ||
+                    latest.getBoolean("adminPending") == true ||
+                    (latest.getLong("adminPendingVersion") ?: 0L) != backupVersion
+                ) {
+                    throw IllegalStateException(
+                        "تغییر مدیریتی یا همگام‌سازی دیگری هم‌زمان انجام شده است؛ پشتیبان محلی روی نسخه ابری نوشته نشد."
+                    )
+                }
+                transaction.update(
+                    root,
+                    mapOf(
+                        "schemaVersion" to SCHEMA_VERSION,
+                        "ownerUid" to uid,
+                        "recordCount" to desired.size,
+                        "folders" to folderRows.map { it.toCloudMap() },
+                        "adminPending" to false,
+                        "adminPendingVersion" to backupVersion,
+                        "syncLockToken" to FieldValue.delete(),
+                        "syncLockUntilMillis" to FieldValue.delete(),
+                        "updatedAt" to FieldValue.serverTimestamp()
+                    )
+                )
+                true
+            }.awaitResult()
+            completed = true
+        } finally {
+            // On failure, deliberately leave the short lease in place: some record
+            // batches may already have committed. This prevents an admin edit from
+            // treating a partially-written snapshot as stable. The lease expires.
+            if (completed) {
+                runCatching {
+                    firestore.runTransaction { transaction ->
+                        val latest = transaction.get(root)
+                        if (latest.getString("syncLockToken") == lockToken) {
+                            transaction.update(
+                                root,
+                                mapOf(
+                                    "syncLockToken" to FieldValue.delete(),
+                                    "syncLockUntilMillis" to FieldValue.delete()
+                                )
+                            )
+                        }
+                        true
+                    }.awaitResult()
+                }
+            }
+        }
     }
 
     private suspend fun restoreRecordDocuments(uid: String) {
