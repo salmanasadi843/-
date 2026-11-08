@@ -91,6 +91,7 @@ fun AddEditLectureScreen(
     val dateText by viewModel.formDateText.collectAsState()
     val tags by viewModel.formTags.collectAsState()
     val transcript by viewModel.formTranscript.collectAsState()
+    val transcriptAutosaveStatus by viewModel.transcriptAutosaveStatus.collectAsState()
     val formAiSummary by viewModel.formAiSummary.collectAsState()
     val formAiKeyPoints by viewModel.formAiKeyPoints.collectAsState()
     val audioPath by viewModel.formAudioPath.collectAsState()
@@ -167,7 +168,10 @@ fun AddEditLectureScreen(
                 navigationIcon = {
 
                     IconButton(
-                        onClick = onNavigateBack
+                        onClick = {
+                            viewModel.flushTranscriptAutosave()
+                            onNavigateBack()
+                        }
                     ) {
 
                         Icon(
@@ -1318,7 +1322,7 @@ fun AddEditLectureScreen(
                     // جای‌گذاری مستقیم متن آماده از کلیپ‌بورد، بدون نیاز به برنامه واسطه داخل درس‌یار
                     Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.End) {
                         PasteClipboardButton { pasted ->
-                            viewModel.formTranscript.value = pasted
+                            viewModel.updateTranscriptDraft(pasted)
                             if (viewModel.formOriginalTranscript.value.isBlank()) {
                                 viewModel.formOriginalTranscript.value = pasted
                             }
@@ -1334,9 +1338,7 @@ fun AddEditLectureScreen(
 
                         onValueChange = {
 
-                            viewModel
-                                .formTranscript
-                                .value = it
+                            viewModel.updateTranscriptDraft(it)
                         },
 
                         placeholder = {
@@ -1368,6 +1370,16 @@ fun AddEditLectureScreen(
                         shape =
                             RoundedCornerShape(12.dp)
                     )
+
+                    if (transcriptAutosaveStatus.isNotBlank()) {
+                        Text(
+                            text = transcriptAutosaveStatus,
+                            style = MaterialTheme.typography.bodySmall,
+                            color = if (transcriptAutosaveStatus == "ذخیره خودکار شد")
+                                MaterialTheme.colorScheme.primary
+                            else MaterialTheme.colorScheme.onSurfaceVariant
+                        )
+                    }
 
                     // Word count
 
