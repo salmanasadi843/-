@@ -40,19 +40,25 @@ object DatabaseBackup {
 
     private fun createBackupJson(context: Context): String {
         val db = AppDatabase.getDatabase(context)
-        val lectures = kotlinx.coroutines.runBlocking { db.lectureDao().getAllForBackup() }
-        val classes = kotlinx.coroutines.runBlocking { db.classDao().getAllForBackup() }
-        val courses = kotlinx.coroutines.runBlocking { db.courseDao().getAllForBackup() }
-        val folders = kotlinx.coroutines.runBlocking { db.teacherFolderDao().observeFoldersForBackup() }
-        val root = JSONObject()
-            .put("format", "darsyar-backup")
-            .put("version", 1)
-            .put("createdAt", System.currentTimeMillis())
-            .put("lectures", JSONArray().apply { lectures.forEach { put(it.toJson()) } })
-            .put("classes", JSONArray().apply { classes.forEach { put(it.toJson()) } })
-            .put("courses", JSONArray().apply { courses.forEach { put(it.toJson()) } })
-            .put("folders", JSONArray().apply { folders.forEach { put(it.toJson()) } })
-        return root.toString(2)
+        // Read every table inside one Room transaction so the exported file represents
+        // one consistent database snapshot even if the user edits data during export.
+        return kotlinx.coroutines.runBlocking {
+            db.withTransaction {
+                val lectures = db.lectureDao().getAllForBackup()
+                val classes = db.classDao().getAllForBackup()
+                val courses = db.courseDao().getAllForBackup()
+                val folders = db.teacherFolderDao().observeFoldersForBackup()
+                JSONObject()
+                    .put("format", "darsyar-backup")
+                    .put("version", 1)
+                    .put("createdAt", System.currentTimeMillis())
+                    .put("lectures", JSONArray().apply { lectures.forEach { put(it.toJson()) } })
+                    .put("classes", JSONArray().apply { classes.forEach { put(it.toJson()) } })
+                    .put("courses", JSONArray().apply { courses.forEach { put(it.toJson()) } })
+                    .put("folders", JSONArray().apply { folders.forEach { put(it.toJson()) } })
+                    .toString(2)
+            }
+        }
     }
 
     fun import(context: Context, uri: Uri): String {
