@@ -72,6 +72,12 @@ object DatabaseBackup {
             root.optJSONArray("courses") != null && root.optJSONArray("folders") != null) {
             "ساختار فایل پشتیبان ناقص است؛ برای جلوگیری از پاک شدن اطلاعات، بازیابی متوقف شد."
         }
+        // An accidentally selected empty/incomplete export must never erase a populated database.
+        val incomingRecordCount = listOf("lectures", "classes", "courses", "folders")
+            .sumOf { root.getJSONArray(it).length() }
+        require(incomingRecordCount > 0) {
+            "فایل پشتیبان هیچ رکوردی ندارد؛ برای جلوگیری از حذف اطلاعات فعلی، بازیابی متوقف شد."
+        }
 
         val lectures = root.optJSONArray("lectures").toEntitiesTyped { it.toLecture() }
         val classes = root.optJSONArray("classes").toEntitiesTyped { it.toClassEntity() }
