@@ -137,7 +137,7 @@ fun SettingsScreen(
             val result = withContext(Dispatchers.IO) { runCatching { DatabaseBackup.createPreRestoreSafetyCopy(context); DatabaseBackup.import(context, uri) + "\nپشتیبان اضطراری داخلی نیز پیش از بازیابی ذخیره شد." } }
             backupBusy = false
             backupError = result.isFailure
-            if (result.isSuccess) hasSafetyCopy = true
+            hasSafetyCopy = java.io.File(context.filesDir, "darsyar-pre-restore-backup.json").let { it.exists() && it.length() > 0L }
             backupStatus = result.getOrElse { "بازیابی ناموفق بود: ${it.localizedMessage}" }
         }
     }
@@ -791,7 +791,7 @@ fun SettingsScreen(
                     Text("پشتیبان‌گیری و بازیابی", style = MaterialTheme.typography.titleLarge)
                     Spacer(Modifier.height(6.dp))
                     Text(
-                        "برای جلوگیری از پاک شدن جزوه‌ها با حذف برنامه، فایل پشتیبان را در فضای امن نگه دارید. هشدار: بازیابی فعلی جایگزین کامل اطلاعات محلی می‌شود و مواردی را که در فایل پشتیبان نیستند حذف می‌کند. قبل از بازیابی، حتماً از اطلاعات فعلی نیز فایل پشتیبان جداگانه بگیرید.",
+                        "برای جلوگیری از پاک شدن جزوه‌ها با حذف برنامه، فایل پشتیبان را در فضای امن نگه دارید. هشدار: بازیابی فعلی جایگزین کامل اطلاعات محلی می‌شود و مواردی را که در فایل پشتیبان نیستند حذف می‌کند. قبل از بازیابی، حتماً از اطلاعات فعلی نیز فایل پشتیبان جداگانه بگیرید. نسخه اضطراری داخلی با حذف برنامه یا پاک‌کردن داده‌های آن از بین می‌رود؛ پس از بازیابی، آن را با دکمه زیر در حافظه امن ذخیره کنید.",
                         style = MaterialTheme.typography.bodyMedium,
                         color = MaterialTheme.colorScheme.onSurfaceVariant
                     )
