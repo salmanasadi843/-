@@ -62,6 +62,10 @@ object DatabaseBackup {
         val root = JSONObject(text)
         require(root.optString("format") == "darsyar-backup") { "این فایل، پشتیبان معتبر درس‌یار نیست." }
         require(root.optInt("version") in 1..1) { "نسخه فایل پشتیبان پشتیبانی نمی‌شود." }
+        require(root.optJSONArray("lectures") != null && root.optJSONArray("classes") != null &&
+            root.optJSONArray("courses") != null && root.optJSONArray("folders") != null) {
+            "ساختار فایل پشتیبان ناقص است؛ برای جلوگیری از پاک شدن اطلاعات، بازیابی متوقف شد."
+        }
 
         val lectures = root.optJSONArray("lectures").toEntitiesTyped { it.toLecture() }
         val classes = root.optJSONArray("classes").toEntitiesTyped { it.toClassEntity() }
