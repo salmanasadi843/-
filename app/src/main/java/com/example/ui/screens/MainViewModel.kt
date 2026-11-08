@@ -193,6 +193,7 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
                     _cloudSyncStatus.value = "مجوز استاد لغو شده است؛ همگام‌سازی متوقف شد و اطلاعات محلی ارسال نشد."
                     return@launch
                 }
+                val adminChangesPending = cloudSyncRepository.isAdminRestorePending(uid)
                 val restored = cloudSyncRepository.restoreFromCloud(uid)
                 if (!restored) {
                     // Keep old published material untouched; import it only if it
@@ -202,6 +203,18 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
                     _cloudSyncStatus.value = "پشتیبان‌گیری ابری موفق بود؛ تغییرات بعدی نیز خودکار ارسال می‌شوند."
                 } else {
                     _cloudSyncStatus.value = "بازیابی اطلاعات از فضای ابری موفق بود؛ تغییرات بعدی خودکار ارسال می‌شوند."
+                    if (adminChangesPending) {
+                        // Republish the restored teacher-owned content so students do not
+                        // keep seeing the pre-administration copy in shared_materials.
+                        try {
+                            withContext(Dispatchers.IO) { CloudMaterialsSync.sync(app) }
+                            _cloudSyncStatus.value = "تغییرات مدیر بازیابی و مطالب منتشرشده نیز به‌روزرسانی شد."
+                        } catch (publishError: Exception) {
+                            Log.e(TAG, "Could not refresh published feed after admin restore", publishError)
+                            _cloudSyncStatus.value =
+                                "تغییرات مدیر در پشتیبان خصوصی بازیابی شد؛ به‌روزرسانی مطالب منتشرشده ناموفق بود و باید دوباره همگام‌سازی شود."
+                        }
+                    }
                 }
 
                 combine(
