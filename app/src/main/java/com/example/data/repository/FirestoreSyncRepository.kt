@@ -54,6 +54,14 @@ class FirestoreSyncRepository(
             }
             SCHEMA_VERSION -> {
                 restoreRecordDocuments(uid)
+                // An administrator may have changed the cloud copy while this device
+                // was offline. Clear the guard only after the full restore succeeded.
+                root.update(
+                    mapOf(
+                        "adminPending" to false,
+                        "adminPendingClearedAt" to FieldValue.serverTimestamp()
+                    )
+                ).awaitResult()
                 true
             }
             else -> throw IllegalStateException(
@@ -84,6 +92,14 @@ class FirestoreSyncRepository(
     }
 
     suspend fun uploadSnapshot(uid: String) {
+        val root = firestore.collection(TEACHER_DATA).document(uid)
+        val rootState = root.get().awaitResult()
+        if (rootState.getBoolean("adminPending") == true) {
+            throw IllegalStateException(
+                "مدیر اطلاعات این حساب را تغییر داده است؛ برای جلوگیری از بازنویسی تغییرات، ابتدا همگام‌سازی/بازیابی ابری را کامل کنید."
+            )
+        }
+
         // Shared published records are imported with negative IDs. They belong to
         // their original teachers and must never enter this account's private backup.
         val classes = classDao.getAllForBackup().filter { it.id > 0L && (it.ownerUid == uid || it.ownerUid.isBlank()) }
@@ -98,7 +114,6 @@ class FirestoreSyncRepository(
                     it.title == "جلسه ۷: سری و تبدیل فوریه و کاربرد در سیگنال"
             }
 
-        val root = firestore.collection(TEACHER_DATA).document(uid)
         val records = root.collection(RECORDS)
         val desired = linkedMapOf<String, Map<String, Any?>>()
         classes.forEach { desired["class_${it.id}"] = mapOf("recordType" to "class") + it.toCloudMap() }
