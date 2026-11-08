@@ -188,6 +188,7 @@ service cloud.firestore {
                       (
                         resource.data.adminPending != true
                         && request.resource.data.adminPending != true
+                        && request.resource.data.adminPendingVersion == resource.data.adminPendingVersion
                       )
                       || (
                         resource.data.adminPending == true
