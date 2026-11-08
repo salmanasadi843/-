@@ -118,7 +118,12 @@ export const adminUpdateTeacherRecord = onCall({ region: REGION, timeoutSeconds:
       ...patch,
       ...(type === "lecture" ? { lastEditedMillis: Date.now() } : {}),
     });
-    transaction.update(rootRef, { updatedAt: FieldValue.serverTimestamp(), adminPending: true });
+    const pendingVersion = root.get("adminPendingVersion");
+    transaction.update(rootRef, {
+      updatedAt: FieldValue.serverTimestamp(),
+      adminPending: true,
+      adminPendingVersion: (typeof pendingVersion === "number" ? pendingVersion : 0) + 1,
+    });
     transaction.set(auditRef, {
       action: "update",
       adminUid,
@@ -185,12 +190,13 @@ export const adminDeleteTeacherRecord = onCall({ region: REGION, timeoutSeconds:
   const batch = db.batch();
   toDelete.forEach((ref) => batch.delete(ref));
   const storedCount = root.get("recordCount");
+  const pendingVersion = root.get("adminPendingVersion");
+  const currentCount = typeof storedCount === "number" ? storedCount : toDelete.length;
   batch.update(rootRef, {
-    recordCount: typeof storedCount === "number"
-      ? Math.max(0, storedCount - toDelete.length)
-      : toDelete.length === 1 ? 0 : 0,
+    recordCount: Math.max(0, currentCount - toDelete.length),
     updatedAt: FieldValue.serverTimestamp(),
     adminPending: true,
+    adminPendingVersion: (typeof pendingVersion === "number" ? pendingVersion : 0) + 1,
   });
   batch.set(auditRef, {
     action: "delete",
