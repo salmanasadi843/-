@@ -56,12 +56,24 @@ class FirestoreSyncRepository(
                 restoreRecordDocuments(uid)
                 // An administrator may have changed the cloud copy while this device
                 // was offline. Clear the guard only after the full restore succeeded.
-                root.update(
-                    mapOf(
-                        "adminPending" to false,
-                        "adminPendingClearedAt" to FieldValue.serverTimestamp()
+                val expectedAdminVersion = snapshot.getLong("adminPendingVersion") ?: 0L
+                firestore.runTransaction { transaction ->
+                    val latestRoot = transaction.get(root)
+                    val latestVersion = latestRoot.getLong("adminPendingVersion") ?: 0L
+                    if (latestVersion != expectedAdminVersion) {
+                        throw IllegalStateException(
+                            "در زمان بازیابی، مدیر دوباره اطلاعات را تغییر داده است؛ برای جلوگیری از بازنویسی، همگام‌سازی متوقف شد. دوباره بازیابی ابری را اجرا کنید."
+                        )
+                    }
+                    transaction.update(
+                        root,
+                        mapOf(
+                            "adminPending" to false,
+                            "adminPendingClearedAt" to FieldValue.serverTimestamp()
+                        )
                     )
-                ).awaitResult()
+                    true
+                }.awaitResult()
                 true
             }
             else -> throw IllegalStateException(
@@ -147,6 +159,8 @@ class FirestoreSyncRepository(
                 "ownerUid" to uid,
                 "recordCount" to desired.size,
                 "folders" to folderRows.map { it.toCloudMap() },
+                "adminPending" to false,
+                "adminPendingVersion" to (rootState.getLong("adminPendingVersion") ?: 0L),
                 "updatedAt" to FieldValue.serverTimestamp()
             )
         ).awaitResult()
