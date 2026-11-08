@@ -30,6 +30,7 @@ import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.debounce
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.suspendCancellableCoroutine
 import kotlin.coroutines.resume
 import kotlinx.coroutines.withContext
@@ -364,6 +365,9 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
     val formAudioUrl = MutableStateFlow("")
     val formAudioDurationMs = MutableStateFlow(0L)
     private var editingLectureId: Long? = null
+    private var transcriptAutosaveJob: Job? = null
+    private val _transcriptAutosaveStatus = MutableStateFlow("")
+    val transcriptAutosaveStatus: StateFlow<String> = _transcriptAutosaveStatus.asStateFlow()
 
     init {
         GeminiApiService.configure(application)
@@ -821,10 +825,71 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
         speechRecognizer.clearSegments()
     }
 
+    /**
+     * Saves transcript edits for an already-existing lecture after a short pause.
+     * New lectures still require the normal explicit Save action.
+     */
+    fun updateTranscriptDraft(value: String) {
+        formTranscript.value = value
+        val id = editingLectureId ?: return
+        transcriptAutosaveJob?.cancel()
+        _transcriptAutosaveStatus.value = "تغییرات ذخیره‌نشده..."
+        transcriptAutosaveJob = viewModelScope.launch {
+            delay(900)
+            persistTranscriptDraft(id, value)
+        }
+    }
+
+    fun flushTranscriptAutosave(onComplete: () -> Unit = {}) {
+        val id = editingLectureId
+        if (id == null) {
+            onComplete()
+            return
+        }
+        val value = formTranscript.value
+        transcriptAutosaveJob?.cancel()
+        transcriptAutosaveJob = viewModelScope.launch {
+            // Keep the editor open if the final write fails; navigating away would
+            // discard the only remaining copy of the user's latest transcript edits.
+            if (persistTranscriptDraft(id, value)) {
+                onComplete()
+            }
+        }
+    }
+
+    private suspend fun persistTranscriptDraft(id: Long, value: String): Boolean {
+        if (!teacherPermissionGranted()) {
+            _transcriptAutosaveStatus.value = "ذخیره خودکار انجام نشد؛ مجوز ویرایش ندارید."
+            return false
+        }
+        return try {
+            val current = repository.getLecture(id)
+            if (current == null || current.id < 0L || current.classId?.let { it < 0L } == true) {
+                _transcriptAutosaveStatus.value = "ذخیره خودکار انجام نشد؛ این جلسه قابل ویرایش نیست."
+                false
+            } else {
+                val updated = current.copy(
+                    transcript = value,
+                    lastEditedMillis = System.currentTimeMillis()
+                )
+                repository.saveLecture(updated)
+                if (_selectedLecture.value?.id == id) _selectedLecture.value = updated
+                _transcriptAutosaveStatus.value = "ذخیره خودکار شد"
+                true
+            }
+        } catch (error: Exception) {
+            Log.e(TAG, "Transcript autosave failed", error)
+            _transcriptAutosaveStatus.value = "ذخیره خودکار ناموفق بود؛ دکمه ذخیره را بزنید."
+            false
+        }
+    }
+
     fun saveCurrentForm(
         lectureId: Long?,
         onSaved: (Long) -> Unit
     ) {
+        transcriptAutosaveJob?.cancel()
+
 
         val title =
             formTitle.value.ifBlank {

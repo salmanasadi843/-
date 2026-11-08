@@ -114,7 +114,15 @@ fun OstadYarApp(
     }
 
     BackHandler(enabled = true) {
-        viewModel.navigateBack()
+        if (currentScreen is Screen.AddEdit) {
+            // Android system back and gesture navigation must flush the same pending
+            // transcript write as the editor's visible back arrow.
+            viewModel.flushTranscriptAutosave {
+                viewModel.navigateBack()
+            }
+        } else {
+            viewModel.navigateBack()
+        }
     }
 
     when (val screen = currentScreen) {

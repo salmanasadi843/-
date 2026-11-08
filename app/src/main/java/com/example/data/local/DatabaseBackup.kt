@@ -15,26 +15,50 @@ import java.io.OutputStreamWriter
  */
 object DatabaseBackup {
     fun export(context: Context, uri: Uri) {
-        val db = AppDatabase.getDatabase(context)
-        val lectures = kotlinx.coroutines.runBlocking { db.lectureDao().getAllForBackup() }
-        val classes = kotlinx.coroutines.runBlocking { db.classDao().getAllForBackup() }
-        val courses = kotlinx.coroutines.runBlocking { db.courseDao().getAllForBackup() }
-        val folders = kotlinx.coroutines.runBlocking {
-            db.teacherFolderDao().observeFoldersForBackup()
-        }
-
-        val root = JSONObject()
-            .put("format", "darsyar-backup")
-            .put("version", 1)
-            .put("createdAt", System.currentTimeMillis())
-            .put("lectures", JSONArray().apply { lectures.forEach { put(it.toJson()) } })
-            .put("classes", JSONArray().apply { classes.forEach { put(it.toJson()) } })
-            .put("courses", JSONArray().apply { courses.forEach { put(it.toJson()) } })
-            .put("folders", JSONArray().apply { folders.forEach { put(it.toJson()) } })
-
+        val json = createBackupJson(context)
         context.contentResolver.openOutputStream(uri, "wt")?.bufferedWriter(Charsets.UTF_8)?.use {
-            it.write(root.toString(2))
+            it.write(json)
         } ?: error("فایل پشتیبان برای نوشتن باز نشد.")
+    }
+
+    /** Stores a private recovery snapshot before destructive import. */
+    fun createPreRestoreSafetyCopy(context: Context): java.io.File {
+        val file = java.io.File(context.filesDir, "darsyar-pre-restore-backup.json")
+        file.writeText(createBackupJson(context), Charsets.UTF_8)
+        require(file.length() > 0L) { "پشتیبان اضطراری خالی است؛ بازیابی متوقف شد." }
+        return file
+    }
+
+    /** Copies the last pre-restore snapshot to a user-selected document. */
+    fun exportPreRestoreSafetyCopy(context: Context, uri: Uri) {
+        val file = java.io.File(context.filesDir, "darsyar-pre-restore-backup.json")
+        require(file.exists() && file.length() > 0L) { "پشتیبان اضطراری داخلی پیدا نشد." }
+        context.contentResolver.openOutputStream(uri, "wt")?.bufferedWriter(Charsets.UTF_8)?.use {
+            file.inputStream().bufferedReader(Charsets.UTF_8).use { reader -> reader.copyTo(it) }
+        } ?: error("فایل مقصد برای ذخیره پشتیبان اضطراری باز نشد.")
+    }
+
+    private fun createBackupJson(context: Context): String {
+        val db = AppDatabase.getDatabase(context)
+        // Read every table inside one Room transaction so the exported file represents
+        // one consistent database snapshot even if the user edits data during export.
+        return kotlinx.coroutines.runBlocking {
+            db.withTransaction {
+                val lectures = db.lectureDao().getAllForBackup()
+                val classes = db.classDao().getAllForBackup()
+                val courses = db.courseDao().getAllForBackup()
+                val folders = db.teacherFolderDao().observeFoldersForBackup()
+                JSONObject()
+                    .put("format", "darsyar-backup")
+                    .put("version", 1)
+                    .put("createdAt", System.currentTimeMillis())
+                    .put("lectures", JSONArray().apply { lectures.forEach { put(it.toJson()) } })
+                    .put("classes", JSONArray().apply { classes.forEach { put(it.toJson()) } })
+                    .put("courses", JSONArray().apply { courses.forEach { put(it.toJson()) } })
+                    .put("folders", JSONArray().apply { folders.forEach { put(it.toJson()) } })
+                    .toString(2)
+            }
+        }
     }
 
     fun import(context: Context, uri: Uri): String {
@@ -44,11 +68,22 @@ object DatabaseBackup {
         val root = JSONObject(text)
         require(root.optString("format") == "darsyar-backup") { "این فایل، پشتیبان معتبر درس‌یار نیست." }
         require(root.optInt("version") in 1..1) { "نسخه فایل پشتیبان پشتیبانی نمی‌شود." }
+        require(root.optJSONArray("lectures") != null && root.optJSONArray("classes") != null &&
+            root.optJSONArray("courses") != null && root.optJSONArray("folders") != null) {
+            "ساختار فایل پشتیبان ناقص است؛ برای جلوگیری از پاک شدن اطلاعات، بازیابی متوقف شد."
+        }
+        // An accidentally selected empty/incomplete export must never erase a populated database.
+        val incomingRecordCount = listOf("lectures", "classes", "courses", "folders")
+            .sumOf { root.getJSONArray(it).length() }
+        require(incomingRecordCount > 0) {
+            "فایل پشتیبان هیچ رکوردی ندارد؛ برای جلوگیری از حذف اطلاعات فعلی، بازیابی متوقف شد."
+        }
 
         val lectures = root.optJSONArray("lectures").toEntitiesTyped { it.toLecture() }
         val classes = root.optJSONArray("classes").toEntitiesTyped { it.toClassEntity() }
         val courses = root.optJSONArray("courses").toEntitiesTyped { it.toCourse() }
         val folders = root.optJSONArray("folders").toEntitiesTyped { it.toFolder() }
+        validateRestoreRelations(lectures, classes, courses, folders)
         val db = AppDatabase.getDatabase(context)
 
         kotlinx.coroutines.runBlocking {
@@ -82,9 +117,11 @@ object DatabaseBackup {
         .put("professorName", professorName).put("classId", classId ?: JSONObject.NULL)
         .put("courseId", courseId ?: JSONObject.NULL).put("dateMillis", dateMillis)
         .put("audioUrl", audioUrl ?: JSONObject.NULL).put("audioDurationMs", audioDurationMs)
-        .put("transcript", transcript).put("aiSummary", aiSummary ?: JSONObject.NULL)
+        .put("transcript", transcript).put("originalTranscript", originalTranscript)
+        .put("aiSummary", aiSummary ?: JSONObject.NULL)
         .put("aiKeyPoints", aiKeyPoints ?: JSONObject.NULL).put("aiQuizJson", aiQuizJson ?: JSONObject.NULL)
-        .put("tags", tags).put("isFavorite", isFavorite).put("lastEditedMillis", lastEditedMillis).put("sortOrder", sortOrder)
+        .put("tags", tags).put("isFavorite", isFavorite).put("isPublished", isPublished)
+        .put("lastEditedMillis", lastEditedMillis).put("sortOrder", sortOrder)
 
     private fun JSONObject.toLecture() = LectureEntity(
         id = optLong("id"), title = getString("title"), courseName = optString("courseName"),
@@ -92,9 +129,11 @@ object DatabaseBackup {
         courseId = optNullableLong("courseId"), dateMillis = optLong("dateMillis"),
         audioFilePath = null, audioUrl = optNullableString("audioUrl"),
         audioDurationMs = optLong("audioDurationMs"), transcript = optString("transcript"),
+        originalTranscript = optString("originalTranscript", optString("transcript")),
         aiSummary = optNullableString("aiSummary"), aiKeyPoints = optNullableString("aiKeyPoints"),
         aiQuizJson = optNullableString("aiQuizJson"), tags = optString("tags"),
-        isFavorite = optBoolean("isFavorite"), lastEditedMillis = optLong("lastEditedMillis", System.currentTimeMillis()),
+        isFavorite = optBoolean("isFavorite"), isPublished = optBoolean("isPublished", true),
+        lastEditedMillis = optLong("lastEditedMillis", System.currentTimeMillis()),
         sortOrder = optInt("sortOrder", 0)
     )
 
@@ -137,4 +176,89 @@ object DatabaseBackup {
 
     private fun JSONObject.optNullableLong(key: String): Long? =
         if (isNull(key) || !has(key)) null else optLong(key)
+}
+
+
+/**
+ * Validate the relationships in a parsed backup before the current database is cleared.
+ * Keeping this pure makes malformed restore files testable without touching a real database.
+ */
+internal fun validateRestoreRelations(
+    lectures: List<LectureEntity>,
+    classes: List<ClassEntity>,
+    courses: List<CourseEntity>,
+    folders: List<TeacherFolderEntity>
+) {
+    fun <T> requireUniqueIds(items: List<T>, id: (T) -> Long, label: String) {
+        require(items.all { id(it) != 0L }) {
+            "شناسه صفر در بخش $label معتبر نیست؛ بازیابی متوقف شد."
+        }
+        require(items.map(id).toSet().size == items.size) {
+            "شناسه‌های تکراری در بخش $label وجود دارد؛ بازیابی متوقف شد."
+        }
+    }
+
+    requireUniqueIds(lectures, { it.id }, "جلسات")
+    requireUniqueIds(classes, { it.id }, "کلاس‌ها")
+    requireUniqueIds(courses, { it.id }, "درس‌ها")
+    requireUniqueIds(folders, { it.id }, "پوشه‌ها")
+
+    val classById = classes.associateBy { it.id }
+    val courseById = courses.associateBy { it.id }
+    val folderById = folders.associateBy { it.id }
+
+    courses.forEach { course ->
+        require(classById.containsKey(course.classId)) {
+            "یکی از درس‌ها به کلاسی اشاره می‌کند که در فایل پشتیبان وجود ندارد؛ بازیابی متوقف شد."
+        }
+    }
+
+    lectures.forEach { lecture ->
+        lecture.classId?.let { classId ->
+            require(classById.containsKey(classId)) {
+                "یکی از جلسات به کلاسی اشاره می‌کند که در فایل پشتیبان وجود ندارد؛ بازیابی متوقف شد."
+            }
+        }
+        lecture.courseId?.let { courseId ->
+            val course = requireNotNull(courseById[courseId]) {
+                "یکی از جلسات به درسی اشاره می‌کند که در فایل پشتیبان وجود ندارد؛ بازیابی متوقف شد."
+            }
+            require(lecture.classId == null || lecture.classId == course.classId) {
+                "کلاس و درس مرتبط با یکی از جلسات با هم سازگار نیستند؛ بازیابی متوقف شد."
+            }
+        }
+    }
+
+    folders.forEach { folder ->
+        folder.parentFolderId?.let { parentId ->
+            val parent = requireNotNull(folderById[parentId]) {
+                "پوشه والد در فایل پشتیبان وجود ندارد؛ بازیابی متوقف شد."
+            }
+            require(parent.ownerUid == folder.ownerUid && parent.id != folder.id) {
+                "ساختار مالکیت یا والد پوشه‌ها ناسازگار است؛ بازیابی متوقف شد."
+            }
+        }
+    }
+
+    folders.forEach { folder ->
+        val visited = mutableSetOf<Long>()
+        var current: TeacherFolderEntity? = folder
+        while (current != null) {
+            require(visited.add(current.id)) {
+                "درخت پوشه‌ها در فایل پشتیبان حلقه دارد؛ بازیابی متوقف شد."
+            }
+            current = current.parentFolderId?.let(folderById::get)
+        }
+    }
+
+    classes.forEach { item ->
+        item.folderId?.let { folderId ->
+            val folder = requireNotNull(folderById[folderId]) {
+                "یکی از کلاس‌ها به پوشه‌ای اشاره می‌کند که در فایل پشتیبان وجود ندارد؛ بازیابی متوقف شد."
+            }
+            require(folder.ownerUid == item.ownerUid) {
+                "مالک پوشه و کلاس با هم مطابقت ندارند؛ بازیابی متوقف شد."
+            }
+        }
+    }
 }
