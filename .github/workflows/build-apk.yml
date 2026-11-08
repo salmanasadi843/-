@@ -55,6 +55,41 @@ jobs:
           fi
           echo "KEYSTORE_PATH=$KEYSTORE_FILE" >> "$GITHUB_ENV"
 
+      - name: Validate signing credentials without modifying keystore
+        shell: bash
+        env:
+          STORE_PASSWORD: ${{ secrets.STORE_PASSWORD }}
+          KEY_PASSWORD: ${{ secrets.KEY_PASSWORD }}
+        run: |
+          set -euo pipefail
+          cat > "$RUNNER_TEMP/VerifyKeystore.java" <<'JAVA'
+          import java.io.FileInputStream;
+          import java.security.Key;
+          import java.security.KeyStore;
+          import java.security.PrivateKey;
+
+          public class VerifyKeystore {
+              public static void main(String[] args) throws Exception {
+                  char[] storePassword = System.getenv("STORE_PASSWORD").toCharArray();
+                  char[] keyPassword = System.getenv("KEY_PASSWORD").toCharArray();
+                  KeyStore keyStore = KeyStore.getInstance("JKS");
+                  try (FileInputStream input = new FileInputStream(System.getenv("KEYSTORE_PATH"))) {
+                      keyStore.load(input, storePassword);
+                  }
+                  if (!keyStore.containsAlias("upload")) {
+                      throw new IllegalStateException("Alias 'upload' is missing from the keystore.");
+                  }
+                  Key key = keyStore.getKey("upload", keyPassword);
+                  if (!(key instanceof PrivateKey)) {
+                      throw new IllegalStateException("Alias 'upload' does not contain a private key.");
+                  }
+                  System.out.println("Keystore password, alias, and private-key password are valid.");
+              }
+          }
+          JAVA
+          javac "$RUNNER_TEMP/VerifyKeystore.java"
+          java -cp "$RUNNER_TEMP" VerifyKeystore
+
       - name: Set up Gradle
         uses: gradle/actions/setup-gradle@v6
         with:
