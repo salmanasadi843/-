@@ -231,7 +231,7 @@ fun SettingsScreen(
                     Row(verticalAlignment = Alignment.CenterVertically) {
                         Icon(Icons.Filled.NetworkCheck, contentDescription = null)
                         Spacer(Modifier.width(8.dp))
-                        Text("وضعیت پشتیبان‌گیری ابری", style = MaterialTheme.typography.titleLarge)
+                        Text("همگام‌سازی پشتیبان خصوصی", style = MaterialTheme.typography.titleLarge)
                     }
                     Spacer(Modifier.height(8.dp))
                     Text(cloudSyncStatus, style = MaterialTheme.typography.bodyMedium)
@@ -240,10 +240,10 @@ fun SettingsScreen(
                         onClick = { viewModel.startCloudSync() },
                         enabled = !cloudBusy
                     ) {
-                        Text("بررسی و تلاش دوباره")
+                        Text("همگام‌سازی امن با Firebase")
                     }
                     Text(
-                        "موفقیت این بخش یعنی برنامه توانسته عملیات ابری را انجام دهد؛ برای تأیید نهایی ذخیره داده‌ها می‌توان بعداً فایربیس را هم بررسی کرد.",
+                        "ابتدا داده‌های ابری بدون حذف یا بازنویسی با گوشی ادغام می‌شوند؛ سپس رکوردهای متعلق به شما به‌صورت افزایشی ارسال می‌شوند. رکوردهای ابریِ غایب از گوشی حذف نمی‌شوند.",
                         style = MaterialTheme.typography.bodySmall,
                         color = MaterialTheme.colorScheme.onSurfaceVariant
                     )
@@ -1033,7 +1033,7 @@ fun SettingsScreen(
                     Text("پشتیبان‌گیری و بازیابی", style = MaterialTheme.typography.titleLarge)
                     Spacer(Modifier.height(6.dp))
                     Text(
-                        "برای جلوگیری از پاک شدن جزوه‌ها با حذف برنامه، یک فایل پشتیبان بسازید و آن را در فضای ابری یا حافظه‌ای امن نگه دارید. بازیابی، اطلاعات فعلی را با اطلاعات فایل پشتیبان جایگزین می‌کند.",
+                        "برای جلوگیری از پاک شدن جزوه‌ها با حذف برنامه، فایل پشتیبان را در فضای امن نگه دارید. بازیابی به‌صورت ادغام انجام می‌شود؛ داده‌های فعلی حذف نمی‌شوند. اگر شناسه‌ای با محتوای متفاوت در فایل و دستگاه وجود داشته باشد، عملیات متوقف می‌شود و باید تعارض جداگانه بررسی شود.",
                         style = MaterialTheme.typography.bodyMedium,
                         color = MaterialTheme.colorScheme.onSurfaceVariant
                     )

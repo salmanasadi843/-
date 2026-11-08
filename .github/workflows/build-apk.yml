@@ -30,7 +30,7 @@ concurrency:
 
 jobs:
   build:
-    name: Build Debug APK
+    name: Test and Build Android APK
     runs-on: ubuntu-latest
 
     steps:
@@ -48,7 +48,7 @@ jobs:
         shell: bash
         run: |
           changed_files="$(git diff --name-only HEAD^ HEAD)"
-          if printf '%s\\n' "$changed_files" | grep -Eq '^(app/|gradle/|build.gradle.kts$|settings.gradle.kts$|gradle.properties$|gradlew$)'; then
+          if printf '%s\n' "$changed_files" | grep -Eq '^(app/|gradle/|build.gradle.kts$|settings.gradle.kts$|gradle.properties$|gradlew$|\.github/workflows/build-apk.yml$)'; then
             echo "build=true" >> "$GITHUB_OUTPUT"
           else
             echo "build=false" >> "$GITHUB_OUTPUT"
@@ -75,6 +75,30 @@ jobs:
           yes | sdkmanager --licenses >/dev/null || true
           sdkmanager "platforms;android-36" "build-tools;36.0.0" "platform-tools"
 
+      # Release-signing secrets are intentionally used only for a manually
+      # dispatched run. Pull-request code must never receive the private key.
+      - name: Prepare private release keystore
+        if: github.event_name == 'workflow_dispatch'
+        shell: bash
+        env:
+          DARSYAR_KEYSTORE_BASE64: ${{ secrets.DARSYAR_KEYSTORE_BASE64 }}
+          DARSYAR_STORE_PASSWORD: ${{ secrets.DARSYAR_STORE_PASSWORD }}
+          DARSYAR_KEY_ALIAS: ${{ secrets.DARSYAR_KEY_ALIAS }}
+          DARSYAR_KEY_PASSWORD: ${{ secrets.DARSYAR_KEY_PASSWORD }}
+        run: |
+          set -euo pipefail
+          test -n "$DARSYAR_KEYSTORE_BASE64" || { echo "::error::Missing DARSYAR_KEYSTORE_BASE64 secret"; exit 1; }
+          test -n "$DARSYAR_STORE_PASSWORD" || { echo "::error::Missing DARSYAR_STORE_PASSWORD secret"; exit 1; }
+          test -n "$DARSYAR_KEY_ALIAS" || { echo "::error::Missing DARSYAR_KEY_ALIAS secret"; exit 1; }
+          test -n "$DARSYAR_KEY_PASSWORD" || { echo "::error::Missing DARSYAR_KEY_PASSWORD secret"; exit 1; }
+
+          keystore_path="$RUNNER_TEMP/darsyar-upload-key.jks"
+          printf '%s' "$DARSYAR_KEYSTORE_BASE64" | base64 --decode > "$keystore_path"
+          test -s "$keystore_path" || { echo "::error::Decoded keystore is empty"; exit 1; }
+          chmod 600 "$keystore_path"
+          echo "KEYSTORE_PATH=$keystore_path" >> "$GITHUB_ENV"
+          echo "Release keystore prepared; secret values were not printed."
+
       - name: Set up Gradle
         if: github.event_name == 'workflow_dispatch' || steps.android_changes.outputs.build == 'true'
         uses: gradle/actions/setup-gradle@v6
@@ -89,10 +113,36 @@ jobs:
         if: github.event_name == 'workflow_dispatch' || steps.android_changes.outputs.build == 'true'
         run: gradle assembleDebug --stacktrace
 
-      - name: Upload APK
+      - name: Build signed Release APK
+        if: github.event_name == 'workflow_dispatch'
+        env:
+          STORE_PASSWORD: ${{ secrets.DARSYAR_STORE_PASSWORD }}
+          KEY_ALIAS: ${{ secrets.DARSYAR_KEY_ALIAS }}
+          KEY_PASSWORD: ${{ secrets.DARSYAR_KEY_PASSWORD }}
+        run: gradle assembleRelease --stacktrace
+
+      - name: Verify and print release certificate fingerprint
+        if: github.event_name == 'workflow_dispatch'
+        shell: bash
+        run: |
+          set -euo pipefail
+          apk="$(find app/build/outputs/apk/release -maxdepth 1 -name '*.apk' -print -quit)"
+          test -n "$apk" || { echo "::error::Release APK was not produced"; exit 1; }
+          echo "Release APK signature details (public certificate only):"
+          "$ANDROID_HOME/build-tools/36.0.0/apksigner" verify --print-certs "$apk"
+
+      - name: Upload Debug APK
         if: github.event_name == 'workflow_dispatch' || steps.android_changes.outputs.build == 'true'
         uses: actions/upload-artifact@v6
         with:
           name: ostadyar-debug-apk
           path: app/build/outputs/apk/debug/*.apk
+          if-no-files-found: error
+
+      - name: Upload signed Release APK
+        if: github.event_name == 'workflow_dispatch'
+        uses: actions/upload-artifact@v6
+        with:
+          name: ostadyar-signed-release-apk
+          path: app/build/outputs/apk/release/*.apk
           if-no-files-found: error
