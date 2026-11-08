@@ -218,3 +218,83 @@ export const adminDeleteTeacherRecord = onCall({ region: REGION, timeoutSeconds:
 
   return { success: true, ownerUid: teacherUid, recordType: type, recordId: id, deletedRecordCount };
 });
+
+
+export const adminListTeachers = onCall({ region: REGION, timeoutSeconds: 30 }, async (request) => {
+  requirePrimaryAdmin(request);
+  const profiles = await db.collection("users").where("role", "==", "TEACHER").limit(200).get();
+  const teachers = await Promise.all(profiles.docs.map(async (profile) => {
+    const uid = profile.id;
+    if (uid === PRIMARY_ADMIN_UID) return null;
+    const approval = await db.collection("approved_teachers").doc(uid).get();
+    if (approval.get("enabled") !== true && approval.get("approved") !== true) return null;
+    return {
+      uid,
+      name: profile.get("name") ?? "",
+      email: profile.get("email") ?? "",
+    };
+  }));
+  return { teachers: teachers.filter((teacher): teacher is NonNullable<typeof teacher> => teacher !== null) };
+});
+
+export const adminListTeacherRecords = onCall({ region: REGION, timeoutSeconds: 30 }, async (request) => {
+  requirePrimaryAdmin(request);
+  const data = (request.data ?? {}) as AdminRequest;
+  const teacherUid = requireTargetUid(data.targetTeacherUid);
+  await assertApprovedTeacher(teacherUid);
+  const root = await db.collection(TEACHER_DATA).doc(teacherUid).get();
+  if (!root.exists || root.get("ownerUid") !== teacherUid || root.get("schemaVersion") !== 2) {
+    throw new HttpsError("failed-precondition", "پشتیبان خصوصی استاد آماده مدیریت نیست یا ساختار آن پشتیبانی نمی‌شود.");
+  }
+  if ((root.get("syncLockUntilMillis") ?? 0) > Date.now()) {
+    throw new HttpsError("aborted", "پشتیبان‌گیری استاد در حال انجام است؛ کمی بعد دوباره تلاش کنید.");
+  }
+  const records = await db.collection(TEACHER_DATA).doc(teacherUid).collection(RECORDS).limit(1500).get();
+  const items = records.docs.map((doc) => {
+    const value = doc.data();
+    const type = value.recordType;
+    const id = Number(value.id);
+    if ((type !== "class" && type !== "course" && type !== "lecture") ||
+        !Number.isSafeInteger(id) || id <= 0) return null;
+    return {
+      id,
+      recordType: type,
+      classId: typeof value.classId === "number" ? value.classId : null,
+      courseId: typeof value.courseId === "number" ? value.courseId : null,
+      title: type === "lecture" ? (value.title ?? "") : (value.name ?? ""),
+      isPublished: value.isPublished === true,
+      dateMillis: typeof value.dateMillis === "number" ? value.dateMillis : null,
+    };
+  }).filter((item): item is NonNullable<typeof item> => item !== null);
+  return { records: items };
+});
+
+export const adminGetTeacherRecord = onCall({ region: REGION, timeoutSeconds: 30 }, async (request) => {
+  requirePrimaryAdmin(request);
+  const data = (request.data ?? {}) as AdminRequest;
+  const teacherUid = requireTargetUid(data.targetTeacherUid);
+  const type = validateRecordType(data.recordType);
+  const id = validateRecordId(data.recordId);
+  await assertApprovedTeacher(teacherUid);
+  const root = await db.collection(TEACHER_DATA).doc(teacherUid).get();
+  if (!root.exists || root.get("ownerUid") !== teacherUid || root.get("schemaVersion") !== 2) {
+    throw new HttpsError("failed-precondition", "پشتیبان خصوصی استاد آماده مدیریت نیست یا ساختار آن پشتیبانی نمی‌شود.");
+  }
+  if ((root.get("syncLockUntilMillis") ?? 0) > Date.now()) {
+    throw new HttpsError("aborted", "پشتیبان‌گیری استاد در حال انجام است؛ کمی بعد دوباره تلاش کنید.");
+  }
+  const ref = db.collection(TEACHER_DATA).doc(teacherUid).collection(RECORDS).doc(recordKey(type, id));
+  const snapshot = await ref.get();
+  requireOwnedRecord(snapshot, type, teacherUid);
+  if (type !== "class") {
+    const classId = snapshot.get("classId");
+    if (typeof classId !== "number" || !Number.isSafeInteger(classId) || classId <= 0) {
+      throw new HttpsError("failed-precondition", "ارتباط رکورد با کلاس معتبر نیست.");
+    }
+    const classRecord = await db.collection(TEACHER_DATA).doc(teacherUid).collection(RECORDS).doc(recordKey("class", classId)).get();
+    if (!classRecord.exists || classRecord.get("ownerUid") !== teacherUid) {
+      throw new HttpsError("permission-denied", "مالکیت کلاس مقصد تأیید نشد.");
+    }
+  }
+  return { record: snapshot.data() };
+});
