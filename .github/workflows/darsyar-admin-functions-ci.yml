@@ -5,6 +5,7 @@ on:
     paths:
       - "functions/**"
       - "firebase.json"
+      - "firestore.rules"
       - ".github/workflows/darsyar-admin-functions-ci.yml"
   push:
     branches:
