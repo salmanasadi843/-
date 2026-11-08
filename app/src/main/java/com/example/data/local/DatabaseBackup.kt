@@ -100,9 +100,11 @@ object DatabaseBackup {
         .put("professorName", professorName).put("classId", classId ?: JSONObject.NULL)
         .put("courseId", courseId ?: JSONObject.NULL).put("dateMillis", dateMillis)
         .put("audioUrl", audioUrl ?: JSONObject.NULL).put("audioDurationMs", audioDurationMs)
-        .put("transcript", transcript).put("aiSummary", aiSummary ?: JSONObject.NULL)
+        .put("transcript", transcript).put("originalTranscript", originalTranscript)
+        .put("aiSummary", aiSummary ?: JSONObject.NULL)
         .put("aiKeyPoints", aiKeyPoints ?: JSONObject.NULL).put("aiQuizJson", aiQuizJson ?: JSONObject.NULL)
-        .put("tags", tags).put("isFavorite", isFavorite).put("lastEditedMillis", lastEditedMillis).put("sortOrder", sortOrder)
+        .put("tags", tags).put("isFavorite", isFavorite).put("isPublished", isPublished)
+        .put("lastEditedMillis", lastEditedMillis).put("sortOrder", sortOrder)
 
     private fun JSONObject.toLecture() = LectureEntity(
         id = optLong("id"), title = getString("title"), courseName = optString("courseName"),
@@ -110,9 +112,11 @@ object DatabaseBackup {
         courseId = optNullableLong("courseId"), dateMillis = optLong("dateMillis"),
         audioFilePath = null, audioUrl = optNullableString("audioUrl"),
         audioDurationMs = optLong("audioDurationMs"), transcript = optString("transcript"),
+        originalTranscript = optString("originalTranscript", optString("transcript")),
         aiSummary = optNullableString("aiSummary"), aiKeyPoints = optNullableString("aiKeyPoints"),
         aiQuizJson = optNullableString("aiQuizJson"), tags = optString("tags"),
-        isFavorite = optBoolean("isFavorite"), lastEditedMillis = optLong("lastEditedMillis", System.currentTimeMillis()),
+        isFavorite = optBoolean("isFavorite"), isPublished = optBoolean("isPublished", true),
+        lastEditedMillis = optLong("lastEditedMillis", System.currentTimeMillis()),
         sortOrder = optInt("sortOrder", 0)
     )
 
