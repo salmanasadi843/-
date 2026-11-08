@@ -16,7 +16,7 @@ It does not deploy itself and does not modify live Firestore data or security ru
 
 ```sh
 cd functions
-npm ci
+npm install
 npm test
 ```
 
