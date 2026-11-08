@@ -83,6 +83,7 @@ object DatabaseBackup {
         val classes = root.optJSONArray("classes").toEntitiesTyped { it.toClassEntity() }
         val courses = root.optJSONArray("courses").toEntitiesTyped { it.toCourse() }
         val folders = root.optJSONArray("folders").toEntitiesTyped { it.toFolder() }
+        validateRestoreRelations(lectures, classes, courses, folders)
         val db = AppDatabase.getDatabase(context)
 
         kotlinx.coroutines.runBlocking {
@@ -100,8 +101,6 @@ object DatabaseBackup {
         }
         return "بازیابی انجام شد: ${lectures.size} جلسه، ${classes.size} کلاس و ${courses.size} درس."
     }
-
-        validateRestoreRelations(lectures, classes, courses, folders)
 
     private fun JSONArray?.toEntities(convert: (JSONObject) -> Any): List<Any> {
         if (this == null) return emptyList()
