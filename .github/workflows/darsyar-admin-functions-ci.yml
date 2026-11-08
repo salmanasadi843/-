@@ -1,0 +1,42 @@
+name: Darsyar Admin Functions CI
+
+on:
+  pull_request:
+    paths:
+      - "functions/**"
+      - "firebase.json"
+      - ".github/workflows/darsyar-admin-functions-ci.yml"
+  push:
+    branches:
+      - "darsyar/admin-management-service-2026-11-08"
+    paths:
+      - "functions/**"
+      - "firebase.json"
+      - ".github/workflows/darsyar-admin-functions-ci.yml"
+
+permissions:
+  contents: read
+
+concurrency:
+  group: darsyar-admin-functions-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  test:
+    name: TypeScript build and authorization validation tests
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v6
+      - name: Set up Node.js
+        uses: actions/setup-node@v5
+        with:
+          node-version: "22"
+          cache: npm
+          cache-dependency-path: functions/package-lock.json
+      - name: Install dependencies
+        working-directory: functions
+        run: npm install --no-audit --no-fund
+      - name: Build and test
+        working-directory: functions
+        run: npm test
