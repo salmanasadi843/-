@@ -9,6 +9,8 @@ import com.example.data.local.LectureEntity
 import com.example.data.local.TeacherFolderDao
 import com.example.data.local.TeacherFolderEntity
 import com.google.android.gms.tasks.Task
+import androidx.room.withTransaction
+import com.example.data.local.AppDatabase
 import com.google.firebase.firestore.DocumentSnapshot
 import com.google.firebase.firestore.FieldValue
 import com.google.firebase.firestore.FirebaseFirestore
@@ -31,7 +33,8 @@ class FirestoreSyncRepository(
     private val classDao: ClassDao,
     private val courseDao: CourseDao,
     private val teacherFolderDao: TeacherFolderDao? = null,
-    private val firestore: FirebaseFirestore = FirebaseFirestore.getInstance()
+    private val firestore: FirebaseFirestore = FirebaseFirestore.getInstance(),
+    private val database: AppDatabase
 ) {
     private companion object {
         const val SCHEMA_VERSION = 2L
@@ -61,15 +64,15 @@ class FirestoreSyncRepository(
             }
             SCHEMA_VERSION -> {
                 restoreRecordDocuments(uid)
-                // An administrator may have changed the cloud copy while this device
-                // was offline. Clear the guard only after the full restore succeeded.
-                val expectedAdminVersion = snapshot.getLong("adminPendingVersion") ?: 0L
-                // Only the trusted server may clear the admin marker. This prevents
-                // a client from bypassing the restore guard with a direct Firestore write.
-                FirebaseFunctions.getInstance("europe-west1")
-                    .getHttpsCallable("completeAdminRestore")
-                    .call(mapOf("expectedAdminPendingVersion" to expectedAdminVersion))
-                    .awaitResult()
+                // Only administrator-edited snapshots require the trusted completion
+                // callable. Ordinary backups have no pending marker and must restore normally.
+                if (snapshot.getBoolean("adminPending") == true) {
+                    val expectedAdminVersion = snapshot.getLong("adminPendingVersion") ?: 0L
+                    FirebaseFunctions.getInstance("europe-west1")
+                        .getHttpsCallable("completeAdminRestore")
+                        .call(mapOf("expectedAdminPendingVersion" to expectedAdminVersion))
+                        .awaitResult()
+                }
                 true
             }
             else -> throw IllegalStateException(
@@ -286,11 +289,7 @@ class FirestoreSyncRepository(
                 )
             }
         }
-        validateAndReplaceLocalData(classes, courses, lectures)
-        teacherFolderDao?.let { dao ->
-            dao.clearForRestore()
-            if (folders.isNotEmpty()) dao.insertAllForRestore(folders)
-        }
+        validateAndReplaceLocalData(classes, courses, lectures, folders)
     }
 
     private suspend fun restoreSnapshot(
@@ -327,19 +326,29 @@ class FirestoreSyncRepository(
     private suspend fun validateAndReplaceLocalData(
         classes: List<ClassEntity>,
         courses: List<CourseEntity>,
-        lectures: List<LectureEntity>
+        lectures: List<LectureEntity>,
+        folders: List<TeacherFolderEntity> = emptyList()
     ) {
         if (classes.any { it.id == 0L } || courses.any { it.id == 0L } || lectures.any { it.id == 0L }) {
             throw IllegalStateException("شناسه یکی از رکوردهای پشتیبان ابری خالی است.")
         }
 
-        // Validate everything before deleting local data; delete children first.
-        lectureDao.clearForRestore()
-        courseDao.clearForRestore()
-        classDao.clearForRestore()
-        if (classes.isNotEmpty()) classDao.insertAllForRestore(classes)
-        if (courses.isNotEmpty()) courseDao.insertAllForRestore(courses)
-        if (lectures.isNotEmpty()) lectureDao.insertAllForRestore(lectures)
+        // Replace all related Room tables as one atomic operation. If any insert
+        // fails (disk full, constraint violation, process interruption), Room rolls
+        // the transaction back and the previous local data remains intact.
+        database.withTransaction {
+            lectureDao.clearForRestore()
+            courseDao.clearForRestore()
+            classDao.clearForRestore()
+            if (classes.isNotEmpty()) classDao.insertAllForRestore(classes)
+            if (courses.isNotEmpty()) courseDao.insertAllForRestore(courses)
+            if (lectures.isNotEmpty()) lectureDao.insertAllForRestore(lectures)
+            teacherFolderDao?.let { dao ->
+                dao.clearForRestore()
+                val folderRows = folders
+                if (folderRows.isNotEmpty()) dao.insertAllForRestore(folderRows)
+            }
+        }
     }
 
     private fun ClassEntity.toCloudMap(): Map<String, Any?> = mapOf(
