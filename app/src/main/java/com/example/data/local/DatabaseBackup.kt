@@ -190,7 +190,7 @@ internal fun validateRestoreRelations(
     folders: List<TeacherFolderEntity>
 ) {
     fun <T> requireUniqueIds(items: List<T>, id: (T) -> Long, label: String) {
-        require(items.map(id).toSet().size == items.size) {
+        require(items.all { id(it) != 0L }) {\n            "شناسه صفر در بخش $label معتبر نیست؛ بازیابی متوقف شد."\n        }\n        require(items.map(id).toSet().size == items.size) {
             "شناسه‌های تکراری در بخش $label وجود دارد؛ بازیابی متوقف شد."
         }
     }
