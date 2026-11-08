@@ -58,8 +58,9 @@ jobs:
       - name: Validate signing credentials without modifying keystore
         shell: bash
         env:
-          STORE_PASSWORD: ${{ secrets.STORE_PASSWORD }}
-          KEY_PASSWORD: ${{ secrets.KEY_PASSWORD }}
+          STORE_PASSWORD: ${{ secrets.DARSYAR_STORE_PASSWORD }}
+          KEY_PASSWORD: ${{ secrets.DARSYAR_KEY_PASSWORD }}
+          KEY_ALIAS: ${{ secrets.DARSYAR_KEY_ALIAS }}
         run: |
           set -euo pipefail
           cat > "$RUNNER_TEMP/VerifyKeystore.java" <<'JAVA'
@@ -76,12 +77,14 @@ jobs:
                   try (FileInputStream input = new FileInputStream(System.getenv("KEYSTORE_PATH"))) {
                       keyStore.load(input, storePassword);
                   }
-                  if (!keyStore.containsAlias("upload")) {
-                      throw new IllegalStateException("Alias 'upload' is missing from the keystore.");
+                  String alias = System.getenv("KEY_ALIAS");
+                  if (alias == null || alias.isBlank()) throw new IllegalStateException("KEY_ALIAS is missing.");
+                  if (!keyStore.containsAlias(alias)) {
+                      throw new IllegalStateException("Configured key alias is missing from the keystore.");
                   }
-                  Key key = keyStore.getKey("upload", keyPassword);
+                  Key key = keyStore.getKey(alias, keyPassword);
                   if (!(key instanceof PrivateKey)) {
-                      throw new IllegalStateException("Alias 'upload' does not contain a private key.");
+                      throw new IllegalStateException("Configured alias does not contain a private key.");
                   }
                   System.out.println("Keystore password, alias, and private-key password are valid.");
               }
@@ -98,8 +101,8 @@ jobs:
       - name: Build signed Release APK
         env:
           KEYSTORE_PATH: ${{ runner.temp }}/darsyar-upload-key.jks
-          STORE_PASSWORD: ${{ secrets.STORE_PASSWORD }}
-          KEY_PASSWORD: ${{ secrets.KEY_PASSWORD }}
+          STORE_PASSWORD: ${{ secrets.DARSYAR_STORE_PASSWORD }}
+          KEY_PASSWORD: ${{ secrets.DARSYAR_KEY_PASSWORD }}
         run: gradle assembleRelease --stacktrace
 
       - name: Verify APK signature
