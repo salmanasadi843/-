@@ -29,6 +29,15 @@ object DatabaseBackup {
         return file
     }
 
+    /** Copies the last pre-restore snapshot to a user-selected document. */
+    fun exportPreRestoreSafetyCopy(context: Context, uri: Uri) {
+        val file = java.io.File(context.filesDir, "darsyar-pre-restore-backup.json")
+        require(file.exists() && file.length() > 0L) { "پشتیبان اضطراری داخلی پیدا نشد." }
+        context.contentResolver.openOutputStream(uri, "wt")?.bufferedWriter(Charsets.UTF_8)?.use {
+            file.inputStream().bufferedReader(Charsets.UTF_8).use { reader -> reader.copyTo(it) }
+        } ?: error("فایل مقصد برای ذخیره پشتیبان اضطراری باز نشد.")
+    }
+
     private fun createBackupJson(context: Context): String {
         val db = AppDatabase.getDatabase(context)
         val lectures = kotlinx.coroutines.runBlocking { db.lectureDao().getAllForBackup() }
