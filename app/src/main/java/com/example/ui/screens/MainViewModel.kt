@@ -849,36 +849,38 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
         val value = formTranscript.value
         transcriptAutosaveJob?.cancel()
         transcriptAutosaveJob = viewModelScope.launch {
-            try {
-                persistTranscriptDraft(id, value)
-            } finally {
-                // Do not leave the editor until the final pending write has finished.
+            // Keep the editor open if the final write fails; navigating away would
+            // discard the only remaining copy of the user's latest transcript edits.
+            if (persistTranscriptDraft(id, value)) {
                 onComplete()
             }
         }
     }
 
-    private suspend fun persistTranscriptDraft(id: Long, value: String) {
+    private suspend fun persistTranscriptDraft(id: Long, value: String): Boolean {
         if (!teacherPermissionGranted()) {
             _transcriptAutosaveStatus.value = "ذخیره خودکار انجام نشد؛ مجوز ویرایش ندارید."
-            return
+            return false
         }
-        try {
+        return try {
             val current = repository.getLecture(id)
             if (current == null || current.id < 0L || current.classId?.let { it < 0L } == true) {
                 _transcriptAutosaveStatus.value = "ذخیره خودکار انجام نشد؛ این جلسه قابل ویرایش نیست."
-                return
+                false
+            } else {
+                val updated = current.copy(
+                    transcript = value,
+                    lastEditedMillis = System.currentTimeMillis()
+                )
+                repository.saveLecture(updated)
+                if (_selectedLecture.value?.id == id) _selectedLecture.value = updated
+                _transcriptAutosaveStatus.value = "ذخیره خودکار شد"
+                true
             }
-            val updated = current.copy(
-                transcript = value,
-                lastEditedMillis = System.currentTimeMillis()
-            )
-            repository.saveLecture(updated)
-            if (_selectedLecture.value?.id == id) _selectedLecture.value = updated
-            _transcriptAutosaveStatus.value = "ذخیره خودکار شد"
         } catch (error: Exception) {
             Log.e(TAG, "Transcript autosave failed", error)
             _transcriptAutosaveStatus.value = "ذخیره خودکار ناموفق بود؛ دکمه ذخیره را بزنید."
+            false
         }
     }
 
