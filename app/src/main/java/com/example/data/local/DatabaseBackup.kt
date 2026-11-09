@@ -25,12 +25,17 @@ object DatabaseBackup {
 
         val root = JSONObject()
             .put("format", "darsyar-backup")
-            .put("version", 1)
+            .put("version", 2)
             .put("createdAt", System.currentTimeMillis())
             .put("lectures", JSONArray().apply { lectures.forEach { put(it.toJson()) } })
             .put("classes", JSONArray().apply { classes.forEach { put(it.toJson()) } })
             .put("courses", JSONArray().apply { courses.forEach { put(it.toJson()) } })
             .put("folders", JSONArray().apply { folders.forEach { put(it.toJson()) } })
+            .put("counts", JSONObject()
+                .put("lectures", lectures.size)
+                .put("classes", classes.size)
+                .put("courses", courses.size)
+                .put("folders", folders.size))
 
         context.contentResolver.openOutputStream(uri, "wt")?.bufferedWriter(Charsets.UTF_8)?.use {
             it.write(root.toString(2))
@@ -43,12 +48,39 @@ object DatabaseBackup {
         } ?: error("فایل پشتیبان خوانده نشد.")
         val root = JSONObject(text)
         require(root.optString("format") == "darsyar-backup") { "این فایل، پشتیبان معتبر درس‌یار نیست." }
-        require(root.optInt("version") in 1..1) { "نسخه فایل پشتیبان پشتیبانی نمی‌شود." }
+        val version = root.optInt("version")
+        require(version in 1..2) { "نسخه فایل پشتیبان پشتیبانی نمی‌شود." }
+        // Never treat a missing collection as an intentionally empty collection:
+        // doing so could clear valid local data during restore.
+        listOf("lectures", "classes", "courses", "folders").forEach { key ->
+            require(root.has(key) && root.optJSONArray(key) != null) {
+                "فایل پشتیبان ناقص است: بخش «$key» وجود ندارد یا معتبر نیست؛ اطلاعات فعلی دست‌نخورده باقی ماند."
+            }
+        }
 
         val lectures = root.optJSONArray("lectures").toEntitiesTyped { it.toLecture() }
         val classes = root.optJSONArray("classes").toEntitiesTyped { it.toClassEntity() }
         val courses = root.optJSONArray("courses").toEntitiesTyped { it.toCourse() }
         val folders = root.optJSONArray("folders").toEntitiesTyped { it.toFolder() }
+        requireUniqueIds(lectures.map { it.id }, "جلسه")
+        requireUniqueIds(classes.map { it.id }, "کلاس")
+        requireUniqueIds(courses.map { it.id }, "درس")
+        requireUniqueIds(folders.map { it.id }, "پوشه")
+        if (version >= 2) {
+            val counts = root.optJSONObject("counts")
+                ?: error("فایل پشتیبان ناقص است: شمارنده‌های کنترل سلامت وجود ندارد.")
+            val actual = mapOf(
+                "lectures" to lectures.size,
+                "classes" to classes.size,
+                "courses" to courses.size,
+                "folders" to folders.size
+            )
+            actual.forEach { (key, count) ->
+                require(counts.has(key) && counts.optInt(key, -1) == count) {
+                    "فایل پشتیبان ناقص یا دستکاری‌شده است: تعداد «$key» با محتوای فایل سازگار نیست؛ اطلاعات فعلی دست‌نخورده باقی ماند."
+                }
+            }
+        }
         val db = AppDatabase.getDatabase(context)
 
         kotlinx.coroutines.runBlocking {
@@ -67,6 +99,12 @@ object DatabaseBackup {
         return "بازیابی انجام شد: ${lectures.size} جلسه، ${classes.size} کلاس و ${courses.size} درس."
     }
 
+    private fun requireUniqueIds(ids: List<Long>, label: String) {
+        require(ids.distinct().size == ids.size) {
+            "فایل پشتیبان دارای شناسهٔ تکراری برای $label است؛ اطلاعات فعلی دست‌نخورده باقی ماند."
+        }
+    }
+
     private fun JSONArray?.toEntities(convert: (JSONObject) -> Any): List<Any> {
         if (this == null) return emptyList()
         return (0 until length()).map { convert(getJSONObject(it)) }
@@ -82,9 +120,11 @@ object DatabaseBackup {
         .put("professorName", professorName).put("classId", classId ?: JSONObject.NULL)
         .put("courseId", courseId ?: JSONObject.NULL).put("dateMillis", dateMillis)
         .put("audioUrl", audioUrl ?: JSONObject.NULL).put("audioDurationMs", audioDurationMs)
-        .put("transcript", transcript).put("aiSummary", aiSummary ?: JSONObject.NULL)
+        .put("transcript", transcript).put("originalTranscript", originalTranscript)
+        .put("aiSummary", aiSummary ?: JSONObject.NULL)
         .put("aiKeyPoints", aiKeyPoints ?: JSONObject.NULL).put("aiQuizJson", aiQuizJson ?: JSONObject.NULL)
-        .put("tags", tags).put("isFavorite", isFavorite).put("lastEditedMillis", lastEditedMillis).put("sortOrder", sortOrder)
+        .put("tags", tags).put("isFavorite", isFavorite).put("isPublished", isPublished)
+        .put("lastEditedMillis", lastEditedMillis).put("sortOrder", sortOrder)
 
     private fun JSONObject.toLecture() = LectureEntity(
         id = optLong("id"), title = getString("title"), courseName = optString("courseName"),
@@ -92,9 +132,11 @@ object DatabaseBackup {
         courseId = optNullableLong("courseId"), dateMillis = optLong("dateMillis"),
         audioFilePath = null, audioUrl = optNullableString("audioUrl"),
         audioDurationMs = optLong("audioDurationMs"), transcript = optString("transcript"),
+        originalTranscript = optString("originalTranscript", optString("transcript")),
         aiSummary = optNullableString("aiSummary"), aiKeyPoints = optNullableString("aiKeyPoints"),
         aiQuizJson = optNullableString("aiQuizJson"), tags = optString("tags"),
-        isFavorite = optBoolean("isFavorite"), lastEditedMillis = optLong("lastEditedMillis", System.currentTimeMillis()),
+        isFavorite = optBoolean("isFavorite"), isPublished = optBoolean("isPublished", true),
+        lastEditedMillis = optLong("lastEditedMillis", System.currentTimeMillis()),
         sortOrder = optInt("sortOrder", 0)
     )
 
