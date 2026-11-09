@@ -36,14 +36,20 @@ class AdminCloudBackupRestorer(
             val recordsRef = rootRef.collection("generations").document(newGeneration).collection("records")
             var batch = firestore.batch()
             var batchSize = 0
+            var batchBytes = 0
             for (record in teacher.records) {
-                batch.set(recordsRef.document(record.documentId), jsonToMap(record.data))
-                batchSize++
-                if (batchSize == 400) {
+                val recordBytes = record.data.toString().toByteArray(Charsets.UTF_8).size
+                if (batchSize > 0 &&
+                    (batchSize >= 400 || batchBytes + recordBytes > 8 * 1024 * 1024)
+                ) {
                     batch.commit().awaitResult()
                     batch = firestore.batch()
                     batchSize = 0
+                    batchBytes = 0
                 }
+                batch.set(recordsRef.document(record.documentId), jsonToMap(record.data))
+                batchSize++
+                batchBytes += recordBytes
             }
             if (batchSize > 0) batch.commit().awaitResult()
 
