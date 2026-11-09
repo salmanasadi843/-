@@ -58,7 +58,11 @@ object DatabaseBackup {
             }
         }
 
-        val lectures = root.optJSONArray("lectures").toEntitiesTyped { it.toLecture() }
+        val lectures = root.optJSONArray("lectures").toEntitiesTyped {
+            // Version 1 did not store publication state. Default legacy imports to
+            // unpublished so a restore cannot accidentally publish old material.
+            it.toLecture(legacyDefaultPublished = version >= 2)
+        }
         val classes = root.optJSONArray("classes").toEntitiesTyped { it.toClassEntity() }
         val courses = root.optJSONArray("courses").toEntitiesTyped { it.toCourse() }
         val folders = root.optJSONArray("folders").toEntitiesTyped { it.toFolder() }
@@ -126,7 +130,7 @@ object DatabaseBackup {
         .put("tags", tags).put("isFavorite", isFavorite).put("isPublished", isPublished)
         .put("lastEditedMillis", lastEditedMillis).put("sortOrder", sortOrder)
 
-    private fun JSONObject.toLecture() = LectureEntity(
+    private fun JSONObject.toLecture(legacyDefaultPublished: Boolean) = LectureEntity(
         id = optLong("id"), title = getString("title"), courseName = optString("courseName"),
         professorName = optString("professorName"), classId = optNullableLong("classId"),
         courseId = optNullableLong("courseId"), dateMillis = optLong("dateMillis"),
@@ -135,7 +139,7 @@ object DatabaseBackup {
         originalTranscript = optString("originalTranscript", optString("transcript")),
         aiSummary = optNullableString("aiSummary"), aiKeyPoints = optNullableString("aiKeyPoints"),
         aiQuizJson = optNullableString("aiQuizJson"), tags = optString("tags"),
-        isFavorite = optBoolean("isFavorite"), isPublished = optBoolean("isPublished", true),
+        isFavorite = optBoolean("isFavorite"), isPublished = optBoolean("isPublished", legacyDefaultPublished),
         lastEditedMillis = optLong("lastEditedMillis", System.currentTimeMillis()),
         sortOrder = optInt("sortOrder", 0)
     )
