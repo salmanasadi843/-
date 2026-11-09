@@ -70,14 +70,39 @@ object CloudMaterialsSync {
                 )
             }
             lectures.forEach { item ->
+                val textFields = linkedMapOf<String, String?>(
+                    "transcript" to item.transcript,
+                    "originalTranscript" to item.originalTranscript,
+                    "aiSummary" to item.aiSummary,
+                    "aiKeyPoints" to item.aiKeyPoints,
+                    "tags" to item.tags
+                )
+                val chunkCounts = linkedMapOf<String, Int>()
+                textFields.forEach { (field, value) ->
+                    if (value != null) {
+                        val chunks = splitUtf8Text(value, MAX_TEXT_CHUNK_BYTES)
+                        chunkCounts[field] = chunks.size
+                        chunks.forEachIndexed { index, chunk ->
+                            desired["lecture_text_${item.id}_${field}_$index"] = mapOf(
+                                "recordType" to "lecture_text_chunk",
+                                "lectureId" to item.id,
+                                "field" to field,
+                                "index" to index,
+                                "value" to chunk,
+                                "ownerUid" to uid
+                            )
+                        }
+                    }
+                }
                 desired["lecture_${item.id}"] = mapOf(
                     "recordType" to "lecture", "id" to item.id, "title" to item.title,
                     "courseName" to item.courseName, "professorName" to item.professorName,
                     "classId" to item.classId, "courseId" to item.courseId,
                     "dateMillis" to item.dateMillis, "audioUrl" to item.audioUrl,
-                    "audioDurationMs" to item.audioDurationMs, "transcript" to item.transcript,
-                    "originalTranscript" to item.originalTranscript, "aiSummary" to item.aiSummary,
-                    "aiKeyPoints" to item.aiKeyPoints, "tags" to item.tags,
+                    "audioDurationMs" to item.audioDurationMs, "transcript" to "",
+                    "originalTranscript" to "", "aiSummary" to null,
+                    "aiKeyPoints" to null, "tags" to "",
+                    "textChunkCounts" to chunkCounts,
                     "isPublished" to item.isPublished, "lastEditedMillis" to item.lastEditedMillis,
                     "sortOrder" to item.sortOrder, "ownerUid" to uid
                 )
@@ -100,7 +125,7 @@ object CloudMaterialsSync {
                 if (pending.isEmpty()) return
                 val batch = firestore.batch()
                 pending.forEach { (id, data, _) -> batch.set(records.document(id), data) }
-                Tasks.await(batch.commit())
+                awaitWithRetry("ارسال دستهٔ اطلاعات") { Tasks.await(batch.commit()) }
                 pending.clear()
                 pendingBytes = 0
             }
@@ -114,12 +139,14 @@ object CloudMaterialsSync {
                 pendingBytes += record.third
             }
             commitPendingBatch()
-            Tasks.await(root.set(mapOf(
-                "ownerUid" to uid, "schemaVersion" to 3,
-                "activeGeneration" to generation,
-                "teacherName" to AuthPreferences.currentName(context),
-                "recordCount" to desired.size, "updatedAt" to System.currentTimeMillis()
-            )))
+            awaitWithRetry("فعال‌سازی نسخهٔ کامل مطالب") {
+                Tasks.await(root.set(mapOf(
+                    "ownerUid" to uid, "schemaVersion" to 3,
+                    "activeGeneration" to generation,
+                    "teacherName" to AuthPreferences.currentName(context),
+                    "recordCount" to desired.size, "updatedAt" to System.currentTimeMillis()
+                )))
+            }
             // Keep the previous generation as a recovery point. Cleanup is intentionally
             // deferred to a separately verified maintenance operation.
             "مطالب منتشرشده با ساختار رکوردی و بدون محدودیت payload بزرگ به‌روزرسانی شد."
@@ -139,6 +166,8 @@ object CloudMaterialsSync {
                     val result = JSONObject().put("format", "darsyar-shared-materials").put("version", 3)
                         .put("teacherName", document.getString("teacherName") ?: "استاد")
                     val classRows = JSONArray(); val courseRows = JSONArray(); val lectureRows = JSONArray()
+                    val lectureTextChunks = mutableMapOf<Long, MutableMap<String, MutableMap<Int, String>>>()
+                    val lectureManifests = mutableMapOf<Long, Map<String, Int>>()
                     rows.forEach { row ->
                         val data = row.data ?: return@forEach
                         when (data["recordType"] as? String) {
@@ -153,8 +182,41 @@ object CloudMaterialsSync {
                             "lecture" -> {
                                 val item = JSONObject()
                                 data.forEach { (key, value) -> item.put(key, value ?: JSONObject.NULL) }
+                                val lectureId = (data["id"] as? Number)?.toLong()
+                                    ?: error("شناسهٔ جلسهٔ منتشرشده معتبر نیست.")
+                                val manifest = (data["textChunkCounts"] as? Map<*, *>)
+                                    ?.mapNotNull { (key, value) ->
+                                        val count = (value as? Number)?.toInt() ?: return@mapNotNull null
+                                        key as? String to count
+                                    }?.toMap().orEmpty()
+                                lectureManifests[lectureId] = manifest
                                 lectureRows.put(item)
                             }
+                            "lecture_text_chunk" -> {
+                                val lectureId = (data["lectureId"] as? Number)?.toLong()
+                                    ?: error("شناسهٔ بخش متن جلسه معتبر نیست.")
+                                val field = data["field"] as? String
+                                    ?: error("نوع بخش متن جلسه مشخص نیست.")
+                                val index = (data["index"] as? Number)?.toInt()
+                                    ?: error("شمارهٔ بخش متن جلسه معتبر نیست.")
+                                val value = data["value"] as? String
+                                    ?: error("محتوای بخش متن جلسه خالی یا نامعتبر است.")
+                                lectureTextChunks.getOrPut(lectureId) { mutableMapOf() }
+                                    .getOrPut(field) { mutableMapOf() }[index] = value
+                            }
+                        }
+                    }
+                    for (index in 0 until lectureRows.length()) {
+                        val item = lectureRows.getJSONObject(index)
+                        val lectureId = item.optLong("id")
+                        val manifest = lectureManifests[lectureId].orEmpty()
+                        manifest.forEach { (field, count) ->
+                            val parts = lectureTextChunks[lectureId]?.get(field)
+                                ?: error("بخش‌های متن جلسه $lectureId برای فیلد $field دریافت نشده‌اند.")
+                            require(count > 0 && (0 until count).all { it in parts }) {
+                                "ارسال متن جلسه $lectureId ناقص است؛ همگام‌سازی متوقف شد تا متن ناقص وارد برنامه نشود."
+                            }
+                            item.put(field, buildString { for (part in 0 until count) append(parts.getValue(part)) })
                         }
                     }
                     result.put("classes", classRows).put("courses", courseRows).put("lectures", lectureRows)
@@ -364,6 +426,53 @@ object CloudMaterialsSync {
             }
             "مطالب آنلاین به‌روزرسانی شد: ${uniqueLectures.size} جلسه یکتا از ${documents.size} حساب استاد."
         }
+    }
+
+    private const val MAX_TEXT_CHUNK_BYTES = 256 * 1024
+    private const val MAX_UPLOAD_ATTEMPTS = 3
+
+    private fun splitUtf8Text(value: String, maxBytes: Int): List<String> {
+        if (value.isEmpty()) return listOf("")
+        val chunks = mutableListOf<String>()
+        var start = 0
+        var index = 0
+        var currentBytes = 0
+        while (index < value.length) {
+            val codePoint = value.codePointAt(index)
+            val charCount = Character.charCount(codePoint)
+            val piece = value.substring(index, index + charCount)
+            val pieceBytes = piece.toByteArray(Charsets.UTF_8).size
+            require(pieceBytes <= maxBytes) { "یک نویسه از حد مجاز اندازهٔ بخش بزرگ‌تر است." }
+            if (currentBytes > 0 && currentBytes + pieceBytes > maxBytes) {
+                chunks += value.substring(start, index)
+                start = index
+                currentBytes = 0
+            }
+            currentBytes += pieceBytes
+            index += charCount
+        }
+        chunks += value.substring(start)
+        return chunks
+    }
+
+    private fun <T> awaitWithRetry(label: String, operation: () -> T): T {
+        var lastError: Exception? = null
+        repeat(MAX_UPLOAD_ATTEMPTS) { attempt ->
+            try {
+                return operation()
+            } catch (error: Exception) {
+                lastError = error
+                if (attempt < MAX_UPLOAD_ATTEMPTS - 1) {
+                    try {
+                        Thread.sleep(500L * (1L shl attempt))
+                    } catch (interrupted: InterruptedException) {
+                        Thread.currentThread().interrupt()
+                        throw IllegalStateException("ارسال متوقف شد.", interrupted)
+                    }
+                }
+            }
+        }
+        throw IllegalStateException("$label پس از $MAX_UPLOAD_ATTEMPTS تلاش ناموفق بود؛ نسخهٔ قبلی همچنان فعال است.", lastError)
     }
 
     private fun stableId(owner: String, key: String): Long {
