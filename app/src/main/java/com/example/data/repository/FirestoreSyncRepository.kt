@@ -14,6 +14,7 @@ import com.google.android.gms.tasks.Task
 import com.google.firebase.firestore.DocumentSnapshot
 import com.google.firebase.firestore.FieldValue
 import com.google.firebase.firestore.FirebaseFirestore
+import org.json.JSONObject
 import kotlinx.coroutines.suspendCancellableCoroutine
 import kotlin.coroutines.resume
 import kotlin.coroutines.resumeWithException
@@ -44,6 +45,8 @@ class FirestoreSyncRepository(
         const val RECORDS = "records"
         const val GENERATIONS = "generations"
         const val BATCH_LIMIT = 400
+        const val MAX_TEXT_CHUNK_BYTES = 256 * 1024
+        const val MAX_RECORD_BYTES = 700 * 1024
     }
 
     suspend fun restoreFromCloud(uid: String): Boolean {
@@ -97,9 +100,16 @@ class FirestoreSyncRepository(
     }
 
     suspend fun uploadSnapshot(uid: String) {
-        // Shared published records are imported with negative IDs. They belong to
-        // their original teachers and must never enter this account's private backup.
-        val allClasses = classDao.getAllForBackup().filter { it.id > 0L }
+        data class BackupRows(
+            val classes: List<ClassEntity>, val courses: List<CourseEntity>,
+            val lectures: List<LectureEntity>, val folders: List<TeacherFolderEntity>
+        )
+        val rows = database.withTransaction {
+            BackupRows(classDao.getAllForBackup(), courseDao.getAllForBackup(),
+                lectureDao.getAllForBackup(), teacherFolderDao?.observeFoldersForBackup().orEmpty())
+        }
+        // Shared published records have negative IDs and never enter this private backup.
+        val allClasses = rows.classes.filter { it.id > 0L }
         val classesWithUnknownOwner = allClasses.filter { it.ownerUid.isBlank() }
         require(classesWithUnknownOwner.isEmpty()) {
             "پشتیبان‌گیری متوقف شد: ${classesWithUnknownOwner.size} کلاس قدیمی مالک مشخصی ندارند. " +
@@ -109,19 +119,46 @@ class FirestoreSyncRepository(
         // Classes owned by other teachers are deliberately excluded from this
         // private account snapshot; they remain under their original owners.
         val ownedClassIds = classes.map { it.id }.toSet()
-        val courses = courseDao.getAllForBackup().filter {
-            it.id > 0L && it.classId in ownedClassIds
-        }
-        val lectures = lectureDao.getAllForBackup()
-            .filter { it.id > 0L && it.classId in ownedClassIds }
+        val courses = rows.courses.filter { it.id > 0L && it.classId in ownedClassIds }
+        val lectures = rows.lectures.filter { it.id > 0L && it.classId in ownedClassIds }
 
         val root = firestore.collection(TEACHER_DATA).document(uid)
         val generationId = System.currentTimeMillis().toString() + "_" + UUID.randomUUID().toString().replace("-", "")
         val records = root.collection(GENERATIONS).document(generationId).collection(RECORDS)
         val desired = linkedMapOf<String, Map<String, Any?>>()
         classes.forEach { desired["class_${it.id}"] = mapOf("recordType" to "class") + it.toCloudMap() }
-        courses.forEach { desired["course_${it.id}"] = mapOf("recordType" to "course") + it.toCloudMap() }
-        lectures.forEach { desired["lecture_${it.id}"] = mapOf("recordType" to "lecture") + it.toCloudMap() }
+        courses.forEach { desired["course_${it.id}"] = mapOf("recordType" to "course", "ownerUid" to uid) + it.toCloudMap() }
+        lectures.forEach { lecture ->
+            val textFields = linkedMapOf<String, String?>(
+                "transcript" to lecture.transcript, "originalTranscript" to lecture.originalTranscript,
+                "aiSummary" to lecture.aiSummary, "aiKeyPoints" to lecture.aiKeyPoints,
+                "aiQuizJson" to lecture.aiQuizJson, "tags" to lecture.tags
+            )
+            val manifest = linkedMapOf<String, Int>()
+            textFields.forEach { (field, value) ->
+                if (value != null) {
+                    val chunks = splitUtf8Text(value, MAX_TEXT_CHUNK_BYTES)
+                    manifest[field] = chunks.size
+                    chunks.forEachIndexed { index, chunk ->
+                        desired["lecture_text_${lecture.id}_${field}_${index}"] = mapOf(
+                            "recordType" to "lecture_text_chunk", "ownerUid" to uid,
+                            "lectureId" to lecture.id, "field" to field, "index" to index, "value" to chunk
+                        )
+                    }
+                }
+            }
+            val metadata = lecture.toCloudMap().toMutableMap().apply {
+                textFields.forEach { (field, value) -> if (value != null) this[field] = "" }
+                put("aiSummary", null); put("aiKeyPoints", null); put("aiQuizJson", null)
+                put("textChunkCounts", manifest); put("ownerUid", uid)
+            }
+            desired["lecture_${lecture.id}"] = mapOf("recordType" to "lecture") + metadata
+        }
+        desired.forEach { (id, data) ->
+            require(JSONObject(data).toString().toByteArray(Charsets.UTF_8).size <= MAX_RECORD_BYTES) {
+                "رکورد $id بیش از اندازه بزرگ است؛ پشتیبان‌گیری متوقف شد تا اطلاعات ناقص ذخیره نشود."
+            }
+        }
 
         // Write a fresh immutable generation; never overwrite the active backup.
         desired.entries.toList().chunked(BATCH_LIMIT).forEach { chunk ->
@@ -130,13 +167,13 @@ class FirestoreSyncRepository(
             batch.commit().awaitResult()
         }
 
-        // Verify all expected document IDs before switching the active pointer.
         val verified = records.get().awaitResult().documents
-        if (verified.size != desired.size || verified.map { it.id }.toSet() != desired.keys) {
-            throw IllegalStateException("نسخهٔ تازهٔ پشتیبان کامل تأیید نشد؛ نسخهٔ قبلی همچنان فعال باقی ماند.")
-        }
+        val verifiedById = verified.associateBy { it.id }
+        if (verified.size != desired.size || verified.map { it.id }.toSet() != desired.keys ||
+            desired.any { (id, expected) -> verifiedById[id]?.data != expected }
+        ) throw IllegalStateException("محتوای نسخهٔ تازهٔ پشتیبان کامل تأیید نشد؛ نسخهٔ قبلی همچنان فعال باقی ماند.")
 
-        val folderRows = teacherFolderDao?.observeFoldersForBackup()?.filter { it.ownerUid == uid }.orEmpty()
+        val folderRows = rows.folders.filter { it.ownerUid == uid }
         // This root update is the commit point. Previous generations are retained.
         root.set(
             mapOf(
@@ -164,11 +201,15 @@ class FirestoreSyncRepository(
                 .collection(GENERATIONS).document(generationId).collection(RECORDS)
         }
         val documents = records.get().awaitResult().documents
-        val expectedCount = rootSnapshot.getLong("recordCount")?.toInt()
+        val latestRoot = firestore.collection(TEACHER_DATA).document(uid).get().awaitResult()
+        if (generationId != null && latestRoot.getString("activeGeneration") != generationId) {
+            throw IllegalStateException("نسخهٔ فعال پشتیبان در زمان خواندن تغییر کرد؛ اطلاعات محلی حفظ شد.")
+        }
+        val expectedCount = latestRoot.getLong("recordCount")?.toInt()
             ?: throw IllegalStateException(
                 "تعداد رکوردهای پشتیبان ابری مشخص نیست؛ برای جلوگیری از بازیابی ناقص، اطلاعات محلی دست‌نخورده باقی ماند."
             )
-        if (documents.size != expectedCount) {
+        if (documents.size != expectedCount || rootSnapshot.getLong("recordCount") != latestRoot.getLong("recordCount")) {
             throw IllegalStateException(
                 "تعداد رکوردهای ابری با مقدار ثبت‌شده سازگار نیست (${documents.size} از $expectedCount). " +
                     "احتمالاً همگام‌سازی ناقص بوده است؛ اطلاعات محلی دست‌نخورده باقی ماند."
@@ -178,10 +219,11 @@ class FirestoreSyncRepository(
         val classes = mutableListOf<ClassEntity>()
         val courses = mutableListOf<CourseEntity>()
         val lectures = mutableListOf<LectureEntity>()
+        val lectureChunks = mutableMapOf<Long, MutableMap<String, MutableMap<Int, String>>>()
         val folders = if (teacherFolderDao == null) {
             emptyList()
         } else {
-            val rawFolders = rootSnapshot.get("folders") as? List<*>
+            val rawFolders = latestRoot.get("folders") as? List<*>
                 ?: throw IllegalStateException(
                     "فهرست پوشه‌های پشتیبان ابری موجود نیست؛ برای جلوگیری از حذف پوشه‌های محلی، بازیابی متوقف شد."
                 )
@@ -208,10 +250,53 @@ class FirestoreSyncRepository(
                 }
                 "course" -> courses += data.toCourseEntity()
                 "lecture" -> lectures += data.toLectureEntity()
+                "lecture_text_chunk" -> {
+                    if (data["ownerUid"] != uid) throw IllegalStateException("مالک بخش متن جلسه معتبر نیست.")
+                    val lectureId = (data["lectureId"] as? Number)?.toLong()
+                        ?: throw IllegalStateException("شناسهٔ جلسه در بخش متن معتبر نیست.")
+                    val field = data["field"] as? String
+                        ?: throw IllegalStateException("نوع بخش متن جلسه مشخص نیست.")
+                    if (field !in setOf("transcript", "originalTranscript", "aiSummary", "aiKeyPoints", "aiQuizJson", "tags")) {
+                        throw IllegalStateException("نوع فیلد متن جلسه در پشتیبان معتبر نیست.")
+                    }
+                    val index = (data["index"] as? Number)?.toInt()
+                        ?: throw IllegalStateException("شمارهٔ بخش متن جلسه معتبر نیست.")
+                    val value = data["value"] as? String
+                        ?: throw IllegalStateException("محتوای بخش متن جلسه معتبر نیست.")
+                    val parts = lectureChunks.getOrPut(lectureId) { mutableMapOf() }.getOrPut(field) { mutableMapOf() }
+                    if (index < 0 || parts.put(index, value) != null) throw IllegalStateException("بخش تکراری یا نامعتبر در متن جلسه پیدا شد.")
+                }
                 else -> throw IllegalStateException(
                     "نوع یکی از رکوردهای پشتیبان ابری معتبر نیست؛ اطلاعات محلی دست‌نخورده باقی ماند."
                 )
             }
+        }
+        lectures.indices.forEach { i ->
+            val lecture = lectures[i]
+            val metadata = documents.firstOrNull { it.id == "lecture_${lecture.id}" }?.data
+                ?: throw IllegalStateException("اطلاعات اصلی یکی از جلسات پشتیبان موجود نیست.")
+            val manifest = (metadata["textChunkCounts"] as? Map<*, *>)?.mapNotNull { (k, v) ->
+                val field = k as? String ?: return@mapNotNull null
+                val count = (v as? Number)?.toInt() ?: return@mapNotNull null
+                field to count
+            }?.toMap().orEmpty()
+            val rebuilt = mutableMapOf<String, String>()
+            manifest.forEach { (field, count) ->
+                val parts = lectureChunks[lecture.id]?.get(field)
+                    ?: throw IllegalStateException("بخش‌های متن جلسه ناقص است؛ اطلاعات محلی حفظ شد.")
+                if (count <= 0 || parts.size != count || (0 until count).any { it !in parts }) {
+                    throw IllegalStateException("بخش‌های متن جلسه ناقص است؛ اطلاعات محلی حفظ شد.")
+                }
+                rebuilt[field] = buildString { for (n in 0 until count) append(parts.getValue(n)) }
+            }
+            lectures[i] = lecture.copy(
+                transcript = rebuilt["transcript"] ?: lecture.transcript,
+                originalTranscript = rebuilt["originalTranscript"] ?: lecture.originalTranscript,
+                aiSummary = rebuilt["aiSummary"] ?: lecture.aiSummary,
+                aiKeyPoints = rebuilt["aiKeyPoints"] ?: lecture.aiKeyPoints,
+                aiQuizJson = rebuilt["aiQuizJson"] ?: lecture.aiQuizJson,
+                tags = rebuilt["tags"] ?: lecture.tags
+            )
         }
         val classIds = classes.map { it.id }.toSet()
         if (courses.any { it.classId !in classIds } ||
@@ -304,6 +389,26 @@ class FirestoreSyncRepository(
             if (courses.isNotEmpty()) courseDao.insertAllForRestore(courses)
             if (lectures.isNotEmpty()) lectureDao.insertAllForRestore(lectures)
         }
+    }
+
+    private fun splitUtf8Text(value: String, maxBytes: Int): List<String> {
+        if (value.isEmpty()) return listOf("")
+        val chunks = mutableListOf<String>()
+        var start = 0; var index = 0; var bytes = 0
+        while (index < value.length) {
+            val codePoint = value.codePointAt(index)
+            val chars = Character.charCount(codePoint)
+            val pieceBytes = String(Character.toChars(codePoint)).toByteArray(Charsets.UTF_8).size
+            require(pieceBytes <= maxBytes)
+            if (bytes > 0 && bytes + pieceBytes > maxBytes) {
+                chunks += value.substring(start, index)
+                start = index; bytes = 0
+            }
+            bytes += pieceBytes
+            index += chars
+        }
+        chunks += value.substring(start)
+        return chunks
     }
 
     private fun ClassEntity.toCloudMap(): Map<String, Any?> = mapOf(
