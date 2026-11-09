@@ -2,7 +2,7 @@ import { randomUUID } from "node:crypto";
 import { initializeApp } from "firebase-admin/app";
 import { FieldValue, getFirestore } from "firebase-admin/firestore";
 import { CallableRequest, HttpsError, onCall } from "firebase-functions/v2/https";
-import { sanitizePatch, validateRecordId, validateRecordType, RecordType } from "./validation.js";
+import { assertAdminMutationAllowed, sanitizePatch, validateRecordId, validateRecordType, RecordType } from "./validation.js";
 
 initializeApp();
 const db = getFirestore();
@@ -189,9 +189,7 @@ export const adminUpdateTeacherRecord = onCall({ region: REGION, timeoutSeconds:
     if (!root.exists || root.get("ownerUid") !== teacherUid || root.get("schemaVersion") !== 2) {
       throw new HttpsError("failed-precondition", "پشتیبان خصوصی استاد آماده مدیریت نیست یا ساختار آن پشتیبانی نمی‌شود.");
     }
-    if ((root.get("syncLockUntilMillis") ?? 0) > Date.now()) {
-      throw new HttpsError("aborted", "پشتیبان‌گیری استاد در حال انجام است؛ کمی بعد دوباره تلاش کنید.");
-    }
+    assertAdminMutationAllowed(root.get("adminPending"), root.get("syncLockUntilMillis"));
     requireOwnedRecord(record, type, teacherUid);
 
     if (type !== "class") {
@@ -247,9 +245,7 @@ export const adminDeleteTeacherRecord = onCall({ region: REGION, timeoutSeconds:
     if (!root.exists || root.get("ownerUid") !== teacherUid || root.get("schemaVersion") !== 2) {
       throw new HttpsError("failed-precondition", "پشتیبان خصوصی استاد آماده مدیریت نیست یا ساختار آن پشتیبانی نمی‌شود.");
     }
-    if ((root.get("syncLockUntilMillis") ?? 0) > Date.now()) {
-      throw new HttpsError("aborted", "پشتیبان‌گیری استاد در حال انجام است؛ کمی بعد دوباره تلاش کنید.");
-    }
+    assertAdminMutationAllowed(root.get("adminPending"), root.get("syncLockUntilMillis"));
     requireOwnedRecord(record, type, teacherUid);
 
     let toDelete: FirebaseFirestore.DocumentReference[] = [recordRef];
