@@ -48,18 +48,54 @@ object CloudMaterialsSync {
                 lecture.id > 0L && lecture.isPublished &&
                     lecture.classId?.let { it > 0L && it in visibleClassIds } == true
             }
-            val payload = JSONObject()
-                .put("format", "darsyar-shared-materials")
-                .put("version", 1)
-                .put("teacherName", AuthPreferences.currentName(context))
-                .put("classes", JSONArray().apply { classes.forEach { put(it.copy(ownerUid = uid).toJson()) } })
-                .put("courses", JSONArray().apply { courses.forEach { put(it.toJson()) } })
-                .put("lectures", JSONArray().apply { lectures.map { it.toJson() }.forEach { put(it) } })
-            Tasks.await(
-                firestore.collection("shared_materials").document(uid)
-                    .set(mapOf("ownerUid" to uid, "payload" to payload.toString(), "updatedAt" to System.currentTimeMillis()))
-            )
-            "مطالب متنی و لینک‌های صوت با موفقیت در فضای آنلاین به‌روزرسانی شد."
+            val root = firestore.collection("shared_materials").document(uid)
+            val records = root.collection("records")
+            val desired = linkedMapOf<String, Map<String, Any?>>()
+            classes.forEach { item ->
+                desired["class_${item.id}"] = mapOf(
+                    "recordType" to "class", "id" to item.id, "name" to item.name,
+                    "teacherName" to item.teacherName, "description" to item.description,
+                    "term" to item.term, "classDateMillis" to item.classDateMillis,
+                    "isPublished" to item.isPublished, "createdAtMillis" to item.createdAtMillis,
+                    "ownerUid" to uid
+                )
+            }
+            courses.forEach { item ->
+                desired["course_${item.id}"] = mapOf(
+                    "recordType" to "course", "id" to item.id, "classId" to item.classId,
+                    "name" to item.name, "teacherName" to item.teacherName,
+                    "description" to item.description, "createdAtMillis" to item.createdAtMillis
+                )
+            }
+            lectures.forEach { item ->
+                desired["lecture_${item.id}"] = mapOf(
+                    "recordType" to "lecture", "id" to item.id, "title" to item.title,
+                    "courseName" to item.courseName, "professorName" to item.professorName,
+                    "classId" to item.classId, "courseId" to item.courseId,
+                    "dateMillis" to item.dateMillis, "audioUrl" to item.audioUrl,
+                    "audioDurationMs" to item.audioDurationMs, "transcript" to item.transcript,
+                    "originalTranscript" to item.originalTranscript, "aiSummary" to item.aiSummary,
+                    "aiKeyPoints" to item.aiKeyPoints, "tags" to item.tags,
+                    "isPublished" to item.isPublished, "lastEditedMillis" to item.lastEditedMillis,
+                    "sortOrder" to item.sortOrder
+                )
+            }
+            val existing = Tasks.await(records.get()).documents
+            val operations = mutableListOf<Pair<com.google.firebase.firestore.DocumentReference, Map<String, Any?>?>>()
+            desired.forEach { (id, data) -> operations += records.document(id) to data }
+            existing.filter { it.id !in desired.keys }.forEach { operations += it.reference to null }
+            operations.chunked(400).forEach { chunk ->
+                val batch = firestore.batch()
+                chunk.forEach { (ref, data) -> if (data == null) batch.delete(ref) else batch.set(ref, data) }
+                Tasks.await(batch.commit())
+            }
+            // Root marker is committed only after every record has been written.
+            Tasks.await(root.set(mapOf(
+                "ownerUid" to uid, "schemaVersion" to 2,
+                "teacherName" to AuthPreferences.currentName(context),
+                "recordCount" to desired.size, "updatedAt" to System.currentTimeMillis()
+            )))
+            "مطالب منتشرشده با ساختار رکوردی و بدون محدودیت payload بزرگ به‌روزرسانی شد."
         } else {
             val documents = Tasks.await(firestore.collection("shared_materials").get()).documents
                 .filter { it.id != uid }
@@ -68,8 +104,34 @@ object CloudMaterialsSync {
             val allLectures = mutableListOf<LectureEntity>()
             val validPayloads = documents.mapNotNull { document ->
                 val owner = document.getString("ownerUid") ?: document.id
-                val payloadText = document.getString("payload") ?: return@mapNotNull null
-                val payload = runCatching { JSONObject(payloadText) }.getOrNull() ?: return@mapNotNull null
+                val payload = if (document.getLong("schemaVersion") == 2L) {
+                    val rows = Tasks.await(document.reference.collection("records").get()).documents
+                    val result = JSONObject().put("format", "darsyar-shared-materials").put("version", 2)
+                        .put("teacherName", document.getString("teacherName") ?: "استاد")
+                    val classRows = JSONArray(); val courseRows = JSONArray(); val lectureRows = JSONArray()
+                    rows.forEach { row ->
+                        val data = row.data ?: return@forEach
+                        when (data["recordType"] as? String) {
+                            "class" -> classRows.put(JSONObject().put("id", data["id"]).put("name", data["name"])
+                                .put("teacherName", data["teacherName"]).put("description", data["description"])
+                                .put("term", data["term"]).put("classDateMillis", data["classDateMillis"])
+                                .put("isPublished", data["isPublished"]).put("createdAtMillis", data["createdAtMillis"])
+                                .put("ownerUid", owner))
+                            "course" -> courseRows.put(JSONObject().put("id", data["id"]).put("classId", data["classId"])
+                                .put("name", data["name"]).put("teacherName", data["teacherName"])
+                                .put("description", data["description"]).put("createdAtMillis", data["createdAtMillis"]))
+                            "lecture" -> {
+                                val item = JSONObject()
+                                data.forEach { (key, value) -> item.put(key, value ?: JSONObject.NULL) }
+                                lectureRows.put(item)
+                            }
+                        }
+                    }
+                    result.put("classes", classRows).put("courses", courseRows).put("lectures", lectureRows)
+                } else {
+                    val legacyText = document.getString("payload") ?: return@mapNotNull null
+                    runCatching { JSONObject(legacyText) }.getOrNull()
+                } ?: return@mapNotNull null
                 if (payload.optString("format") != "darsyar-shared-materials") null else owner to payload
             }
 
