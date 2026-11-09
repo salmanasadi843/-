@@ -2,6 +2,7 @@ package com.example.data.repository
 
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertThrows
+import org.junit.Assert.assertTrue
 import org.junit.Test
 
 class BackupTextChunkerTest {
@@ -11,7 +12,7 @@ class BackupTextChunkerTest {
         val chunks = BackupTextChunker.splitUtf8(source, 24)
 
         assertEquals(source, BackupTextChunker.joinUtf8(chunks.mapIndexed { i, s -> i to s }.toMap(), chunks.size))
-        chunks.forEach { chunk -> assert(chunk.toByteArray(Charsets.UTF_8).size <= 24) }
+        chunks.forEach { chunk -> assertTrue(chunk.toByteArray(Charsets.UTF_8).size <= 24) }
     }
 
     @Test
