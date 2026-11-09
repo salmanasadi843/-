@@ -186,8 +186,9 @@ object CloudMaterialsSync {
                                     ?: error("شناسهٔ جلسهٔ منتشرشده معتبر نیست.")
                                 val manifest = (data["textChunkCounts"] as? Map<*, *>)
                                     ?.mapNotNull { (key, value) ->
+                                        val field = key as? String ?: return@mapNotNull null
                                         val count = (value as? Number)?.toInt() ?: return@mapNotNull null
-                                        key as? String to count
+                                        field to count
                                     }?.toMap().orEmpty()
                                 lectureManifests[lectureId] = manifest
                                 lectureRows.put(item)
