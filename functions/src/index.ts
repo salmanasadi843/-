@@ -113,6 +113,7 @@ export const beginCloudRestore = onCall({ region: REGION, timeoutSeconds: 30 }, 
     transaction.update(rootRef, {
       syncLockToken: restoreLockToken,
       syncLockUntilMillis: Date.now() + 10 * 60 * 1000,
+      syncLockMode: "restore",
     });
     return safeVersion;
   });
@@ -157,6 +158,7 @@ export const completeAdminRestore = onCall({ region: REGION, timeoutSeconds: 30 
     const updates: Record<string, unknown> = {
       syncLockToken: FieldValue.delete(),
       syncLockUntilMillis: FieldValue.delete(),
+      syncLockMode: FieldValue.delete(),
     };
     if (complete && root.get("adminPending") === true) {
       updates.adminPending = false;
