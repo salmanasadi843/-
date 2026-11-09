@@ -17,17 +17,17 @@ class AdminCloudBackupValidatorTest {
     }
 
     @Test fun rejectsForeignRecordOwner() {
-        val bad = validBackup().replace("\\"ownerUid\\":\\"teacher-A\\",\\"recordType\\":\\"class\\",\\"id\\":12", "\\"ownerUid\\":\\"teacher-B\\",\\"recordType\\":\\"class\\",\\"id\\":12")
+        val bad = validBackup().replace("teacher-A","teacher-B")
         assertThrows(IllegalArgumentException::class.java) { AdminCloudBackupValidator.validate(bad) }
     }
 
     @Test fun rejectsCountMismatch() {
-        val bad = validBackup().replace("\\"recordCount\\":1,\\"teachers\\":", "\\"recordCount\\":2,\\"teachers\\":")
+        val bad = validBackup().replace(""" "recordCount":1,"teachers":""".trim(), """"recordCount":2,"teachers":""")
         assertThrows(IllegalArgumentException::class.java) { AdminCloudBackupValidator.validate(bad) }
     }
 
     @Test fun rejectsLegacySchemaForAutomaticRestore() {
-        val bad = validBackup().replace("\\"schemaVersion\\":3", "\\"schemaVersion\\":2")
+        val bad = validBackup().replace("schemaVersion":3, "schemaVersion":2)
         assertThrows(IllegalArgumentException::class.java) { AdminCloudBackupValidator.validate(bad) }
     }
 }
