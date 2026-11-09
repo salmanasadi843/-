@@ -56,8 +56,9 @@ jobs:
 
       - name: Build APK signed with the existing upload key
         env:
-          STORE_PASSWORD: ${{ secrets.STORE_PASSWORD }}
-          KEY_PASSWORD: ${{ secrets.KEY_PASSWORD }}
+          STORE_PASSWORD: ${{ secrets.DARSYAR_STORE_PASSWORD }}
+          KEY_PASSWORD: ${{ secrets.DARSYAR_KEY_PASSWORD }}
+          KEY_ALIAS: ${{ secrets.DARSYAR_KEY_ALIAS }}
         run: gradle assembleRelease --stacktrace
 
       - name: Verify APK signature
