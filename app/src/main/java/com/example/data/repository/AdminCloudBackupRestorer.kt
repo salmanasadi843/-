@@ -28,8 +28,14 @@ class AdminCloudBackupRestorer(
             val rootRef = firestore.collection("teacher_data").document(teacher.ownerUid)
             val oldRoot = rootRef.get().awaitResult()
             val oldData = oldRoot.data
-            if (oldRoot.exists() && oldData?.get("ownerUid") != teacher.ownerUid) {
-                throw IllegalStateException("مالک سند ابری استاد ${teacher.ownerUid} ناسازگار است؛ بازیابی این استاد متوقف شد.")
+            if (oldRoot.exists()) {
+                val existingOwner = oldData?.get("ownerUid") as? String
+                if (!existingOwner.isNullOrBlank() && existingOwner != teacher.ownerUid) {
+                    throw IllegalStateException("مالک سند ابری استاد ${teacher.ownerUid} ناسازگار است؛ بازیابی این استاد متوقف شد.")
+                }
+                if (existingOwner.isNullOrBlank() && teacher.schemaVersion == 3) {
+                    throw IllegalStateException("سند ابری استاد ${teacher.ownerUid} مالک مشخصی ندارد؛ بازیابی خودکار متوقف شد.")
+                }
             }
 
             val newGeneration = "admin_restore_${System.currentTimeMillis()}_${UUID.randomUUID().toString().replace("-", "")}"
@@ -66,6 +72,9 @@ class AdminCloudBackupRestorer(
 
             val rootMap = mutableMapOf<String, Any?>()
             oldData?.forEach { (key, value) -> rootMap[key] = value }
+            // Remove embedded legacy arrays before writing the small generation pointer.
+            // Keeping these arrays would risk exceeding Firestore's 1 MiB document limit.
+            listOf("classes", "courses", "lectures", "payload", "legacyPayload").forEach(rootMap::remove)
             // Restore the teacher-level metadata captured in the same backup,
             // especially the folder hierarchy. Pointer fields are always generated
             // locally and never trusted from the imported JSON.
