@@ -73,6 +73,7 @@ object AdminCloudBackupValidator {
             if (schema == 3) require(generation.isNotEmpty()) { "نسخهٔ فعال استاد $ownerUid مشخص نیست." }
 
             val folderIds = mutableSetOf<Long>()
+            val folderParents = mutableListOf<Long?>()
             val rawFolders = root.opt("folders")
             if (schema == 3) require(rawFolders is org.json.JSONArray) {
                 "فهرست پوشه‌های استاد $ownerUid در پشتیبان نسخهٔ ۳ موجود نیست."
@@ -88,6 +89,14 @@ object AdminCloudBackupValidator {
                         folder.optString("ownerUid") == ownerUid &&
                         folder.optString("name").isNotBlank()
                     ) { "شناسه، مالک یا نام یکی از پوشه‌های استاد $ownerUid معتبر نیست." }
+                    val rawParent = folder.opt("parentFolderId")
+                    val parentId = if (rawParent == null || rawParent == JSONObject.NULL) null
+                        else (rawParent as? Number)?.toLong()?.takeIf { it > 0 }
+                            ?: throw IllegalArgumentException("شناسهٔ پوشهٔ والد برای استاد $ownerUid معتبر نیست.")
+                    folderParents += parentId
+                }
+                require(folderParents.filterNotNull().all { it in folderIds }) {
+                    "یکی از پوشه‌های استاد $ownerUid به پوشهٔ والد ناموجود اشاره می‌کند."
                 }
             }
 
@@ -137,6 +146,13 @@ object AdminCloudBackupValidator {
                         val entityId = data.optLong("id", Long.MIN_VALUE)
                         require(entityId > 0 && id == "class_$entityId" && classIds.add(entityId)) {
                             "شناسهٔ کلاس $id با محتوای رکورد سازگار یا یکتا نیست."
+                        }
+                        val rawFolderId = data.opt("folderId")
+                        if (rawFolderId != null && rawFolderId != JSONObject.NULL) {
+                            val folderId = (rawFolderId as? Number)?.toLong()
+                            require(folderId != null && folderId in folderIds) {
+                                "پوشهٔ ارجاع‌شده در کلاس $id برای استاد $ownerUid وجود ندارد."
+                            }
                         }
                     }
                     "course" -> {
