@@ -210,6 +210,7 @@ service cloud.firestore {
                     || (isPrimaryTeacher()
                         && (!('ownerUid' in resource.data)
                             || resource.data.ownerUid == null
+                            || resource.data.ownerUid == ''
                             || resource.data.ownerUid == ownerUid)
                         && request.resource.data.ownerUid == ownerUid
                         && request.resource.data.diff(resource.data).affectedKeys()
