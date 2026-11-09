@@ -7,6 +7,14 @@ service cloud.firestore {
              && request.auth.token.email == 'salmanasadi843@gmail.com';
     }
 
+    // The primary admin may inspect any teacher's private backup for
+    // cross-teacher backup/recovery. This grants read access only; writes
+    // remain restricted to the owner account.
+    function canReadTeacherBackup(ownerUid) {
+      return request.auth != null
+             && (request.auth.uid == ownerUid || isPrimaryTeacher());
+    }
+
     function approvedTeacher(uid) {
       return request.auth != null
              && request.auth.uid == uid
@@ -191,8 +199,7 @@ service cloud.firestore {
 
     // نسخه پشتیبان خصوصی درس‌یار؛ فقط صاحب حساب استاد اجازه دسترسی دارد
     match /teacher_data/{ownerUid} {
-      allow read: if request.auth != null
-                  && request.auth.uid == ownerUid;
+      allow read: if canReadTeacherBackup(ownerUid);
 
       allow create, update: if approvedTeacher(ownerUid)
                             && request.resource.data.ownerUid == ownerUid;
@@ -200,16 +207,14 @@ service cloud.firestore {
       allow delete: if approvedTeacher(ownerUid);
 
       match /records/{recordId} {
-        allow read: if request.auth != null
-                    && request.auth.uid == ownerUid;
+        allow read: if canReadTeacherBackup(ownerUid);
         allow create, update, delete: if approvedTeacher(ownerUid);
       }
 
       // Immutable backup generations: a new generation is written and verified
       // before the owner document switches activeGeneration.
       match /generations/{generationId}/records/{recordId} {
-        allow read: if request.auth != null
-                    && request.auth.uid == ownerUid;
+        allow read: if canReadTeacherBackup(ownerUid);
         allow create, update: if approvedTeacher(ownerUid)
                               && request.resource.data.ownerUid == ownerUid;
         allow delete: if approvedTeacher(ownerUid)
