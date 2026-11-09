@@ -93,11 +93,8 @@ class FirestoreSyncRepository(
                 "برای جلوگیری از انتساب اشتباه اطلاعات، ابتدا مالکیت این کلاس‌ها باید بررسی شود؛ نسخهٔ ابری قبلی حفظ می‌شود."
         }
         val classes = allClasses.filter { it.ownerUid == uid }
-        val foreignClasses = allClasses.filter { it.ownerUid != uid }
-        require(foreignClasses.isEmpty()) {
-            "پشتیبان‌گیری خصوصی متوقف شد: داده‌های محلی شامل کلاس‌هایی با مالک دیگر است. " +
-                "این کلاس‌ها نباید وارد نسخهٔ پشتیبان حساب فعلی شوند."
-        }
+        // Classes owned by other teachers are deliberately excluded from this
+        // private account snapshot; they remain under their original owners.
         val ownedClassIds = classes.map { it.id }.toSet()
         val courses = courseDao.getAllForBackup().filter {
             it.id > 0L && it.classId in ownedClassIds
