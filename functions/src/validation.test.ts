@@ -1,7 +1,7 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import { HttpsError } from "firebase-functions/v2/https";
-import { sanitizePatch, validateRecordId, validateRecordType } from "./validation.js";
+import { assertAdminMutationAllowed, sanitizePatch, validateRecordId, validateRecordType } from "./validation.js";
 
 test("accepts only supported record types", () => {
   assert.equal(validateRecordType("class"), "class");
@@ -46,4 +46,16 @@ test("nullable lecture fields can be cleared", () => {
     audioUrl: null,
     aiSummary: null,
   });
+});
+
+test("admin mutations are blocked while an admin restore is pending", () => {
+  assert.throws(() => assertAdminMutationAllowed(true, 0, 100), HttpsError);
+});
+
+test("admin mutations are blocked while a sync or restore lease is active", () => {
+  assert.throws(() => assertAdminMutationAllowed(false, 101, 100), HttpsError);
+});
+
+test("admin mutations are allowed after the lease expires and no restore is pending", () => {
+  assert.doesNotThrow(() => assertAdminMutationAllowed(false, 99, 100));
 });

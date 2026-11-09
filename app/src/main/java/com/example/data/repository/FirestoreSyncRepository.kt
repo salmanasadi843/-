@@ -64,15 +64,6 @@ class FirestoreSyncRepository(
             }
             SCHEMA_VERSION -> {
                 restoreRecordDocuments(uid)
-                // Only administrator-edited snapshots require the trusted completion
-                // callable. Ordinary backups have no pending marker and must restore normally.
-                if (snapshot.getBoolean("adminPending") == true) {
-                    val expectedAdminVersion = snapshot.getLong("adminPendingVersion") ?: 0L
-                    FirebaseFunctions.getInstance("europe-west1")
-                        .getHttpsCallable("completeAdminRestore")
-                        .call(mapOf("expectedAdminPendingVersion" to expectedAdminVersion))
-                        .awaitResult()
-                }
                 true
             }
             else -> throw IllegalStateException(
@@ -127,7 +118,8 @@ class FirestoreSyncRepository(
             val version = current.getLong("adminPendingVersion") ?: 0L
             val lockData = mutableMapOf<String, Any?>(
                 "syncLockToken" to lockToken,
-                "syncLockUntilMillis" to now + lockLeaseMillis
+                "syncLockUntilMillis" to now + lockLeaseMillis,
+                "syncLockMode" to "backup"
             )
             if (!current.exists()) {
                 // Bootstrap a valid schema-v2 root atomically with the first backup lease.
@@ -181,6 +173,7 @@ class FirestoreSyncRepository(
                     val latest = transaction.get(root)
                     val now = System.currentTimeMillis()
                     if (latest.getString("syncLockToken") != lockToken ||
+                        latest.getString("syncLockMode") != "backup" ||
                         (latest.getLong("syncLockUntilMillis") ?: 0L) <= now ||
                         latest.getBoolean("adminPending") == true ||
                         (latest.getLong("adminPendingVersion") ?: 0L) != backupVersion
@@ -209,6 +202,7 @@ class FirestoreSyncRepository(
                 val latest = transaction.get(root)
                 val now = System.currentTimeMillis()
                 if (latest.getString("syncLockToken") != lockToken ||
+                    latest.getString("syncLockMode") != "backup" ||
                     (latest.getLong("syncLockUntilMillis") ?: 0L) <= now ||
                     latest.getBoolean("adminPending") == true ||
                     (latest.getLong("adminPendingVersion") ?: 0L) != backupVersion
@@ -228,6 +222,7 @@ class FirestoreSyncRepository(
                         "adminPendingVersion" to backupVersion,
                         "syncLockToken" to FieldValue.delete(),
                         "syncLockUntilMillis" to FieldValue.delete(),
+                        "syncLockMode" to FieldValue.delete(),
                         "updatedAt" to FieldValue.serverTimestamp()
                     )
                 )
@@ -247,7 +242,8 @@ class FirestoreSyncRepository(
                                 root,
                                 mapOf(
                                     "syncLockToken" to FieldValue.delete(),
-                                    "syncLockUntilMillis" to FieldValue.delete()
+                                    "syncLockUntilMillis" to FieldValue.delete(),
+                                    "syncLockMode" to FieldValue.delete()
                                 )
                             )
                         }
@@ -259,37 +255,85 @@ class FirestoreSyncRepository(
     }
 
     private suspend fun restoreRecordDocuments(uid: String) {
-        val documents = firestore.collection(TEACHER_DATA)
-            .document(uid)
-            .collection(RECORDS)
-            .get()
+        val functions = FirebaseFunctions.getInstance("europe-west1")
+        val beginResult = functions.getHttpsCallable("beginCloudRestore")
+            .call()
             .awaitResult()
-            .documents
+        val lease = beginResult.data as? Map<*, *>
+            ?: throw IllegalStateException("قفل امن بازیابی از سرور دریافت نشد.")
+        val lockToken = lease["restoreLockToken"] as? String
+            ?: throw IllegalStateException("شناسه قفل بازیابی معتبر نیست.")
+        val expectedVersion = (lease["adminPendingVersion"] as? Number)?.toLong()
+            ?: throw IllegalStateException("نسخه پشتیبان برای بازیابی معتبر نیست.")
 
-        val classes = mutableListOf<ClassEntity>()
-        val courses = mutableListOf<CourseEntity>()
-        val lectures = mutableListOf<LectureEntity>()
-        val rootSnapshot = firestore.collection(TEACHER_DATA).document(uid).get().awaitResult()
-        val folders = teacherFolderDao?.let {
-            (rootSnapshot.get("folders") as? List<*>)?.mapNotNull { value ->
-                (value as? Map<*, *>)?.asStringMap()?.toFolderEntity()
-            }.orEmpty()
-        }.orEmpty()
+        var completed = false
+        try {
+            val root = firestore.collection(TEACHER_DATA).document(uid)
+            val documents = root.collection(RECORDS).get().awaitResult().documents
+            val rootSnapshot = root.get().awaitResult()
 
-        documents.forEach { document ->
-            val data = document.data ?: throw IllegalStateException(
-                "یکی از رکوردهای پشتیبان ابری خالی است؛ اطلاعات محلی دست‌نخورده باقی ماند."
-            )
-            when (data["recordType"] as? String) {
-                "class" -> classes += data.toClassEntity()
-                "course" -> courses += data.toCourseEntity()
-                "lecture" -> lectures += data.toLectureEntity()
-                else -> throw IllegalStateException(
-                    "نوع یکی از رکوردهای پشتیبان ابری معتبر نیست؛ اطلاعات محلی دست‌نخورده باقی ماند."
+            // The server lease blocks both admin mutations and normal cloud uploads.
+            // Verify that the lock and version still match before touching Room.
+            if (rootSnapshot.getString("syncLockToken") != lockToken ||
+                (rootSnapshot.getLong("adminPendingVersion") ?: 0L) != expectedVersion ||
+                rootSnapshot.getLong("schemaVersion") != SCHEMA_VERSION
+            ) {
+                throw IllegalStateException(
+                    "نسخه پشتیبان هنگام بازیابی تغییر کرده است؛ اطلاعات محلی دست‌نخورده باقی ماند."
                 )
             }
+
+            val classes = mutableListOf<ClassEntity>()
+            val courses = mutableListOf<CourseEntity>()
+            val lectures = mutableListOf<LectureEntity>()
+            val folders = teacherFolderDao?.let {
+                (rootSnapshot.get("folders") as? List<*>)?.mapNotNull { value ->
+                    (value as? Map<*, *>)?.asStringMap()?.toFolderEntity()
+                }.orEmpty()
+            }.orEmpty()
+
+            documents.forEach { document ->
+                val data = document.data ?: throw IllegalStateException(
+                    "یکی از رکوردهای پشتیبان ابری خالی است؛ اطلاعات محلی دست‌نخورده باقی ماند."
+                )
+                when (data["recordType"] as? String) {
+                    "class" -> classes += data.toClassEntity()
+                    "course" -> courses += data.toCourseEntity()
+                    "lecture" -> lectures += data.toLectureEntity()
+                    else -> throw IllegalStateException(
+                        "نوع یکی از رکوردهای پشتیبان ابری معتبر نیست؛ اطلاعات محلی دست‌نخورده باقی ماند."
+                    )
+                }
+            }
+
+            validateAndReplaceLocalData(classes, courses, lectures, folders)
+            functions.getHttpsCallable("completeAdminRestore")
+                .call(
+                    mapOf(
+                        "expectedAdminPendingVersion" to expectedVersion,
+                        "restoreLockToken" to lockToken,
+                        "complete" to true
+                    )
+                )
+                .awaitResult()
+            completed = true
+        } finally {
+            // If validation or the Room transaction fails, release the lease but
+            // leave adminPending intact so the teacher can retry the restore.
+            if (!completed) {
+                runCatching {
+                    functions.getHttpsCallable("completeAdminRestore")
+                        .call(
+                            mapOf(
+                                "expectedAdminPendingVersion" to expectedVersion,
+                                "restoreLockToken" to lockToken,
+                                "complete" to false
+                            )
+                        )
+                        .awaitResult()
+                }
+            }
         }
-        validateAndReplaceLocalData(classes, courses, lectures, folders)
     }
 
     private suspend fun restoreSnapshot(

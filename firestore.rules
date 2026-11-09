@@ -188,7 +188,7 @@ service cloud.firestore {
                          .hasOnly([
                            'ownerUid', 'schemaVersion', 'adminPending',
                            'adminPendingVersion', 'recordCount', 'folders',
-                           'syncLockToken', 'syncLockUntilMillis', 'updatedAt'
+                           'syncLockToken', 'syncLockUntilMillis', 'syncLockMode', 'updatedAt'
                          ]);
       allow update: if approvedTeacher(ownerUid)
                     && request.resource.data.ownerUid == ownerUid
@@ -202,7 +202,7 @@ service cloud.firestore {
                         && request.resource.data.diff(resource.data).affectedKeys()
                              .hasOnly([
                                'schemaVersion', 'recordCount', 'folders',
-                               'syncLockToken', 'syncLockUntilMillis', 'updatedAt'
+                               'syncLockToken', 'syncLockUntilMillis', 'syncLockMode', 'updatedAt'
                              ])
                       )
                     );
@@ -214,7 +214,12 @@ service cloud.firestore {
         allow read: if request.auth != null
                     && request.auth.uid == ownerUid;
         allow create, update, delete: if approvedTeacher(ownerUid)
-          && get(/databases/$(database)/documents/teacher_data/$(ownerUid)).data.adminPending != true;
+          && get(/databases/$(database)/documents/teacher_data/$(ownerUid)).data.adminPending != true
+          && (
+            get(/databases/$(database)/documents/teacher_data/$(ownerUid)).data.syncLockMode != 'restore'
+            || get(/databases/$(database)/documents/teacher_data/$(ownerUid)).data.syncLockUntilMillis == null
+            || get(/databases/$(database)/documents/teacher_data/$(ownerUid)).data.syncLockUntilMillis <= request.time.toMillis()
+          );
       }
     }
   }
