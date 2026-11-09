@@ -62,7 +62,7 @@ object AdminCloudBackupValidator {
 
             val root = entry.optJSONObject("root")
                 ?: throw IllegalArgumentException("سند اصلی استاد $ownerUid موجود نیست.")
-            val rootOwner = root.optString("ownerUid")
+            val rootOwner = if (root.isNull("ownerUid")) "" else root.optString("ownerUid")
             require(
                 if (schema == 3) rootOwner == ownerUid
                 else rootOwner.isBlank() || rootOwner == ownerUid
@@ -133,7 +133,7 @@ object AdminCloudBackupValidator {
                 require(recordType in setOf("class", "course", "lecture", "lecture_text_chunk")) {
                     "نوع رکورد $id استاد $ownerUid پشتیبانی نمی‌شود."
                 }
-                val recordOwner = data.optString("ownerUid")
+                val recordOwner = if (data.isNull("ownerUid")) "" else data.optString("ownerUid")
                 val ownerRequired = schema == 3 || recordType == "class" || recordType == "lecture_text_chunk"
                 require(
                     if (ownerRequired) recordOwner == ownerUid
@@ -141,6 +141,9 @@ object AdminCloudBackupValidator {
                 ) {
                     "مالک رکورد $id با استاد $ownerUid یکسان نیست؛ بازیابی متوقف شد."
                 }
+                // Legacy schema-two course/lecture records did not always carry ownerUid.
+                // Bind missing ownership to the teacher UID from the enclosing backup.
+                if (recordOwner.isBlank()) data.put("ownerUid", ownerUid)
                 when (recordType) {
                     "class" -> {
                         val entityId = data.optLong("id", Long.MIN_VALUE)
