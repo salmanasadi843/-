@@ -55,7 +55,7 @@ object CloudMaterialsSync {
             val legacyPublishedClasses = allClasses.filter {
                 it.id > 0L && it.isPublished && it.ownerUid.isBlank()
             }
-            require(legacyPublishedClasses.isEmpty() || classes.isNotEmpty()) {
+            require(legacyPublishedClasses.isEmpty()) {
                 "انتشار متوقف شد: ${legacyPublishedClasses.size} کلاس قدیمی مالک مشخصی ندارند. نسخهٔ قبلی آنلاین حفظ شده است؛ ابتدا مالکیت کلاس‌ها باید بررسی شود."
             }
             val root = firestore.collection("shared_materials").document(uid)
