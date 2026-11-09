@@ -47,7 +47,7 @@ class AdminCloudBackupExporter(
                 }
                 records.put(JSONObject().put("documentId", record.id).put("data", toJsonObject(data)))
             }
-            if (schema >= 3) {
+            if (schema >= 2) {
                 val expectedCount = (rootData["recordCount"] as? Number)?.toInt()
                     ?: error("شمارندهٔ رکوردهای پشتیبان استاد $ownerUid موجود نیست.")
                 require(expectedCount == records.length()) {
