@@ -64,7 +64,8 @@ object CloudMaterialsSync {
                 desired["course_${item.id}"] = mapOf(
                     "recordType" to "course", "id" to item.id, "classId" to item.classId,
                     "name" to item.name, "teacherName" to item.teacherName,
-                    "description" to item.description, "createdAtMillis" to item.createdAtMillis
+                    "description" to item.description, "createdAtMillis" to item.createdAtMillis,
+                    "ownerUid" to uid
                 )
             }
             lectures.forEach { item ->
@@ -77,7 +78,7 @@ object CloudMaterialsSync {
                     "originalTranscript" to item.originalTranscript, "aiSummary" to item.aiSummary,
                     "aiKeyPoints" to item.aiKeyPoints, "tags" to item.tags,
                     "isPublished" to item.isPublished, "lastEditedMillis" to item.lastEditedMillis,
-                    "sortOrder" to item.sortOrder
+                    "sortOrder" to item.sortOrder, "ownerUid" to uid
                 )
             }
             val existing = Tasks.await(records.get()).documents
