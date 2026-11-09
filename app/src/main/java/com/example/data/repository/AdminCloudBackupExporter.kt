@@ -21,6 +21,10 @@ class AdminCloudBackupExporter(
             val rootData = root.data ?: emptyMap()
             val generation = root.getString("activeGeneration")
             val schema = root.getLong("schemaVersion")?.toInt() ?: 1
+            require(schema in 1..3) { "نسخهٔ پشتیبان استاد $ownerUid پشتیبانی نمی‌شود؛ خروجی ناقص متوقف شد." }
+            require(rootData["ownerUid"] == null || rootData["ownerUid"] == ownerUid) {
+                "مالک سند اصلی پشتیبان با شناسهٔ استاد $ownerUid سازگار نیست."
+            }
             val records = JSONArray()
             val recordSnapshots = when {
                 schema >= 3 -> {
@@ -42,6 +46,13 @@ class AdminCloudBackupExporter(
                     "مالک رکورد ${record.id} با استاد $ownerUid سازگار نیست؛ خروجی متوقف شد."
                 }
                 records.put(JSONObject().put("documentId", record.id).put("data", toJsonObject(data)))
+            }
+            if (schema >= 3) {
+                val expectedCount = (rootData["recordCount"] as? Number)?.toInt()
+                    ?: error("شمارندهٔ رکوردهای پشتیبان استاد $ownerUid موجود نیست.")
+                require(expectedCount == records.length()) {
+                    "پشتیبان استاد $ownerUid ناقص است: شمارنده $expectedCount و رکوردهای دریافت‌شده ${records.length()}؛ خروجی متوقف شد."
+                }
             }
             val teacherEntry = JSONObject()
                 .put("ownerUid", ownerUid)
