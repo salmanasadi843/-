@@ -118,7 +118,8 @@ class FirestoreSyncRepository(
             val version = current.getLong("adminPendingVersion") ?: 0L
             val lockData = mutableMapOf<String, Any?>(
                 "syncLockToken" to lockToken,
-                "syncLockUntilMillis" to now + lockLeaseMillis
+                "syncLockUntilMillis" to now + lockLeaseMillis,
+                "syncLockMode" to "backup"
             )
             if (!current.exists()) {
                 // Bootstrap a valid schema-v2 root atomically with the first backup lease.
@@ -172,6 +173,7 @@ class FirestoreSyncRepository(
                     val latest = transaction.get(root)
                     val now = System.currentTimeMillis()
                     if (latest.getString("syncLockToken") != lockToken ||
+                        latest.getString("syncLockMode") != "backup" ||
                         (latest.getLong("syncLockUntilMillis") ?: 0L) <= now ||
                         latest.getBoolean("adminPending") == true ||
                         (latest.getLong("adminPendingVersion") ?: 0L) != backupVersion
@@ -200,6 +202,7 @@ class FirestoreSyncRepository(
                 val latest = transaction.get(root)
                 val now = System.currentTimeMillis()
                 if (latest.getString("syncLockToken") != lockToken ||
+                    latest.getString("syncLockMode") != "backup" ||
                     (latest.getLong("syncLockUntilMillis") ?: 0L) <= now ||
                     latest.getBoolean("adminPending") == true ||
                     (latest.getLong("adminPendingVersion") ?: 0L) != backupVersion
@@ -219,6 +222,7 @@ class FirestoreSyncRepository(
                         "adminPendingVersion" to backupVersion,
                         "syncLockToken" to FieldValue.delete(),
                         "syncLockUntilMillis" to FieldValue.delete(),
+                        "syncLockMode" to FieldValue.delete(),
                         "updatedAt" to FieldValue.serverTimestamp()
                     )
                 )
@@ -238,7 +242,8 @@ class FirestoreSyncRepository(
                                 root,
                                 mapOf(
                                     "syncLockToken" to FieldValue.delete(),
-                                    "syncLockUntilMillis" to FieldValue.delete()
+                                    "syncLockUntilMillis" to FieldValue.delete(),
+                                    "syncLockMode" to FieldValue.delete()
                                 )
                             )
                         }
