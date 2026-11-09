@@ -139,6 +139,10 @@ class AdminCloudBackupExporter(
             val id = (data["id"] as? Number)?.toLong()
                 ?: error("شناسهٔ یکی از درس‌های قدیمی استاد $ownerUid معتبر نیست.")
             require(id > 0) { "شناسهٔ درس قدیمی باید مثبت باشد." }
+            val existingOwner = (data["ownerUid"] as? String).orEmpty()
+            require(existingOwner.isBlank() || existingOwner == ownerUid) {
+                "مالک درس قدیمی با استاد $ownerUid سازگار نیست."
+            }
             data["ownerUid"] = ownerUid
             data["recordType"] = "course"
             add("course_$id", data)
@@ -149,6 +153,10 @@ class AdminCloudBackupExporter(
             val id = (data["id"] as? Number)?.toLong()
                 ?: error("شناسهٔ یکی از جلسات قدیمی استاد $ownerUid معتبر نیست.")
             require(id > 0) { "شناسهٔ جلسهٔ قدیمی باید مثبت باشد." }
+            val existingOwner = (data["ownerUid"] as? String).orEmpty()
+            require(existingOwner.isBlank() || existingOwner == ownerUid) {
+                "مالک جلسهٔ قدیمی با استاد $ownerUid سازگار نیست."
+            }
             val textFields = listOf("transcript", "originalTranscript", "aiSummary", "aiKeyPoints", "aiQuizJson", "tags")
             val manifest = linkedMapOf<String, Int>()
             textFields.forEach { field ->
