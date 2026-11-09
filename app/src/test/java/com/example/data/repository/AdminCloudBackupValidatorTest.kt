@@ -5,8 +5,10 @@ import org.junit.Assert.assertThrows
 import org.junit.Test
 import org.junit.runner.RunWith
 import org.robolectric.RobolectricTestRunner
+import org.robolectric.annotation.Config
 
 @RunWith(RobolectricTestRunner::class)
+@Config(sdk = [35]) // Android 16/API 36 Robolectric requires Java 21; CI uses Java 17.
 class AdminCloudBackupValidatorTest {
     private fun validBackup() = """{"format":"darsyar-admin-cloud-backup","version":1,"teacherCount":1,"recordCount":1,"teachers":[{"ownerUid":"teacher-A","schemaVersion":3,"root":{"ownerUid":"teacher-A","activeGeneration":"gen-1","recordCount":1},"records":[{"documentId":"class_12","data":{"ownerUid":"teacher-A","recordType":"class","id":12}}]}]}"""
 
