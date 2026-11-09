@@ -1,3 +1,4 @@
+import { randomUUID } from "node:crypto";
 import { initializeApp } from "firebase-admin/app";
 import { FieldValue, getFirestore } from "firebase-admin/firestore";
 import { CallableRequest, HttpsError, onCall } from "firebase-functions/v2/https";
@@ -83,12 +84,51 @@ function requireOwnedRecord(
   }
 }
 
+export const beginCloudRestore = onCall({ region: REGION, timeoutSeconds: 30 }, async (request) => {
+  const teacherUid = request.auth?.uid;
+  if (!teacherUid) throw new HttpsError("unauthenticated", "برای بازیابی ابتدا وارد شوید.");
+
+  const [profile, approval] = await Promise.all([
+    db.collection("users").doc(teacherUid).get(),
+    db.collection("approved_teachers").doc(teacherUid).get(),
+  ]);
+  const isPrimaryAdmin = teacherUid === PRIMARY_ADMIN_UID;
+  const isApproved = approval.get("enabled") === true || approval.get("approved") === true;
+  if (!profile.exists || profile.get("role") !== "TEACHER" || (!isPrimaryAdmin && !isApproved)) {
+    throw new HttpsError("permission-denied", "فقط حساب استاد مجاز می‌تواند پشتیبان را بازیابی کند.");
+  }
+
+  const rootRef = db.collection(TEACHER_DATA).doc(teacherUid);
+  const restoreLockToken = randomUUID();
+  const adminPendingVersion = await db.runTransaction(async (transaction) => {
+    const root = await transaction.get(rootRef);
+    if (!root.exists || root.get("ownerUid") !== teacherUid || root.get("schemaVersion") !== 2) {
+      throw new HttpsError("failed-precondition", "پشتیبان خصوصی معتبر نیست.");
+    }
+    if ((root.get("syncLockUntilMillis") ?? 0) > Date.now()) {
+      throw new HttpsError("aborted", "همگام‌سازی دیگری در حال انجام است؛ کمی بعد دوباره تلاش کنید.");
+    }
+    const version = root.get("adminPendingVersion");
+    const safeVersion = typeof version === "number" && Number.isSafeInteger(version) && version >= 0 ? version : 0;
+    transaction.update(rootRef, {
+      syncLockToken: restoreLockToken,
+      syncLockUntilMillis: Date.now() + 5 * 60 * 1000,
+    });
+    return safeVersion;
+  });
+
+  return { restoreLockToken, adminPendingVersion };
+});
+
 export const completeAdminRestore = onCall({ region: REGION, timeoutSeconds: 30 }, async (request) => {
   const teacherUid = request.auth?.uid;
   if (!teacherUid) throw new HttpsError("unauthenticated", "برای بازیابی ابتدا وارد شوید.");
   const expectedVersion = request.data?.expectedAdminPendingVersion;
-  if (typeof expectedVersion !== "number" || !Number.isSafeInteger(expectedVersion) || expectedVersion < 0) {
-    throw new HttpsError("invalid-argument", "نسخه بازیابی معتبر نیست.");
+  const restoreLockToken = request.data?.restoreLockToken;
+  const complete = request.data?.complete !== false;
+  if (typeof expectedVersion !== "number" || !Number.isSafeInteger(expectedVersion) || expectedVersion < 0 ||
+      typeof restoreLockToken !== "string" || restoreLockToken.length < 20 || restoreLockToken.length > 128) {
+    throw new HttpsError("invalid-argument", "اطلاعات قفل و نسخه بازیابی معتبر نیست.");
   }
 
   const [profile, approval] = await Promise.all([
@@ -107,22 +147,25 @@ export const completeAdminRestore = onCall({ region: REGION, timeoutSeconds: 30 
     if (!root.exists || root.get("ownerUid") !== teacherUid || root.get("schemaVersion") !== 2) {
       throw new HttpsError("failed-precondition", "پشتیبان خصوصی معتبر نیست.");
     }
-    if (root.get("adminPending") !== true) {
-      throw new HttpsError("failed-precondition", "بازیابی مدیریتی در انتظار تأیید نیست.");
+    if (root.get("syncLockToken") !== restoreLockToken ||
+        (root.get("syncLockUntilMillis") ?? 0) <= Date.now()) {
+      throw new HttpsError("aborted", "قفل بازیابی منقضی یا جایگزین شده است؛ دوباره بازیابی را اجرا کنید.");
     }
     if (root.get("adminPendingVersion") !== expectedVersion) {
       throw new HttpsError("aborted", "نسخه اطلاعات تغییر کرده است؛ دوباره بازیابی ابری را اجرا کنید.");
     }
-    if ((root.get("syncLockUntilMillis") ?? 0) > Date.now()) {
-      throw new HttpsError("aborted", "همگام‌سازی دیگری در حال انجام است؛ کمی بعد دوباره تلاش کنید.");
+    const updates: Record<string, unknown> = {
+      syncLockToken: FieldValue.delete(),
+      syncLockUntilMillis: FieldValue.delete(),
+    };
+    if (complete && root.get("adminPending") === true) {
+      updates.adminPending = false;
+      updates.adminPendingClearedAt = FieldValue.serverTimestamp();
     }
-    transaction.update(rootRef, {
-      adminPending: false,
-      adminPendingClearedAt: FieldValue.serverTimestamp(),
-    });
+    transaction.update(rootRef, updates);
   });
 
-  return { success: true, ownerUid: teacherUid, adminPendingVersion: expectedVersion };
+  return { success: true, ownerUid: teacherUid, adminPendingVersion: expectedVersion, complete };
 });
 
 export const adminUpdateTeacherRecord = onCall({ region: REGION, timeoutSeconds: 30 }, async (request) => {
