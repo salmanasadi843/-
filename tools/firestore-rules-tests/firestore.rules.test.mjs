@@ -69,3 +69,19 @@ test("an approved teacher can manage only their own backup records", async () =>
     ownerUid: "teacher-2", recordType: "class", id: 4
   }));
 });
+
+test("the primary admin cannot create a record under another teacher with a forged owner UID", async () => {
+  const db = env.authenticatedContext("admin-uid", { email: "salmanasadi843@gmail.com" }).firestore();
+  const forged = db.doc("teacher_data/teacher-1/generations/admin_restore/records/forged");
+  await assertFails(forged.set({ ownerUid: "teacher-2", recordType: "class", id: 3 }));
+});
+
+test("the primary admin can create a missing backup root only when its owner UID matches the path", async () => {
+  const db = env.authenticatedContext("admin-uid", { email: "salmanasadi843@gmail.com" }).firestore();
+  await assertSucceeds(db.doc("teacher_data/teacher-3").set({
+    ownerUid: "teacher-3", schemaVersion: 3, activeGeneration: "gen-1", recordCount: 0, folders: []
+  }));
+  await assertFails(db.doc("teacher_data/teacher-4").set({
+    ownerUid: "teacher-3", schemaVersion: 3, activeGeneration: "gen-1", recordCount: 0, folders: []
+  }));
+});
