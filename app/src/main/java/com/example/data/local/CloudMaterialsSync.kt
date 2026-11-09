@@ -84,6 +84,14 @@ object CloudMaterialsSync {
                     "sortOrder" to item.sortOrder, "ownerUid" to uid
                 )
             }
+            // Firestore documents have a hard size ceiling. Reject an oversized single
+            // record before writing anything, so the active generation remains untouched.
+            desired.forEach { (id, data) ->
+                val estimatedBytes = JSONObject(data).toString().toByteArray(Charsets.UTF_8).size
+                require(estimatedBytes <= 700 * 1024) {
+                    "رکورد $id بیش از اندازه بزرگ است؛ برای جلوگیری از ناقص‌شدن اطلاعات، انتشار انجام نشد. متن این جلسه باید به چند بخش تقسیم شود."
+                }
+            }
             // Write a complete immutable generation first. Readers keep using the previous
             // generation until this one is complete and the root pointer is switched.
             desired.entries.chunked(400).forEach { chunk ->
@@ -97,19 +105,8 @@ object CloudMaterialsSync {
                 "teacherName" to AuthPreferences.currentName(context),
                 "recordCount" to desired.size, "updatedAt" to System.currentTimeMillis()
             )))
-            // Cleanup is best-effort and happens only after the new generation is active.
-            if (!previousGeneration.isNullOrBlank() && previousGeneration != generation) {
-                runCatching {
-                    val oldRecords = root.collection("generations").document(previousGeneration)
-                        .collection("records").get()
-                    val oldDocs = Tasks.await(oldRecords).documents
-                    oldDocs.chunked(400).forEach { chunk ->
-                        val batch = firestore.batch()
-                        chunk.forEach { batch.delete(it.reference) }
-                        Tasks.await(batch.commit())
-                    }
-                }
-            }
+            // Keep the previous generation as a recovery point. Cleanup is intentionally
+            // deferred to a separately verified maintenance operation.
             "مطالب منتشرشده با ساختار رکوردی و بدون محدودیت payload بزرگ به‌روزرسانی شد."
         } else {
             val documents = Tasks.await(firestore.collection("shared_materials").get()).documents
