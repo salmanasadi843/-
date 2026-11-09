@@ -112,7 +112,7 @@ export const beginCloudRestore = onCall({ region: REGION, timeoutSeconds: 30 }, 
     const safeVersion = typeof version === "number" && Number.isSafeInteger(version) && version >= 0 ? version : 0;
     transaction.update(rootRef, {
       syncLockToken: restoreLockToken,
-      syncLockUntilMillis: Date.now() + 5 * 60 * 1000,
+      syncLockUntilMillis: Date.now() + 10 * 60 * 1000,
     });
     return safeVersion;
   });
