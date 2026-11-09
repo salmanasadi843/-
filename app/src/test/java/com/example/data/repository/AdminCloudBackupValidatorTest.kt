@@ -1,21 +1,11 @@
 package com.example.data.repository
 
-import org.json.JSONArray
-import org.json.JSONObject
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertThrows
 import org.junit.Test
 
 class AdminCloudBackupValidatorTest {
-    private fun validBackup(): String {
-        val data = JSONObject().put("ownerUid", "teacher-A").put("recordType", "class").put("id", 12)
-        val record = JSONObject().put("documentId", "class_12").put("data", data)
-        val root = JSONObject().put("ownerUid", "teacher-A").put("activeGeneration", "gen-1").put("recordCount", 1)
-        val teacher = JSONObject().put("ownerUid", "teacher-A").put("schemaVersion", 3)
-            .put("root", root).put("records", JSONArray().put(record))
-        return JSONObject().put("format", "darsyar-admin-cloud-backup").put("version", 1)
-            .put("teacherCount", 1).put("recordCount", 1).put("teachers", JSONArray().put(teacher)).toString()
-    }
+    private fun validBackup() = """{"format":"darsyar-admin-cloud-backup","version":1,"teacherCount":1,"recordCount":1,"teachers":[{"ownerUid":"teacher-A","schemaVersion":3,"root":{"ownerUid":"teacher-A","activeGeneration":"gen-1","recordCount":1},"records":[{"documentId":"class_12","data":{"ownerUid":"teacher-A","recordType":"class","id":12}}]}]}"""
 
     @Test fun acceptsCompleteSchemaThreeBackup() {
         val result = AdminCloudBackupValidator.validate(validBackup())
@@ -27,26 +17,17 @@ class AdminCloudBackupValidatorTest {
     }
 
     @Test fun rejectsForeignRecordOwner() {
-        val input = JSONObject(validBackup())
-        val teacher = input.getJSONArray("teachers").getJSONObject(0)
-        teacher.getJSONArray("records").getJSONObject(0).getJSONObject("data").put("ownerUid", "teacher-B")
-        assertThrows(IllegalArgumentException::class.java) {
-            AdminCloudBackupValidator.validate(input.toString())
-        }
+        val bad = validBackup().replace("\\"ownerUid\\":\\"teacher-A\\",\\"recordType\\":\\"class\\",\\"id\\":12", "\\"ownerUid\\":\\"teacher-B\\",\\"recordType\\":\\"class\\",\\"id\\":12")
+        assertThrows(IllegalArgumentException::class.java) { AdminCloudBackupValidator.validate(bad) }
     }
 
     @Test fun rejectsCountMismatch() {
-        val input = JSONObject(validBackup()).put("recordCount", 2)
-        assertThrows(IllegalArgumentException::class.java) {
-            AdminCloudBackupValidator.validate(input.toString())
-        }
+        val bad = validBackup().replace("\\"recordCount\\":1,\\"teachers\\":", "\\"recordCount\\":2,\\"teachers\\":")
+        assertThrows(IllegalArgumentException::class.java) { AdminCloudBackupValidator.validate(bad) }
     }
 
     @Test fun rejectsLegacySchemaForAutomaticRestore() {
-        val input = JSONObject(validBackup())
-        input.getJSONArray("teachers").getJSONObject(0).put("schemaVersion", 2)
-        assertThrows(IllegalArgumentException::class.java) {
-            AdminCloudBackupValidator.validate(input.toString())
-        }
+        val bad = validBackup().replace("\\"schemaVersion\\":3", "\\"schemaVersion\\":2")
+        assertThrows(IllegalArgumentException::class.java) { AdminCloudBackupValidator.validate(bad) }
     }
 }
