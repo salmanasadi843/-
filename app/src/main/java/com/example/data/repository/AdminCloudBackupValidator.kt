@@ -5,8 +5,8 @@ import org.json.JSONObject
 
 /**
  * Validates an admin aggregate backup before any restore write is attempted.
- * Only schema-3 teacher generations are eligible for automatic restoration;
- * legacy formats remain exportable but require a dedicated migration path.
+ * Supports validated migration of schema-1 array snapshots and schema-2
+ * record collections into a newly staged schema-3 generation.
  */
 object AdminCloudBackupValidator {
     private const val FORMAT = "darsyar-admin-cloud-backup"
@@ -72,6 +72,25 @@ object AdminCloudBackupValidator {
             val generation = if (schema == 3) root.optString("activeGeneration").trim() else "legacy-records"
             if (schema == 3) require(generation.isNotEmpty()) { "نسخهٔ فعال استاد $ownerUid مشخص نیست." }
 
+            val folderIds = mutableSetOf<Long>()
+            val rawFolders = root.opt("folders")
+            if (schema == 3) require(rawFolders is org.json.JSONArray) {
+                "فهرست پوشه‌های استاد $ownerUid در پشتیبان نسخهٔ ۳ موجود نیست."
+            }
+            if (rawFolders != null && rawFolders != JSONObject.NULL) {
+                val folders = rawFolders as? org.json.JSONArray
+                    ?: throw IllegalArgumentException("ساختار پوشه‌های استاد $ownerUid معتبر نیست.")
+                for (folderIndex in 0 until folders.length()) {
+                    val folder = folders.optJSONObject(folderIndex)
+                        ?: throw IllegalArgumentException("پوشهٔ شمارهٔ ${folderIndex + 1} استاد $ownerUid معتبر نیست.")
+                    val folderId = folder.optLong("id", Long.MIN_VALUE)
+                    require(folderId > 0 && folderIds.add(folderId) &&
+                        folder.optString("ownerUid") == ownerUid &&
+                        folder.optString("name").isNotBlank()
+                    ) { "شناسه، مالک یا نام یکی از پوشه‌های استاد $ownerUid معتبر نیست." }
+                }
+            }
+
             val recordsArray = entry.optJSONArray("records")
                 ?: throw IllegalArgumentException("رکوردهای استاد $ownerUid وجود ندارد.")
             val expected = if (schema == 1) recordsArray.length() else root.optInt("recordCount", -1)
@@ -134,8 +153,14 @@ object AdminCloudBackupValidator {
                             "شناسهٔ جلسه $id با محتوای رکورد سازگار یا یکتا نیست."
                         }
                         lectureDataById[entityId] = data
-                        lectureClassIds += if (data.isNull("classId")) null
-                            else data.optLong("classId", Long.MIN_VALUE).takeIf { it > 0 }
+                        val rawClassId = data.opt("classId")
+                        val lectureClassId = if (rawClassId == null || rawClassId == JSONObject.NULL) {
+                            null
+                        } else {
+                            (rawClassId as? Number)?.toLong()?.takeIf { it > 0 }
+                                ?: throw IllegalArgumentException("شناسهٔ کلاس جلسه $id معتبر نیست.")
+                        }
+                        lectureClassIds += lectureClassId
                     }
                     "lecture_text_chunk" -> {
                         val lectureId = data.optLong("lectureId", Long.MIN_VALUE)
@@ -162,7 +187,12 @@ object AdminCloudBackupValidator {
                 "بخش متنی به جلسه‌ای ناموجود در پشتیبان استاد $ownerUid متصل شده است."
             }
             lectureDataById.forEach { (lectureId, lecture) ->
-                val rawManifest = lecture.optJSONObject("textChunkCounts")
+                val manifestValue = lecture.opt("textChunkCounts")
+                val rawManifest = when {
+                    manifestValue == null || manifestValue == JSONObject.NULL -> null
+                    manifestValue is JSONObject -> manifestValue
+                    else -> throw IllegalArgumentException("فهرست بخش‌های متن جلسه $lectureId معتبر نیست.")
+                }
                 val manifest = mutableMapOf<String, Int>()
                 if (rawManifest != null) {
                     val keys = rawManifest.keys()
