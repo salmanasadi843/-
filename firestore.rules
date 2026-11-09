@@ -201,8 +201,15 @@ service cloud.firestore {
     match /teacher_data/{ownerUid} {
       allow read: if canReadTeacherBackup(ownerUid);
 
-      allow create, update: if approvedTeacher(ownerUid)
-                            && request.resource.data.ownerUid == ownerUid;
+      // Admin recovery is limited to the backup root and owner-bound records.
+      // It cannot delete roots or records, nor write any other collection.
+      allow create: if approvedTeacher(ownerUid)
+                    && request.resource.data.ownerUid == ownerUid;
+      allow update: if (approvedTeacher(ownerUid)
+                        && request.resource.data.ownerUid == ownerUid)
+                    || (isPrimaryTeacher()
+                        && resource.data.ownerUid == ownerUid
+                        && request.resource.data.ownerUid == ownerUid);
 
       allow delete: if approvedTeacher(ownerUid);
 
@@ -211,12 +218,15 @@ service cloud.firestore {
         allow create, update, delete: if approvedTeacher(ownerUid);
       }
 
-      // Immutable backup generations: a new generation is written and verified
-      // before the owner document switches activeGeneration.
+      // New backup generations are owner-bound and immutable to the admin after
+      // creation; the admin may create records only, never delete them.
       match /generations/{generationId}/records/{recordId} {
         allow read: if canReadTeacherBackup(ownerUid);
-        allow create, update: if approvedTeacher(ownerUid)
-                              && request.resource.data.ownerUid == ownerUid;
+        allow create: if approvedTeacher(ownerUid)
+                      && request.resource.data.ownerUid == ownerUid;
+        allow update: if approvedTeacher(ownerUid)
+                      && resource.data.ownerUid == ownerUid
+                      && request.resource.data.ownerUid == ownerUid;
         allow delete: if approvedTeacher(ownerUid)
                       && resource.data.ownerUid == ownerUid;
       }
