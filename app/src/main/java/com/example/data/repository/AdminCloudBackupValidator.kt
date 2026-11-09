@@ -74,6 +74,7 @@ object AdminCloudBackupValidator {
 
             val folderIds = mutableSetOf<Long>()
             val folderParents = mutableListOf<Long?>()
+            val folderParentById = mutableMapOf<Long, Long?>()
             val rawFolders = root.opt("folders")
             if (schema == 3) require(rawFolders is org.json.JSONArray) {
                 "فهرست پوشه‌های استاد $ownerUid در پشتیبان نسخهٔ ۳ موجود نیست."
@@ -94,9 +95,21 @@ object AdminCloudBackupValidator {
                         else (rawParent as? Number)?.toLong()?.takeIf { it > 0 }
                             ?: throw IllegalArgumentException("شناسهٔ پوشهٔ والد برای استاد $ownerUid معتبر نیست.")
                     folderParents += parentId
+                    folderParentById[folderId] = parentId
                 }
                 require(folderParents.filterNotNull().all { it in folderIds }) {
                     "یکی از پوشه‌های استاد $ownerUid به پوشهٔ والد ناموجود اشاره می‌کند."
+                }
+                // Reject self-parenting and longer cycles before restoring the hierarchy.
+                folderIds.forEach { folderId ->
+                    val visited = mutableSetOf<Long>()
+                    var current: Long? = folderId
+                    while (current != null) {
+                        require(visited.add(current)) {
+                            "ساختار پوشه‌های استاد $ownerUid دارای چرخه است."
+                        }
+                        current = folderParentById[current]
+                    }
                 }
             }
 
@@ -111,8 +124,10 @@ object AdminCloudBackupValidator {
 
             val seenIds = mutableSetOf<String>()
             val classIds = mutableSetOf<Long>()
+            val courseIds = mutableSetOf<Long>()
             val courseClassIds = mutableListOf<Long>()
             val lectureClassIds = mutableListOf<Long?>()
+            val lectureCourseIds = mutableListOf<Long?>()
             val lectureDataById = mutableMapOf<Long, JSONObject>()
             val chunksByLecture = mutableMapOf<Long, MutableMap<String, MutableMap<Int, String>>>()
             val records = ArrayList<Record>(recordsArray.length())
@@ -161,7 +176,7 @@ object AdminCloudBackupValidator {
                     "course" -> {
                         val entityId = data.optLong("id", Long.MIN_VALUE)
                         val classId = data.optLong("classId", Long.MIN_VALUE)
-                        require(entityId > 0 && id == "course_$entityId" && classId > 0) {
+                        require(entityId > 0 && id == "course_$entityId" && classId > 0 && courseIds.add(entityId)) {
                             "شناسه یا ارتباط کلاسِ درس $id معتبر نیست."
                         }
                         courseClassIds += classId
@@ -180,6 +195,14 @@ object AdminCloudBackupValidator {
                                 ?: throw IllegalArgumentException("شناسهٔ کلاس جلسه $id معتبر نیست.")
                         }
                         lectureClassIds += lectureClassId
+                        val rawCourseId = data.opt("courseId")
+                        val lectureCourseId = if (rawCourseId == null || rawCourseId == JSONObject.NULL) {
+                            null
+                        } else {
+                            (rawCourseId as? Number)?.toLong()?.takeIf { it > 0 }
+                                ?: throw IllegalArgumentException("شناسهٔ درس جلسه $id معتبر نیست.")
+                        }
+                        lectureCourseIds += lectureCourseId
                     }
                     "lecture_text_chunk" -> {
                         val lectureId = data.optLong("lectureId", Long.MIN_VALUE)
@@ -200,8 +223,9 @@ object AdminCloudBackupValidator {
                 records += Record(id, JSONObject(data.toString()))
             }
             require(courseClassIds.all { it in classIds } &&
-                lectureClassIds.filterNotNull().all { it in classIds }
-            ) { "ارتباط درس‌ها یا جلسه‌ها با کلاس‌های پشتیبان استاد $ownerUid ناقص است." }
+                lectureClassIds.filterNotNull().all { it in classIds } &&
+                lectureCourseIds.filterNotNull().all { it in courseIds }
+            ) { "ارتباط کلاس‌ها، درس‌ها یا جلسه‌های پشتیبان استاد $ownerUid ناقص است." }
             require(chunksByLecture.keys.all { it in lectureDataById.keys }) {
                 "بخش متنی به جلسه‌ای ناموجود در پشتیبان استاد $ownerUid متصل شده است."
             }
