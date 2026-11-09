@@ -144,7 +144,7 @@ class FirestoreSyncRepository(
             val manifest = linkedMapOf<String, Int>()
             textFields.forEach { (field, value) ->
                 if (value != null) {
-                    val chunks = splitUtf8Text(value, MAX_TEXT_CHUNK_BYTES)
+                    val chunks = BackupTextChunker.splitUtf8(value, MAX_TEXT_CHUNK_BYTES)
                     manifest[field] = chunks.size
                     chunks.forEachIndexed { index, chunk ->
                         desired["lecture_text_${lecture.id}_${field}_${index}"] = mapOf(
@@ -319,10 +319,11 @@ class FirestoreSyncRepository(
             manifest.forEach { (field, count) ->
                 val parts = lectureChunks[lecture.id]?.get(field)
                     ?: throw IllegalStateException("بخش‌های متن جلسه ناقص است؛ اطلاعات محلی حفظ شد.")
-                if (count <= 0 || parts.size != count || (0 until count).any { it !in parts }) {
+                try {
+                    rebuilt[field] = BackupTextChunker.joinUtf8(parts, count)
+                } catch (_: IllegalArgumentException) {
                     throw IllegalStateException("بخش‌های متن جلسه ناقص است؛ اطلاعات محلی حفظ شد.")
                 }
-                rebuilt[field] = buildString { for (n in 0 until count) append(parts.getValue(n)) }
             }
             lectures[i] = lecture.copy(
                 transcript = rebuilt["transcript"] ?: lecture.transcript,
@@ -433,26 +434,6 @@ class FirestoreSyncRepository(
         is List<*> -> value.map { normalizeForVerification(it) }
         is Number -> value.toString().toBigDecimal().stripTrailingZeros()
         else -> value
-    }
-
-    private fun splitUtf8Text(value: String, maxBytes: Int): List<String> {
-        if (value.isEmpty()) return listOf("")
-        val chunks = mutableListOf<String>()
-        var start = 0; var index = 0; var bytes = 0
-        while (index < value.length) {
-            val codePoint = value.codePointAt(index)
-            val chars = Character.charCount(codePoint)
-            val pieceBytes = String(Character.toChars(codePoint)).toByteArray(Charsets.UTF_8).size
-            require(pieceBytes <= maxBytes)
-            if (bytes > 0 && bytes + pieceBytes > maxBytes) {
-                chunks += value.substring(start, index)
-                start = index; bytes = 0
-            }
-            bytes += pieceBytes
-            index += chars
-        }
-        chunks += value.substring(start)
-        return chunks
     }
 
     private fun ClassEntity.toCloudMap(): Map<String, Any?> = mapOf(
