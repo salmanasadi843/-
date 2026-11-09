@@ -27,7 +27,7 @@ class AdminCloudBackupValidatorTest {
     }
 
     @Test fun rejectsLegacySchemaForAutomaticRestore() {
-        val bad = validBackup().replace("schemaVersion":3, "schemaVersion":2)
+        val bad = validBackup().replace(""" "schemaVersion":3 """.trim(), """"schemaVersion":2""")
         assertThrows(IllegalArgumentException::class.java) { AdminCloudBackupValidator.validate(bad) }
     }
 }
