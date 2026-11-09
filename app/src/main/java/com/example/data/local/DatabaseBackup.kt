@@ -7,7 +7,7 @@ import org.json.JSONArray
 import org.json.JSONObject
 import java.io.BufferedReader
 import java.io.InputStreamReader
-import java.io.OutputStreamWriter
+import java.io.File
 
 /**
  * Portable JSON backup for all textual lesson data.
@@ -15,6 +15,44 @@ import java.io.OutputStreamWriter
  */
 object DatabaseBackup {
     fun export(context: Context, uri: Uri) {
+        val root = createBackupJson(context)
+        context.contentResolver.openOutputStream(uri, "wt")?.bufferedWriter(Charsets.UTF_8)?.use {
+            it.write(root.toString(2))
+        } ?: error("فایل پشتیبان برای نوشتن باز نشد.")
+    }
+
+    /**
+     * Keeps an internal point-in-time copy immediately before any destructive restore.
+     * The copy is retained in app-private storage until the user exports it or removes the app.
+     */
+    fun hasSafetySnapshot(context: Context): Boolean =
+        latestSafetySnapshot(context) != null
+
+    fun exportLatestSafetySnapshot(context: Context, uri: Uri) {
+        val snapshot = latestSafetySnapshot(context)
+            ?: error("نسخهٔ ایمنی پیش از بازیابی پیدا نشد.")
+        context.contentResolver.openOutputStream(uri, "wt")?.bufferedWriter(Charsets.UTF_8)?.use {
+            it.write(snapshot.readText(Charsets.UTF_8))
+        } ?: error("فایل مقصد برای ذخیرهٔ نسخهٔ ایمنی باز نشد.")
+    }
+
+    private fun createSafetySnapshot(context: Context): File {
+        val directory = File(context.filesDir, "backup-safety").apply {
+            if (!exists() && !mkdirs()) error("ساخت پوشهٔ نسخهٔ ایمنی ناموفق بود.")
+        }
+        val snapshot = File(directory, "before-restore-${System.currentTimeMillis()}.json")
+        snapshot.writeText(createBackupJson(context).toString(2), Charsets.UTF_8)
+        require(snapshot.length() > 0L) { "نسخهٔ ایمنی خالی ایجاد شد؛ بازیابی متوقف شد." }
+        return snapshot
+    }
+
+    private fun latestSafetySnapshot(context: Context): File? =
+        File(context.filesDir, "backup-safety")
+            .listFiles()
+            ?.filter { it.isFile && it.name.startsWith("before-restore-") && it.extension == "json" }
+            ?.maxByOrNull { it.lastModified() }
+
+    private fun createBackupJson(context: Context): JSONObject {
         val db = AppDatabase.getDatabase(context)
         val lectures = kotlinx.coroutines.runBlocking { db.lectureDao().getAllForBackup() }
         val classes = kotlinx.coroutines.runBlocking { db.classDao().getAllForBackup() }
@@ -23,7 +61,7 @@ object DatabaseBackup {
             db.teacherFolderDao().observeFoldersForBackup()
         }
 
-        val root = JSONObject()
+        return JSONObject()
             .put("format", "darsyar-backup")
             .put("version", 2)
             .put("createdAt", System.currentTimeMillis())
@@ -36,10 +74,6 @@ object DatabaseBackup {
                 .put("classes", classes.size)
                 .put("courses", courses.size)
                 .put("folders", folders.size))
-
-        context.contentResolver.openOutputStream(uri, "wt")?.bufferedWriter(Charsets.UTF_8)?.use {
-            it.write(root.toString(2))
-        } ?: error("فایل پشتیبان برای نوشتن باز نشد.")
     }
 
     fun import(context: Context, uri: Uri): String {
@@ -85,6 +119,9 @@ object DatabaseBackup {
                 }
             }
         }
+        // Preserve the exact current database before replacing anything.
+        // If snapshot creation fails, abort before opening the destructive transaction.
+        val safetySnapshot = createSafetySnapshot(context)
         val db = AppDatabase.getDatabase(context)
 
         kotlinx.coroutines.runBlocking {
@@ -100,7 +137,7 @@ object DatabaseBackup {
                 db.lectureDao().insertAllForRestore(lectures)
             }
         }
-        return "بازیابی انجام شد: ${lectures.size} جلسه، ${classes.size} کلاس و ${courses.size} درس."
+        return "بازیابی انجام شد: ${lectures.size} جلسه، ${classes.size} کلاس و ${courses.size} درس. نسخهٔ ایمنی اطلاعات قبلی نیز ذخیره شد: ${safetySnapshot.name}"
     }
 
     private fun requireUniqueIds(ids: List<Long>, label: String) {
