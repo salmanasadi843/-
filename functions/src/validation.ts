@@ -36,6 +36,15 @@ const FIELD_TYPES: Record<RecordType, Record<string, "string" | "number" | "bool
   },
 };
 
+export function assertAdminMutationAllowed(adminPending: unknown, lockUntilMillis: unknown, now = Date.now()): void {
+  if (adminPending === true) {
+    throw new HttpsError("aborted", "تغییر مدیریتی قبلی هنوز در حساب استاد بازیابی نشده است.");
+  }
+  if (typeof lockUntilMillis === "number" && lockUntilMillis > now) {
+    throw new HttpsError("aborted", "پشتیبان‌گیری یا بازیابی استاد در حال انجام است؛ کمی بعد دوباره تلاش کنید.");
+  }
+}
+
 export function validateRecordType(value: unknown): RecordType {
   if (value === "class" || value === "course" || value === "lecture") return value;
   throw new HttpsError("invalid-argument", "نوع رکورد معتبر نیست.");
