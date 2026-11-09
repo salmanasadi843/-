@@ -49,8 +49,6 @@ object CloudMaterialsSync {
                     lecture.classId?.let { it > 0L && it in visibleClassIds } == true
             }
             val root = firestore.collection("shared_materials").document(uid)
-            val generation = generationId(desired)
-            val records = root.collection("generations").document(generation).collection("records")
             val desired = linkedMapOf<String, Map<String, Any?>>()
             classes.forEach { item ->
                 desired["class_${item.id}"] = mapOf(
@@ -107,6 +105,8 @@ object CloudMaterialsSync {
                     "sortOrder" to item.sortOrder, "ownerUid" to uid
                 )
             }
+            val generation = generationId(desired)
+            val records = root.collection("generations").document(generation).collection("records")
             // Firestore limits both individual documents (1 MiB) and each commit request (10 MiB).
             // Keep individual records below 700 KiB and each batch below 8 MiB to leave
             // room for Firestore's encoded document and request overhead.
