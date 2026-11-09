@@ -74,7 +74,7 @@ class AdminCloudBackupRestorer(
             oldData?.forEach { (key, value) -> rootMap[key] = value }
             // Remove embedded legacy arrays before writing the small generation pointer.
             // Keeping these arrays would risk exceeding Firestore's 1 MiB document limit.
-            listOf("classes", "courses", "lectures", "payload", "legacyPayload").forEach(rootMap::remove)
+            listOf("classes", "courses", "lectures", "payload", "legacyPayload").forEach { rootMap.remove(it) }
             // Restore the teacher-level metadata captured in the same backup,
             // especially the folder hierarchy. Pointer fields are always generated
             // locally and never trusted from the imported JSON.
