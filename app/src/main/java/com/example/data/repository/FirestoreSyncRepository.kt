@@ -163,7 +163,7 @@ class FirestoreSyncRepository(
         // Keep each Firestore commit below 8 MiB as well as below 400 writes.
         val pending = mutableListOf<Pair<String, Map<String, Any?>>>()
         var pendingBytes = 0
-        fun commitPendingBatch() {
+        suspend fun commitPendingBatch() {
             if (pending.isEmpty()) return
             val batch = firestore.batch()
             pending.forEach { (id, data) -> batch.set(records.document(id), data) }
