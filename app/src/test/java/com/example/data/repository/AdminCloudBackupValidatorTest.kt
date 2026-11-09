@@ -62,4 +62,51 @@ class AdminCloudBackupValidatorTest {
         assertEquals(1, result.teachers.single().schemaVersion)
         assertEquals("legacy-records", result.teachers.single().generationId)
     }
+
+    @Test fun rejectsFolderParentCycles() {
+        val bad = validBackup().replace(
+            "\"folders\":[]",
+            "\"folders\":[{\"id\":1,\"ownerUid\":\"teacher-A\",\"name\":\"الف\",\"parentFolderId\":2},{\"id\":2,\"ownerUid\":\"teacher-A\",\"name\":\"ب\",\"parentFolderId\":1}]"
+        )
+        assertThrows(IllegalArgumentException::class.java) {
+            AdminCloudBackupValidator.validate(bad)
+        }
+    }
+
+    @Test fun rejectsCourseThatReferencesMissingClass() {
+        val bad = validBackup()
+            .replace("\"recordCount\":1", "\"recordCount\":2")
+            .replace(
+                "\"records\":[{\"documentId\":\"class_12\",\"data\":{\"ownerUid\":\"teacher-A\",\"recordType\":\"class\",\"id\":12}}]",
+                "\"records\":[{\"documentId\":\"class_12\",\"data\":{\"ownerUid\":\"teacher-A\",\"recordType\":\"class\",\"id\":12}},{\"documentId\":\"course_7\",\"data\":{\"ownerUid\":\"teacher-A\",\"recordType\":\"course\",\"id\":7,\"classId\":99}}]"
+            )
+        assertThrows(IllegalArgumentException::class.java) {
+            AdminCloudBackupValidator.validate(bad)
+        }
+    }
+
+    @Test fun rejectsLectureThatReferencesMissingCourse() {
+        val json = """{"format":"darsyar-admin-cloud-backup","version":1,"teacherCount":1,"recordCount":3,"teachers":[{"ownerUid":"teacher-A","schemaVersion":3,"root":{"ownerUid":"teacher-A","activeGeneration":"gen-1","recordCount":3,"folders":[]},"records":[{"documentId":"class_12","data":{"ownerUid":"teacher-A","recordType":"class","id":12}},{"documentId":"course_7","data":{"ownerUid":"teacher-A","recordType":"course","id":7,"classId":12}},{"documentId":"lecture_9","data":{"ownerUid":"teacher-A","recordType":"lecture","id":9,"classId":12,"courseId":99}}]}]}"""
+        assertThrows(IllegalArgumentException::class.java) {
+            AdminCloudBackupValidator.validate(json)
+        }
+    }
+
+    @Test fun rejectsIncompleteTranscriptChunks() {
+        val json = """{"format":"darsyar-admin-cloud-backup","version":1,"teacherCount":1,"recordCount":2,"teachers":[{"ownerUid":"teacher-A","schemaVersion":3,"root":{"ownerUid":"teacher-A","activeGeneration":"gen-1","recordCount":2,"folders":[]},"records":[{"documentId":"class_12","data":{"ownerUid":"teacher-A","recordType":"class","id":12}},{"documentId":"lecture_9","data":{"ownerUid":"teacher-A","recordType":"lecture","id":9,"classId":12,"textChunkCounts":{"transcript":2}}}]}]}"""
+        assertThrows(IllegalArgumentException::class.java) {
+            AdminCloudBackupValidator.validate(json)
+        }
+    }
+
+    @Test fun rejectsDuplicateDocumentIds() {
+        val bad = validBackup().replace(
+            "\"records\":[{\"documentId\":\"class_12\",\"data\":{\"ownerUid\":\"teacher-A\",\"recordType\":\"class\",\"id\":12}}]",
+            "\"records\":[{\"documentId\":\"class_12\",\"data\":{\"ownerUid\":\"teacher-A\",\"recordType\":\"class\",\"id\":12}},{\"documentId\":\"class_12\",\"data\":{\"ownerUid\":\"teacher-A\",\"recordType\":\"class\",\"id\":12}}]"
+        ).replace("\"recordCount\":1", "\"recordCount\":2")
+        assertThrows(IllegalArgumentException::class.java) {
+            AdminCloudBackupValidator.validate(bad)
+        }
+    }
+
 }
