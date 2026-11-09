@@ -82,21 +82,38 @@ object CloudMaterialsSync {
                     "sortOrder" to item.sortOrder, "ownerUid" to uid
                 )
             }
-            // Firestore documents have a hard size ceiling. Reject an oversized single
-            // record before writing anything, so the active generation remains untouched.
-            desired.forEach { (id, data) ->
+            // Firestore limits both individual documents (1 MiB) and each commit request (10 MiB).
+            // Keep individual records below 700 KiB and each batch below 8 MiB to leave
+            // room for Firestore's encoded document and request overhead.
+            val sizedRecords = desired.map { (id, data) ->
                 val estimatedBytes = JSONObject(data).toString().toByteArray(Charsets.UTF_8).size
                 require(estimatedBytes <= 700 * 1024) {
                     "رکورد $id بیش از اندازه بزرگ است؛ برای جلوگیری از ناقص‌شدن اطلاعات، انتشار انجام نشد. متن این جلسه باید به چند بخش تقسیم شود."
                 }
+                Triple(id, data, estimatedBytes)
             }
             // Write a complete immutable generation first. Readers keep using the previous
-            // generation until this one is complete and the root pointer is switched.
-            desired.entries.chunked(400).forEach { chunk ->
+            // generation until every bounded batch is committed and the root pointer is switched.
+            val pending = mutableListOf<Triple<String, Map<String, Any?>, Int>>()
+            var pendingBytes = 0
+            fun commitPendingBatch() {
+                if (pending.isEmpty()) return
                 val batch = firestore.batch()
-                chunk.forEach { (id, data) -> batch.set(records.document(id), data) }
+                pending.forEach { (id, data, _) -> batch.set(records.document(id), data) }
                 Tasks.await(batch.commit())
+                pending.clear()
+                pendingBytes = 0
             }
+            sizedRecords.forEach { record ->
+                if (pending.isNotEmpty() &&
+                    (pending.size >= 400 || pendingBytes + record.third > 8 * 1024 * 1024)
+                ) {
+                    commitPendingBatch()
+                }
+                pending += record
+                pendingBytes += record.third
+            }
+            commitPendingBatch()
             Tasks.await(root.set(mapOf(
                 "ownerUid" to uid, "schemaVersion" to 3,
                 "activeGeneration" to generation,
