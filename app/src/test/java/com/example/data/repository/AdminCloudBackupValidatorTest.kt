@@ -47,13 +47,17 @@ class AdminCloudBackupValidatorTest {
         assertEquals("legacy-records", result.teachers.single().generationId)
     }
 
-    @Test fun rejectsLegacyArraySchemaOneForAutomaticRestore() {
-        val bad = validBackup().replace(
+    @Test fun acceptsConvertedLegacyArraySchemaOneBackup() {
+        val legacy = validBackup().replace(
             """schemaVersion":3""",
             """schemaVersion":1"""
+        ).replace(
+            """activeGeneration":"gen-1",""",
+            ""
         )
-        assertThrows(IllegalArgumentException::class.java) {
-            AdminCloudBackupValidator.validate(bad)
-        }
+        val result = AdminCloudBackupValidator.validate(legacy)
+        assertEquals(1, result.recordCount)
+        assertEquals(1, result.teachers.single().schemaVersion)
+        assertEquals("legacy-records", result.teachers.single().generationId)
     }
 }
