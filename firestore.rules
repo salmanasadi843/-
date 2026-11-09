@@ -208,10 +208,12 @@ service cloud.firestore {
       allow update: if (approvedTeacher(ownerUid)
                         && request.resource.data.ownerUid == ownerUid)
                     || (isPrimaryTeacher()
-                        && resource.data.ownerUid == ownerUid
+                        && (!('ownerUid' in resource.data)
+                            || resource.data.ownerUid == null
+                            || resource.data.ownerUid == ownerUid)
                         && request.resource.data.ownerUid == ownerUid
                         && request.resource.data.diff(resource.data).affectedKeys()
-                             .hasOnly(['activeGeneration', 'schemaVersion', 'recordCount', 'updatedAt', 'folders', 'teacherName']));
+                             .hasOnly(['ownerUid', 'activeGeneration', 'schemaVersion', 'recordCount', 'updatedAt', 'folders', 'teacherName']));
 
       allow delete: if approvedTeacher(ownerUid);
 
