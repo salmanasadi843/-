@@ -91,6 +91,13 @@ class FirestoreSyncRepository(
             data["lectures"] !is List<*>
         ) return false
 
+        // This legacy published-material document is not a private backup.
+        // Never let it replace even one existing local class/session/course.
+        val hasAnyLocalRows = classDao.getAllForBackup().isNotEmpty() ||
+            courseDao.getAllForBackup().isNotEmpty() ||
+            lectureDao.getAllForBackup().isNotEmpty()
+        if (hasAnyLocalRows) return false
+
         return try {
             restoreSnapshot(snapshot, requireAllCollections = true)
             true
