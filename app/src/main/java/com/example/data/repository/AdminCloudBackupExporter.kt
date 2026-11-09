@@ -53,6 +53,14 @@ class AdminCloudBackupExporter(
                 }
                 records.put(JSONObject().put("documentId", record.id).put("data", toJsonObject(data)))
             }
+            if (schema == 1) {
+                legacyRecords(ownerUid, rootData).forEach { (id, data) ->
+                    require(JSONObject(data).toString().toByteArray(Charsets.UTF_8).size <= 700 * 1024) {
+                        "رکورد قدیمی $id بیش از اندازهٔ مجاز است؛ خروجی کامل متوقف شد."
+                    }
+                    records.put(JSONObject().put("documentId", id).put("data", toJsonObject(data)))
+                }
+            }
             if (schema >= 2) {
                 val expectedCount = (rootData["recordCount"] as? Number)?.toInt()
                     ?: error("شمارندهٔ رکوردهای پشتیبان استاد $ownerUid موجود نیست.")
@@ -60,10 +68,14 @@ class AdminCloudBackupExporter(
                     "پشتیبان استاد $ownerUid ناقص است: شمارنده $expectedCount و رکوردهای دریافت‌شده ${records.length()}؛ خروجی متوقف شد."
                 }
             }
+            val backupRoot = toJsonObject(rootData).apply {
+                put("ownerUid", ownerUid)
+                if (schema == 1) put("recordCount", records.length())
+            }
             val teacherEntry = JSONObject()
                 .put("ownerUid", ownerUid)
                 .put("schemaVersion", schema)
-                .put("root", toJsonObject(rootData))
+                .put("root", backupRoot)
                 .put("records", records)
             if (schema == 1) teacherEntry.put("legacyPayload", toJsonObject(rootData))
             teachers.put(teacherEntry)
@@ -86,6 +98,90 @@ class AdminCloudBackupExporter(
             "حجم پشتیبان تجمیعی بیش از ۲۵ مگابایت است؛ فایل ناقص یا غیرقابل‌بازیابی تولید نشد."
         }
         return output
+    }
+
+    private fun legacyRecords(
+        ownerUid: String,
+        root: Map<String, Any?>
+    ): List<Pair<String, Map<String, Any?>>> {
+        fun rows(name: String): List<Map<String, Any?>> {
+            val source = root[name] as? List<*>
+                ?: error("آرایهٔ $name در پشتیبان قدیمی استاد $ownerUid موجود نیست.")
+            return source.mapIndexed { index, value ->
+                val map = value as? Map<*, *>
+                    ?: error("رکورد شمارهٔ ${index + 1} از $name معتبر نیست.")
+                require(map.keys.all { it is String }) { "کلید نامعتبر در $name استاد $ownerUid." }
+                map.entries.associate { (key, item) -> key as String to item }.toMutableMap()
+            }
+        }
+
+        val result = mutableListOf<Pair<String, Map<String, Any?>>>()
+        val seenIds = mutableSetOf<String>()
+        fun add(id: String, data: Map<String, Any?>) {
+            require(id.isNotBlank() && seenIds.add(id)) { "شناسهٔ تکراری یا خالی در پشتیبان قدیمی استاد $ownerUid." }
+            result += id to data
+        }
+
+        rows("classes").forEach { source ->
+            val data = source.toMutableMap()
+            val id = (data["id"] as? Number)?.toLong()
+                ?: error("شناسهٔ یکی از کلاس‌های قدیمی استاد $ownerUid معتبر نیست.")
+            require(id > 0) { "شناسهٔ کلاس قدیمی باید مثبت باشد." }
+            val owner = (data["ownerUid"] as? String).orEmpty()
+            require(owner.isBlank() || owner == ownerUid) { "مالک کلاس قدیمی با استاد $ownerUid سازگار نیست." }
+            data["ownerUid"] = ownerUid
+            data["recordType"] = "class"
+            add("class_$id", data)
+        }
+
+        rows("courses").forEach { source ->
+            val data = source.toMutableMap()
+            val id = (data["id"] as? Number)?.toLong()
+                ?: error("شناسهٔ یکی از درس‌های قدیمی استاد $ownerUid معتبر نیست.")
+            require(id > 0) { "شناسهٔ درس قدیمی باید مثبت باشد." }
+            data["ownerUid"] = ownerUid
+            data["recordType"] = "course"
+            add("course_$id", data)
+        }
+
+        rows("lectures").forEach { source ->
+            val data = source.toMutableMap()
+            val id = (data["id"] as? Number)?.toLong()
+                ?: error("شناسهٔ یکی از جلسات قدیمی استاد $ownerUid معتبر نیست.")
+            require(id > 0) { "شناسهٔ جلسهٔ قدیمی باید مثبت باشد." }
+            val textFields = listOf("transcript", "originalTranscript", "aiSummary", "aiKeyPoints", "aiQuizJson", "tags")
+            val manifest = linkedMapOf<String, Int>()
+            textFields.forEach { field ->
+                val raw = data[field]
+                if (raw != null) {
+                    val value = raw as? String ?: raw.toString()
+                    val chunks = BackupTextChunker.splitUtf8(value, 256 * 1024)
+                    manifest[field] = chunks.size
+                    chunks.forEachIndexed { index, chunk ->
+                        add(
+                            "lecture_text_${id}_${field}_$index",
+                            mapOf(
+                                "recordType" to "lecture_text_chunk",
+                                "ownerUid" to ownerUid,
+                                "lectureId" to id,
+                                "field" to field,
+                                "index" to index,
+                                "value" to chunk
+                            )
+                        )
+                    }
+                    data[field] = ""
+                }
+            }
+            data["aiSummary"] = null
+            data["aiKeyPoints"] = null
+            data["aiQuizJson"] = null
+            data["textChunkCounts"] = manifest
+            data["ownerUid"] = ownerUid
+            data["recordType"] = "lecture"
+            add("lecture_$id", data)
+        }
+        return result
     }
 
     private fun toJsonObject(map: Map<String, Any?>): JSONObject =
