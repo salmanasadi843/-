@@ -49,8 +49,6 @@ object CloudMaterialsSync {
                     lecture.classId?.let { it > 0L && it in visibleClassIds } == true
             }
             val root = firestore.collection("shared_materials").document(uid)
-            val previousRoot = Tasks.await(root.get())
-            val previousGeneration = previousRoot.getString("activeGeneration")
             val generation = java.util.UUID.randomUUID().toString()
             val records = root.collection("generations").document(generation).collection("records")
             val desired = linkedMapOf<String, Map<String, Any?>>()
