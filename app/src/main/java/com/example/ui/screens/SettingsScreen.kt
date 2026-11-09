@@ -61,6 +61,7 @@ import androidx.compose.ui.text.input.VisualTransformation
 import androidx.compose.ui.unit.dp
 import com.example.data.local.DatabaseBackup
 import com.example.data.local.CloudMaterialsSync
+import com.example.data.repository.AdminCloudBackupExporter
 import com.example.data.api.GeminiApiService
 import com.example.data.api.GroqApiService
 import com.example.data.api.SpeechmaticsApiService
@@ -112,6 +113,26 @@ fun SettingsScreen(
             backupBusy = false
             backupError = result.isFailure
             backupStatus = if (result.isSuccess) "پشتیبان با موفقیت ذخیره شد. فایل را در فضای امن یا فضای ابری نگه دارید." else "ساخت پشتیبان ناموفق بود: ${result.exceptionOrNull()?.localizedMessage}"
+        }
+    }
+    val exportAdminCloudBackup = rememberLauncherForActivityResult(
+        ActivityResultContracts.CreateDocument("application/json")
+    ) { uri ->
+        if (uri != null && isPrimaryAdmin) backupScope.launch {
+            backupBusy = true
+            backupStatus = null
+            val result = withContext(Dispatchers.IO) {
+                runCatching {
+                    val json = AdminCloudBackupExporter().exportAllTeachers()
+                    context.contentResolver.openOutputStream(uri, "wt")?.bufferedWriter(Charsets.UTF_8)?.use {
+                        it.write(json.toString(2))
+                    } ?: error("فایل پشتیبان مدیر برای نوشتن باز نشد.")
+                    "پشتیبان ابری تجمیعی ذخیره شد: ${json.optInt("teacherCount")} استاد، ${json.optInt("recordCount")} رکورد."
+                }
+            }
+            backupBusy = false
+            backupError = result.isFailure
+            backupStatus = result.getOrElse { "پشتیبان ابری مدیر ناموفق بود: ${it.localizedMessage}" }
         }
     }
     val exportSafetySnapshot = rememberLauncherForActivityResult(
@@ -846,6 +867,23 @@ fun SettingsScreen(
                         Icon(Icons.Default.CheckCircle, contentDescription = null)
                         Spacer(Modifier.width(8.dp))
                         Text("ساخت فایل پشتیبان")
+                    }
+                    if (isPrimaryAdmin) {
+                        Spacer(Modifier.height(8.dp))
+                        OutlinedButton(
+                            onClick = { exportAdminCloudBackup.launch("darsyar-admin-cloud-backup.json") },
+                            enabled = !backupBusy,
+                            modifier = Modifier.fillMaxWidth()
+                        ) {
+                            Icon(Icons.Default.NetworkCheck, contentDescription = null)
+                            Spacer(Modifier.width(8.dp))
+                            Text("پشتیبان ابری همهٔ استادان (مدیر)")
+                        }
+                        Text(
+                            "این خروجی فقط خواندنی است؛ اطلاعات استادان را در پایگاه محلی مدیر ادغام نمی‌کند و مالکیت هر استاد را حفظ می‌کند.",
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                        )
                     }
                     Spacer(Modifier.height(8.dp))
                     OutlinedButton(
