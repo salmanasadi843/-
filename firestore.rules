@@ -102,6 +102,16 @@ service cloud.firestore {
                             && request.resource.data.ownerUid == teacherUid;
       allow delete: if approvedTeacher(teacherUid)
                     && resource.data.ownerUid == teacherUid;
+
+      // Published materials are split into individual records to avoid the
+      // Firestore 1 MiB limit on a single legacy payload field.
+      match /records/{recordId} {
+        allow read: if request.auth != null;
+        allow create, update: if approvedTeacher(teacherUid)
+                              && request.resource.data.ownerUid == teacherUid;
+        allow delete: if approvedTeacher(teacherUid)
+                      && resource.data.ownerUid == teacherUid;
+      }
     }
 
     function activeTeacher(uid) {
