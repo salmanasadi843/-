@@ -264,6 +264,9 @@ class FirestoreSyncRepository(
             )
             when (data["recordType"] as? String) {
                 "class" -> {
+                    if (document.id != "class_\${data["id"]}") {
+                        throw IllegalStateException("شناسهٔ سند کلاس با محتوای آن سازگار نیست؛ اطلاعات محلی حفظ شد.")
+                    }
                     if (data["ownerUid"] != uid) {
                         throw IllegalStateException(
                             "مالک یکی از کلاس‌های پشتیبان با حساب فعلی سازگار نیست؛ اطلاعات محلی دست‌نخورده باقی ماند."
@@ -272,6 +275,9 @@ class FirestoreSyncRepository(
                     classes += data.toClassEntity()
                 }
                 "course" -> {
+                    if (document.id != "course_\${data["id"]}") {
+                        throw IllegalStateException("شناسهٔ سند درس با محتوای آن سازگار نیست؛ اطلاعات محلی حفظ شد.")
+                    }
                     val recordOwner = data["ownerUid"] as? String
                     if (recordOwner != null && recordOwner != uid) {
                         throw IllegalStateException("مالک یکی از درس‌های پشتیبان معتبر نیست؛ اطلاعات محلی حفظ شد.")
@@ -279,6 +285,9 @@ class FirestoreSyncRepository(
                     courses += data.toCourseEntity()
                 }
                 "lecture" -> {
+                    if (document.id != "lecture_\${data["id"]}") {
+                        throw IllegalStateException("شناسهٔ سند جلسه با محتوای آن سازگار نیست؛ اطلاعات محلی حفظ شد.")
+                    }
                     val recordOwner = data["ownerUid"] as? String
                     if (recordOwner != null && recordOwner != uid) {
                         throw IllegalStateException("مالک یکی از جلسات پشتیبان معتبر نیست؛ اطلاعات محلی حفظ شد.")
@@ -298,6 +307,10 @@ class FirestoreSyncRepository(
                         ?: throw IllegalStateException("شمارهٔ بخش متن جلسه معتبر نیست.")
                     val value = data["value"] as? String
                         ?: throw IllegalStateException("محتوای بخش متن جلسه معتبر نیست.")
+                    val expectedDocumentId = "lecture_text_\${lectureId}_\${field}_\${index}"
+                    if (document.id != expectedDocumentId) {
+                        throw IllegalStateException("شناسهٔ سند بخش متن جلسه معتبر نیست.")
+                    }
                     val parts = lectureChunks.getOrPut(lectureId) { mutableMapOf() }.getOrPut(field) { mutableMapOf() }
                     if (index < 0 || parts.put(index, value) != null) throw IllegalStateException("بخش تکراری یا نامعتبر در متن جلسه پیدا شد.")
                 }
@@ -310,11 +323,22 @@ class FirestoreSyncRepository(
             val lecture = lectures[i]
             val metadata = documents.firstOrNull { it.id == "lecture_${lecture.id}" }?.data
                 ?: throw IllegalStateException("اطلاعات اصلی یکی از جلسات پشتیبان موجود نیست.")
-            val manifest = (metadata["textChunkCounts"] as? Map<*, *>)?.mapNotNull { (k, v) ->
-                val field = k as? String ?: return@mapNotNull null
-                val count = (v as? Number)?.toInt() ?: return@mapNotNull null
-                field to count
-            }?.toMap().orEmpty()
+            val rawManifest = metadata["textChunkCounts"]
+            val manifest = when (rawManifest) {
+                null -> emptyMap()
+                is Map<*, *> -> {
+                    if (rawManifest.keys.any { it !is String } ||
+                        rawManifest.values.any { it !is Number } ||
+                        rawManifest.keys.any { it !in setOf("transcript", "originalTranscript", "aiSummary", "aiKeyPoints", "aiQuizJson", "tags") }
+                    ) throw IllegalStateException("فهرست قطعات متن جلسه معتبر نیست؛ اطلاعات محلی حفظ شد.")
+                    rawManifest.entries.associate { (key, value) -> key as String to (value as Number).toInt() }
+                }
+                else -> throw IllegalStateException("فهرست قطعات متن جلسه معتبر نیست؛ اطلاعات محلی حفظ شد.")
+            }
+            val actualChunkFields = lectureChunks[lecture.id].orEmpty().keys
+            if (actualChunkFields != manifest.keys) {
+                throw IllegalStateException("فهرست قطعات با اسناد متن جلسه سازگار نیست؛ اطلاعات محلی حفظ شد.")
+            }
             val rebuilt = mutableMapOf<String, String>()
             manifest.forEach { (field, count) ->
                 val parts = lectureChunks[lecture.id]?.get(field)
@@ -333,6 +357,10 @@ class FirestoreSyncRepository(
                 aiQuizJson = rebuilt["aiQuizJson"] ?: lecture.aiQuizJson,
                 tags = rebuilt["tags"] ?: lecture.tags
             )
+        }
+        val lectureIds = lectures.map { it.id }.toSet()
+        if (lectureChunks.keys.any { it !in lectureIds }) {
+            throw IllegalStateException("قطعات متنی به جلسهٔ موجودی متصل نیستند؛ اطلاعات محلی حفظ شد.")
         }
         val classIds = classes.map { it.id }.toSet()
         if (courses.any { it.classId !in classIds } ||
