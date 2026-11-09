@@ -54,16 +54,16 @@ object AdminCloudBackupValidator {
             }
             seenOwners += ownerUid
             val schema = entry.optInt("schemaVersion", -1)
-            require(schema == 3) {
-                "پشتیبان استاد $ownerUid نسخهٔ $schema است؛ بازیابی خودکار فقط نسخهٔ ۳ را می‌پذیرد."
+            require(schema == 2 || schema == 3) {
+                "پشتیبان استاد $ownerUid نسخهٔ $schema است؛ بازیابی خودکار نسخه‌های ۲ و ۳ را می‌پذیرد."
             }
 
             val root = entry.optJSONObject("root")
                 ?: throw IllegalArgumentException("سند اصلی استاد $ownerUid موجود نیست.")
             val rootOwner = root.optString("ownerUid")
             require(rootOwner == ownerUid) { "مالک سند اصلی استاد $ownerUid با شناسهٔ فایل تطبیق ندارد." }
-            val generation = root.optString("activeGeneration").trim()
-            require(generation.isNotEmpty()) { "نسخهٔ فعال استاد $ownerUid مشخص نیست." }
+            val generation = if (schema == 3) root.optString("activeGeneration").trim() else "legacy-records"
+            if (schema == 3) require(generation.isNotEmpty()) { "نسخهٔ فعال استاد $ownerUid مشخص نیست." }
 
             val recordsArray = entry.optJSONArray("records")
                 ?: throw IllegalArgumentException("رکوردهای استاد $ownerUid وجود ندارد.")
@@ -86,7 +86,13 @@ object AdminCloudBackupValidator {
                 seenIds += id
                 val data = record.optJSONObject("data")
                     ?: throw IllegalArgumentException("دادهٔ رکورد $id استاد $ownerUid موجود نیست.")
-                require(data.optString("ownerUid") == ownerUid) {
+                val recordType = data.optString("recordType")
+                val recordOwner = data.optString("ownerUid")
+                val ownerRequired = schema == 3 || recordType == "class" || recordType == "lecture_text_chunk"
+                require(
+                    if (ownerRequired) recordOwner == ownerUid
+                    else recordOwner.isBlank() || recordOwner == ownerUid
+                ) {
                     "مالک رکورد $id با استاد $ownerUid یکسان نیست؛ بازیابی متوقف شد."
                 }
                 records += Record(id, JSONObject(data.toString()))
