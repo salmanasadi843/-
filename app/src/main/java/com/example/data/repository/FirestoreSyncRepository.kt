@@ -152,6 +152,11 @@ class FirestoreSyncRepository(
 
     private suspend fun restoreRecordDocuments(uid: String, generationId: String?) {
         val rootSnapshot = firestore.collection(TEACHER_DATA).document(uid).get().awaitResult()
+        if (generationId != null && rootSnapshot.getString("activeGeneration") != generationId) {
+            throw IllegalStateException(
+                "نسخهٔ فعال پشتیبان هنگام بازیابی تغییر کرده است؛ برای جلوگیری از ترکیب نسخه‌ها، دوباره تلاش کنید."
+            )
+        }
         val records = if (generationId == null) {
             firestore.collection(TEACHER_DATA).document(uid).collection(RECORDS)
         } else {
@@ -207,7 +212,7 @@ class FirestoreSyncRepository(
                 "ارتباط کلاس و درس یا جلسه در پشتیبان ابری ناقص است؛ اطلاعات محلی دست‌نخورده باقی ماند."
             )
         }
-        validateAndReplaceLocalData(classes, courses, lectures, folders)
+        validateAndReplaceLocalData(classes, courses, lectures, folders, uid)
     }
 
     private suspend fun restoreSnapshot(
@@ -245,7 +250,8 @@ class FirestoreSyncRepository(
         classes: List<ClassEntity>,
         courses: List<CourseEntity>,
         lectures: List<LectureEntity>,
-        folders: List<TeacherFolderEntity>? = null
+        folders: List<TeacherFolderEntity>? = null,
+        ownerUid: String? = null
     ) {
         if (classes.any { it.id <= 0L } || courses.any { it.id <= 0L } || lectures.any { it.id <= 0L }) {
             throw IllegalStateException("شناسه یکی از رکوردهای پشتیبان ابری معتبر نیست.")
@@ -266,7 +272,8 @@ class FirestoreSyncRepository(
         }
         if (folders != null) {
             val folderIds = folders.map { it.id }.toSet()
-            if (folders.any { it.id <= 0L || it.ownerUid.isBlank() } ||
+            if (folders.any { it.id <= 0L || it.ownerUid.isBlank() ||
+                    (ownerUid != null && it.ownerUid != ownerUid) } ||
                 folders.map { it.id }.distinct().size != folders.size ||
                 folders.any { it.parentFolderId != null && it.parentFolderId !in folderIds } ||
                 classes.any { it.folderId != null && it.folderId !in folderIds }
