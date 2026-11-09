@@ -48,6 +48,16 @@ object CloudMaterialsSync {
                 lecture.id > 0L && lecture.isPublished &&
                     lecture.classId?.let { it > 0L && it in visibleClassIds } == true
             }
+            // Legacy classes may have a blank ownerUid. Never activate an empty or
+            // incomplete publication generation while such published local classes
+            // exist; preserve the previous active generation until ownership is
+            // reconciled safely.
+            val legacyPublishedClasses = allClasses.filter {
+                it.id > 0L && it.isPublished && it.ownerUid.isBlank()
+            }
+            require(legacyPublishedClasses.isEmpty() || classes.isNotEmpty()) {
+                "انتشار متوقف شد: ${legacyPublishedClasses.size} کلاس قدیمی مالک مشخصی ندارند. نسخهٔ قبلی آنلاین حفظ شده است؛ ابتدا مالکیت کلاس‌ها باید بررسی شود."
+            }
             val root = firestore.collection("shared_materials").document(uid)
             val desired = linkedMapOf<String, Map<String, Any?>>()
             classes.forEach { item ->
