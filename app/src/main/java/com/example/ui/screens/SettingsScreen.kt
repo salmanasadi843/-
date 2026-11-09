@@ -62,6 +62,7 @@ import androidx.compose.ui.unit.dp
 import com.example.data.local.DatabaseBackup
 import com.example.data.local.CloudMaterialsSync
 import com.example.data.repository.AdminCloudBackupExporter
+import com.example.data.repository.AdminCloudBackupRestorer
 import com.example.data.api.GeminiApiService
 import com.example.data.api.GroqApiService
 import com.example.data.api.SpeechmaticsApiService
@@ -91,6 +92,7 @@ fun SettingsScreen(
     var backupStatus by remember { mutableStateOf<String?>(null) }
     var backupError by remember { mutableStateOf(false) }
     var pendingRestoreUri by remember { mutableStateOf<Uri?>(null) }
+    var pendingAdminRestoreUri by remember { mutableStateOf<Uri?>(null) }
     var safetySnapshotAvailable by remember { mutableStateOf(DatabaseBackup.hasSafetySnapshot(context)) }
     var cloudBusy by remember { mutableStateOf(false) }
     var cloudStatus by remember { mutableStateOf<String?>(null) }
@@ -134,6 +136,9 @@ fun SettingsScreen(
             backupError = result.isFailure
             backupStatus = result.getOrElse { "پشتیبان ابری مدیر ناموفق بود: ${it.localizedMessage}" }
         }
+    }
+    val importAdminCloudBackup = rememberLauncherForActivityResult(ActivityResultContracts.OpenDocument()) { uri ->
+        if (uri != null && isPrimaryAdmin) pendingAdminRestoreUri = uri
     }
     val exportSafetySnapshot = rememberLauncherForActivityResult(
         ActivityResultContracts.CreateDocument("application/json")
@@ -239,6 +244,35 @@ fun SettingsScreen(
         )
     }
 
+    if (pendingAdminRestoreUri != null && isPrimaryAdmin) {
+        androidx.compose.material3.AlertDialog(
+            onDismissRequest = { pendingAdminRestoreUri = null },
+            title = { Text("بازیابی ابری همهٔ استادان؟") },
+            text = { Text("فایل ابتدا کامل اعتبارسنجی می‌شود. سپس برای هر استاد، نسخهٔ جدیدی ساخته و بررسی می‌شود و فقط پس از تأیید، به نسخهٔ فعال تبدیل می‌گردد. نسخه‌های قبلی حذف نمی‌شوند. این عملیات اطلاعات ابری استادان را تغییر می‌دهد؛ فایل را فقط اگر مطمئن هستید انتخاب کنید.") },
+            confirmButton = {
+                Button(onClick = {
+                    val selected = pendingAdminRestoreUri
+                    pendingAdminRestoreUri = null
+                    if (selected != null) backupScope.launch {
+                        backupBusy = true
+                        backupStatus = null
+                        val result = withContext(Dispatchers.IO) {
+                            runCatching {
+                                val text = context.contentResolver.openInputStream(selected)?.bufferedReader(Charsets.UTF_8)?.use { it.readText() }
+                                    ?: error("فایل پشتیبان باز نشد.")
+                                val report = AdminCloudBackupRestorer().restoreAll(text)
+                                "بازیابی ابری انجام شد: ${report.teachersRestored} استاد، ${report.recordsRestored} رکورد."
+                            }
+                        }
+                        backupBusy = false
+                        backupError = result.isFailure
+                        backupStatus = result.getOrElse { "بازیابی ابری مدیر ناموفق بود: ${it.localizedMessage}" }
+                    }
+                }) { Text("تأیید و بازیابی") }
+            },
+            dismissButton = { OutlinedButton(onClick = { pendingAdminRestoreUri = null }) { Text("انصراف") } }
+        )
+    }
     if (showPublishConfirm) {
         androidx.compose.material3.AlertDialog(
             onDismissRequest = { showPublishConfirm = false },
@@ -879,8 +913,17 @@ fun SettingsScreen(
                             Spacer(Modifier.width(8.dp))
                             Text("پشتیبان ابری همهٔ استادان (مدیر)")
                         }
+                        OutlinedButton(
+                            onClick = { importAdminCloudBackup.launch(arrayOf("application/json", "text/*", "application/octet-stream")) },
+                            enabled = !backupBusy,
+                            modifier = Modifier.fillMaxWidth()
+                        ) {
+                            Icon(Icons.Default.NetworkCheck, contentDescription = null)
+                            Spacer(Modifier.width(8.dp))
+                            Text("بازیابی ابری همهٔ استادان (مدیر)")
+                        }
                         Text(
-                            "این خروجی فقط خواندنی است؛ اطلاعات استادان را در پایگاه محلی مدیر ادغام نمی‌کند و مالکیت هر استاد را حفظ می‌کند.",
+                            "خروجی مستقل هر استاد مالکیت اصلی را حفظ می‌کند؛ بازیابی ابری پس از اعتبارسنجی و تأیید صریح انجام می‌شود.",
                             style = MaterialTheme.typography.bodySmall,
                             color = MaterialTheme.colorScheme.onSurfaceVariant
                         )
