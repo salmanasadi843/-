@@ -327,9 +327,9 @@ class FirestoreSyncRepository(
             val manifest = when (rawManifest) {
                 null -> emptyMap()
                 is Map<*, *> -> {
-                    if (rawManifest.keys.any { it !is String } ||
-                        rawManifest.values.any { it !is Number } ||
-                        rawManifest.keys.any { it !in setOf("transcript", "originalTranscript", "aiSummary", "aiKeyPoints", "aiQuizJson", "tags") }
+                    val allowedFields = setOf("transcript", "originalTranscript", "aiSummary", "aiKeyPoints", "aiQuizJson", "tags")
+                    if (rawManifest.keys.any { it !is String || it !in allowedFields } ||
+                        rawManifest.values.any { it !is Number }
                     ) throw IllegalStateException("فهرست قطعات متن جلسه معتبر نیست؛ اطلاعات محلی حفظ شد.")
                     rawManifest.entries.associate { (key, value) -> key as String to (value as Number).toInt() }
                 }
