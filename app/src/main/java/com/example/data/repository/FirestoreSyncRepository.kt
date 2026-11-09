@@ -160,12 +160,26 @@ class FirestoreSyncRepository(
             }
         }
 
-        // Write a fresh immutable generation; never overwrite the active backup.
-        desired.entries.toList().chunked(BATCH_LIMIT).forEach { chunk ->
+        // Keep each Firestore commit below 8 MiB as well as below 400 writes.
+        val pending = mutableListOf<Pair<String, Map<String, Any?>>>()
+        var pendingBytes = 0
+        fun commitPendingBatch() {
+            if (pending.isEmpty()) return
             val batch = firestore.batch()
-            chunk.forEach { (id, data) -> batch.set(records.document(id), data) }
+            pending.forEach { (id, data) -> batch.set(records.document(id), data) }
             batch.commit().awaitResult()
+            pending.clear()
+            pendingBytes = 0
         }
+        desired.forEach { (id, data) ->
+            val bytes = JSONObject(data).toString().toByteArray(Charsets.UTF_8).size
+            if (pending.isNotEmpty() &&
+                (pending.size >= BATCH_LIMIT || pendingBytes + bytes > 8 * 1024 * 1024)
+            ) commitPendingBatch()
+            pending += id to data
+            pendingBytes += bytes
+        }
+        commitPendingBatch()
 
         val verified = records.get().awaitResult().documents
         val verifiedById = verified.associateBy { it.id }
