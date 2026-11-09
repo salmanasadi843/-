@@ -14,6 +14,7 @@ object AdminCloudBackupValidator {
     private const val MAX_FILE_BYTES = 25 * 1024 * 1024
     private const val MAX_TEACHERS = 500
     private const val MAX_RECORDS = 100_000
+    private const val MAX_RECORD_BYTES = 700 * 1024
 
     data class TeacherBackup(
         val ownerUid: String,
@@ -89,6 +90,9 @@ object AdminCloudBackupValidator {
                 seenIds += id
                 val data = record.optJSONObject("data")
                     ?: throw IllegalArgumentException("دادهٔ رکورد $id استاد $ownerUid موجود نیست.")
+                require(data.toString().toByteArray(Charsets.UTF_8).size <= MAX_RECORD_BYTES) {
+                    "رکورد $id استاد $ownerUid بیش از اندازهٔ مجاز است؛ بازیابی برای جلوگیری از خطای ناقص متوقف شد."
+                }
                 val recordType = data.optString("recordType")
                 val recordOwner = data.optString("ownerUid")
                 val ownerRequired = schema == 3 || recordType == "class" || recordType == "lecture_text_chunk"
