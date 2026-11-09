@@ -53,7 +53,7 @@ class AdminCloudBackupRestorer(
             require(staged.size == teacher.records.size &&
                 teacher.records.all { expected ->
                     val actual = stagedById[expected.documentId]?.data
-                    actual != null && JSONObject(actual).toString() == expected.data.toString()
+                    actual != null && canonicalJson(JSONObject(actual)) == canonicalJson(expected.data)
                 }) {
                 "رکوردهای استاد ${teacher.ownerUid} پس از نوشتن کامل تأیید نشد؛ نسخهٔ قبلی فعال باقی ماند."
             }
@@ -77,6 +77,29 @@ class AdminCloudBackupRestorer(
             restoredRecords += teacher.records.size
         }
         return RestoreReport(restoredTeachers, restoredRecords)
+    }
+
+    private fun canonicalJson(value: Any?): String = when (value) {
+        is JSONObject -> {
+            val keys = value.keys().asSequence().toList().sorted()
+            JSONObject().apply { keys.forEach { key -> put(key, canonicalValue(value.get(key))) } }.toString()
+        }
+        else -> JSONObject().put("value", canonicalValue(value)).toString()
+    }
+
+    private fun canonicalValue(value: Any?): Any? = when (value) {
+        JSONObject.NULL -> JSONObject.NULL
+        is JSONObject -> JSONObject().apply {
+            value.keys().asSequence().toList().sorted().forEach { put(it, canonicalValue(value.get(it))) }
+        }
+        is org.json.JSONArray -> org.json.JSONArray().apply {
+            for (i in 0 until value.length()) put(canonicalValue(value.get(i)))
+        }
+        is Map<*, *> -> JSONObject().apply {
+            value.keys.filterIsInstance<String>().sorted().forEach { key -> put(key, canonicalValue(value[key])) }
+        }
+        is Iterable<*> -> org.json.JSONArray().apply { value.forEach { put(canonicalValue(it)) } }
+        else -> value
     }
 
     private fun jsonToMap(json: JSONObject): Map<String, Any?> {
