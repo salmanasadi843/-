@@ -213,7 +213,7 @@ service cloud.firestore {
                             || resource.data.ownerUid == ownerUid)
                         && request.resource.data.ownerUid == ownerUid
                         && request.resource.data.diff(resource.data).affectedKeys()
-                             .hasOnly(['ownerUid', 'activeGeneration', 'schemaVersion', 'recordCount', 'updatedAt', 'folders', 'teacherName']));
+                             .hasOnly(['ownerUid', 'activeGeneration', 'schemaVersion', 'recordCount', 'updatedAt', 'folders', 'teacherName', 'classes', 'courses', 'lectures', 'payload', 'legacyPayload']));
 
       allow delete: if approvedTeacher(ownerUid);
 
