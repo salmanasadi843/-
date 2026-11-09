@@ -203,7 +203,7 @@ service cloud.firestore {
 
       // Admin recovery is limited to the backup root and owner-bound records.
       // It cannot delete roots or records, nor write any other collection.
-      allow create: if approvedTeacher(ownerUid)
+      allow create: if (approvedTeacher(ownerUid) || isPrimaryTeacher())
                     && request.resource.data.ownerUid == ownerUid;
       allow update: if (approvedTeacher(ownerUid)
                         && request.resource.data.ownerUid == ownerUid)
@@ -222,11 +222,14 @@ service cloud.firestore {
       // creation; the admin may create records only, never delete them.
       match /generations/{generationId}/records/{recordId} {
         allow read: if canReadTeacherBackup(ownerUid);
-        allow create: if approvedTeacher(ownerUid)
+        allow create: if (approvedTeacher(ownerUid) || isPrimaryTeacher())
                       && request.resource.data.ownerUid == ownerUid;
-        allow update: if approvedTeacher(ownerUid)
-                      && resource.data.ownerUid == ownerUid
-                      && request.resource.data.ownerUid == ownerUid;
+        allow update: if (approvedTeacher(ownerUid)
+                         && resource.data.ownerUid == ownerUid
+                         && request.resource.data.ownerUid == ownerUid)
+                      || (isPrimaryTeacher()
+                          && resource.data.ownerUid == ownerUid
+                          && request.resource.data.ownerUid == ownerUid);
         allow delete: if approvedTeacher(ownerUid)
                       && resource.data.ownerUid == ownerUid;
       }
