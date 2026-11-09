@@ -57,7 +57,7 @@ class FirestoreSyncRepository(
         return when (snapshot.getLong("schemaVersion")) {
             LEGACY_SCHEMA_VERSION -> {
                 // Validate and restore the old snapshot before migrating it.
-                restoreSnapshot(snapshot, requireAllCollections = true)
+                restoreSnapshot(snapshot, requireAllCollections = true, expectedOwnerUid = uid)
                 uploadSnapshot(uid)
                 true
             }
@@ -99,7 +99,7 @@ class FirestoreSyncRepository(
         if (hasAnyLocalRows) return false
 
         return try {
-            restoreSnapshot(snapshot, requireAllCollections = true)
+            restoreSnapshot(snapshot, requireAllCollections = true, expectedOwnerUid = uid)
             true
         } catch (_: IllegalStateException) {
             false
@@ -212,6 +212,10 @@ class FirestoreSyncRepository(
 
     private suspend fun restoreRecordDocuments(uid: String, generationId: String?) {
         val rootSnapshot = firestore.collection(TEACHER_DATA).document(uid).get().awaitResult()
+        val rootOwner = rootSnapshot.getString("ownerUid")
+        if (rootOwner != null && rootOwner != uid) {
+            throw IllegalStateException("مالک نسخهٔ پشتیبان با حساب فعلی سازگار نیست؛ اطلاعات محلی حفظ شد.")
+        }
         if (generationId != null && rootSnapshot.getString("activeGeneration") != generationId) {
             throw IllegalStateException(
                 "نسخهٔ فعال پشتیبان هنگام بازیابی تغییر کرده است؛ برای جلوگیری از ترکیب نسخه‌ها، دوباره تلاش کنید."
@@ -375,7 +379,8 @@ class FirestoreSyncRepository(
 
     private suspend fun restoreSnapshot(
         snapshot: DocumentSnapshot,
-        requireAllCollections: Boolean
+        requireAllCollections: Boolean,
+        expectedOwnerUid: String? = null
     ) {
         val rawClasses = snapshot.get("classes") as? List<*>
         val rawCourses = snapshot.get("courses") as? List<*>
@@ -390,8 +395,17 @@ class FirestoreSyncRepository(
         }
 
         val classes = rawClasses.orEmpty().map {
-            (it as? Map<*, *>)?.asStringMap()?.toClassEntity()
+            val restored = (it as? Map<*, *>)?.asStringMap()?.toClassEntity()
                 ?: throw IllegalStateException("رکورد کلاس در پشتیبان ابری معتبر نیست.")
+            if (expectedOwnerUid != null) {
+                when {
+                    restored.ownerUid.isBlank() -> restored.copy(ownerUid = expectedOwnerUid)
+                    restored.ownerUid != expectedOwnerUid -> throw IllegalStateException(
+                        "مالک یکی از کلاس‌های نسخهٔ قدیمی با حساب فعلی سازگار نیست؛ اطلاعات محلی حفظ شد."
+                    )
+                    else -> restored
+                }
+            } else restored
         }
         val courses = rawCourses.orEmpty().map {
             (it as? Map<*, *>)?.asStringMap()?.toCourseEntity()
