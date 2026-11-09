@@ -86,17 +86,24 @@ class FirestoreSyncRepository(
     suspend fun uploadSnapshot(uid: String) {
         // Shared published records are imported with negative IDs. They belong to
         // their original teachers and must never enter this account's private backup.
-        val classes = classDao.getAllForBackup().filter { it.id > 0L && (it.ownerUid == uid || it.ownerUid.isBlank()) }
+        val allClasses = classDao.getAllForBackup().filter { it.id > 0L }
+        val classesWithUnknownOwner = allClasses.filter { it.ownerUid.isBlank() }
+        require(classesWithUnknownOwner.isEmpty()) {
+            "پشتیبان‌گیری متوقف شد: ${classesWithUnknownOwner.size} کلاس قدیمی مالک مشخصی ندارند. " +
+                "برای جلوگیری از انتساب اشتباه اطلاعات، ابتدا مالکیت این کلاس‌ها باید بررسی شود؛ نسخهٔ ابری قبلی حفظ می‌شود."
+        }
+        val classes = allClasses.filter { it.ownerUid == uid }
+        val foreignClasses = allClasses.filter { it.ownerUid != uid }
+        require(foreignClasses.isEmpty()) {
+            "پشتیبان‌گیری خصوصی متوقف شد: داده‌های محلی شامل کلاس‌هایی با مالک دیگر است. " +
+                "این کلاس‌ها نباید وارد نسخهٔ پشتیبان حساب فعلی شوند."
+        }
         val ownedClassIds = classes.map { it.id }.toSet()
         val courses = courseDao.getAllForBackup().filter {
             it.id > 0L && it.classId in ownedClassIds
         }
         val lectures = lectureDao.getAllForBackup()
             .filter { it.id > 0L && it.classId in ownedClassIds }
-            .filterNot {
-                it.title == "جلسه ۴: شبکه‌های عصبی و یادگیری عمیق" ||
-                    it.title == "جلسه ۷: سری و تبدیل فوریه و کاربرد در سیگنال"
-            }
 
         val root = firestore.collection(TEACHER_DATA).document(uid)
         val records = root.collection(RECORDS)
@@ -138,17 +145,27 @@ class FirestoreSyncRepository(
     }
 
     private suspend fun restoreRecordDocuments(uid: String) {
+        val rootSnapshot = firestore.collection(TEACHER_DATA).document(uid).get().awaitResult()
         val documents = firestore.collection(TEACHER_DATA)
             .document(uid)
             .collection(RECORDS)
             .get()
             .awaitResult()
             .documents
+        val expectedCount = rootSnapshot.getLong("recordCount")?.toInt()
+            ?: throw IllegalStateException(
+                "تعداد رکوردهای پشتیبان ابری مشخص نیست؛ برای جلوگیری از بازیابی ناقص، اطلاعات محلی دست‌نخورده باقی ماند."
+            )
+        if (documents.size != expectedCount) {
+            throw IllegalStateException(
+                "تعداد رکوردهای ابری با مقدار ثبت‌شده سازگار نیست (${documents.size} از $expectedCount). " +
+                    "احتمالاً همگام‌سازی ناقص بوده است؛ اطلاعات محلی دست‌نخورده باقی ماند."
+            )
+        }
 
         val classes = mutableListOf<ClassEntity>()
         val courses = mutableListOf<CourseEntity>()
         val lectures = mutableListOf<LectureEntity>()
-        val rootSnapshot = firestore.collection(TEACHER_DATA).document(uid).get().awaitResult()
         val folders = teacherFolderDao?.let {
             (rootSnapshot.get("folders") as? List<*>)?.mapNotNull { value ->
                 (value as? Map<*, *>)?.asStringMap()?.toFolderEntity()
@@ -160,13 +177,28 @@ class FirestoreSyncRepository(
                 "یکی از رکوردهای پشتیبان ابری خالی است؛ اطلاعات محلی دست‌نخورده باقی ماند."
             )
             when (data["recordType"] as? String) {
-                "class" -> classes += data.toClassEntity()
+                "class" -> {
+                    if (data["ownerUid"] != uid) {
+                        throw IllegalStateException(
+                            "مالک یکی از کلاس‌های پشتیبان با حساب فعلی سازگار نیست؛ اطلاعات محلی دست‌نخورده باقی ماند."
+                        )
+                    }
+                    classes += data.toClassEntity()
+                }
                 "course" -> courses += data.toCourseEntity()
                 "lecture" -> lectures += data.toLectureEntity()
                 else -> throw IllegalStateException(
                     "نوع یکی از رکوردهای پشتیبان ابری معتبر نیست؛ اطلاعات محلی دست‌نخورده باقی ماند."
                 )
             }
+        }
+        val classIds = classes.map { it.id }.toSet()
+        if (courses.any { it.classId !in classIds } ||
+            lectures.any { it.classId != null && it.classId !in classIds }
+        ) {
+            throw IllegalStateException(
+                "ارتباط کلاس و درس یا جلسه در پشتیبان ابری ناقص است؛ اطلاعات محلی دست‌نخورده باقی ماند."
+            )
         }
         validateAndReplaceLocalData(classes, courses, lectures)
         teacherFolderDao?.let { dao ->
