@@ -10,7 +10,7 @@ import org.robolectric.annotation.Config
 @RunWith(RobolectricTestRunner::class)
 @Config(sdk = [35]) // Android 16/API 36 Robolectric requires Java 21; CI uses Java 17.
 class AdminCloudBackupValidatorTest {
-    private fun validBackup() = """{"format":"darsyar-admin-cloud-backup","version":1,"teacherCount":1,"recordCount":1,"teachers":[{"ownerUid":"teacher-A","schemaVersion":3,"root":{"ownerUid":"teacher-A","activeGeneration":"gen-1","recordCount":1},"records":[{"documentId":"class_12","data":{"ownerUid":"teacher-A","recordType":"class","id":12}}]}]}"""
+    private fun validBackup() = """{"format":"darsyar-admin-cloud-backup","version":1,"teacherCount":1,"recordCount":1,"teachers":[{"ownerUid":"teacher-A","schemaVersion":3,"root":{"ownerUid":"teacher-A","activeGeneration":"gen-1","recordCount":1,"folders":[]},"records":[{"documentId":"class_12","data":{"ownerUid":"teacher-A","recordType":"class","id":12}}]}]}"""
 
     @Test fun acceptsCompleteSchemaThreeBackup() {
         val result = AdminCloudBackupValidator.validate(validBackup())
@@ -33,8 +33,8 @@ class AdminCloudBackupValidatorTest {
 
     @Test fun rejectsCountMismatch() {
         val bad = validBackup().replace(
-            """recordCount":1,"teachers":""",
-            """recordCount":2,"teachers":"""
+            """recordCount":1,"teachers"""",
+            """recordCount":2,"teachers""""
         )
         assertThrows(IllegalArgumentException::class.java) {
             AdminCloudBackupValidator.validate(bad)
@@ -44,7 +44,7 @@ class AdminCloudBackupValidatorTest {
     @Test fun acceptsLegacyRecordSchemaTwoForMigration() {
         val legacy = validBackup()
             .replace("""schemaVersion":3""", """schemaVersion":2""")
-            .replace("""activeGeneration":"gen-1",""", "")
+            .replace("\"activeGeneration\":\"gen-1\",", "")
         val result = AdminCloudBackupValidator.validate(legacy)
         assertEquals("legacy-records", result.teachers.single().generationId)
     }
@@ -54,7 +54,7 @@ class AdminCloudBackupValidatorTest {
             """schemaVersion":3""",
             """schemaVersion":1"""
         ).replace(
-            """activeGeneration":"gen-1",""",
+            "\"activeGeneration\":\"gen-1\",",
             ""
         )
         val result = AdminCloudBackupValidator.validate(legacy)
