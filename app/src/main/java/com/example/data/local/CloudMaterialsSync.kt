@@ -128,9 +128,13 @@ object CloudMaterialsSync {
             var pendingBytes = 0
             fun commitPendingBatch() {
                 if (pending.isEmpty()) return
-                val batch = firestore.batch()
-                pending.forEach { (id, data, _) -> batch.set(records.document(id), data) }
-                awaitWithRetry("ارسال دستهٔ اطلاعات") { Tasks.await(batch.commit()) }
+                awaitWithRetry("ارسال دستهٔ اطلاعات") {
+                    // Build a fresh WriteBatch for every retry; a failed commit must not
+                    // depend on reusing a previously submitted batch instance.
+                    val batch = firestore.batch()
+                    pending.forEach { (id, data, _) -> batch.set(records.document(id), data) }
+                    Tasks.await(batch.commit())
+                }
                 pending.clear()
                 pendingBytes = 0
             }
