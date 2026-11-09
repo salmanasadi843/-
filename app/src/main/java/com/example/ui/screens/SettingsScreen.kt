@@ -90,6 +90,7 @@ fun SettingsScreen(
     var backupStatus by remember { mutableStateOf<String?>(null) }
     var backupError by remember { mutableStateOf(false) }
     var pendingRestoreUri by remember { mutableStateOf<Uri?>(null) }
+    var safetySnapshotAvailable by remember { mutableStateOf(DatabaseBackup.hasSafetySnapshot(context)) }
     var cloudBusy by remember { mutableStateOf(false) }
     var cloudStatus by remember { mutableStateOf<String?>(null) }
     var cloudError by remember { mutableStateOf(false) }
@@ -113,6 +114,24 @@ fun SettingsScreen(
             backupStatus = if (result.isSuccess) "پشتیبان با موفقیت ذخیره شد. فایل را در فضای امن یا فضای ابری نگه دارید." else "ساخت پشتیبان ناموفق بود: ${result.exceptionOrNull()?.localizedMessage}"
         }
     }
+    val exportSafetySnapshot = rememberLauncherForActivityResult(
+        ActivityResultContracts.CreateDocument("application/json")
+    ) { uri ->
+        if (uri != null) backupScope.launch {
+            backupBusy = true
+            backupStatus = null
+            val result = withContext(Dispatchers.IO) {
+                runCatching { DatabaseBackup.exportLatestSafetySnapshot(context, uri) }
+            }
+            backupBusy = false
+            backupError = result.isFailure
+            backupStatus = result.fold(
+                onSuccess = { "نسخهٔ ایمنی اطلاعات پیش از بازیابی ذخیره شد." },
+                onFailure = { "ذخیرهٔ نسخهٔ ایمنی ناموفق بود: ${it.localizedMessage}" }
+            )
+        }
+    }
+
     val runCloudSync = {
         backupScope.launch {
             cloudBusy = true
@@ -183,6 +202,7 @@ fun SettingsScreen(
                             runCatching { DatabaseBackup.import(context, selectedUri) }
                         }
                         backupBusy = false
+                        safetySnapshotAvailable = DatabaseBackup.hasSafetySnapshot(context)
                         backupError = result.isFailure
                         backupStatus = result.getOrElse {
                             "بازیابی ناموفق بود: ${it.localizedMessage}"
@@ -837,6 +857,22 @@ fun SettingsScreen(
                         Spacer(Modifier.width(8.dp))
                         Text("بازیابی از فایل پشتیبان")
                     }
+                    OutlinedButton(
+                        onClick = {
+                            exportSafetySnapshot.launch("darsyar-before-restore-safety.json")
+                        },
+                        enabled = !backupBusy && safetySnapshotAvailable,
+                        modifier = Modifier.fillMaxWidth()
+                    ) {
+                        Icon(Icons.Default.CheckCircle, contentDescription = null)
+                        Spacer(Modifier.width(8.dp))
+                        Text("ذخیرهٔ نسخهٔ ایمنی قبل از بازیابی")
+                    }
+                    Text(
+                        "پیش از هر بازیابی، برنامه یک نسخه از اطلاعات فعلی را در حافظهٔ داخلی خود نگه می‌دارد. برای نگهداری خارج از گوشی، این نسخه را نیز ذخیره کنید.",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
                     if (backupBusy) {
                         Spacer(Modifier.height(10.dp))
                         Row(verticalAlignment = Alignment.CenterVertically) {
