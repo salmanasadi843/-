@@ -61,7 +61,10 @@ object AdminCloudBackupValidator {
             val root = entry.optJSONObject("root")
                 ?: throw IllegalArgumentException("سند اصلی استاد $ownerUid موجود نیست.")
             val rootOwner = root.optString("ownerUid")
-            require(rootOwner == ownerUid) { "مالک سند اصلی استاد $ownerUid با شناسهٔ فایل تطبیق ندارد." }
+            require(
+                if (schema == 3) rootOwner == ownerUid
+                else rootOwner.isBlank() || rootOwner == ownerUid
+            ) { "مالک سند اصلی استاد $ownerUid با شناسهٔ فایل تطبیق ندارد." }
             val generation = if (schema == 3) root.optString("activeGeneration").trim() else "legacy-records"
             if (schema == 3) require(generation.isNotEmpty()) { "نسخهٔ فعال استاد $ownerUid مشخص نیست." }
 
