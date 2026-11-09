@@ -204,6 +204,14 @@ service cloud.firestore {
                     && request.auth.uid == ownerUid;
         allow create, update, delete: if approvedTeacher(ownerUid);
       }
+
+      // Immutable backup generations: a new generation is written and verified
+      // before the owner document switches activeGeneration.
+      match /generations/{generationId}/records/{recordId} {
+        allow read: if request.auth != null
+                    && request.auth.uid == ownerUid;
+        allow create, update, delete: if approvedTeacher(ownerUid);
+      }
     }
   }
 }
