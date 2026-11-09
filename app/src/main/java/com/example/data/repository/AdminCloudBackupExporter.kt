@@ -68,7 +68,11 @@ class AdminCloudBackupExporter(
                     "پشتیبان استاد $ownerUid ناقص است: شمارنده $expectedCount و رکوردهای دریافت‌شده ${records.length()}؛ خروجی متوقف شد."
                 }
             }
-            val backupRoot = toJsonObject(rootData).apply {
+            // The legacy arrays are converted into individual records above.
+            // Keep only root metadata in the backup so the arrays are not duplicated.
+            val backupRoot = toJsonObject(
+                rootData.filterKeys { it !in setOf("classes", "courses", "lectures", "payload") }
+            ).apply {
                 put("ownerUid", ownerUid)
                 if (schema == 1) put("recordCount", records.length())
             }
@@ -77,7 +81,6 @@ class AdminCloudBackupExporter(
                 .put("schemaVersion", schema)
                 .put("root", backupRoot)
                 .put("records", records)
-            if (schema == 1) teacherEntry.put("legacyPayload", toJsonObject(rootData))
             teachers.put(teacherEntry)
             totalRecords += records.length()
             require(totalRecords <= MAX_RECORDS) {
