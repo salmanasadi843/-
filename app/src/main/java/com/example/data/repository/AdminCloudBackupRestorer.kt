@@ -60,6 +60,13 @@ class AdminCloudBackupRestorer(
 
             val rootMap = mutableMapOf<String, Any?>()
             oldData?.forEach { (key, value) -> rootMap[key] = value }
+            // Restore the teacher-level metadata captured in the same backup,
+            // especially the folder hierarchy. Pointer fields are always generated
+            // locally and never trusted from the imported JSON.
+            val backupRoot = jsonToMap(teacher.root)
+            listOf("folders", "teacherName").forEach { key ->
+                if (backupRoot.containsKey(key)) rootMap[key] = backupRoot[key]
+            }
             rootMap["ownerUid"] = teacher.ownerUid
             rootMap["schemaVersion"] = 3L
             rootMap["activeGeneration"] = newGeneration
