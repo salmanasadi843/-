@@ -2,6 +2,7 @@ package com.example.ui.screens
 
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
+import android.net.Uri
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
@@ -88,6 +89,7 @@ fun SettingsScreen(
     var backupBusy by remember { mutableStateOf(false) }
     var backupStatus by remember { mutableStateOf<String?>(null) }
     var backupError by remember { mutableStateOf(false) }
+    var pendingRestoreUri by remember { mutableStateOf<Uri?>(null) }
     var cloudBusy by remember { mutableStateOf(false) }
     var cloudStatus by remember { mutableStateOf<String?>(null) }
     var cloudError by remember { mutableStateOf(false) }
@@ -122,13 +124,7 @@ fun SettingsScreen(
         }
     }
     val restoreBackup = rememberLauncherForActivityResult(ActivityResultContracts.OpenDocument()) { uri ->
-        if (uri != null) backupScope.launch {
-            backupBusy = true; backupStatus = null
-            val result = withContext(Dispatchers.IO) { runCatching { DatabaseBackup.import(context, uri) } }
-            backupBusy = false
-            backupError = result.isFailure
-            backupStatus = result.getOrElse { "بازیابی ناموفق بود: ${it.localizedMessage}" }
-        }
+        if (uri != null) pendingRestoreUri = uri
     }
 
     DisposableEffect(isPrimaryAdmin) {
@@ -164,6 +160,43 @@ fun SettingsScreen(
     var isTesting by remember { mutableStateOf(false) }
     var status by remember { mutableStateOf<String?>(null) }
     var statusIsError by remember { mutableStateOf(false) }
+
+    if (pendingRestoreUri != null) {
+        androidx.compose.material3.AlertDialog(
+            onDismissRequest = { pendingRestoreUri = null },
+            title = { Text("تأیید جایگزینی اطلاعات") },
+            text = {
+                Text(
+                    "بازیابی، کلاس‌ها، درس‌ها، جلسه‌ها و پوشه‌های فعلی این دستگاه را با محتوای فایل انتخاب‌شده جایگزین می‌کند. " +
+                        "اگر فایل ناقص یا قدیمی باشد، ممکن است بخشی از اطلاعات فعلی از دست برود. " +
+                        "فقط در صورتی ادامه دهید که از کامل بودن فایل پشتیبان مطمئن هستید."
+                )
+            },
+            confirmButton = {
+                Button(onClick = {
+                    val selectedUri = pendingRestoreUri
+                    pendingRestoreUri = null
+                    if (selectedUri != null) backupScope.launch {
+                        backupBusy = true
+                        backupStatus = null
+                        val result = withContext(Dispatchers.IO) {
+                            runCatching { DatabaseBackup.import(context, selectedUri) }
+                        }
+                        backupBusy = false
+                        backupError = result.isFailure
+                        backupStatus = result.getOrElse {
+                            "بازیابی ناموفق بود: ${it.localizedMessage}"
+                        }
+                    }
+                }) { Text("جایگزینی اطلاعات") }
+            },
+            dismissButton = {
+                OutlinedButton(onClick = { pendingRestoreUri = null }) {
+                    Text("انصراف")
+                }
+            }
+        )
+    }
 
     if (showPublishConfirm) {
         androidx.compose.material3.AlertDialog(
