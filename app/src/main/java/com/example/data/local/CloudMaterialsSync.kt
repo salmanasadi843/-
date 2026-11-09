@@ -49,7 +49,10 @@ object CloudMaterialsSync {
                     lecture.classId?.let { it > 0L && it in visibleClassIds } == true
             }
             val root = firestore.collection("shared_materials").document(uid)
-            val records = root.collection("records")
+            val previousRoot = Tasks.await(root.get())
+            val previousGeneration = previousRoot.getString("activeGeneration")
+            val generation = java.util.UUID.randomUUID().toString()
+            val records = root.collection("generations").document(generation).collection("records")
             val desired = linkedMapOf<String, Map<String, Any?>>()
             classes.forEach { item ->
                 desired["class_${item.id}"] = mapOf(
@@ -81,21 +84,32 @@ object CloudMaterialsSync {
                     "sortOrder" to item.sortOrder, "ownerUid" to uid
                 )
             }
-            val existing = Tasks.await(records.get()).documents
-            val operations = mutableListOf<Pair<com.google.firebase.firestore.DocumentReference, Map<String, Any?>?>>()
-            desired.forEach { (id, data) -> operations += records.document(id) to data }
-            existing.filter { it.id !in desired.keys }.forEach { operations += it.reference to null }
-            operations.chunked(400).forEach { chunk ->
+            // Write a complete immutable generation first. Readers keep using the previous
+            // generation until this one is complete and the root pointer is switched.
+            desired.entries.chunked(400).forEach { chunk ->
                 val batch = firestore.batch()
-                chunk.forEach { (ref, data) -> if (data == null) batch.delete(ref) else batch.set(ref, data) }
+                chunk.forEach { (id, data) -> batch.set(records.document(id), data) }
                 Tasks.await(batch.commit())
             }
-            // Root marker is committed only after every record has been written.
             Tasks.await(root.set(mapOf(
-                "ownerUid" to uid, "schemaVersion" to 2,
+                "ownerUid" to uid, "schemaVersion" to 3,
+                "activeGeneration" to generation,
                 "teacherName" to AuthPreferences.currentName(context),
                 "recordCount" to desired.size, "updatedAt" to System.currentTimeMillis()
             )))
+            // Cleanup is best-effort and happens only after the new generation is active.
+            if (!previousGeneration.isNullOrBlank() && previousGeneration != generation) {
+                runCatching {
+                    val oldRecords = root.collection("generations").document(previousGeneration)
+                        .collection("records").get()
+                    val oldDocs = Tasks.await(oldRecords).documents
+                    oldDocs.chunked(400).forEach { chunk ->
+                        val batch = firestore.batch()
+                        chunk.forEach { batch.delete(it.reference) }
+                        Tasks.await(batch.commit())
+                    }
+                }
+            }
             "مطالب منتشرشده با ساختار رکوردی و بدون محدودیت payload بزرگ به‌روزرسانی شد."
         } else {
             val documents = Tasks.await(firestore.collection("shared_materials").get()).documents
@@ -105,7 +119,34 @@ object CloudMaterialsSync {
             val allLectures = mutableListOf<LectureEntity>()
             val validPayloads = documents.mapNotNull { document ->
                 val owner = document.getString("ownerUid") ?: document.id
-                val payload = if (document.getLong("schemaVersion") == 2L) {
+                val schemaVersion = document.getLong("schemaVersion")
+                val payload = if (schemaVersion == 3L) {
+                    val generation = document.getString("activeGeneration") ?: return@mapNotNull null
+                    val rows = Tasks.await(document.reference.collection("generations")
+                        .document(generation).collection("records").get()).documents
+                    val result = JSONObject().put("format", "darsyar-shared-materials").put("version", 3)
+                        .put("teacherName", document.getString("teacherName") ?: "استاد")
+                    val classRows = JSONArray(); val courseRows = JSONArray(); val lectureRows = JSONArray()
+                    rows.forEach { row ->
+                        val data = row.data ?: return@forEach
+                        when (data["recordType"] as? String) {
+                            "class" -> classRows.put(JSONObject().put("id", data["id"]).put("name", data["name"])
+                                .put("teacherName", data["teacherName"]).put("description", data["description"])
+                                .put("term", data["term"]).put("classDateMillis", data["classDateMillis"])
+                                .put("isPublished", data["isPublished"]).put("createdAtMillis", data["createdAtMillis"])
+                                .put("ownerUid", owner))
+                            "course" -> courseRows.put(JSONObject().put("id", data["id"]).put("classId", data["classId"])
+                                .put("name", data["name"]).put("teacherName", data["teacherName"])
+                                .put("description", data["description"]).put("createdAtMillis", data["createdAtMillis"]))
+                            "lecture" -> {
+                                val item = JSONObject()
+                                data.forEach { (key, value) -> item.put(key, value ?: JSONObject.NULL) }
+                                lectureRows.put(item)
+                            }
+                        }
+                    }
+                    result.put("classes", classRows).put("courses", courseRows).put("lectures", lectureRows)
+                } else if (schemaVersion == 2L) {
                     val rows = Tasks.await(document.reference.collection("records").get()).documents
                     val result = JSONObject().put("format", "darsyar-shared-materials").put("version", 2)
                         .put("teacherName", document.getString("teacherName") ?: "استاد")
