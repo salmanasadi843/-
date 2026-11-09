@@ -178,11 +178,20 @@ class FirestoreSyncRepository(
         val classes = mutableListOf<ClassEntity>()
         val courses = mutableListOf<CourseEntity>()
         val lectures = mutableListOf<LectureEntity>()
-        val folders = teacherFolderDao?.let {
-            (rootSnapshot.get("folders") as? List<*>)?.mapNotNull { value ->
+        val folders = if (teacherFolderDao == null) {
+            emptyList()
+        } else {
+            val rawFolders = rootSnapshot.get("folders") as? List<*>
+                ?: throw IllegalStateException(
+                    "فهرست پوشه‌های پشتیبان ابری موجود نیست؛ برای جلوگیری از حذف پوشه‌های محلی، بازیابی متوقف شد."
+                )
+            rawFolders.map { value ->
                 (value as? Map<*, *>)?.asStringMap()?.toFolderEntity()
-            }.orEmpty()
-        }.orEmpty()
+                    ?: throw IllegalStateException(
+                        "یکی از پوشه‌های پشتیبان ابری معتبر نیست؛ اطلاعات محلی دست‌نخورده باقی ماند."
+                    )
+            }
+        }
 
         documents.forEach { document ->
             val data = document.data ?: throw IllegalStateException(
