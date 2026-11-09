@@ -49,7 +49,7 @@ object CloudMaterialsSync {
                     lecture.classId?.let { it > 0L && it in visibleClassIds } == true
             }
             val root = firestore.collection("shared_materials").document(uid)
-            val generation = java.util.UUID.randomUUID().toString()
+            val generation = generationId(desired)
             val records = root.collection("generations").document(generation).collection("records")
             val desired = linkedMapOf<String, Map<String, Any?>>()
             classes.forEach { item ->
@@ -110,7 +110,12 @@ object CloudMaterialsSync {
             // Firestore limits both individual documents (1 MiB) and each commit request (10 MiB).
             // Keep individual records below 700 KiB and each batch below 8 MiB to leave
             // room for Firestore's encoded document and request overhead.
-            val sizedRecords = desired.map { (id, data) ->
+            // Reuse a content-addressed generation after interruption. Records already
+            // committed in this exact generation are not uploaded again on the next sync.
+            val alreadyUploaded = awaitWithRetry("بررسی بخش‌های قبلاً ارسال‌شده") {
+                Tasks.await(records.get()).documents.map { it.id }.toSet()
+            }
+            val sizedRecords = desired.filterKeys { it !in alreadyUploaded }.map { (id, data) ->
                 val estimatedBytes = JSONObject(data).toString().toByteArray(Charsets.UTF_8).size
                 require(estimatedBytes <= 700 * 1024) {
                     "رکورد $id بیش از اندازه بزرگ است؛ برای جلوگیری از ناقص‌شدن اطلاعات، انتشار انجام نشد. متن این جلسه باید به چند بخش تقسیم شود."
@@ -139,6 +144,12 @@ object CloudMaterialsSync {
                 pendingBytes += record.third
             }
             commitPendingBatch()
+            val committedIds = awaitWithRetry("تأیید کامل‌بودن اطلاعات ارسالی") {
+                Tasks.await(records.get()).documents.map { it.id }.toSet()
+            }
+            require(committedIds.containsAll(desired.keys)) {
+                "ارسال همهٔ بخش‌ها تأیید نشد؛ نسخهٔ قبلی همچنان فعال باقی ماند."
+            }
             awaitWithRetry("فعال‌سازی نسخهٔ کامل مطالب") {
                 Tasks.await(root.set(mapOf(
                     "ownerUid" to uid, "schemaVersion" to 3,
@@ -474,6 +485,17 @@ object CloudMaterialsSync {
             }
         }
         throw IllegalStateException("$label پس از $MAX_UPLOAD_ATTEMPTS تلاش ناموفق بود؛ نسخهٔ قبلی همچنان فعال است.", lastError)
+    }
+
+    private fun generationId(records: Map<String, Map<String, Any?>>): String {
+        val digest = MessageDigest.getInstance("SHA-256")
+        records.toSortedMap().forEach { (id, data) ->
+            digest.update(id.toByteArray(Charsets.UTF_8))
+            digest.update(0)
+            digest.update(JSONObject(data).toString().toByteArray(Charsets.UTF_8))
+            digest.update(0)
+        }
+        return digest.digest().joinToString("") { byte -> "%02x".format(byte.toInt() and 0xff) }
     }
 
     private fun stableId(owner: String, key: String): Long {
