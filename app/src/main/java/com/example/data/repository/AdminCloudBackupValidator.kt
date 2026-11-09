@@ -82,6 +82,11 @@ object AdminCloudBackupValidator {
             require(totalRecords <= MAX_RECORDS) { "تعداد رکوردهای فایل بیش از حد مجاز است." }
 
             val seenIds = mutableSetOf<String>()
+            val classIds = mutableSetOf<Long>()
+            val courseClassIds = mutableListOf<Long>()
+            val lectureClassIds = mutableListOf<Long?>()
+            val lectureDataById = mutableMapOf<Long, JSONObject>()
+            val chunksByLecture = mutableMapOf<Long, MutableMap<String, MutableMap<Int, String>>>()
             val records = ArrayList<Record>(recordsArray.length())
             for (j in 0 until recordsArray.length()) {
                 val record = recordsArray.optJSONObject(j)
@@ -97,6 +102,9 @@ object AdminCloudBackupValidator {
                     "رکورد $id استاد $ownerUid بیش از اندازهٔ مجاز است؛ بازیابی برای جلوگیری از خطای ناقص متوقف شد."
                 }
                 val recordType = data.optString("recordType")
+                require(recordType in setOf("class", "course", "lecture", "lecture_text_chunk")) {
+                    "نوع رکورد $id استاد $ownerUid پشتیبانی نمی‌شود."
+                }
                 val recordOwner = data.optString("ownerUid")
                 val ownerRequired = schema == 3 || recordType == "class" || recordType == "lecture_text_chunk"
                 require(
@@ -105,7 +113,78 @@ object AdminCloudBackupValidator {
                 ) {
                     "مالک رکورد $id با استاد $ownerUid یکسان نیست؛ بازیابی متوقف شد."
                 }
+                when (recordType) {
+                    "class" -> {
+                        val entityId = data.optLong("id", Long.MIN_VALUE)
+                        require(entityId > 0 && id == "class_$entityId" && classIds.add(entityId)) {
+                            "شناسهٔ کلاس $id با محتوای رکورد سازگار یا یکتا نیست."
+                        }
+                    }
+                    "course" -> {
+                        val entityId = data.optLong("id", Long.MIN_VALUE)
+                        val classId = data.optLong("classId", Long.MIN_VALUE)
+                        require(entityId > 0 && id == "course_$entityId" && classId > 0) {
+                            "شناسه یا ارتباط کلاسِ درس $id معتبر نیست."
+                        }
+                        courseClassIds += classId
+                    }
+                    "lecture" -> {
+                        val entityId = data.optLong("id", Long.MIN_VALUE)
+                        require(entityId > 0 && id == "lecture_$entityId" && entityId !in lectureDataById) {
+                            "شناسهٔ جلسه $id با محتوای رکورد سازگار یا یکتا نیست."
+                        }
+                        lectureDataById[entityId] = data
+                        lectureClassIds += if (data.isNull("classId")) null
+                            else data.optLong("classId", Long.MIN_VALUE).takeIf { it > 0 }
+                    }
+                    "lecture_text_chunk" -> {
+                        val lectureId = data.optLong("lectureId", Long.MIN_VALUE)
+                        val field = data.optString("field")
+                        val index = data.optInt("index", -1)
+                        val allowedFields = setOf("transcript", "originalTranscript", "aiSummary", "aiKeyPoints", "aiQuizJson", "tags")
+                        require(lectureId > 0 && field in allowedFields && index >= 0 &&
+                            data.opt("value") is String &&
+                            id == "lecture_text_${lectureId}_${field}_${index}"
+                        ) { "بخش متن $id معتبر نیست." }
+                        val parts = chunksByLecture.getOrPut(lectureId) { mutableMapOf() }
+                            .getOrPut(field) { mutableMapOf() }
+                        require(parts.put(index, data.getString("value")) == null) {
+                            "بخش تکراری متن جلسه در رکورد $id."
+                        }
+                    }
+                }
                 records += Record(id, JSONObject(data.toString()))
+            }
+            require(courseClassIds.all { it in classIds } &&
+                lectureClassIds.filterNotNull().all { it in classIds }
+            ) { "ارتباط درس‌ها یا جلسه‌ها با کلاس‌های پشتیبان استاد $ownerUid ناقص است." }
+            require(chunksByLecture.keys.all { it in lectureDataById.keys }) {
+                "بخش متنی به جلسه‌ای ناموجود در پشتیبان استاد $ownerUid متصل شده است."
+            }
+            lectureDataById.forEach { (lectureId, lecture) ->
+                val rawManifest = lecture.optJSONObject("textChunkCounts")
+                val manifest = mutableMapOf<String, Int>()
+                if (rawManifest != null) {
+                    val keys = rawManifest.keys()
+                    while (keys.hasNext()) {
+                        val field = keys.next()
+                        val countValue = rawManifest.opt(field)
+                        require(field in setOf("transcript", "originalTranscript", "aiSummary", "aiKeyPoints", "aiQuizJson", "tags") &&
+                            countValue is Number && countValue.toInt() > 0
+                        ) { "فهرست بخش‌های متن جلسه $lectureId معتبر نیست." }
+                        manifest[field] = (countValue as Number).toInt()
+                    }
+                }
+                val actual = chunksByLecture[lectureId].orEmpty()
+                require(actual.keys == manifest.keys) {
+                    "فهرست بخش‌های متن جلسه $lectureId با رکوردهای موجود سازگار نیست."
+                }
+                manifest.forEach { (field, count) ->
+                    val parts = actual[field].orEmpty()
+                    require(parts.size == count && (0 until count).all { it in parts }) {
+                        "بخش‌های متن فیلد $field از جلسه $lectureId ناقص است."
+                    }
+                }
             }
             teachers += TeacherBackup(ownerUid, schema, generation, JSONObject(root.toString()), records)
         }
