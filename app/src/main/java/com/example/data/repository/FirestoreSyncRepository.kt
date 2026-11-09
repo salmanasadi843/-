@@ -170,7 +170,9 @@ class FirestoreSyncRepository(
         val verified = records.get().awaitResult().documents
         val verifiedById = verified.associateBy { it.id }
         if (verified.size != desired.size || verified.map { it.id }.toSet() != desired.keys ||
-            desired.any { (id, expected) -> verifiedById[id]?.data != expected }
+            desired.any { (id, expected) ->
+                normalizeForVerification(verifiedById[id]?.data) != normalizeForVerification(expected)
+            }
         ) throw IllegalStateException("محتوای نسخهٔ تازهٔ پشتیبان کامل تأیید نشد؛ نسخهٔ قبلی همچنان فعال باقی ماند.")
 
         val folderRows = rows.folders.filter { it.ownerUid == uid }
@@ -248,8 +250,20 @@ class FirestoreSyncRepository(
                     }
                     classes += data.toClassEntity()
                 }
-                "course" -> courses += data.toCourseEntity()
-                "lecture" -> lectures += data.toLectureEntity()
+                "course" -> {
+                    val recordOwner = data["ownerUid"] as? String
+                    if (recordOwner != null && recordOwner != uid) {
+                        throw IllegalStateException("مالک یکی از درس‌های پشتیبان معتبر نیست؛ اطلاعات محلی حفظ شد.")
+                    }
+                    courses += data.toCourseEntity()
+                }
+                "lecture" -> {
+                    val recordOwner = data["ownerUid"] as? String
+                    if (recordOwner != null && recordOwner != uid) {
+                        throw IllegalStateException("مالک یکی از جلسات پشتیبان معتبر نیست؛ اطلاعات محلی حفظ شد.")
+                    }
+                    lectures += data.toLectureEntity()
+                }
                 "lecture_text_chunk" -> {
                     if (data["ownerUid"] != uid) throw IllegalStateException("مالک بخش متن جلسه معتبر نیست.")
                     val lectureId = (data["lectureId"] as? Number)?.toLong()
@@ -389,6 +403,15 @@ class FirestoreSyncRepository(
             if (courses.isNotEmpty()) courseDao.insertAllForRestore(courses)
             if (lectures.isNotEmpty()) lectureDao.insertAllForRestore(lectures)
         }
+    }
+
+    private fun normalizeForVerification(value: Any?): Any? = when (value) {
+        is Map<*, *> -> value.entries.associate { (key, item) ->
+            key.toString() to normalizeForVerification(item)
+        }.toSortedMap()
+        is List<*> -> value.map { normalizeForVerification(it) }
+        is Number -> value.toString().toBigDecimal().stripTrailingZeros()
+        else -> value
     }
 
     private fun splitUtf8Text(value: String, maxBytes: Int): List<String> {
