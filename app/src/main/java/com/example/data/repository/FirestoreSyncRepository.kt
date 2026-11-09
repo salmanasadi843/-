@@ -268,7 +268,7 @@ class FirestoreSyncRepository(
             )
             when (data["recordType"] as? String) {
                 "class" -> {
-                    if (document.id != "class_\${data["id"]}") {
+                    if (document.id != "class_${data["id"]}") {
                         throw IllegalStateException("شناسهٔ سند کلاس با محتوای آن سازگار نیست؛ اطلاعات محلی حفظ شد.")
                     }
                     if (data["ownerUid"] != uid) {
@@ -279,7 +279,7 @@ class FirestoreSyncRepository(
                     classes += data.toClassEntity()
                 }
                 "course" -> {
-                    if (document.id != "course_\${data["id"]}") {
+                    if (document.id != "course_${data["id"]}") {
                         throw IllegalStateException("شناسهٔ سند درس با محتوای آن سازگار نیست؛ اطلاعات محلی حفظ شد.")
                     }
                     val recordOwner = data["ownerUid"] as? String
@@ -289,7 +289,7 @@ class FirestoreSyncRepository(
                     courses += data.toCourseEntity()
                 }
                 "lecture" -> {
-                    if (document.id != "lecture_\${data["id"]}") {
+                    if (document.id != "lecture_${data["id"]}") {
                         throw IllegalStateException("شناسهٔ سند جلسه با محتوای آن سازگار نیست؛ اطلاعات محلی حفظ شد.")
                     }
                     val recordOwner = data["ownerUid"] as? String
