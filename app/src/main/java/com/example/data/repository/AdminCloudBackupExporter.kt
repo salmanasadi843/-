@@ -11,6 +11,12 @@ import kotlin.coroutines.resumeWithException
 class AdminCloudBackupExporter(
     private val firestore: FirebaseFirestore = FirebaseFirestore.getInstance()
 ) {
+    private companion object {
+        const val MAX_FILE_BYTES = 25 * 1024 * 1024
+        const val MAX_TEACHERS = 500
+        const val MAX_RECORDS = 100_000
+    }
+
     suspend fun exportAllTeachers(): JSONObject {
         val roots = firestore.collection("teacher_data").get().awaitResult().documents
         val teachers = JSONArray()
@@ -62,14 +68,24 @@ class AdminCloudBackupExporter(
             if (schema == 1) teacherEntry.put("legacyPayload", toJsonObject(rootData))
             teachers.put(teacherEntry)
             totalRecords += records.length()
+            require(totalRecords <= MAX_RECORDS) {
+                "تعداد رکوردهای پشتیبان از سقف مجاز بیشتر است؛ خروجی کامل و قابل‌بازیابی ساخته نشد."
+            }
         }
-        return JSONObject()
+        require(teachers.length() in 1..MAX_TEACHERS) {
+            "تعداد استادان برای ساخت پشتیبان تجمیعی معتبر نیست."
+        }
+        val output = JSONObject()
             .put("format", "darsyar-admin-cloud-backup")
             .put("version", 1)
             .put("createdAt", System.currentTimeMillis())
             .put("teacherCount", teachers.length())
             .put("recordCount", totalRecords)
             .put("teachers", teachers)
+        require(output.toString().toByteArray(Charsets.UTF_8).size <= MAX_FILE_BYTES) {
+            "حجم پشتیبان تجمیعی بیش از ۲۵ مگابایت است؛ فایل ناقص یا غیرقابل‌بازیابی تولید نشد."
+        }
+        return output
     }
 
     private fun toJsonObject(map: Map<String, Any?>): JSONObject =
