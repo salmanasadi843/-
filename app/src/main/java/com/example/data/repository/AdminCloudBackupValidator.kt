@@ -63,7 +63,10 @@ object AdminCloudBackupValidator {
             val root = entry.optJSONObject("root")
                 ?: throw IllegalArgumentException("سند اصلی استاد $ownerUid موجود نیست.")
             val rootOwner = root.optString("ownerUid")
-            require(rootOwner.isBlank() || rootOwner == ownerUid) {
+            require(
+                if (schema == 3) rootOwner == ownerUid
+                else rootOwner.isBlank() || rootOwner == ownerUid
+            ) {
                 "مالک سند اصلی استاد $ownerUid با شناسهٔ فایل تطبیق ندارد."
             }
             val generation = if (schema == 3) root.optString("activeGeneration").trim() else "legacy-records"
@@ -95,7 +98,7 @@ object AdminCloudBackupValidator {
                 }
                 val recordType = data.optString("recordType")
                 val recordOwner = data.optString("ownerUid")
-                val ownerRequired = recordType == "class" || recordType == "lecture_text_chunk"
+                val ownerRequired = schema == 3 || recordType == "class" || recordType == "lecture_text_chunk"
                 require(
                     if (ownerRequired) recordOwner == ownerUid
                     else recordOwner.isBlank() || recordOwner == ownerUid
