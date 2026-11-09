@@ -210,7 +210,10 @@ service cloud.firestore {
       match /generations/{generationId}/records/{recordId} {
         allow read: if request.auth != null
                     && request.auth.uid == ownerUid;
-        allow create, update, delete: if approvedTeacher(ownerUid);
+        allow create, update: if approvedTeacher(ownerUid)
+                              && request.resource.data.ownerUid == ownerUid;
+        allow delete: if approvedTeacher(ownerUid)
+                      && resource.data.ownerUid == ownerUid;
       }
     }
   }
