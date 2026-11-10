@@ -9,6 +9,7 @@ import org.json.JSONObject
 import kotlin.coroutines.resume
 import kotlin.coroutines.resumeWithException
 import java.util.UUID
+import java.util.concurrent.Executor
 
 /**
  * Stages each teacher's validated backup in a new generation, verifies it,
@@ -161,9 +162,10 @@ class AdminCloudBackupRestorer(
 
     private suspend fun <T> com.google.android.gms.tasks.Task<T>.awaitResult(): T =
         suspendCancellableCoroutine { continuation ->
-            addOnSuccessListener { if (continuation.isActive) continuation.resume(it) }
-                .addOnFailureListener { if (continuation.isActive) continuation.resumeWithException(it) }
-                .addOnCanceledListener { continuation.cancel() }
+            val directExecutor = Executor { command -> command.run() }
+            addOnSuccessListener(directExecutor) { if (continuation.isActive) continuation.resume(it) }
+                .addOnFailureListener(directExecutor) { if (continuation.isActive) continuation.resumeWithException(it) }
+                .addOnCanceledListener(directExecutor) { if (continuation.isActive) continuation.cancel() }
         }
 }
 
