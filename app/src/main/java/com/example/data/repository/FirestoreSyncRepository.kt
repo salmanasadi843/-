@@ -222,6 +222,13 @@ class FirestoreSyncRepository(
                     "activeGeneration" to generationId,
                     "recordCount" to desired.size,
                     "folders" to folderRows.map { it.toCloudMap() },
+                    // Remove the old embedded arrays when migrating a legacy root.
+                    // Merge preserves administrative version/restore flags otherwise.
+                    "classes" to FieldValue.delete(),
+                    "courses" to FieldValue.delete(),
+                    "lectures" to FieldValue.delete(),
+                    "payload" to FieldValue.delete(),
+                    "legacyPayload" to FieldValue.delete(),
                     "updatedAt" to FieldValue.serverTimestamp()
                 ),
                 SetOptions.merge()
@@ -631,7 +638,7 @@ class FirestoreSyncRepository(
 
 
 private fun DocumentSnapshot.toBackupRootVersion(): BackupRootVersion {
-    val updateTime = updateTime
+    val snapshotUpdateTime = this.updateTime
     return BackupRootVersion(
         exists = exists(),
         ownerUid = getString("ownerUid"),
@@ -640,7 +647,7 @@ private fun DocumentSnapshot.toBackupRootVersion(): BackupRootVersion {
         adminPending = getBoolean("adminPending") == true,
         adminPendingVersion = getLong("adminPendingVersion"),
         syncLockUntilMillis = getLong("syncLockUntilMillis"),
-        updateTimeSeconds = updateTime?.seconds,
-        updateTimeNanos = updateTime?.nanoseconds
+        updateTimeSeconds = snapshotUpdateTime?.seconds,
+        updateTimeNanos = snapshotUpdateTime?.nanoseconds
     )
 }
