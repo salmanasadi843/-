@@ -4,7 +4,7 @@
   "type": "module",
   "scripts": {
     "test:rules": "firebase emulators:exec --config ../../firebase.json --project demo-darsyar-rules --only firestore \"node --test firestore.rules.test.mjs\"",
-    "test:restore": "firebase emulators:exec --config ../../firebase.json --project demo-darsyar-rules --only firestore \"cd ../.. && ./gradlew testDebugUnitTest --tests com.example.data.repository.AdminCloudBackupFirestoreIntegrationTest\""
+    "test:restore": "cd ../.. && firebase emulators:exec --config firebase.json --project demo-darsyar-rules --only firestore,auth \"gradle testDebugUnitTest --tests com.example.data.repository.AdminCloudBackupFirestoreIntegrationTest\""
   },
   "devDependencies": {
     "@firebase/rules-unit-testing": "^4.0.1",
