@@ -2,6 +2,8 @@ package com.example.data.repository
 
 import com.google.firebase.firestore.FieldValue
 import com.google.firebase.firestore.FirebaseFirestore
+import com.google.firebase.firestore.SetOptions
+import com.google.firebase.firestore.DocumentSnapshot
 import kotlinx.coroutines.suspendCancellableCoroutine
 import org.json.JSONObject
 import kotlin.coroutines.resume
@@ -27,6 +29,7 @@ class AdminCloudBackupRestorer(
         for (teacher in backup.teachers) {
             val rootRef = firestore.collection("teacher_data").document(teacher.ownerUid)
             val oldRoot = rootRef.get().awaitResult()
+            val expectedRootVersion = oldRoot.toBackupRootVersion()
             val oldData = oldRoot.data
             if (oldRoot.exists()) {
                 val existingOwner = oldData?.get("ownerUid") as? String
@@ -70,24 +73,39 @@ class AdminCloudBackupRestorer(
                 "رکوردهای استاد ${teacher.ownerUid} پس از نوشتن کامل تأیید نشد؛ نسخهٔ قبلی فعال باقی ماند."
             }
 
-            val rootMap = mutableMapOf<String, Any?>()
-            oldData?.forEach { (key, value) -> rootMap[key] = value }
-            // Remove embedded legacy arrays before writing the small generation pointer.
-            // Keeping these arrays would risk exceeding Firestore's 1 MiB document limit.
-            listOf("classes", "courses", "lectures", "payload", "legacyPayload").forEach { rootMap.remove(it) }
-            // Restore the teacher-level metadata captured in the same backup,
-            // especially the folder hierarchy. Pointer fields are always generated
-            // locally and never trusted from the imported JSON.
+            // Only restore safe teacher metadata. The generation pointer is generated
+            // locally and all root mutations are guarded against concurrent sync/admin writes.
             val backupRoot = jsonToMap(teacher.root)
+            val rootPatch = mutableMapOf<String, Any?>(
+                "ownerUid" to teacher.ownerUid,
+                "schemaVersion" to 3L,
+                "activeGeneration" to newGeneration,
+                "recordCount" to teacher.records.size,
+                "updatedAt" to FieldValue.serverTimestamp(),
+                // Remove embedded legacy arrays to keep the root below Firestore's 1 MiB limit.
+                "classes" to FieldValue.delete(),
+                "courses" to FieldValue.delete(),
+                "lectures" to FieldValue.delete(),
+                "payload" to FieldValue.delete(),
+                "legacyPayload" to FieldValue.delete()
+            )
             listOf("folders", "teacherName").forEach { key ->
-                if (backupRoot.containsKey(key)) rootMap[key] = backupRoot[key]
+                if (backupRoot.containsKey(key)) rootPatch[key] = backupRoot[key]
             }
-            rootMap["ownerUid"] = teacher.ownerUid
-            rootMap["schemaVersion"] = 3L
-            rootMap["activeGeneration"] = newGeneration
-            rootMap["recordCount"] = teacher.records.size
-            rootMap["updatedAt"] = FieldValue.serverTimestamp()
-            rootRef.set(rootMap).awaitResult()
+
+            // This transaction is the commit point. If a teacher sync or another admin
+            // operation changed the root while records were staged, keep the old
+            // generation active and abandon this staged generation.
+            firestore.runTransaction { transaction ->
+                val currentRoot = transaction.get(rootRef)
+                BackupGenerationCommitGuard.requireCanActivate(
+                    teacher.ownerUid,
+                    expectedRootVersion,
+                    currentRoot.toBackupRootVersion()
+                )
+                transaction.set(rootRef, rootPatch, SetOptions.merge())
+                true
+            }.awaitResult()
 
             // Re-read the commit point. If it did not take effect, report failure.
             val committed = rootRef.get().awaitResult()
@@ -120,7 +138,7 @@ class AdminCloudBackupRestorer(
         is Map<*, *> -> JSONObject().apply {
             value.keys.filterIsInstance<String>().sorted().forEach { key -> put(key, canonicalValue(value[key])) }
         }
-        is Iterable<*> -> org.json.JSONArray().apply { value.forEach { put(canonicalValue(it)) } }
+        is Iterable<*> -> org.json.JSONArray().apply { value.forEach { put(it) } }
         else -> value
     }
 
@@ -148,3 +166,14 @@ class AdminCloudBackupRestorer(
                 .addOnCanceledListener { continuation.cancel() }
         }
 }
+
+private fun DocumentSnapshot.toBackupRootVersion(): BackupRootVersion =
+    BackupRootVersion(
+        exists = exists(),
+        ownerUid = getString("ownerUid"),
+        schemaVersion = getLong("schemaVersion"),
+        activeGeneration = getString("activeGeneration"),
+        adminPending = getBoolean("adminPending") == true,
+        adminPendingVersion = getLong("adminPendingVersion"),
+        syncLockUntilMillis = getLong("syncLockUntilMillis")
+    )
