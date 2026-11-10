@@ -288,6 +288,13 @@ fun AdminManagementScreen(onBack: () -> Unit) {
 
                 teacher != null && selectedClass != null -> {
                     Text("استاد: " + teacher.name, style = MaterialTheme.typography.bodySmall)
+                    if (recordsTruncated) {
+                        Text(
+                            "فهرست بیش از ۱۵۰۰ رکورد دارد؛ ممکن است بخشی از جلسات این کلاس در فهرست نمایش داده نشود.",
+                            color = MaterialTheme.colorScheme.error,
+                            style = MaterialTheme.typography.bodySmall
+                        )
+                    }
                     val sessions = records.filter { it.type == "lecture" && it.classId == selectedClass?.id }
                     val coursesInClass = records.filter { it.type == "course" && it.classId == selectedClass?.id }
                     if (sessions.isEmpty() && coursesInClass.isEmpty() && !loading) {
