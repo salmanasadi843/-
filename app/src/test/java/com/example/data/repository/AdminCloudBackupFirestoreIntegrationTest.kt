@@ -4,6 +4,8 @@ import android.content.Context
 import androidx.test.core.app.ApplicationProvider
 import com.google.firebase.FirebaseApp
 import com.google.firebase.FirebaseOptions
+import com.google.firebase.auth.FirebaseAuth
+import com.google.android.gms.tasks.Tasks
 import com.google.firebase.firestore.FirebaseFirestore
 import kotlinx.coroutines.runBlocking
 import org.json.JSONArray
@@ -32,6 +34,10 @@ class AdminCloudBackupFirestoreIntegrationTest {
             FirebaseOptions.Builder().setProjectId("demo-darsyar-rules").build(),
             appName
         ) ?: error("Firebase Emulator test app could not initialize")
+        val auth = FirebaseAuth.getInstance(app)
+        auth.useEmulator("127.0.0.1", 9099)
+        Tasks.await(auth.createUserWithEmailAndPassword("salmanasadi@gmail.com", "test-password-123"))
+        // Rules grant aggregate backup access to the primary admin email.
         val firestore = FirebaseFirestore.getInstance(app)
         firestore.useEmulator("127.0.0.1", 8080)
 
@@ -62,8 +68,6 @@ class AdminCloudBackupFirestoreIntegrationTest {
             assertTrue(rows.any { it.getString("documentId") == "lecture_${if (uid == uidA) 501 else 602}" })
         }
 
-        // Keep test data isolated and remove its roots after assertions.
-        listOf(uidA, uidB).forEach { firestore.collection("teacher_data").document(it).delete().awaitResult() }
         app.delete()
     }
 
