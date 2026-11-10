@@ -27,6 +27,7 @@ import java.util.UUID
 class AdminCloudBackupFirestoreIntegrationTest {
     @Test
     fun restoreThenExport_preservesTwoTeachersClassesLecturesAndOwners() = runBlocking {
+        try {
         val context = ApplicationProvider.getApplicationContext<Context>()
         val appName = "restore-emulator-${UUID.randomUUID()}"
         val app = FirebaseApp.initializeApp(
@@ -73,6 +74,10 @@ class AdminCloudBackupFirestoreIntegrationTest {
         }
 
         app.delete()
+        } catch (failure: Throwable) {
+            failure.printStackTrace()
+            throw failure
+        }
     }
 
     private fun aggregateBackup(uidA: String, uidB: String): JSONObject {
