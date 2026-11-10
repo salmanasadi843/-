@@ -62,6 +62,8 @@ fun AdminManagementScreen(onBack: () -> Unit) {
     val scope = rememberCoroutineScope()
     var teachers by remember { mutableStateOf<List<AdminTeacherRow>>(emptyList()) }
     var records by remember { mutableStateOf<List<AdminRecordRow>>(emptyList()) }
+    var recordsSchemaVersion by remember { mutableStateOf(2) }
+    var recordsTruncated by remember { mutableStateOf(false) }
     var selectedTeacher by remember { mutableStateOf<AdminTeacherRow?>(null) }
     var selectedClass by remember { mutableStateOf<AdminRecordRow?>(null) }
     var selectedRecord by remember { mutableStateOf<AdminRecordDetails?>(null) }
@@ -93,10 +95,14 @@ fun AdminManagementScreen(onBack: () -> Unit) {
         loading = true
         error = null
         records = emptyList()
+        recordsSchemaVersion = 2
+        recordsTruncated = false
         functions.getHttpsCallable("adminListTeacherRecords")
             .call(mapOf("targetTeacherUid" to teacher.uid))
             .addOnSuccessListener { result ->
                 val data = result.data as? Map<*, *>
+                recordsSchemaVersion = (data?.get("schemaVersion") as? Number)?.toInt() ?: 2
+                recordsTruncated = data?.get("truncated") as? Boolean ?: false
                 records = (data?.get("records") as? List<*>).orEmpty().mapNotNull { item ->
                     val map = item as? Map<*, *> ?: return@mapNotNull null
                     val id = (map["id"] as? Number)?.toLong() ?: return@mapNotNull null
@@ -204,13 +210,18 @@ fun AdminManagementScreen(onBack: () -> Unit) {
                             onValueChange = { fieldValues[key] = it },
                             label = { Text(fieldLabels[key] ?: key) },
                             modifier = Modifier.fillMaxWidth(),
-                            minLines = if (key in listOf("transcript", "originalTranscript", "description", "aiSummary", "aiKeyPoints")) 3 else 1
+                            minLines = if (key in listOf("transcript", "originalTranscript", "description", "aiSummary", "aiKeyPoints")) 3 else 1,
+                            readOnly = !supportsMutationForSchema(recordsSchemaVersion)
                         )
                     }
                     if (record.row.type == "class" || record.row.type == "lecture") {
                         Row(verticalAlignment = Alignment.CenterVertically) {
                             Text("انتشار برای دانشجویان", modifier = Modifier.weight(1f))
-                            Switch(checked = published, onCheckedChange = { published = it })
+                            Switch(
+                                checked = published,
+                                onCheckedChange = { published = it },
+                                enabled = supportsMutationForSchema(recordsSchemaVersion)
+                            )
                         }
                     }
                     Button(
@@ -252,14 +263,22 @@ fun AdminManagementScreen(onBack: () -> Unit) {
                                 }
                             }
                         },
-                        enabled = !saving && !loading,
+                        enabled = !saving && !loading && supportsMutationForSchema(recordsSchemaVersion),
                         modifier = Modifier.fillMaxWidth()
                     ) { Text(if (saving) "در حال ذخیره..." else "ذخیره تغییرات") }
-                    OutlinedButton(
-                        onClick = { deleteTarget = record.row },
-                        enabled = !saving && !loading,
-                        modifier = Modifier.fillMaxWidth()
-                    ) { Text("حذف این رکورد") }
+                    if (supportsMutationForSchema(recordsSchemaVersion)) {
+                        OutlinedButton(
+                            onClick = { deleteTarget = record.row },
+                            enabled = !saving && !loading,
+                            modifier = Modifier.fillMaxWidth()
+                        ) { Text("حذف این رکورد") }
+                    } else {
+                        Text(
+                            "این پشتیبان از نسل‌بندی نسخهٔ ۳ استفاده می‌کند؛ مشاهده مجاز است اما ویرایش و حذف تا آماده‌شدن عملیات امن نسل جدید غیرفعال است.",
+                            color = MaterialTheme.colorScheme.error,
+                            style = MaterialTheme.typography.bodySmall
+                        )
+                    }
                     Text(
                         "تغییرات در پشتیبان خصوصی استاد ثبت می‌شود. دستگاه استاد باید پس از اتصال به اینترنت بازیابی ابری را انجام دهد.",
                         style = MaterialTheme.typography.bodySmall,
@@ -305,6 +324,13 @@ fun AdminManagementScreen(onBack: () -> Unit) {
 
                 teacher != null -> {
                     Text("حساب استاد: " + teacher.email, style = MaterialTheme.typography.bodySmall)
+                    if (recordsTruncated) {
+                        Text(
+                            "فهرست بیش از ۱۵۰۰ رکورد دارد؛ این صفحه فقط ۱۵۰۰ مورد نخست را نشان می‌دهد.",
+                            color = MaterialTheme.colorScheme.error,
+                            style = MaterialTheme.typography.bodySmall
+                        )
+                    }
                     val classes = records.filter { it.type == "class" }
                     if (classes.isEmpty() && !loading) Text("کلاسی برای این استاد پیدا نشد.")
                     classes.forEach { row ->
@@ -392,3 +418,5 @@ private fun recordTypeLabel(type: String): String = when (type) {
     "lecture" -> "جلسه"
     else -> "رکورد"
 }
+
+private fun supportsMutationForSchema(schemaVersion: Int): Boolean = schemaVersion == 2
