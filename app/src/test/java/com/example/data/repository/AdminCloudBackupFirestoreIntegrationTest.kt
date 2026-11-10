@@ -77,6 +77,45 @@ class AdminCloudBackupFirestoreIntegrationTest {
             assertTrue(rows.any { it.getString("documentId") == "lecture_${if (uid == uidA) 501 else 602}" })
         }
 
+        // A malformed later teacher must be rejected before any earlier teacher is staged.
+        val protectedUid = "protected-${UUID.randomUUID()}"
+        val malformedUid = "malformed-${UUID.randomUUID()}"
+        val protectedRoot = firestore.collection("teacher_data").document(protectedUid)
+        protectedRoot.set(
+            mapOf(
+                "ownerUid" to protectedUid,
+                "schemaVersion" to 3L,
+                "activeGeneration" to "original-generation",
+                "recordCount" to 1L,
+                "folders" to emptyList<String>()
+            )
+        ).awaitTask()
+        protectedRoot.collection("generations").document("original-generation")
+            .collection("records").document("class_existing")
+            .set(mapOf("ownerUid" to protectedUid, "recordType" to "class", "id" to 303L, "name" to "نسخهٔ سالم قبلی"))
+            .awaitTask()
+
+        val malformedBackup = aggregateBackup(protectedUid, malformedUid)
+        malformedBackup.getJSONArray("teachers").getJSONObject(1)
+            .getJSONArray("records").getJSONObject(0).getJSONObject("data")
+            .put("ownerUid", "forged-owner")
+        var rejected = false
+        try {
+            AdminCloudBackupRestorer(firestore).restoreAll(malformedBackup.toString())
+        } catch (_: IllegalArgumentException) {
+            rejected = true
+        }
+        assertTrue("Malformed aggregate backup should be rejected", rejected)
+
+        val protectedAfter = protectedRoot.get().awaitTask()
+        assertEquals("original-generation", protectedAfter.getString("activeGeneration"))
+        assertEquals(1L, protectedAfter.getLong("recordCount"))
+        val oldRecord = protectedRoot.collection("generations").document("original-generation")
+            .collection("records").document("class_existing").get().awaitTask()
+        assertTrue(oldRecord.exists())
+        assertEquals("نسخهٔ سالم قبلی", oldRecord.getString("name"))
+        assertEquals(1, protectedRoot.collection("generations").get().awaitTask().size())
+
         app.delete()
         } catch (failure: Throwable) {
             failure.printStackTrace()
