@@ -7,8 +7,7 @@ class BackupGenerationCommitGuardTest {
     private fun state(
         generation: String? = "generation-a",
         adminPending: Boolean = false,
-        version: Long? = 3L,
-        updateSeconds: Long? = 100L
+        version: Long? = 3L
     ) = BackupRootVersion(
         exists = true,
         ownerUid = "teacher-uid",
@@ -56,12 +55,11 @@ class BackupGenerationCommitGuardTest {
             BackupGenerationCommitGuard.requireCanActivate(
                 "teacher-uid",
                 state(),
-                state(adminPending = true, version = 4L, updateSeconds = 101L)
+                state(adminPending = true, version = 4L)
             )
         }
     }
 
-    @Test
     @Test
     fun rejectsOwnerMismatch() {
         assertThrows(IllegalArgumentException::class.java) {
