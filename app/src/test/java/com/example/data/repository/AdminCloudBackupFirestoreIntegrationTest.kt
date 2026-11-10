@@ -36,7 +36,7 @@ class AdminCloudBackupFirestoreIntegrationTest {
         ) ?: error("Firebase Emulator test app could not initialize")
         val auth = FirebaseAuth.getInstance(app)
         auth.useEmulator("127.0.0.1", 9099)
-        Tasks.await(auth.createUserWithEmailAndPassword("salmanasadi@gmail.com", "test-password-123"))
+        Tasks.await(auth.createUserWithEmailAndPassword("salmanasadi843@gmail.com", "test-password-123"))
         // Rules grant aggregate backup access to the primary admin email.
         val firestore = FirebaseFirestore.getInstance(app)
         firestore.useEmulator("127.0.0.1", 8080)
