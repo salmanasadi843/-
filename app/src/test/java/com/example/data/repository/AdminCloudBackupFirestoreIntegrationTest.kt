@@ -20,6 +20,7 @@ import org.junit.runner.RunWith
 import org.robolectric.RobolectricTestRunner
 import org.robolectric.annotation.Config
 import java.util.UUID
+import java.util.concurrent.Executor
 
 /**
  * End-to-end admin backup restore test against the Firestore Emulator only.
@@ -84,9 +85,10 @@ class AdminCloudBackupFirestoreIntegrationTest {
     }
 
     private suspend fun <T> Task<T>.awaitTask(): T = suspendCancellableCoroutine { continuation ->
-        addOnSuccessListener { if (continuation.isActive) continuation.resume(it) }
-            .addOnFailureListener { if (continuation.isActive) continuation.resumeWithException(it) }
-            .addOnCanceledListener { continuation.cancel() }
+        val directExecutor = Executor { command -> command.run() }
+        addOnSuccessListener(directExecutor) { if (continuation.isActive) continuation.resume(it) }
+            .addOnFailureListener(directExecutor) { if (continuation.isActive) continuation.resumeWithException(it) }
+            .addOnCanceledListener(directExecutor) { if (continuation.isActive) continuation.cancel() }
     }
 
     private fun aggregateBackup(uidA: String, uidB: String): JSONObject {
