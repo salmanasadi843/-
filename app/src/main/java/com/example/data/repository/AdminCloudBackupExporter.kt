@@ -6,6 +6,7 @@ import org.json.JSONArray
 import org.json.JSONObject
 import kotlin.coroutines.resume
 import kotlin.coroutines.resumeWithException
+import java.util.concurrent.Executor
 
 /** Read-only aggregate export; preserves each teacher UID and original document IDs. */
 class AdminCloudBackupExporter(
@@ -211,8 +212,11 @@ class AdminCloudBackupExporter(
 
     private suspend fun <T> com.google.android.gms.tasks.Task<T>.awaitResult(): T =
         suspendCancellableCoroutine { continuation ->
-            addOnSuccessListener { if (continuation.isActive) continuation.resume(it) }
-                .addOnFailureListener { if (continuation.isActive) continuation.resumeWithException(it) }
-                .addOnCanceledListener { continuation.cancel() }
+            // The exporter may run from a blocking test coroutine; never require the main looper
+            // to deliver a completion callback while that looper is occupied.
+            val directExecutor = Executor { command -> command.run() }
+            addOnSuccessListener(directExecutor) { if (continuation.isActive) continuation.resume(it) }
+                .addOnFailureListener(directExecutor) { if (continuation.isActive) continuation.resumeWithException(it) }
+                .addOnCanceledListener(directExecutor) { if (continuation.isActive) continuation.cancel() }
         }
 }
