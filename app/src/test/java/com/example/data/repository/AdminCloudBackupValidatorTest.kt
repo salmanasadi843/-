@@ -109,4 +109,26 @@ class AdminCloudBackupValidatorTest {
         }
     }
 
+    @Test fun preservesOwnershipAcrossMultipleTeachers() {
+        val one = validBackup()
+        val two = one.replace("teacher-A", "teacher-B")
+            .replace("class_12", "class_22")
+            .replace("\\"id\\":12", "\\"id\\":22")
+        val multi = one.dropLast(1) + "," + two.substringAfter("\\"teachers\\":[")
+            .substringBeforeLast("]}") + "]}"
+        val result = AdminCloudBackupValidator.validate(multi)
+        assertEquals(2, result.teachers.size)
+        assertEquals(setOf("teacher-A", "teacher-B"), result.teachers.map { it.ownerUid }.toSet())
+        assertEquals(setOf("teacher-A", "teacher-B"), result.teachers.map { it.records.single().data.optString("ownerUid") }.toSet())
+    }
+
+    @Test fun rejectsDuplicateTeacherOwnerInAggregateBackup() {
+        val one = validBackup()
+        val duplicated = one.dropLast(1) + "," + one.substringAfter("\\"teachers\\":[")
+            .substringBeforeLast("]}") + "]}"
+        assertThrows(IllegalArgumentException::class.java) {
+            AdminCloudBackupValidator.validate(duplicated)
+        }
+    }
+
 }
