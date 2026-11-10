@@ -110,12 +110,7 @@ class AdminCloudBackupValidatorTest {
     }
 
     @Test fun preservesOwnershipAcrossMultipleTeachers() {
-        val one = validBackup()
-        val two = one.replace("teacher-A", "teacher-B")
-            .replace("class_12", "class_22")
-            .replace("\\"id\\":12", "\\"id\\":22")
-        val multi = one.dropLast(1) + "," + two.substringAfter("\\"teachers\\":[")
-            .substringBeforeLast("]}") + "]}"
+        val multi = """{"format":"darsyar-admin-cloud-backup","version":1,"teacherCount":2,"recordCount":2,"teachers":[{"ownerUid":"teacher-A","schemaVersion":3,"root":{"ownerUid":"teacher-A","activeGeneration":"gen-A","recordCount":1,"folders":[]},"records":[{"documentId":"class_12","data":{"ownerUid":"teacher-A","recordType":"class","id":12}}]},{"ownerUid":"teacher-B","schemaVersion":3,"root":{"ownerUid":"teacher-B","activeGeneration":"gen-B","recordCount":1,"folders":[]},"records":[{"documentId":"class_22","data":{"ownerUid":"teacher-B","recordType":"class","id":22}}]}]}"""
         val result = AdminCloudBackupValidator.validate(multi)
         assertEquals(2, result.teachers.size)
         assertEquals(setOf("teacher-A", "teacher-B"), result.teachers.map { it.ownerUid }.toSet())
@@ -123,9 +118,7 @@ class AdminCloudBackupValidatorTest {
     }
 
     @Test fun rejectsDuplicateTeacherOwnerInAggregateBackup() {
-        val one = validBackup()
-        val duplicated = one.dropLast(1) + "," + one.substringAfter("\\"teachers\\":[")
-            .substringBeforeLast("]}") + "]}"
+        val duplicated = """{"format":"darsyar-admin-cloud-backup","version":1,"teacherCount":2,"recordCount":2,"teachers":[{"ownerUid":"teacher-A","schemaVersion":3,"root":{"ownerUid":"teacher-A","activeGeneration":"gen-A","recordCount":1,"folders":[]},"records":[{"documentId":"class_12","data":{"ownerUid":"teacher-A","recordType":"class","id":12}}]},{"ownerUid":"teacher-A","schemaVersion":3,"root":{"ownerUid":"teacher-A","activeGeneration":"gen-B","recordCount":1,"folders":[]},"records":[{"documentId":"class_22","data":{"ownerUid":"teacher-A","recordType":"class","id":22}}]}]}"""
         assertThrows(IllegalArgumentException::class.java) {
             AdminCloudBackupValidator.validate(duplicated)
         }
