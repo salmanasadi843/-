@@ -89,8 +89,14 @@ googleServices {
     missingGoogleServicesStrategy = MissingGoogleServicesStrategy.WARN
 }
 
+// Emulator-backed integration tests run only in the dedicated Firestore workflow.
+val includeFirestoreEmulatorTests = providers.gradleProperty("includeFirestoreEmulatorTests").isPresent
+
 // Surface integration-test exceptions (including emulator failures) in GitHub Actions logs.
 tasks.withType<org.gradle.api.tasks.testing.Test>().configureEach {
+    if (!includeFirestoreEmulatorTests) {
+        exclude("**/AdminCloudBackupFirestoreIntegrationTest.class")
+    }
     testLogging {
         events("failed")
         exceptionFormat = org.gradle.api.tasks.testing.logging.TestExceptionFormat.FULL
