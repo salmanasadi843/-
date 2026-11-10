@@ -2,6 +2,7 @@ package com.example.ui.screens
 
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
+import android.net.Uri
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
@@ -60,6 +61,8 @@ import androidx.compose.ui.text.input.VisualTransformation
 import androidx.compose.ui.unit.dp
 import com.example.data.local.DatabaseBackup
 import com.example.data.local.CloudMaterialsSync
+import com.example.data.repository.AdminCloudBackupExporter
+import com.example.data.repository.AdminCloudBackupRestorer
 import com.example.data.api.GeminiApiService
 import com.example.data.api.GroqApiService
 import com.example.data.api.SpeechmaticsApiService
@@ -88,6 +91,9 @@ fun SettingsScreen(
     var backupBusy by remember { mutableStateOf(false) }
     var backupStatus by remember { mutableStateOf<String?>(null) }
     var backupError by remember { mutableStateOf(false) }
+    var pendingRestoreUri by remember { mutableStateOf<Uri?>(null) }
+    var pendingAdminRestoreUri by remember { mutableStateOf<Uri?>(null) }
+    var safetySnapshotAvailable by remember { mutableStateOf(DatabaseBackup.hasSafetySnapshot(context)) }
     var cloudBusy by remember { mutableStateOf(false) }
     var cloudStatus by remember { mutableStateOf<String?>(null) }
     var cloudError by remember { mutableStateOf(false) }
@@ -111,6 +117,47 @@ fun SettingsScreen(
             backupStatus = if (result.isSuccess) "پشتیبان با موفقیت ذخیره شد. فایل را در فضای امن یا فضای ابری نگه دارید." else "ساخت پشتیبان ناموفق بود: ${result.exceptionOrNull()?.localizedMessage}"
         }
     }
+    val exportAdminCloudBackup = rememberLauncherForActivityResult(
+        ActivityResultContracts.CreateDocument("application/json")
+    ) { uri ->
+        if (uri != null && isPrimaryAdmin) backupScope.launch {
+            backupBusy = true
+            backupStatus = null
+            val result = withContext(Dispatchers.IO) {
+                runCatching {
+                    val json = AdminCloudBackupExporter().exportAllTeachers()
+                    context.contentResolver.openOutputStream(uri, "wt")?.bufferedWriter(Charsets.UTF_8)?.use {
+                        it.write(json.toString(2))
+                    } ?: error("فایل پشتیبان مدیر برای نوشتن باز نشد.")
+                    "پشتیبان ابری تجمیعی ذخیره شد: ${json.optInt("teacherCount")} استاد، ${json.optInt("recordCount")} رکورد."
+                }
+            }
+            backupBusy = false
+            backupError = result.isFailure
+            backupStatus = result.getOrElse { "پشتیبان ابری مدیر ناموفق بود: ${it.localizedMessage}" }
+        }
+    }
+    val importAdminCloudBackup = rememberLauncherForActivityResult(ActivityResultContracts.OpenDocument()) { uri ->
+        if (uri != null && isPrimaryAdmin) pendingAdminRestoreUri = uri
+    }
+    val exportSafetySnapshot = rememberLauncherForActivityResult(
+        ActivityResultContracts.CreateDocument("application/json")
+    ) { uri ->
+        if (uri != null) backupScope.launch {
+            backupBusy = true
+            backupStatus = null
+            val result = withContext(Dispatchers.IO) {
+                runCatching { DatabaseBackup.exportLatestSafetySnapshot(context, uri) }
+            }
+            backupBusy = false
+            backupError = result.isFailure
+            backupStatus = result.fold(
+                onSuccess = { "نسخهٔ ایمنی اطلاعات پیش از بازیابی ذخیره شد." },
+                onFailure = { "ذخیرهٔ نسخهٔ ایمنی ناموفق بود: ${it.localizedMessage}" }
+            )
+        }
+    }
+
     val runCloudSync = {
         backupScope.launch {
             cloudBusy = true
@@ -122,13 +169,7 @@ fun SettingsScreen(
         }
     }
     val restoreBackup = rememberLauncherForActivityResult(ActivityResultContracts.OpenDocument()) { uri ->
-        if (uri != null) backupScope.launch {
-            backupBusy = true; backupStatus = null
-            val result = withContext(Dispatchers.IO) { runCatching { DatabaseBackup.import(context, uri) } }
-            backupBusy = false
-            backupError = result.isFailure
-            backupStatus = result.getOrElse { "بازیابی ناموفق بود: ${it.localizedMessage}" }
-        }
+        if (uri != null) pendingRestoreUri = uri
     }
 
     DisposableEffect(isPrimaryAdmin) {
@@ -165,6 +206,73 @@ fun SettingsScreen(
     var status by remember { mutableStateOf<String?>(null) }
     var statusIsError by remember { mutableStateOf(false) }
 
+    if (pendingRestoreUri != null) {
+        androidx.compose.material3.AlertDialog(
+            onDismissRequest = { pendingRestoreUri = null },
+            title = { Text("تأیید جایگزینی اطلاعات") },
+            text = {
+                Text(
+                    "بازیابی، کلاس‌ها، درس‌ها، جلسه‌ها و پوشه‌های فعلی این دستگاه را با محتوای فایل انتخاب‌شده جایگزین می‌کند. " +
+                        "اگر فایل ناقص یا قدیمی باشد، ممکن است بخشی از اطلاعات فعلی از دست برود. " +
+                        "فقط در صورتی ادامه دهید که از کامل بودن فایل پشتیبان مطمئن هستید."
+                )
+            },
+            confirmButton = {
+                Button(onClick = {
+                    val selectedUri = pendingRestoreUri
+                    pendingRestoreUri = null
+                    if (selectedUri != null) backupScope.launch {
+                        backupBusy = true
+                        backupStatus = null
+                        val result = withContext(Dispatchers.IO) {
+                            runCatching { DatabaseBackup.import(context, selectedUri) }
+                        }
+                        backupBusy = false
+                        safetySnapshotAvailable = DatabaseBackup.hasSafetySnapshot(context)
+                        backupError = result.isFailure
+                        backupStatus = result.getOrElse {
+                            "بازیابی ناموفق بود: ${it.localizedMessage}"
+                        }
+                    }
+                }) { Text("جایگزینی اطلاعات") }
+            },
+            dismissButton = {
+                OutlinedButton(onClick = { pendingRestoreUri = null }) {
+                    Text("انصراف")
+                }
+            }
+        )
+    }
+
+    if (pendingAdminRestoreUri != null && isPrimaryAdmin) {
+        androidx.compose.material3.AlertDialog(
+            onDismissRequest = { pendingAdminRestoreUri = null },
+            title = { Text("بازیابی ابری همهٔ استادان؟") },
+            text = { Text("فایل ابتدا کامل اعتبارسنجی می‌شود. سپس اطلاعات هر استاد جداگانه در نسخه‌ای تازه نوشته و بررسی می‌شود و فقط پس از تأیید، فعال می‌گردد. نسخه‌های قبلی حذف نمی‌شوند. اگر عملیات در میانه متوقف شود، ممکن است استادان قبلی بازیابی شده باشند و استادان بعدی نه. این عملیات اطلاعات ابری را تغییر می‌دهد؛ فقط با فایل مطمئن ادامه دهید.") },
+            confirmButton = {
+                Button(onClick = {
+                    val selected = pendingAdminRestoreUri
+                    pendingAdminRestoreUri = null
+                    if (selected != null) backupScope.launch {
+                        backupBusy = true
+                        backupStatus = null
+                        val result = withContext(Dispatchers.IO) {
+                            runCatching {
+                                val text = context.contentResolver.openInputStream(selected)?.bufferedReader(Charsets.UTF_8)?.use { it.readText() }
+                                    ?: error("فایل پشتیبان باز نشد.")
+                                val report = AdminCloudBackupRestorer().restoreAll(text)
+                                "بازیابی ابری انجام شد: ${report.teachersRestored} استاد، ${report.recordsRestored} رکورد."
+                            }
+                        }
+                        backupBusy = false
+                        backupError = result.isFailure
+                        backupStatus = result.getOrElse { "بازیابی ابری مدیر ناموفق بود: ${it.localizedMessage}" }
+                    }
+                }) { Text("تأیید و بازیابی") }
+            },
+            dismissButton = { OutlinedButton(onClick = { pendingAdminRestoreUri = null }) { Text("انصراف") } }
+        )
+    }
     if (showPublishConfirm) {
         androidx.compose.material3.AlertDialog(
             onDismissRequest = { showPublishConfirm = false },
@@ -794,6 +902,32 @@ fun SettingsScreen(
                         Spacer(Modifier.width(8.dp))
                         Text("ساخت فایل پشتیبان")
                     }
+                    if (isPrimaryAdmin) {
+                        Spacer(Modifier.height(8.dp))
+                        OutlinedButton(
+                            onClick = { exportAdminCloudBackup.launch("darsyar-admin-cloud-backup.json") },
+                            enabled = !backupBusy,
+                            modifier = Modifier.fillMaxWidth()
+                        ) {
+                            Icon(Icons.Default.NetworkCheck, contentDescription = null)
+                            Spacer(Modifier.width(8.dp))
+                            Text("پشتیبان ابری همهٔ استادان (مدیر)")
+                        }
+                        OutlinedButton(
+                            onClick = { importAdminCloudBackup.launch(arrayOf("application/json", "text/*", "application/octet-stream")) },
+                            enabled = !backupBusy,
+                            modifier = Modifier.fillMaxWidth()
+                        ) {
+                            Icon(Icons.Default.NetworkCheck, contentDescription = null)
+                            Spacer(Modifier.width(8.dp))
+                            Text("بازیابی ابری همهٔ استادان (مدیر)")
+                        }
+                        Text(
+                            "پشتیبان، مالکیت و پوشه‌های هر استاد را حفظ می‌کند. بازیابی استادبه‌استاد و پس از اعتبارسنجی و تأیید صریح انجام می‌شود؛ در صورت خطا ممکن است بخشی از استادان بازیابی شده باشند.",
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                        )
+                    }
                     Spacer(Modifier.height(8.dp))
                     OutlinedButton(
                         onClick = { restoreBackup.launch(arrayOf("application/json", "text/*", "application/octet-stream")) },
@@ -804,6 +938,22 @@ fun SettingsScreen(
                         Spacer(Modifier.width(8.dp))
                         Text("بازیابی از فایل پشتیبان")
                     }
+                    OutlinedButton(
+                        onClick = {
+                            exportSafetySnapshot.launch("darsyar-before-restore-safety.json")
+                        },
+                        enabled = !backupBusy && safetySnapshotAvailable,
+                        modifier = Modifier.fillMaxWidth()
+                    ) {
+                        Icon(Icons.Default.CheckCircle, contentDescription = null)
+                        Spacer(Modifier.width(8.dp))
+                        Text("ذخیرهٔ نسخهٔ ایمنی قبل از بازیابی")
+                    }
+                    Text(
+                        "پیش از هر بازیابی، برنامه یک نسخه از اطلاعات فعلی را در حافظهٔ داخلی خود نگه می‌دارد. برای نگهداری خارج از گوشی، این نسخه را نیز ذخیره کنید.",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
                     if (backupBusy) {
                         Spacer(Modifier.height(10.dp))
                         Row(verticalAlignment = Alignment.CenterVertically) {

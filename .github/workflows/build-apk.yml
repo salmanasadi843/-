@@ -13,7 +13,7 @@ concurrency:
 
 jobs:
   build:
-    name: Build Debug APK
+    name: Build Signed Release APK
     runs-on: ubuntu-latest
 
     steps:
@@ -42,12 +42,42 @@ jobs:
         with:
           gradle-version: '9.3.1'
 
-      - name: Build Debug APK
-        run: gradle assembleDebug --stacktrace
+      - name: Run Android unit tests
+        run: gradle testDebugUnitTest --stacktrace
 
-      - name: Upload APK
+      - name: Prepare the existing upload keystore
+        shell: bash
+        env:
+          DARSYAR_KEYSTORE_BASE64: ${{ secrets.DARSYAR_KEYSTORE_BASE64 }}
+        run: |
+          set -euo pipefail
+          test -n "$DARSYAR_KEYSTORE_BASE64" || { echo "Missing DARSYAR_KEYSTORE_BASE64 secret"; exit 1; }
+          KEYSTORE_PATH="$RUNNER_TEMP/darsyar-upload-key.jks"
+          printf '%s' "$DARSYAR_KEYSTORE_BASE64" | base64 --decode > "$KEYSTORE_PATH"
+          test -s "$KEYSTORE_PATH"
+          echo "KEYSTORE_PATH=$KEYSTORE_PATH" >> "$GITHUB_ENV"
+
+      - name: Build APK signed with the existing upload key
+        env:
+          STORE_PASSWORD: ${{ secrets.DARSYAR_STORE_PASSWORD }}
+          KEY_PASSWORD: ${{ secrets.DARSYAR_KEY_PASSWORD }}
+          KEY_ALIAS: ${{ secrets.DARSYAR_KEY_ALIAS }}
+        run: gradle assembleRelease --stacktrace
+
+      - name: Verify APK signature
+        shell: bash
+        run: |
+          set -euo pipefail
+          APK="$(find app/build/outputs/apk/release -maxdepth 1 -name '*.apk' -print -quit)"
+          test -n "$APK"
+          APK_SIGNER="$ANDROID_HOME/build-tools/36.0.0/apksigner"
+          test -x "$APK_SIGNER"
+          "$APK_SIGNER" verify --verbose "$APK"
+          "$APK_SIGNER" verify --print-certs "$APK"
+
+      - name: Upload signed Release APK
         uses: actions/upload-artifact@v6
         with:
-          name: ostadyar-debug-apk
-          path: app/build/outputs/apk/debug/*.apk
+          name: darsyar-release-signed-apk
+          path: app/build/outputs/apk/release/*.apk
           if-no-files-found: error
