@@ -25,3 +25,6 @@ jobs:
       - name: Run Firestore Emulator rules tests
         working-directory: tools/firestore-rules-tests
         run: npm run test:rules
+      - name: Run Android admin restore/export integration test on Firestore Emulator
+        working-directory: tools/firestore-rules-tests
+        run: npm run test:restore
