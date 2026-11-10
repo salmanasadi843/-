@@ -14,6 +14,7 @@ import com.google.android.gms.tasks.Task
 import com.google.firebase.firestore.DocumentSnapshot
 import com.google.firebase.firestore.FieldValue
 import com.google.firebase.firestore.FirebaseFirestore
+import com.google.firebase.firestore.SetOptions
 import org.json.JSONObject
 import kotlinx.coroutines.suspendCancellableCoroutine
 import kotlin.coroutines.resume
@@ -130,6 +131,12 @@ class FirestoreSyncRepository(
         val lectures = rows.lectures.filter { it.id > 0L && it.classId in ownedClassIds }
 
         val root = firestore.collection(TEACHER_DATA).document(uid)
+        // Capture the current commit point before staging a new generation. If another
+        // device or the administrator changes this root while records are uploading,
+        // the final compare-and-set below refuses to replace that newer generation.
+        val initialRoot = root.get().awaitResult()
+        val expectedRootVersion = initialRoot.toBackupRootVersion()
+        BackupGenerationCommitGuard.requireCanActivate(uid, expectedRootVersion, expectedRootVersion)
         val generationId = System.currentTimeMillis().toString() + "_" + UUID.randomUUID().toString().replace("-", "")
         val records = root.collection(GENERATIONS).document(generationId).collection(RECORDS)
         val desired = linkedMapOf<String, Map<String, Any?>>()
@@ -197,17 +204,30 @@ class FirestoreSyncRepository(
         ) throw IllegalStateException("محتوای نسخهٔ تازهٔ پشتیبان کامل تأیید نشد؛ نسخهٔ قبلی همچنان فعال باقی ماند.")
 
         val folderRows = rows.folders.filter { it.ownerUid == uid }
-        // This root update is the commit point. Previous generations are retained.
-        root.set(
-            mapOf(
-                "schemaVersion" to SCHEMA_VERSION,
-                "ownerUid" to uid,
-                "activeGeneration" to generationId,
-                "recordCount" to desired.size,
-                "folders" to folderRows.map { it.toCloudMap() },
-                "updatedAt" to FieldValue.serverTimestamp()
+        // This transaction is the commit point. It preserves the previous root metadata
+        // and activates this generation only if no other writer changed the root since
+        // staging began. The old generation is never deleted.
+        firestore.runTransaction { transaction ->
+            val latestRoot = transaction.get(root)
+            BackupGenerationCommitGuard.requireCanActivate(
+                uid,
+                expectedRootVersion,
+                latestRoot.toBackupRootVersion()
             )
-        ).awaitResult()
+            transaction.set(
+                root,
+                mapOf(
+                    "schemaVersion" to SCHEMA_VERSION,
+                    "ownerUid" to uid,
+                    "activeGeneration" to generationId,
+                    "recordCount" to desired.size,
+                    "folders" to folderRows.map { it.toCloudMap() },
+                    "updatedAt" to FieldValue.serverTimestamp()
+                ),
+                SetOptions.merge()
+            )
+            true
+        }.awaitResult()
     }
 
     private suspend fun restoreRecordDocuments(uid: String, generationId: String?) {
@@ -607,4 +627,20 @@ class FirestoreSyncRepository(
                 }
             }
         }
+}
+
+
+private fun DocumentSnapshot.toBackupRootVersion(): BackupRootVersion {
+    val updateTime = updateTime
+    return BackupRootVersion(
+        exists = exists(),
+        ownerUid = getString("ownerUid"),
+        schemaVersion = getLong("schemaVersion"),
+        activeGeneration = getString("activeGeneration"),
+        adminPending = getBoolean("adminPending") == true,
+        adminPendingVersion = getLong("adminPendingVersion"),
+        syncLockUntilMillis = getLong("syncLockUntilMillis"),
+        updateTimeSeconds = updateTime?.seconds,
+        updateTimeNanos = updateTime?.nanoseconds
+    )
 }
