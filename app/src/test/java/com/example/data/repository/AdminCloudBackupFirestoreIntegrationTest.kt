@@ -5,7 +5,10 @@ import androidx.test.core.app.ApplicationProvider
 import com.google.firebase.FirebaseApp
 import com.google.firebase.FirebaseOptions
 import com.google.firebase.auth.FirebaseAuth
-import com.google.android.gms.tasks.Tasks
+import com.google.android.gms.tasks.Task
+import kotlinx.coroutines.suspendCancellableCoroutine
+import kotlin.coroutines.resume
+import kotlin.coroutines.resumeWithException
 import com.google.firebase.firestore.FirebaseFirestore
 import kotlinx.coroutines.runBlocking
 import org.json.JSONArray
@@ -41,7 +44,7 @@ class AdminCloudBackupFirestoreIntegrationTest {
         ) ?: error("Firebase Emulator test app could not initialize")
         val auth = FirebaseAuth.getInstance(app)
         auth.useEmulator("127.0.0.1", 9099)
-        Tasks.await(auth.createUserWithEmailAndPassword("salmanasadi843@gmail.com", "test-password-123"))
+        auth.createUserWithEmailAndPassword("salmanasadi843@gmail.com", "test-password-123").awaitTask()
         // Rules grant aggregate backup access to the primary admin email.
         val firestore = FirebaseFirestore.getInstance(app)
         firestore.useEmulator("127.0.0.1", 8080)
@@ -78,6 +81,12 @@ class AdminCloudBackupFirestoreIntegrationTest {
             failure.printStackTrace()
             throw failure
         }
+    }
+
+    private suspend fun <T> Task<T>.awaitTask(): T = suspendCancellableCoroutine { continuation ->
+        addOnSuccessListener { if (continuation.isActive) continuation.resume(it) }
+            .addOnFailureListener { if (continuation.isActive) continuation.resumeWithException(it) }
+            .addOnCanceledListener { continuation.cancel() }
     }
 
     private fun aggregateBackup(uidA: String, uidB: String): JSONObject {
