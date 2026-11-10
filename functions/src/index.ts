@@ -305,8 +305,9 @@ export const adminListTeacherRecords = onCall({ region: REGION, timeoutSeconds: 
   if ((root.get("syncLockUntilMillis") ?? 0) > Date.now()) {
     throw new HttpsError("aborted", "پشتیبان‌گیری استاد در حال انجام است؛ کمی بعد دوباره تلاش کنید.");
   }
-  const records = await recordsCollectionForRoot(teacherUid, root).limit(1500).get();
-  const items = records.docs.map((doc) => {
+  const records = await recordsCollectionForRoot(teacherUid, root).limit(1501).get();
+  const truncated = records.size > 1500;
+  const items = records.docs.slice(0, 1500).map((doc) => {
     const value = doc.data();
     const type = value.recordType;
     const id = Number(value.id);
@@ -322,7 +323,12 @@ export const adminListTeacherRecords = onCall({ region: REGION, timeoutSeconds: 
       dateMillis: typeof value.dateMillis === "number" ? value.dateMillis : null,
     };
   }).filter((item): item is NonNullable<typeof item> => item !== null);
-  return { records: items };
+  return {
+    records: items,
+    schemaVersion: Number(root.get("schemaVersion")),
+    supportsMutation: root.get("schemaVersion") === 2,
+    truncated,
+  };
 });
 
 export const adminGetTeacherRecord = onCall({ region: REGION, timeoutSeconds: 30 }, async (request) => {
