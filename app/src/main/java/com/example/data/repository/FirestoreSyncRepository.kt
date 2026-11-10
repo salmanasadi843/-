@@ -638,7 +638,6 @@ class FirestoreSyncRepository(
 
 
 private fun DocumentSnapshot.toBackupRootVersion(): BackupRootVersion {
-    val snapshotUpdateTime = this.updateTime
     return BackupRootVersion(
         exists = exists(),
         ownerUid = getString("ownerUid"),
@@ -646,8 +645,6 @@ private fun DocumentSnapshot.toBackupRootVersion(): BackupRootVersion {
         activeGeneration = getString("activeGeneration"),
         adminPending = getBoolean("adminPending") == true,
         adminPendingVersion = getLong("adminPendingVersion"),
-        syncLockUntilMillis = getLong("syncLockUntilMillis"),
-        updateTimeSeconds = snapshotUpdateTime?.seconds,
-        updateTimeNanos = snapshotUpdateTime?.nanoseconds
+        syncLockUntilMillis = getLong("syncLockUntilMillis")
     )
 }
