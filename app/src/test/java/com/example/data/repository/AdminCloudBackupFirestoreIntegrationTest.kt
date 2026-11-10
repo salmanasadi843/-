@@ -31,7 +31,11 @@ class AdminCloudBackupFirestoreIntegrationTest {
         val appName = "restore-emulator-${UUID.randomUUID()}"
         val app = FirebaseApp.initializeApp(
             context,
-            FirebaseOptions.Builder().setProjectId("demo-darsyar-rules").build(),
+            FirebaseOptions.Builder()
+                .setProjectId("demo-darsyar-rules")
+                .setApplicationId("1:123456789:android:restore-test")
+                .setApiKey("fake-emulator-api-key")
+                .build(),
             appName
         ) ?: error("Firebase Emulator test app could not initialize")
         val auth = FirebaseAuth.getInstance(app)
