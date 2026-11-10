@@ -117,7 +117,6 @@ class AdminCloudBackupRestorer(
             restoredTeachers++
             restoredRecords += teacher.records.size
         }
-        }
         } catch (cancelled: kotlinx.coroutines.CancellationException) {
             throw cancelled
         } catch (failure: Exception) {
