@@ -10,6 +10,7 @@ permissions:
 jobs:
   firestore-rules:
     runs-on: ubuntu-latest
+    timeout-minutes: 25
     steps:
       - uses: actions/checkout@v6
       - uses: actions/setup-node@v5
@@ -31,4 +32,4 @@ jobs:
         run: npm run test:rules
       - name: Run Android admin restore/export integration test on Firestore Emulator
         working-directory: tools/firestore-rules-tests
-        run: npm run test:restore
+        run: timeout 12m npm run test:restore
