@@ -43,6 +43,20 @@ function requireTargetUid(value: unknown): string {
 function recordKey(type: RecordType, id: number): string {
   return `${type}_${id}`;
 }
+function recordsCollectionForRoot(teacherUid: string, root: FirebaseFirestore.DocumentSnapshot): FirebaseFirestore.CollectionReference {
+  const rootRef = db.collection(TEACHER_DATA).doc(teacherUid);
+  const schema = root.get("schemaVersion");
+  if (schema === 2) return rootRef.collection(RECORDS);
+  if (schema === 3) {
+    const generation = root.get("activeGeneration");
+    if (typeof generation !== "string" || generation.length < 8) {
+      throw new HttpsError("failed-precondition", "نسخهٔ فعال پشتیبان استاد معتبر نیست.");
+    }
+    return rootRef.collection("generations").doc(generation).collection(RECORDS);
+  }
+  throw new HttpsError("failed-precondition", "ساختار پشتیبان استاد پشتیبانی نمی‌شود.");
+}
+
 
 async function assertApprovedTeacher(uid: string): Promise<void> {
   const [profile, approval] = await Promise.all([
@@ -285,14 +299,15 @@ export const adminListTeacherRecords = onCall({ region: REGION, timeoutSeconds: 
   const teacherUid = requireTargetUid(data.targetTeacherUid);
   await assertApprovedTeacher(teacherUid);
   const root = await db.collection(TEACHER_DATA).doc(teacherUid).get();
-  if (!root.exists || root.get("ownerUid") !== teacherUid || root.get("schemaVersion") !== 2) {
+  if (!root.exists || root.get("ownerUid") !== teacherUid || ![2, 3].includes(Number(root.get("schemaVersion")))) {
     throw new HttpsError("failed-precondition", "پشتیبان خصوصی استاد آماده مدیریت نیست یا ساختار آن پشتیبانی نمی‌شود.");
   }
   if ((root.get("syncLockUntilMillis") ?? 0) > Date.now()) {
     throw new HttpsError("aborted", "پشتیبان‌گیری استاد در حال انجام است؛ کمی بعد دوباره تلاش کنید.");
   }
-  const records = await db.collection(TEACHER_DATA).doc(teacherUid).collection(RECORDS).limit(1500).get();
-  const items = records.docs.map((doc) => {
+  const records = await recordsCollectionForRoot(teacherUid, root).limit(1501).get();
+  const truncated = records.size > 1500;
+  const items = records.docs.slice(0, 1500).map((doc) => {
     const value = doc.data();
     const type = value.recordType;
     const id = Number(value.id);
@@ -308,7 +323,12 @@ export const adminListTeacherRecords = onCall({ region: REGION, timeoutSeconds: 
       dateMillis: typeof value.dateMillis === "number" ? value.dateMillis : null,
     };
   }).filter((item): item is NonNullable<typeof item> => item !== null);
-  return { records: items };
+  return {
+    records: items,
+    schemaVersion: Number(root.get("schemaVersion")),
+    supportsMutation: root.get("schemaVersion") === 2,
+    truncated,
+  };
 });
 
 export const adminGetTeacherRecord = onCall({ region: REGION, timeoutSeconds: 30 }, async (request) => {
@@ -319,13 +339,14 @@ export const adminGetTeacherRecord = onCall({ region: REGION, timeoutSeconds: 30
   const id = validateRecordId(data.recordId);
   await assertApprovedTeacher(teacherUid);
   const root = await db.collection(TEACHER_DATA).doc(teacherUid).get();
-  if (!root.exists || root.get("ownerUid") !== teacherUid || root.get("schemaVersion") !== 2) {
+  if (!root.exists || root.get("ownerUid") !== teacherUid || ![2, 3].includes(Number(root.get("schemaVersion")))) {
     throw new HttpsError("failed-precondition", "پشتیبان خصوصی استاد آماده مدیریت نیست یا ساختار آن پشتیبانی نمی‌شود.");
   }
   if ((root.get("syncLockUntilMillis") ?? 0) > Date.now()) {
     throw new HttpsError("aborted", "پشتیبان‌گیری استاد در حال انجام است؛ کمی بعد دوباره تلاش کنید.");
   }
-  const ref = db.collection(TEACHER_DATA).doc(teacherUid).collection(RECORDS).doc(recordKey(type, id));
+  const records = recordsCollectionForRoot(teacherUid, root);
+  const ref = records.doc(recordKey(type, id));
   const snapshot = await ref.get();
   requireOwnedRecord(snapshot, type, teacherUid);
   if (type !== "class") {
@@ -333,7 +354,7 @@ export const adminGetTeacherRecord = onCall({ region: REGION, timeoutSeconds: 30
     if (typeof classId !== "number" || !Number.isSafeInteger(classId) || classId <= 0) {
       throw new HttpsError("failed-precondition", "ارتباط رکورد با کلاس معتبر نیست.");
     }
-    const classRecord = await db.collection(TEACHER_DATA).doc(teacherUid).collection(RECORDS).doc(recordKey("class", classId)).get();
+    const classRecord = await records.doc(recordKey("class", classId)).get();
     if (!classRecord.exists || classRecord.get("ownerUid") !== teacherUid) {
       throw new HttpsError("permission-denied", "مالکیت کلاس مقصد تأیید نشد.");
     }
