@@ -26,6 +26,7 @@ class AdminCloudBackupRestorer(
         var restoredTeachers = 0
         var restoredRecords = 0
 
+        try {
         for (teacher in backup.teachers) {
             val rootRef = firestore.collection("teacher_data").document(teacher.ownerUid)
             val oldRoot = rootRef.get().awaitResult()
@@ -115,6 +116,17 @@ class AdminCloudBackupRestorer(
             }
             restoredTeachers++
             restoredRecords += teacher.records.size
+        }
+        }
+        } catch (cancelled: kotlinx.coroutines.CancellationException) {
+            throw cancelled
+        } catch (failure: Exception) {
+            if (restoredTeachers == 0) throw failure
+            throw IllegalStateException(
+                "بازیابی چنداستادی کامل نشد. تا پیش از خطا، بازیابی و فعال‌سازی $restoredTeachers استاد و $restoredRecords رکورد با موفقیت تأیید شد. " +
+                    "وضعیت استادِ در حال پردازش را بررسی کنید؛ نسخه‌های قبلی حذف نشده‌اند. علت: ${failure.localizedMessage ?: "خطای نامشخص"}",
+                failure
+            )
         }
         return RestoreReport(restoredTeachers, restoredRecords)
     }
