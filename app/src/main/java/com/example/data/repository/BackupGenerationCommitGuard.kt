@@ -21,7 +21,8 @@ internal object BackupGenerationCommitGuard {
     fun requireCanActivate(
         expectedOwnerUid: String,
         expected: BackupRootVersion,
-        current: BackupRootVersion
+        current: BackupRootVersion,
+        nowMillis: Long = System.currentTimeMillis()
     ) {
         require(expected.ownerUid.isNullOrBlank() || expected.ownerUid == expectedOwnerUid) {
             "مالک نسخهٔ پشتیبان با حساب فعلی سازگار نیست؛ پشتیبان‌گیری متوقف شد."
@@ -31,6 +32,12 @@ internal object BackupGenerationCommitGuard {
         }
         require(!expected.adminPending && !current.adminPending) {
             "تغییرات مدیریتی هنوز در دستگاه استاد بازیابی نشده است؛ ابتدا بازیابی ابری را انجام دهید."
+        }
+        require(
+            (expected.syncLockUntilMillis ?: 0L) <= nowMillis &&
+                (current.syncLockUntilMillis ?: 0L) <= nowMillis
+        ) {
+            "همگام‌سازی دیگری در حال انجام است؛ کمی بعد دوباره تلاش کنید."
         }
         require(
             expected.exists == current.exists &&
