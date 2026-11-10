@@ -12,9 +12,7 @@ internal data class BackupRootVersion(
     val activeGeneration: String?,
     val adminPending: Boolean,
     val adminPendingVersion: Long?,
-    val syncLockUntilMillis: Long?,
-    val updateTimeSeconds: Long?,
-    val updateTimeNanos: Int?
+    val syncLockUntilMillis: Long?
 )
 
 internal object BackupGenerationCommitGuard {
@@ -44,9 +42,7 @@ internal object BackupGenerationCommitGuard {
                 expected.schemaVersion == current.schemaVersion &&
                 expected.activeGeneration == current.activeGeneration &&
                 expected.adminPendingVersion == current.adminPendingVersion &&
-                expected.syncLockUntilMillis == current.syncLockUntilMillis &&
-                expected.updateTimeSeconds == current.updateTimeSeconds &&
-                expected.updateTimeNanos == current.updateTimeNanos
+                expected.syncLockUntilMillis == current.syncLockUntilMillis
         ) {
             "نسخهٔ پشتیبان هنگام همگام‌سازی تغییر کرده است؛ برای جلوگیری از بازنویسی اطلاعات جدید، این بار پشتیبان‌گیری متوقف شد. دوباره تلاش کنید."
         }
