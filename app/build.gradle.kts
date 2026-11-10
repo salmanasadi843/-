@@ -98,7 +98,7 @@ tasks.withType<org.gradle.api.tasks.testing.Test>().configureEach {
         exclude("**/AdminCloudBackupFirestoreIntegrationTest.class")
     }
     testLogging {
-        events("failed")
+        events("started", "passed", "failed", "skipped")
         exceptionFormat = org.gradle.api.tasks.testing.logging.TestExceptionFormat.FULL
         showStandardStreams = true
     }
