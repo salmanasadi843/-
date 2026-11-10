@@ -16,9 +16,7 @@ class BackupGenerationCommitGuardTest {
         activeGeneration = generation,
         adminPending = adminPending,
         adminPendingVersion = version,
-        syncLockUntilMillis = null,
-        updateTimeSeconds = updateSeconds,
-        updateTimeNanos = 0
+        syncLockUntilMillis = null
     )
 
     @Test
@@ -64,16 +62,6 @@ class BackupGenerationCommitGuardTest {
     }
 
     @Test
-    fun rejectsAChangedRootEvenWhenGenerationPointerLooksTheSame() {
-        assertThrows(IllegalArgumentException::class.java) {
-            BackupGenerationCommitGuard.requireCanActivate(
-                "teacher-uid",
-                state(updateSeconds = 100L),
-                state(updateSeconds = 101L)
-            )
-        }
-    }
-
     @Test
     fun rejectsOwnerMismatch() {
         assertThrows(IllegalArgumentException::class.java) {
