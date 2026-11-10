@@ -61,6 +61,42 @@ class BackupGenerationCommitGuardTest {
     }
 
     @Test
+    fun rejectsActivationWhileSyncLockIsActive() {
+        val expected = state().copy(syncLockUntilMillis = 5_000L)
+        assertThrows(IllegalArgumentException::class.java) {
+            BackupGenerationCommitGuard.requireCanActivate(
+                "teacher-uid",
+                expected,
+                expected,
+                nowMillis = 1_000L
+            )
+        }
+    }
+
+    @Test
+    fun rejectsActivationWhenSyncLockChangesDuringUpload() {
+        assertThrows(IllegalArgumentException::class.java) {
+            BackupGenerationCommitGuard.requireCanActivate(
+                "teacher-uid",
+                state().copy(syncLockUntilMillis = null),
+                state().copy(syncLockUntilMillis = 0L),
+                nowMillis = 1_000L
+            )
+        }
+    }
+
+    @Test
+    fun rejectsActivationWhenAdminPendingVersionChanges() {
+        assertThrows(IllegalArgumentException::class.java) {
+            BackupGenerationCommitGuard.requireCanActivate(
+                "teacher-uid",
+                state(version = 3L),
+                state(version = 4L)
+            )
+        }
+    }
+
+    @Test
     fun rejectsOwnerMismatch() {
         assertThrows(IllegalArgumentException::class.java) {
             BackupGenerationCommitGuard.requireCanActivate(
