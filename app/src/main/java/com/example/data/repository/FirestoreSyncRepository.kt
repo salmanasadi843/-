@@ -152,15 +152,16 @@ class FirestoreSyncRepository(
     private suspend fun restoreRecordDocuments(uid: String) {
         val rootSnapshot = firestore.collection(TEACHER_DATA).document(uid).get().awaitResult()
         val activeGeneration = rootSnapshot.getString("activeGeneration")?.takeIf { it.isNotBlank() }
-        val documents = firestore.collection(TEACHER_DATA)
-            .document(uid)
-            .collection(RECORDS)
-            .get()
-            .awaitResult()
-            .documents
-            .filter { document ->
-                isRecordInGeneration(document.getString("generation"), activeGeneration)
+        val records = firestore.collection(TEACHER_DATA).document(uid).collection(RECORDS)
+        val documents = if (activeGeneration != null) {
+            // Query only the active generation; older retained snapshots are not downloaded.
+            records.whereEqualTo("generation", activeGeneration).get().awaitResult().documents
+        } else {
+            // One-time compatibility path for schema-2 backups created before generations.
+            records.get().awaitResult().documents.filter { document ->
+                isRecordInGeneration(document.getString("generation"), null)
             }
+        }
 
         val classes = mutableListOf<ClassEntity>()
         val courses = mutableListOf<CourseEntity>()
