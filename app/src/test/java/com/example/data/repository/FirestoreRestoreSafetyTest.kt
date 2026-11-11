@@ -7,11 +7,11 @@ import org.junit.Test
 class FirestoreRestoreSafetyTest {
     @Test
     fun populatedLocalDataBlocksAnExistingCloudRestoreButNotAnInitialUpload() {
-        assertTrue(shouldBlockCloudRestore(localPrivateRecordCount = 1, cloudBackupExists = true))
-        assertTrue(shouldBlockCloudRestore(localPrivateRecordCount = 12, cloudBackupExists = true))
-        assertFalse(shouldBlockCloudRestore(localPrivateRecordCount = 0, cloudBackupExists = true))
-        assertFalse(shouldBlockCloudRestore(localPrivateRecordCount = 12, cloudBackupExists = false))
-        assertFalse(shouldBlockCloudRestore(localPrivateRecordCount = 0, cloudBackupExists = false))
+        assertTrue(shouldBlockCloudRestore(localRecordCount = 1, cloudBackupExists = true))
+        assertTrue(shouldBlockCloudRestore(localRecordCount = 12, cloudBackupExists = true))
+        assertFalse(shouldBlockCloudRestore(localRecordCount = 0, cloudBackupExists = true))
+        assertFalse(shouldBlockCloudRestore(localRecordCount = 12, cloudBackupExists = false))
+        assertFalse(shouldBlockCloudRestore(localRecordCount = 0, cloudBackupExists = false))
     }
 
     @Test
