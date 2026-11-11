@@ -188,7 +188,7 @@ class AdminCloudBackupFirestoreIntegrationTest {
                     JSONObject()
                         .put("ownerUid", uid)
                         .put("activeGeneration", "source-generation")
-                        .put("recordCount", 4)
+                        .put("recordCount", 5)
                         .put(
                             "folders",
                             JSONArray().put(
