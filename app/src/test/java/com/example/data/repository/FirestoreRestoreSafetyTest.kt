@@ -8,10 +8,10 @@ class FirestoreRestoreSafetyTest {
     @Test
     fun populatedLocalDataBlocksAnExistingCloudRestoreButNotAnInitialUpload() {
         assertTrue(shouldBlockLegacyRestore(localRecordCount = 1, legacyCloudBackupExists = true))
-        assertTrue(shouldBlockLegacyRestore(localRecordCount = 12, cloudBackupExists = true))
-        assertFalse(shouldBlockLegacyRestore(localRecordCount = 0, cloudBackupExists = true))
+        assertTrue(shouldBlockLegacyRestore(localRecordCount = 12, legacyCloudBackupExists = true))
+        assertFalse(shouldBlockLegacyRestore(localRecordCount = 0, legacyCloudBackupExists = true))
         assertFalse(shouldBlockLegacyRestore(localRecordCount = 12, legacyCloudBackupExists = false))
-        assertFalse(shouldBlockLegacyRestore(localRecordCount = 0, cloudBackupExists = false))
+        assertFalse(shouldBlockLegacyRestore(localRecordCount = 0, legacyCloudBackupExists = false))
     }
 
     @Test
