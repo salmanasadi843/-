@@ -182,10 +182,8 @@ class FirestoreSyncRepository(
         val activeGeneration = rootSnapshot.getString("activeGeneration")?.takeIf { it.isNotBlank() }
         val records = firestore.collection(TEACHER_DATA).document(uid).collection(RECORDS)
         val documents = if (activeGeneration != null) {
-            // Query only the active generation; older retained snapshots are not downloaded.
             records.whereEqualTo("generation", activeGeneration).get().awaitResult().documents
         } else {
-            // One-time compatibility path for schema-2 backups created before generations.
             records.get().awaitResult().documents.filter { document ->
                 isRecordInGeneration(document.getString("generation"), null)
             }
@@ -209,9 +207,9 @@ class FirestoreSyncRepository(
         val folders = if (teacherFolderDao != null) {
             (rawFolders as List<*>).map { value ->
                 (value as Map<*, *>).asStringMap()!!.toFolderEntity()
-            }
+            }.toMutableList()
         } else {
-            emptyList()
+            mutableListOf()
         }
 
         documents.forEach { document ->
@@ -227,7 +225,56 @@ class FirestoreSyncRepository(
                 )
             }
         }
-        validateAndReplaceLocalData(classes, courses, lectures, folders)
+
+        // Compare the account-owned local snapshot with cloud before replacing it.
+        // Identical data can sync normally; divergent data is preserved for explicit
+        // recovery rather than choosing a winner silently.
+        val allLocalClasses = classDao.getAllForBackup()
+        val allLocalCourses = courseDao.getAllForBackup()
+        val allLocalLectures = lectureDao.getAllForBackup()
+        val allLocalFolders = teacherFolderDao?.observeFoldersForBackup().orEmpty()
+        val ownedLocalClasses = allLocalClasses.filter {
+            it.id > 0L && (it.ownerUid == uid || it.ownerUid.isBlank())
+        }
+        val ownedClassIds = ownedLocalClasses.map { it.id }.toSet()
+        val ownedLocalCourses = allLocalCourses.filter { it.id > 0L && it.classId in ownedClassIds }
+        val ownedLocalLectures = allLocalLectures.filter { it.id > 0L && it.classId in ownedClassIds }
+        val ownedLocalFolders = allLocalFolders.filter { it.ownerUid == uid }
+        val hasLocalTeacherData = ownedLocalClasses.isNotEmpty() ||
+            ownedLocalCourses.isNotEmpty() || ownedLocalLectures.isNotEmpty() || ownedLocalFolders.isNotEmpty()
+
+        val sameAsCloud = ownedLocalClasses.sortedBy { it.id } == classes.sortedBy { it.id } &&
+            ownedLocalCourses.sortedBy { it.id } == courses.sortedBy { it.id } &&
+            ownedLocalLectures.map { it.copy(audioFilePath = null) }.sortedBy { it.id } ==
+                lectures.map { it.copy(audioFilePath = null) }.sortedBy { it.id } &&
+            ownedLocalFolders.sortedBy { it.id } == folders.filter { it.ownerUid == uid }.sortedBy { it.id }
+
+        if (hasLocalTeacherData && !sameAsCloud) {
+            throw IllegalStateException(
+                "اطلاعات محلی و ابری این استاد یکسان نیستند؛ برای جلوگیری از حذف تغییرات، بازیابی خودکار متوقف شد. ابتدا از اطلاعات محلی فایل پشتیبان بگیرید."
+            )
+        }
+
+        // The private cloud snapshot is per teacher. Retain other teachers' and
+        // negative-ID shared rows because this restore replaces the local Room tables.
+        val foreignClassIds = allLocalClasses.filterNot { it in ownedLocalClasses }.map { it.id }.toSet()
+        classes += allLocalClasses.filterNot { it in ownedLocalClasses }
+        courses += allLocalCourses.filter { it.classId !in ownedClassIds }
+        lectures += allLocalLectures.filter { it.classId !in ownedClassIds }
+        folders += allLocalFolders.filter { it.ownerUid != uid }
+
+        // Cloud does not store device-local audio paths. Keep paths for matching
+        // session IDs so an equivalent cloud restore cannot break local audio links.
+        val localAudioPaths = allLocalLectures.mapNotNull { lecture ->
+            lecture.audioFilePath?.let { lecture.id to it }
+        }.toMap()
+        val restoredLectures = lectures.map { lecture ->
+            if (lecture.audioFilePath == null) {
+                lecture.copy(audioFilePath = localAudioPaths[lecture.id])
+            } else lecture
+        }
+
+        validateAndReplaceLocalData(classes, courses, restoredLectures, folders)
     }
 
     private suspend fun restoreSnapshot(
