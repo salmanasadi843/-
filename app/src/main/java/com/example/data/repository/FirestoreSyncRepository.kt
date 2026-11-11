@@ -149,6 +149,12 @@ class FirestoreSyncRepository(
         val courses = mutableListOf<CourseEntity>()
         val lectures = mutableListOf<LectureEntity>()
         val rootSnapshot = firestore.collection(TEACHER_DATA).document(uid).get().awaitResult()
+        val expectedRecordCount = rootSnapshot.getLong("recordCount")
+        if (expectedRecordCount != null && expectedRecordCount != documents.size.toLong()) {
+            throw IllegalStateException(
+                "تعداد رکوردهای پشتیبان ابری با فهرست واقعی آن سازگار نیست؛ اطلاعات محلی دست‌نخورده باقی ماند."
+            )
+        }
         val folders = teacherFolderDao?.let {
             (rootSnapshot.get("folders") as? List<*>)?.mapNotNull { value ->
                 (value as? Map<*, *>)?.asStringMap()?.toFolderEntity()
@@ -211,6 +217,14 @@ class FirestoreSyncRepository(
         courses: List<CourseEntity>,
         lectures: List<LectureEntity>
     ) {
+        // An empty cloud snapshot must never be interpreted as an instruction to
+        // erase a populated local database. Treat it as missing/incomplete backup.
+        if (classes.isEmpty() && courses.isEmpty() && lectures.isEmpty()) {
+            throw IllegalStateException(
+                "نسخه پشتیبان ابری هیچ کلاس، درس یا جلسه‌ای ندارد؛ برای جلوگیری از پاک شدن اطلاعات محلی، بازیابی متوقف شد."
+            )
+        }
+
         if (classes.any { it.id == 0L } || courses.any { it.id == 0L } || lectures.any { it.id == 0L }) {
             throw IllegalStateException("شناسه یکی از رکوردهای پشتیبان ابری خالی است.")
         }
