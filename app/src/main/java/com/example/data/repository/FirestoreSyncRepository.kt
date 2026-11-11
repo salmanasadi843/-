@@ -54,7 +54,7 @@ class FirestoreSyncRepository(
         // A populated local private dataset must not be silently replaced by an
         // existing cloud snapshot. Keep both copies untouched until conflict
         // resolution can be explicit.
-        if (shouldBlockCloudRestore(localPrivateRecordCount(uid), cloudBackupExists = true)) {
+        if (shouldBlockCloudRestore(localRecordCount(uid), cloudBackupExists = true)) {
             throw IllegalStateException(
                 "هم اطلاعات محلی و هم پشتیبان ابری موجود است؛ برای جلوگیری از جایگزینی بی‌اجازه، همگام‌سازی خودکار متوقف شد. ابتدا از اطلاعات محلی فایل پشتیبان بگیرید."
             )
@@ -89,7 +89,7 @@ class FirestoreSyncRepository(
             data["courses"] !is List<*> ||
             data["lectures"] !is List<*>
         ) return false
-        if (shouldBlockCloudRestore(localPrivateRecordCount(uid), cloudBackupExists = true)) {
+        if (shouldBlockCloudRestore(localRecordCount(uid), cloudBackupExists = true)) {
             return false
         }
 
@@ -101,18 +101,14 @@ class FirestoreSyncRepository(
         }
     }
 
-    private suspend fun localPrivateRecordCount(uid: String): Int {
-        val ownedClasses = classDao.getAllForBackup().filter {
-            it.id > 0L && (it.ownerUid == uid || it.ownerUid.isBlank())
-        }
-        val classIds = ownedClasses.map { it.id }.toSet()
-        val ownedCourses = courseDao.getAllForBackup().count {
-            it.id > 0L && it.classId in classIds
-        }
-        val ownedLectures = lectureDao.getAllForBackup().count {
-            it.id > 0L && it.classId in classIds
-        }
-        return ownedClasses.size + ownedCourses + ownedLectures
+    private suspend fun localRecordCount(uid: String): Int {
+        // restore replaces these Room tables, including negative-ID shared cache rows.
+        // Count every affected local row, not only records owned by this teacher.
+        val classes = classDao.getAllForBackup().size
+        val courses = courseDao.getAllForBackup().size
+        val lectures = lectureDao.getAllForBackup().size
+        val folders = teacherFolderDao?.observeFoldersForBackup()?.size ?: 0
+        return classes + courses + lectures + folders
     }
 
     suspend fun uploadSnapshot(uid: String) {
@@ -438,8 +434,8 @@ class FirestoreSyncRepository(
 
 
 /** Pure safety predicates are shared with unit tests. */
-internal fun shouldBlockCloudRestore(localPrivateRecordCount: Int, cloudBackupExists: Boolean): Boolean =
-    cloudBackupExists && localPrivateRecordCount > 0
+internal fun shouldBlockCloudRestore(localRecordCount: Int, cloudBackupExists: Boolean): Boolean =
+    cloudBackupExists && localRecordCount > 0
 
 internal fun isRecordCountMismatch(expected: Long?, actual: Int): Boolean =
     expected != null && expected != actual.toLong()
