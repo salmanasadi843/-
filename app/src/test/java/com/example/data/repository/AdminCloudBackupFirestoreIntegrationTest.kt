@@ -11,6 +11,7 @@ import kotlin.coroutines.resume
 import kotlin.coroutines.resumeWithException
 import com.google.firebase.firestore.FirebaseFirestore
 import kotlinx.coroutines.runBlocking
+import kotlinx.coroutines.withTimeout
 import org.json.JSONArray
 import org.json.JSONObject
 import org.junit.Assert.assertEquals
@@ -48,7 +49,7 @@ class AdminCloudBackupFirestoreIntegrationTest {
         val auth = FirebaseAuth.getInstance(app)
         auth.useEmulator("127.0.0.1", 9099)
         println("RESTORE_TEST: Auth emulator configured; creating admin user")
-        auth.createUserWithEmailAndPassword("salmanasadi843@gmail.com", "test-password-123").awaitTask()
+        withTimeout(25_000) { auth.createUserWithEmailAndPassword("salmanasadi843@gmail.com", "test-password-123").awaitTask() }
         println("RESTORE_TEST: admin user created")
         // Rules grant aggregate backup access to the primary admin email.
         val firestore = FirebaseFirestore.getInstance(app)
