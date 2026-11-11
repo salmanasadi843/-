@@ -158,11 +158,19 @@ class FirestoreSyncRepository(
                 "تعداد رکوردهای پشتیبان ابری با فهرست واقعی آن سازگار نیست؛ اطلاعات محلی دست‌نخورده باقی ماند."
             )
         }
-        val folders = teacherFolderDao?.let {
-            (rootSnapshot.get("folders") as? List<*>)?.mapNotNull { value ->
-                (value as? Map<*, *>)?.asStringMap()?.toFolderEntity()
-            }.orEmpty()
-        }.orEmpty()
+        val rawFolders = rootSnapshot.get("folders")
+        if (teacherFolderDao != null && !isValidFolderBackup(rawFolders)) {
+            throw IllegalStateException(
+                "فهرست پوشه‌های پشتیبان ابری ناقص یا نامعتبر است؛ اطلاعات محلی دست‌نخورده باقی ماند."
+            )
+        }
+        val folders = if (teacherFolderDao != null) {
+            (rawFolders as List<*>).map { value ->
+                (value as Map<*, *>).asStringMap()!!.toFolderEntity()
+            }
+        } else {
+            emptyList()
+        }
 
         documents.forEach { document ->
             val data = document.data ?: throw IllegalStateException(
@@ -389,3 +397,13 @@ internal fun isRecordCountMismatch(expected: Long?, actual: Int): Boolean =
 
 internal fun isEmptyCloudBackup(classCount: Int, courseCount: Int, lectureCount: Int): Boolean =
     classCount == 0 && courseCount == 0 && lectureCount == 0
+
+internal fun isValidFolderBackup(raw: Any?): Boolean =
+    raw is List<*> && raw.all { value ->
+        val row = value as? Map<*, *> ?: return@all false
+        row.keys.all { it is String } &&
+            row["id"] is Number &&
+            (row["ownerUid"] as? String)?.isNotBlank() == true &&
+            (row["name"] as? String)?.isNotBlank() == true &&
+            (row["parentFolderId"] == null || row["parentFolderId"] is Number)
+    }
