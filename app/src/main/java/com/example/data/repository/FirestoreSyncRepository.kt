@@ -212,7 +212,7 @@ class FirestoreSyncRepository(
         validateAndReplaceLocalData(classes, courses, lectures)
     }
 
-    private suspend fun validateAndReplaceLocalData(
+    internal suspend fun validateAndReplaceLocalData(
         classes: List<ClassEntity>,
         courses: List<CourseEntity>,
         lectures: List<LectureEntity>
