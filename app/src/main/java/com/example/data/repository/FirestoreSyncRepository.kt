@@ -255,8 +255,8 @@ class FirestoreSyncRepository(
         // The private cloud snapshot is per teacher. Retain other teachers' and
         // negative-ID shared rows because this restore replaces the local Room tables.
         classes += allLocalClasses.filterNot { it in ownedLocalClasses }
-        courses += allLocalCourses.filter { it.classId !in ownedClassIds }
-        lectures += allLocalLectures.filter { it.classId !in ownedClassIds }
+        courses += allLocalCourses.filter { it.id < 0L || it.classId !in ownedClassIds }
+        lectures += allLocalLectures.filter { it.id < 0L || it.classId !in ownedClassIds }
         folders += allLocalFolders.filter { it.ownerUid != uid }
 
         // Cloud does not store device-local audio paths. Keep paths for matching
