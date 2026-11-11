@@ -54,7 +54,7 @@ class FirestoreSyncRepository(
         // A populated local private dataset must not be silently replaced by an
         // existing cloud snapshot. Keep both copies untouched until conflict
         // resolution can be explicit.
-        if (shouldBlockCloudRestore(localRecordCount(uid), cloudBackupExists = true)) {
+        if (shouldBlockCloudRestore(localRecordCount(), cloudBackupExists = true)) {
             throw IllegalStateException(
                 "هم اطلاعات محلی و هم پشتیبان ابری موجود است؛ برای جلوگیری از جایگزینی بی‌اجازه، همگام‌سازی خودکار متوقف شد. ابتدا از اطلاعات محلی فایل پشتیبان بگیرید."
             )
@@ -101,7 +101,7 @@ class FirestoreSyncRepository(
         }
     }
 
-    private suspend fun localRecordCount(uid: String): Int {
+    private suspend fun localRecordCount(): Int {
         // restore replaces these Room tables, including negative-ID shared cache rows.
         // Count every affected local row, not only records owned by this teacher.
         val classes = classDao.getAllForBackup().size
