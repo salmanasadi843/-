@@ -22,6 +22,18 @@ class FirestoreRestoreSafetyTest {
     }
 
     @Test
+    fun restoreSelectsOnlyTheActiveBackupGeneration() {
+        // Before generation-based uploads, schema-2 records had no generation field.
+        assertTrue(isRecordInGeneration(null, null))
+        assertTrue(isRecordInGeneration("", null))
+        assertFalse(isRecordInGeneration("new-generation", null))
+
+        assertTrue(isRecordInGeneration("active-generation", "active-generation"))
+        assertFalse(isRecordInGeneration("old-generation", "active-generation"))
+        assertFalse(isRecordInGeneration(null, "active-generation"))
+    }
+
+    @Test
     fun missingOrMalformedFolderBackupIsRejected() {
         assertFalse(isValidFolderBackup(null))
         assertFalse(isValidFolderBackup("not-a-list"))
