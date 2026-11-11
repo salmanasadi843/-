@@ -14,6 +14,7 @@ import com.google.android.gms.tasks.Task
 import com.google.firebase.firestore.DocumentSnapshot
 import com.google.firebase.firestore.FieldValue
 import com.google.firebase.firestore.FirebaseFirestore
+import com.google.firebase.firestore.SetOptions
 import kotlinx.coroutines.suspendCancellableCoroutine
 import java.util.UUID
 import kotlin.coroutines.resume
@@ -145,7 +146,8 @@ class FirestoreSyncRepository(
                 "recordCount" to desired.size,
                 "folders" to folderRows.map { it.toCloudMap() },
                 "updatedAt" to FieldValue.serverTimestamp()
-            )
+            ),
+            SetOptions.merge()
         ).awaitResult()
     }
 
