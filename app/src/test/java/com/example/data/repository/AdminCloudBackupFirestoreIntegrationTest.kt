@@ -199,6 +199,12 @@ class AdminCloudBackupFirestoreIntegrationTest {
                 lectureDao, classDao, courseDao, folderDao,
                 FirebaseFirestore.getInstance(app), database
             )
+            // Force a deterministic SQLite failure after the transaction has cleared
+            // the old rows and inserted the new folder. This exercises Room rollback itself.
+            database.openHelper.writableDatabase.execSQL(
+                "CREATE TRIGGER fail_test_class_insert BEFORE INSERT ON classes " +
+                    "WHEN NEW.id = 101 BEGIN SELECT RAISE(ABORT, 'forced restore failure'); END"
+            )
             var failed = false
             try {
                 repository.validateAndReplaceLocalData(
@@ -215,7 +221,7 @@ class AdminCloudBackupFirestoreIntegrationTest {
             } catch (_: Exception) {
                 failed = true
             }
-            assertTrue("Duplicate folder names should make the Room transaction fail", failed)
+            assertTrue("Forced class insert failure should abort the Room transaction", failed)
 
             assertEquals("کلاس محلی سالم", classDao.getById(900)?.name)
             assertEquals("درس محلی سالم", courseDao.getById(901)?.name)
