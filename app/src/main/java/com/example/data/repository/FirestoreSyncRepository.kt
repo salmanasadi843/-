@@ -55,7 +55,7 @@ class FirestoreSyncRepository(
             LEGACY_SCHEMA_VERSION -> {
                 // Legacy arrays cannot be compared safely without a generation marker.
                 // Never replace populated local data during this one-time migration.
-                if (shouldBlockLegacyRestore(localRecordCount(), cloudBackupExists = true)) {
+                if (shouldBlockLegacyRestore(localRecordCount(), legacyCloudBackupExists = true)) {
                     throw IllegalStateException(
                         "اطلاعات محلی و پشتیبان قدیمی ابری هم‌زمان موجودند؛ برای جلوگیری از جایگزینی بی‌اجازه، مهاجرت خودکار متوقف شد. ابتدا از اطلاعات محلی فایل پشتیبان بگیرید."
                     )
@@ -87,7 +87,7 @@ class FirestoreSyncRepository(
             data["courses"] !is List<*> ||
             data["lectures"] !is List<*>
         ) return false
-        if (shouldBlockLegacyRestore(localRecordCount(), cloudBackupExists = true)) {
+        if (shouldBlockLegacyRestore(localRecordCount(), legacyCloudBackupExists = true)) {
             return false
         }
 
