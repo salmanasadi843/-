@@ -236,15 +236,17 @@ class FirestoreSyncRepository(
         // Replace all related local tables atomically. If any clear/insert fails,
         // Room rolls back every table so the previous local backup remains usable.
         database.withTransaction {
+            if (folders != null && teacherFolderDao != null) {
+                teacherFolderDao.clearForRestore()
+            }
             lectureDao.clearForRestore()
             courseDao.clearForRestore()
             classDao.clearForRestore()
             if (classes.isNotEmpty()) classDao.insertAllForRestore(classes)
             if (courses.isNotEmpty()) courseDao.insertAllForRestore(courses)
             if (lectures.isNotEmpty()) lectureDao.insertAllForRestore(lectures)
-            if (folders != null && teacherFolderDao != null) {
-                teacherFolderDao.clearForRestore()
-                if (folders.isNotEmpty()) teacherFolderDao.insertAllForRestore(folders)
+            if (folders != null && teacherFolderDao != null && folders.isNotEmpty()) {
+                teacherFolderDao.insertAllForRestore(folders)
             }
         }
     }
