@@ -63,7 +63,18 @@ jobs:
         env:
           FIRESTORE_EMULATOR_HOST: 127.0.0.1:8080
         run: |
-          firebase emulators:exec --config firebase.emulator.json --project demo-darsyar-generation-tests --only firestore "gradle testDebugUnitTest --stacktrace"
+          firebase emulators:exec --config firebase.emulator.json --project demo-darsyar-generation-tests --only firestore "gradle testDebugUnitTest --info --stacktrace"
+
+      - name: Upload test diagnostics
+        if: always()
+        uses: actions/upload-artifact@v6
+        with:
+          name: firestore-emulator-test-diagnostics
+          path: |
+            app/build/test-results/testDebugUnitTest/**
+            app/build/reports/tests/testDebugUnitTest/**
+            firestore-debug.log
+          if-no-files-found: warn
 
       - name: Build Debug APK
         run: gradle assembleDebug --stacktrace
