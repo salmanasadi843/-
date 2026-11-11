@@ -51,6 +51,15 @@ class FirestoreSyncRepository(
         val snapshot = root.get().awaitResult()
         if (!snapshot.exists()) return false
 
+        // A populated local private dataset must not be silently replaced by an
+        // existing cloud snapshot. Keep both copies untouched until conflict
+        // resolution can be explicit.
+        if (shouldBlockCloudRestore(localPrivateRecordCount(uid), cloudBackupExists = true)) {
+            throw IllegalStateException(
+                "هم اطلاعات محلی و هم پشتیبان ابری موجود است؛ برای جلوگیری از جایگزینی بی‌اجازه، همگام‌سازی خودکار متوقف شد. ابتدا از اطلاعات محلی فایل پشتیبان بگیرید."
+            )
+        }
+
         return when (snapshot.getLong("schemaVersion")) {
             LEGACY_SCHEMA_VERSION -> {
                 // Validate and restore the old snapshot before migrating it.
@@ -80,6 +89,9 @@ class FirestoreSyncRepository(
             data["courses"] !is List<*> ||
             data["lectures"] !is List<*>
         ) return false
+        if (shouldBlockCloudRestore(localPrivateRecordCount(uid), cloudBackupExists = true)) {
+            return false
+        }
 
         return try {
             restoreSnapshot(snapshot, requireAllCollections = true)
@@ -87,6 +99,20 @@ class FirestoreSyncRepository(
         } catch (_: IllegalStateException) {
             false
         }
+    }
+
+    private suspend fun localPrivateRecordCount(uid: String): Int {
+        val ownedClasses = classDao.getAllForBackup().filter {
+            it.id > 0L && (it.ownerUid == uid || it.ownerUid.isBlank())
+        }
+        val classIds = ownedClasses.map { it.id }.toSet()
+        val ownedCourses = courseDao.getAllForBackup().count {
+            it.id > 0L && it.classId in classIds
+        }
+        val ownedLectures = lectureDao.getAllForBackup().count {
+            it.id > 0L && it.classId in classIds
+        }
+        return ownedClasses.size + ownedCourses + ownedLectures
     }
 
     suspend fun uploadSnapshot(uid: String) {
@@ -412,6 +438,9 @@ class FirestoreSyncRepository(
 
 
 /** Pure safety predicates are shared with unit tests. */
+internal fun shouldBlockCloudRestore(localPrivateRecordCount: Int, cloudBackupExists: Boolean): Boolean =
+    cloudBackupExists && localPrivateRecordCount > 0
+
 internal fun isRecordCountMismatch(expected: Long?, actual: Int): Boolean =
     expected != null && expected != actual.toLong()
 
