@@ -9,6 +9,7 @@ import com.google.firebase.FirebaseApp
 import com.google.firebase.FirebaseOptions
 import com.google.firebase.firestore.FirebaseFirestore
 import com.google.android.gms.tasks.Tasks
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.runBlocking
 import org.junit.After
 import org.junit.Assert.assertEquals
@@ -67,7 +68,7 @@ class FirestoreGenerationEmulatorTest {
     }
 
     @Test
-    fun successfulUploadActivatesAllRecordsAfterMultipleBatches() = runBlocking {
+    fun successfulUploadActivatesAllRecordsAfterMultipleBatches() = runBlocking(Dispatchers.IO) {
         insertClasses(401)
         val rootRef = firestore.collection("teacher_data").document(uid)
         Tasks.await(rootRef.set(mapOf(
@@ -108,7 +109,7 @@ class FirestoreGenerationEmulatorTest {
     }
 
     @Test
-    fun failedSecondBatchLeavesPreviousGenerationActive() = runBlocking {
+    fun failedSecondBatchLeavesPreviousGenerationActive() = runBlocking(Dispatchers.IO) {
         insertClasses(401, failLast = true)
         val root = firestore.collection("teacher_data").document(uid)
         val records = root.collection("records")
