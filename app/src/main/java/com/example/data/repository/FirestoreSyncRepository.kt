@@ -51,7 +51,7 @@ class FirestoreSyncRepository(
         val snapshot = root.get().awaitResult()
         if (!snapshot.exists()) return false
 
-        // A populated local private dataset must not be silently replaced by an
+        // Populated local Room data must not be silently replaced by an
         // existing cloud snapshot. Keep both copies untouched until conflict
         // resolution can be explicit.
         if (shouldBlockCloudRestore(localRecordCount(), cloudBackupExists = true)) {
@@ -89,7 +89,7 @@ class FirestoreSyncRepository(
             data["courses"] !is List<*> ||
             data["lectures"] !is List<*>
         ) return false
-        if (shouldBlockCloudRestore(localRecordCount(uid), cloudBackupExists = true)) {
+        if (shouldBlockCloudRestore(localRecordCount(), cloudBackupExists = true)) {
             return false
         }
 
