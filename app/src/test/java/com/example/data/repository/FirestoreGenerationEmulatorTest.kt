@@ -69,13 +69,21 @@ class FirestoreGenerationEmulatorTest {
     @Test
     fun successfulUploadActivatesAllRecordsAfterMultipleBatches() = runBlocking {
         insertClasses(401)
+        val rootRef = firestore.collection("teacher_data").document(uid)
+        Tasks.await(rootRef.set(mapOf(
+            "ownerUid" to uid,
+            "externalMetadata" to "must-survive",
+            "classes" to listOf(mapOf("legacy" to true))
+        )))
         val repository = repository()
 
         repository.uploadSnapshot(uid)
 
-        val root = Tasks.await(firestore.collection("teacher_data").document(uid).get())
+        val root = Tasks.await(rootRef.get())
         val active = requireNotNull(root.getString("activeGeneration"))
         assertEquals(401L, root.getLong("recordCount"))
+        assertEquals("must-survive", root.getString("externalMetadata"))
+        assertEquals(null, root.get("classes"))
         val records = Tasks.await(
             firestore.collection("teacher_data").document(uid).collection("records")
                 .whereEqualTo("generation", active).get()
@@ -117,9 +125,11 @@ class FirestoreGenerationEmulatorTest {
         assertEquals(previousGeneration, after.getString("activeGeneration"))
         val previous = Tasks.await(records.whereEqualTo("generation", previousGeneration).get())
         assertEquals(1, previous.size())
-        val staged = Tasks.await(records.get())
-        assertTrue("A failed generation must not become active", staged.documents
+        val staged = Tasks.await(records.get()).documents
             .filter { it.getString("generation") != previousGeneration }
+        assertEquals("The first 400-record batch should remain staged but inactive", 400, staged.size)
+        assertTrue(staged.mapNotNull { it.getString("generation") }.distinct().size == 1)
+        assertTrue("A failed generation must not become active", staged
             .all { it.getString("generation") != after.getString("activeGeneration") })
     }
 
