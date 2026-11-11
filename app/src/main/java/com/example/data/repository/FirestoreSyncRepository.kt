@@ -17,6 +17,7 @@ import com.google.firebase.firestore.FirebaseFirestore
 import com.google.firebase.firestore.SetOptions
 import kotlinx.coroutines.suspendCancellableCoroutine
 import java.util.UUID
+import java.util.concurrent.Executor
 import kotlin.coroutines.resume
 import kotlin.coroutines.resumeWithException
 
@@ -397,7 +398,7 @@ class FirestoreSyncRepository(
 
     private suspend fun <T> Task<T>.awaitResult(): T =
         suspendCancellableCoroutine { continuation ->
-            addOnCompleteListener { task ->
+            addOnCompleteListener(Executor { command -> command.run() }) { task ->
                 if (task.isSuccessful) {
                     continuation.resume(task.result)
                 } else {
