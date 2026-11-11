@@ -28,8 +28,8 @@ android {
         applicationId = "com.aistudio.lecturehub.kqmzv"
         minSdk = 24
         targetSdk = 36
-        versionCode = 1
-        versionName = "1.0"
+        versionCode = 3
+        versionName = "1.0.2"
 
         buildConfigField("String", "DARSYAR_API_BASE_URL", "\"$escapedDarsyarApiBaseUrl\"")
 
@@ -44,7 +44,7 @@ android {
 
             storeFile = file(keystorePath)
             storePassword = System.getenv("STORE_PASSWORD")
-            keyAlias = "upload"
+            keyAlias = System.getenv("KEY_ALIAS") ?: "upload"
             keyPassword = System.getenv("KEY_PASSWORD")
         }
     }
