@@ -47,7 +47,7 @@ class AdminCloudBackupFirestoreIntegrationTest {
         ) ?: error("Firebase Emulator test app could not initialize")
         println("RESTORE_TEST: FirebaseApp initialized")
         val auth = FirebaseAuth.getInstance(app)
-        auth.useEmulator("10.0.2.2", 9099)
+        auth.useEmulator("127.0.0.1", 9099)
         println("RESTORE_TEST: Auth emulator configured; creating admin user")
         withTimeout(25_000) { auth.createUserWithEmailAndPassword("salmanasadi843@gmail.com", "test-password-123").awaitTask() }
         println("RESTORE_TEST: admin user created")
