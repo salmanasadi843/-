@@ -7,11 +7,38 @@ import org.junit.Test
 class FirestoreRestoreSafetyTest {
     @Test
     fun populatedLocalDataBlocksAnExistingCloudRestoreButNotAnInitialUpload() {
-        assertTrue(shouldBlockCloudRestore(localRecordCount = 1, cloudBackupExists = true))
-        assertTrue(shouldBlockCloudRestore(localRecordCount = 12, cloudBackupExists = true))
-        assertFalse(shouldBlockCloudRestore(localRecordCount = 0, cloudBackupExists = true))
-        assertFalse(shouldBlockCloudRestore(localRecordCount = 12, cloudBackupExists = false))
-        assertFalse(shouldBlockCloudRestore(localRecordCount = 0, cloudBackupExists = false))
+        assertTrue(shouldBlockLegacyRestore(localRecordCount = 1, legacyCloudBackupExists = true))
+        assertTrue(shouldBlockLegacyRestore(localRecordCount = 12, cloudBackupExists = true))
+        assertFalse(shouldBlockLegacyRestore(localRecordCount = 0, cloudBackupExists = true))
+        assertFalse(shouldBlockLegacyRestore(localRecordCount = 12, legacyCloudBackupExists = false))
+        assertFalse(shouldBlockLegacyRestore(localRecordCount = 0, cloudBackupExists = false))
+    }
+
+    @Test
+    fun identicalTeacherSnapshotsAreSafeToRestoreAndDivergentSnapshotsAreBlocked() {
+        val localClass = com.example.data.local.ClassEntity(id = 1, name = "کلاس", ownerUid = "teacher")
+        val localCourse = com.example.data.local.CourseEntity(id = 2, classId = 1, name = "درس")
+        val localLecture = com.example.data.local.LectureEntity(
+            id = 3, title = "جلسه", courseName = "درس", professorName = "استاد",
+            classId = 1, courseId = 2, transcript = "متن", audioFilePath = "/local/audio.mp3"
+        )
+        val localFolder = com.example.data.local.TeacherFolderEntity(
+            id = 4, ownerUid = "teacher", name = "پوشه"
+        )
+        assertTrue(
+            areTeacherSnapshotsEquivalent(
+                listOf(localClass), listOf(localCourse), listOf(localLecture), listOf(localFolder),
+                listOf(localClass), listOf(localCourse),
+                listOf(localLecture.copy(audioFilePath = null)), listOf(localFolder)
+            )
+        )
+        assertFalse(
+            areTeacherSnapshotsEquivalent(
+                listOf(localClass), listOf(localCourse), listOf(localLecture), listOf(localFolder),
+                listOf(localClass.copy(name = "کلاس متفاوت")), listOf(localCourse),
+                listOf(localLecture), listOf(localFolder)
+            )
+        )
     }
 
     @Test
