@@ -101,6 +101,13 @@ class FirestoreSyncRepository(
                     it.title == "جلسه ۷: سری و تبدیل فوریه و کاربرد در سیگنال"
             }
 
+        // Never replace a previously valid cloud backup with a temporarily empty local database.
+        if (isEmptyCloudBackup(classes.size, courses.size, lectures.size)) {
+            throw IllegalStateException(
+                "اطلاعات محلی برای تهیه پشتیبان خالی است؛ نسخهٔ سالم ابری دست‌نخورده باقی ماند."
+            )
+        }
+
         val root = firestore.collection(TEACHER_DATA).document(uid)
         val records = root.collection(RECORDS)
         val desired = linkedMapOf<String, Map<String, Any?>>()
