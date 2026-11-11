@@ -32,6 +32,7 @@ class AdminCloudBackupFirestoreIntegrationTest {
     @Test
     fun restoreThenExport_preservesTwoTeachersClassesLecturesAndOwners() = runBlocking {
         try {
+        println("RESTORE_TEST: start")
         val context = ApplicationProvider.getApplicationContext<Context>()
         val appName = "restore-emulator-${UUID.randomUUID()}"
         val app = FirebaseApp.initializeApp(
@@ -43,22 +44,30 @@ class AdminCloudBackupFirestoreIntegrationTest {
                 .build(),
             appName
         ) ?: error("Firebase Emulator test app could not initialize")
+        println("RESTORE_TEST: FirebaseApp initialized")
         val auth = FirebaseAuth.getInstance(app)
         auth.useEmulator("127.0.0.1", 9099)
+        println("RESTORE_TEST: Auth emulator configured; creating admin user")
         auth.createUserWithEmailAndPassword("salmanasadi843@gmail.com", "test-password-123").awaitTask()
+        println("RESTORE_TEST: admin user created")
         // Rules grant aggregate backup access to the primary admin email.
         val firestore = FirebaseFirestore.getInstance(app)
         firestore.useEmulator("127.0.0.1", 8080)
 
+        println("RESTORE_TEST: Firestore emulator configured")
         val uidA = "integration-A-${UUID.randomUUID()}"
         val uidB = "integration-B-${UUID.randomUUID()}"
         val backup = aggregateBackup(uidA, uidB)
 
+        println("RESTORE_TEST: starting valid restore")
         val report = AdminCloudBackupRestorer(firestore).restoreAll(backup.toString())
+        println("RESTORE_TEST: valid restore finished")
         assertEquals(2, report.teachersRestored)
         assertEquals(4, report.recordsRestored)
 
+        println("RESTORE_TEST: starting export after restore")
         val exported = AdminCloudBackupExporter(firestore).exportAllTeachers()
+        println("RESTORE_TEST: export after restore finished")
         assertEquals(2, exported.getInt("teacherCount"))
         assertEquals(4, exported.getInt("recordCount"))
         val teachers = exported.getJSONArray("teachers")
@@ -100,12 +109,14 @@ class AdminCloudBackupFirestoreIntegrationTest {
             .getJSONArray("records").getJSONObject(0).getJSONObject("data")
             .put("ownerUid", "forged-owner")
         var rejected = false
+        println("RESTORE_TEST: starting malformed restore protection check")
         try {
             AdminCloudBackupRestorer(firestore).restoreAll(malformedBackup.toString())
         } catch (_: IllegalArgumentException) {
             rejected = true
         }
         assertTrue("Malformed aggregate backup should be rejected", rejected)
+        println("RESTORE_TEST: malformed backup rejected")
 
         val protectedAfter = protectedRoot.get().awaitTask()
         assertEquals("original-generation", protectedAfter.getString("activeGeneration"))
