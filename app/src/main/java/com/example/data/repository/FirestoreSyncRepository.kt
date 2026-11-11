@@ -15,6 +15,7 @@ import com.google.firebase.firestore.DocumentSnapshot
 import com.google.firebase.firestore.FieldValue
 import com.google.firebase.firestore.FirebaseFirestore
 import kotlinx.coroutines.suspendCancellableCoroutine
+import java.util.UUID
 import kotlin.coroutines.resume
 import kotlin.coroutines.resumeWithException
 
@@ -116,30 +117,31 @@ class FirestoreSyncRepository(
         lectures.forEach { desired["lecture_${it.id}"] = mapOf("recordType" to "lecture") + it.toCloudMap() }
 
         // Read existing keys so deleted local records are also removed from cloud.
-        val existing = records.get().awaitResult().documents
-        val staleRefs = existing.filter { it.id !in desired.keys }.map { it.reference }
+        // Stage every backup under a fresh generation. Existing active records are
+        // never overwritten or deleted while the new generation is being uploaded.
+        val generation = UUID.randomUUID().toString()
+        val stagedRecords = desired.map { (id, data) ->
+            records.document("${generation}__${id}") to (data + ("generation" to generation))
+        }
 
-        val operations = mutableListOf<Pair<com.google.firebase.firestore.DocumentReference, Map<String, Any?>?>>()
-        desired.forEach { (id, data) -> operations += records.document(id) to data }
-        staleRefs.forEach { operations += it to null }
+        // Read folders before staging so any local read failure leaves cloud untouched.
+        val folderRows = teacherFolderDao?.observeFoldersForBackup()?.filter { it.ownerUid == uid }.orEmpty()
 
         // Firestore batches have a 500-write maximum; leave room below the limit.
-        operations.chunked(BATCH_LIMIT).forEach { chunk ->
+        stagedRecords.chunked(BATCH_LIMIT).forEach { chunk ->
             val batch = firestore.batch()
-            chunk.forEach { (ref, data) ->
-                if (data == null) batch.delete(ref) else batch.set(ref, data)
-            }
+            chunk.forEach { (ref, data) -> batch.set(ref, data) }
             batch.commit().awaitResult()
         }
 
-        // Keep folder metadata in the existing owner document, avoiding new Firebase rule paths.
-        val folderRows = teacherFolderDao?.observeFoldersForBackup()?.filter { it.ownerUid == uid }.orEmpty()
-
-        // Commit the version marker only after all individual records were written.
+        // Switch the active pointer only after every staged batch succeeded.
+        // Old generations are retained so an interrupted upload cannot destroy
+        // the last known-good backup. Cleanup is intentionally a separate concern.
         root.set(
             mapOf(
                 "schemaVersion" to SCHEMA_VERSION,
                 "ownerUid" to uid,
+                "activeGeneration" to generation,
                 "recordCount" to desired.size,
                 "folders" to folderRows.map { it.toCloudMap() },
                 "updatedAt" to FieldValue.serverTimestamp()
@@ -148,17 +150,21 @@ class FirestoreSyncRepository(
     }
 
     private suspend fun restoreRecordDocuments(uid: String) {
+        val rootSnapshot = firestore.collection(TEACHER_DATA).document(uid).get().awaitResult()
+        val activeGeneration = rootSnapshot.getString("activeGeneration")?.takeIf { it.isNotBlank() }
         val documents = firestore.collection(TEACHER_DATA)
             .document(uid)
             .collection(RECORDS)
             .get()
             .awaitResult()
             .documents
+            .filter { document ->
+                isRecordInGeneration(document.getString("generation"), activeGeneration)
+            }
 
         val classes = mutableListOf<ClassEntity>()
         val courses = mutableListOf<CourseEntity>()
         val lectures = mutableListOf<LectureEntity>()
-        val rootSnapshot = firestore.collection(TEACHER_DATA).document(uid).get().awaitResult()
         val expectedRecordCount = rootSnapshot.getLong("recordCount")
         if (isRecordCountMismatch(expectedRecordCount, documents.size)) {
             throw IllegalStateException(
@@ -404,6 +410,11 @@ internal fun isRecordCountMismatch(expected: Long?, actual: Int): Boolean =
 
 internal fun isEmptyCloudBackup(classCount: Int, courseCount: Int, lectureCount: Int): Boolean =
     classCount == 0 && courseCount == 0 && lectureCount == 0
+
+/** A missing active generation denotes the pre-generation schema-2 backup. */
+internal fun isRecordInGeneration(recordGeneration: String?, activeGeneration: String?): Boolean =
+    if (activeGeneration.isNullOrBlank()) recordGeneration.isNullOrBlank()
+    else recordGeneration == activeGeneration
 
 internal fun isValidFolderBackup(raw: Any?): Boolean =
     raw is List<*> && raw.all { value ->
