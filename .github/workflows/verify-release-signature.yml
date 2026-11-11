@@ -96,7 +96,7 @@ jobs:
           test -s "$APK"
           APKSIGNER="$ANDROID_HOME/build-tools/36.0.0/apksigner"
           "$APKSIGNER" verify --verbose "$APK"
-          EXPECTED="5a:f4:fe:44:a5:01:e2:89:6a:b3:61:f3:7d:05:14:a4:a3:31:99:82:7a:b8:f1:dc:42:b6:7f:bb:2c:61:6c:58"
+          EXPECTED="5af4fe44a501e2896ab361f37d0514a4a33199827ab8f1dc42b67fbb2c616c58"
           ACTUAL="$("$APKSIGNER" verify --print-certs "$APK" | sed -n 's/.*certificate SHA-256 digest: //p' | head -n 1 | tr '[:upper:]' '[:lower:]')"
           echo "Expected certificate SHA-256: $EXPECTED"
           echo "Actual certificate SHA-256:   $ACTUAL"
