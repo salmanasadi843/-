@@ -73,7 +73,16 @@ class FirestoreGenerationEmulatorTest {
         Tasks.await(rootRef.set(mapOf(
             "ownerUid" to uid,
             "externalMetadata" to "must-survive",
-            "classes" to listOf(mapOf("legacy" to true))
+            "classes" to listOf(mapOf("legacy" to true)),
+            "activeGeneration" to "older-generation"
+        )))
+        val recordsRef = rootRef.collection("records")
+        Tasks.await(recordsRef.document("older-generation__class_9000").set(mapOf(
+            "recordType" to "class",
+            "id" to 9000L,
+            "name" to "نسخه قدیمی",
+            "ownerUid" to uid,
+            "generation" to "older-generation"
         )))
         val repository = repository()
 
@@ -90,6 +99,12 @@ class FirestoreGenerationEmulatorTest {
         )
         assertEquals(401, records.size())
         assertTrue(records.documents.all { it.getString("generation") == active })
+        assertEquals(1, Tasks.await(recordsRef.whereEqualTo("generation", "older-generation").get()).size())
+
+        database.classDao().clearForRestore()
+        repository.restoreFromCloud(uid)
+        assertEquals(401, database.classDao().getAllForBackup().size)
+        assertEquals(null, database.classDao().getById(9000L))
     }
 
     @Test
