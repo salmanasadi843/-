@@ -45,10 +45,16 @@ object DatabaseBackup {
         require(root.optString("format") == "darsyar-backup") { "این فایل، پشتیبان معتبر درس‌یار نیست." }
         require(root.optInt("version") in 1..1) { "نسخه فایل پشتیبان پشتیبانی نمی‌شود." }
 
-        val lectures = root.optJSONArray("lectures").toEntitiesTyped { it.toLecture() }
-        val classes = root.optJSONArray("classes").toEntitiesTyped { it.toClassEntity() }
-        val courses = root.optJSONArray("courses").toEntitiesTyped { it.toCourse() }
-        val folders = root.optJSONArray("folders").toEntitiesTyped { it.toFolder() }
+        // Core collections must be present and correctly typed. Treating a missing
+        // or malformed array as empty could silently erase valid local records.
+        val lectures = root.requiredArray("lectures").toEntitiesTyped { it.toLecture() }
+        val classes = root.requiredArray("classes").toEntitiesTyped { it.toClassEntity() }
+        val courses = root.requiredArray("courses").toEntitiesTyped { it.toCourse() }
+        val folders = if (root.has("folders")) {
+            root.requiredArray("folders").toEntitiesTyped { it.toFolder() }
+        } else {
+            emptyList()
+        }
         validateBackupIntegrity(classes, courses, lectures, folders)
         val db = AppDatabase.getDatabase(context)
 
@@ -66,6 +72,14 @@ object DatabaseBackup {
             }
         }
         return "بازیابی انجام شد: ${lectures.size} جلسه، ${classes.size} کلاس و ${courses.size} درس."
+    }
+
+    private fun JSONObject.requiredArray(key: String): JSONArray {
+        val value = opt(key)
+        require(value is JSONArray) {
+            "فهرست «$key» در فایل پشتیبان وجود ندارد یا ساختار آن خراب است؛ اطلاعات فعلی حفظ شد."
+        }
+        return value
     }
 
     private fun JSONArray?.toEntities(convert: (JSONObject) -> Any): List<Any> {
