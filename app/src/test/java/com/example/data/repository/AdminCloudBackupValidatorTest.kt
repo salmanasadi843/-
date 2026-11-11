@@ -99,6 +99,13 @@ class AdminCloudBackupValidatorTest {
         }
     }
 
+    @Test fun rejectsTranscriptChunksWithMissingMiddleIndex() {
+        val json = """{"format":"darsyar-admin-cloud-backup","version":1,"teacherCount":1,"recordCount":4,"teachers":[{"ownerUid":"teacher-A","schemaVersion":3,"root":{"ownerUid":"teacher-A","activeGeneration":"gen-1","recordCount":4,"folders":[]},"records":[{"documentId":"class_12","data":{"ownerUid":"teacher-A","recordType":"class","id":12}},{"documentId":"lecture_9","data":{"ownerUid":"teacher-A","recordType":"lecture","id":9,"classId":12,"textChunkCounts":{"transcript":2}}},{"documentId":"lecture_text_9_transcript_0","data":{"ownerUid":"teacher-A","recordType":"lecture_text_chunk","lectureId":9,"field":"transcript","index":0,"value":"بخش اول"}},{"documentId":"lecture_text_9_transcript_2","data":{"ownerUid":"teacher-A","recordType":"lecture_text_chunk","lectureId":9,"field":"transcript","index":2,"value":"بخش سوم"}}]}]}"""
+        assertThrows(IllegalArgumentException::class.java) {
+            AdminCloudBackupValidator.validate(json)
+        }
+    }
+
     @Test fun rejectsDuplicateDocumentIds() {
         val bad = validBackup().replace(
             "\"records\":[{\"documentId\":\"class_12\",\"data\":{\"ownerUid\":\"teacher-A\",\"recordType\":\"class\",\"id\":12}}]",
