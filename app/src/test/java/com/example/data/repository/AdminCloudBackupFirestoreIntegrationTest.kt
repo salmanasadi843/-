@@ -60,13 +60,13 @@ class AdminCloudBackupFirestoreIntegrationTest {
         val report = AdminCloudBackupRestorer(firestore).restoreAll(backup.toString())
         println("RESTORE_TEST: valid restore finished")
         assertEquals(2, report.teachersRestored)
-        assertEquals(10, report.recordsRestored)
+        assertEquals(30, report.recordsRestored)
 
         println("RESTORE_TEST: starting export after restore")
         val exported = AdminCloudBackupExporter(firestore).exportAllTeachers()
         println("RESTORE_TEST: export after restore finished")
         assertEquals(2, exported.getInt("teacherCount"))
-        assertEquals(10, exported.getInt("recordCount"))
+        assertEquals(30, exported.getInt("recordCount"))
         val teachers = exported.getJSONArray("teachers")
         val byOwner = (0 until teachers.length()).associate { i ->
             val teacher = teachers.getJSONObject(i)
@@ -76,7 +76,7 @@ class AdminCloudBackupFirestoreIntegrationTest {
         assertTrue(uidB in byOwner)
         for (uid in listOf(uidA, uidB)) {
             val records = byOwner.getValue(uid).getJSONArray("records")
-            assertEquals(5, records.length())
+            assertEquals(15, records.length())
             val rows = (0 until records.length()).map { records.getJSONObject(it) }
             assertTrue(rows.all { it.getJSONObject("data").getString("ownerUid") == uid })
             assertTrue(rows.any { it.getString("documentId") == "class_${if (uid == uidA) 101 else 202}" })
@@ -86,21 +86,24 @@ class AdminCloudBackupFirestoreIntegrationTest {
             assertTrue(rows.any { it.getString("documentId") == "class_$classId" })
             assertTrue(rows.any { it.getString("documentId") == "course_$courseId" })
             assertTrue(rows.any { it.getString("documentId") == "lecture_$lectureId" })
-            val transcriptChunks = rows
-                .filter { it.getString("documentId").startsWith("lecture_text_${lectureId}_transcript_") }
-                .sortedBy { it.getJSONObject("data").getInt("index") }
-            assertEquals(listOf(0, 1), transcriptChunks.map { it.getJSONObject("data").getInt("index") })
-            assertEquals(
-                listOf("متن کامل جلسه $lectureId؛ بخش نخست ", "و بخش دوم."),
-                transcriptChunks.map { it.getJSONObject("data").getString("value") }
-            )
-            assertEquals(
-                "متن کامل جلسه $lectureId؛ بخش نخست و بخش دوم.",
-                transcriptChunks.joinToString("") { it.getJSONObject("data").getString("value") }
-            )
+            val textFields = listOf("transcript", "originalTranscript", "aiSummary", "aiKeyPoints", "aiQuizJson", "tags")
             val lectureRecord = rows.single { it.getString("documentId") == "lecture_$lectureId" }
                 .getJSONObject("data")
-            assertEquals(2, lectureRecord.getJSONObject("textChunkCounts").getInt("transcript"))
+            for (field in textFields) {
+                val chunks = rows
+                    .filter { it.getString("documentId").startsWith("lecture_text_${lectureId}_${field}_") }
+                    .sortedBy { it.getJSONObject("data").getInt("index") }
+                assertEquals(listOf(0, 1), chunks.map { it.getJSONObject("data").getInt("index") })
+                assertEquals(
+                    listOf("متن $field جلسه $lectureId؛ بخش نخست ", "و بخش دوم."),
+                    chunks.map { it.getJSONObject("data").getString("value") }
+                )
+                assertEquals(
+                    "متن $field جلسه $lectureId؛ بخش نخست و بخش دوم.",
+                    chunks.joinToString("") { it.getJSONObject("data").getString("value") }
+                )
+                assertEquals(2, lectureRecord.getJSONObject("textChunkCounts").getInt(field))
+            }
             assertEquals(1, byOwner.getValue(uid).getJSONObject("root").getJSONArray("folders").length())
         }
 
@@ -171,15 +174,32 @@ class AdminCloudBackupFirestoreIntegrationTest {
             classTitle: String,
             lectureTitle: String
         ): JSONObject {
+            val textFields = listOf("transcript", "originalTranscript", "aiSummary", "aiKeyPoints", "aiQuizJson", "tags")
+            val manifest = JSONObject().apply { textFields.forEach { put(it, 2) } }
             val lecture = JSONObject()
-                .put("recordType", "lecture")
-                .put("ownerUid", uid)
-                .put("id", lectureId)
-                .put("classId", classId)
-                .put("courseId", courseId)
+                .put("recordType", "lecture").put("ownerUid", uid)
+                .put("id", lectureId).put("classId", classId).put("courseId", courseId)
                 .put("title", lectureTitle)
-                .put("transcript", "")
-                .put("textChunkCounts", JSONObject().put("transcript", 2))
+                .put("transcript", "").put("originalTranscript", "")
+                .put("aiSummary", JSONObject.NULL).put("aiKeyPoints", JSONObject.NULL)
+                .put("aiQuizJson", JSONObject.NULL).put("tags", "")
+                .put("textChunkCounts", manifest)
+            val records = JSONArray()
+                .put(JSONObject().put("documentId", "class_$classId")
+                    .put("data", JSONObject().put("recordType", "class").put("ownerUid", uid)
+                        .put("id", classId).put("name", classTitle).put("folderId", folderId)))
+                .put(JSONObject().put("documentId", "course_$courseId")
+                    .put("data", JSONObject().put("recordType", "course").put("ownerUid", uid)
+                        .put("id", courseId).put("classId", classId).put("title", "درس $classTitle")))
+                .put(JSONObject().put("documentId", "lecture_$lectureId").put("data", lecture))
+            textFields.forEach { field ->
+                listOf("متن $field جلسه $lectureId؛ بخش نخست ", "و بخش دوم.").forEachIndexed { index, value ->
+                    records.put(JSONObject().put("documentId", "lecture_text_${lectureId}_${field}_$index")
+                        .put("data", JSONObject().put("recordType", "lecture_text_chunk")
+                            .put("ownerUid", uid).put("lectureId", lectureId)
+                            .put("field", field).put("index", index).put("value", value)))
+                }
+            }
             return JSONObject()
                 .put("ownerUid", uid)
                 .put("schemaVersion", 3)
@@ -188,7 +208,7 @@ class AdminCloudBackupFirestoreIntegrationTest {
                     JSONObject()
                         .put("ownerUid", uid)
                         .put("activeGeneration", "source-generation")
-                        .put("recordCount", 5)
+                        .put("recordCount", 15)
                         .put(
                             "folders",
                             JSONArray().put(
@@ -200,67 +220,13 @@ class AdminCloudBackupFirestoreIntegrationTest {
                             )
                         )
                 )
-                .put(
-                    "records",
-                    JSONArray()
-                        .put(
-                            JSONObject().put("documentId", "class_$classId")
-                                .put(
-                                    "data",
-                                    JSONObject()
-                                        .put("recordType", "class")
-                                        .put("ownerUid", uid)
-                                        .put("id", classId)
-                                        .put("name", classTitle)
-                                        .put("folderId", folderId)
-                                )
-                        )
-                        .put(
-                            JSONObject().put("documentId", "course_$courseId")
-                                .put(
-                                    "data",
-                                    JSONObject()
-                                        .put("recordType", "course")
-                                        .put("ownerUid", uid)
-                                        .put("id", courseId)
-                                        .put("classId", classId)
-                                        .put("title", "درس $classTitle")
-                                )
-                        )
-                        .put(JSONObject().put("documentId", "lecture_$lectureId").put("data", lecture))
-                        .put(
-                            JSONObject().put("documentId", "lecture_text_${lectureId}_transcript_0")
-                                .put(
-                                    "data",
-                                    JSONObject()
-                                        .put("recordType", "lecture_text_chunk")
-                                        .put("ownerUid", uid)
-                                        .put("lectureId", lectureId)
-                                        .put("field", "transcript")
-                                        .put("index", 0)
-                                        .put("value", "متن کامل جلسه $lectureId؛ بخش نخست ")
-                                )
-                        )
-                        .put(
-                            JSONObject().put("documentId", "lecture_text_${lectureId}_transcript_1")
-                                .put(
-                                    "data",
-                                    JSONObject()
-                                        .put("recordType", "lecture_text_chunk")
-                                        .put("ownerUid", uid)
-                                        .put("lectureId", lectureId)
-                                        .put("field", "transcript")
-                                        .put("index", 1)
-                                        .put("value", "و بخش دوم.")
-                                )
-                        )
-                )
+                .put("records", records)
         }
         return JSONObject()
             .put("format", "darsyar-admin-cloud-backup")
             .put("version", 1)
             .put("teacherCount", 2)
-            .put("recordCount", 10)
+            .put("recordCount", 30)
             .put(
                 "teachers",
                 JSONArray()
