@@ -172,7 +172,7 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
 
     /** Restore cloud data first, then autosave subsequent Room changes. */
     @OptIn(FlowPreview::class)
-    fun startCloudSync() {
+    fun startCloudSync(allowLocalReplace: Boolean = false) {
         if (_userRole.value != UserRole.TEACHER) {
             _cloudSyncStatus.value = "همگام‌سازی خصوصی فقط برای حساب استاد فعال است."
             return
@@ -193,11 +193,11 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
                     _cloudSyncStatus.value = "مجوز استاد لغو شده است؛ همگام‌سازی متوقف شد و اطلاعات محلی ارسال نشد."
                     return@launch
                 }
-                val restored = cloudSyncRepository.restoreFromCloud(uid)
+                val restored = cloudSyncRepository.restoreFromCloud(uid, allowLocalReplace)
                 if (!restored) {
                     // Keep old published material untouched; import it only if it
                     // follows the known snapshot shape, then create private backup.
-                    cloudSyncRepository.restoreLegacySharedMaterials(uid)
+                    cloudSyncRepository.restoreLegacySharedMaterials(uid, allowLocalReplace)
                     cloudSyncRepository.uploadSnapshot(uid)
                     _cloudSyncStatus.value = "پشتیبان‌گیری ابری موفق بود؛ تغییرات بعدی نیز خودکار ارسال می‌شوند."
                 } else {
