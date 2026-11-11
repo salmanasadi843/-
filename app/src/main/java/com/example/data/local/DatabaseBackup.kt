@@ -49,6 +49,7 @@ object DatabaseBackup {
         val classes = root.optJSONArray("classes").toEntitiesTyped { it.toClassEntity() }
         val courses = root.optJSONArray("courses").toEntitiesTyped { it.toCourse() }
         val folders = root.optJSONArray("folders").toEntitiesTyped { it.toFolder() }
+        validateBackupIntegrity(classes, courses, lectures, folders)
         val db = AppDatabase.getDatabase(context)
 
         kotlinx.coroutines.runBlocking {
@@ -82,9 +83,11 @@ object DatabaseBackup {
         .put("professorName", professorName).put("classId", classId ?: JSONObject.NULL)
         .put("courseId", courseId ?: JSONObject.NULL).put("dateMillis", dateMillis)
         .put("audioUrl", audioUrl ?: JSONObject.NULL).put("audioDurationMs", audioDurationMs)
-        .put("transcript", transcript).put("aiSummary", aiSummary ?: JSONObject.NULL)
+        .put("transcript", transcript).put("originalTranscript", originalTranscript)
+        .put("aiSummary", aiSummary ?: JSONObject.NULL)
         .put("aiKeyPoints", aiKeyPoints ?: JSONObject.NULL).put("aiQuizJson", aiQuizJson ?: JSONObject.NULL)
-        .put("tags", tags).put("isFavorite", isFavorite).put("lastEditedMillis", lastEditedMillis).put("sortOrder", sortOrder)
+        .put("tags", tags).put("isFavorite", isFavorite).put("isPublished", isPublished)
+        .put("lastEditedMillis", lastEditedMillis).put("sortOrder", sortOrder)
 
     private fun JSONObject.toLecture() = LectureEntity(
         id = optLong("id"), title = getString("title"), courseName = optString("courseName"),
@@ -92,9 +95,11 @@ object DatabaseBackup {
         courseId = optNullableLong("courseId"), dateMillis = optLong("dateMillis"),
         audioFilePath = null, audioUrl = optNullableString("audioUrl"),
         audioDurationMs = optLong("audioDurationMs"), transcript = optString("transcript"),
+        originalTranscript = if (has("originalTranscript")) optString("originalTranscript") else optString("transcript"),
         aiSummary = optNullableString("aiSummary"), aiKeyPoints = optNullableString("aiKeyPoints"),
         aiQuizJson = optNullableString("aiQuizJson"), tags = optString("tags"),
-        isFavorite = optBoolean("isFavorite"), lastEditedMillis = optLong("lastEditedMillis", System.currentTimeMillis()),
+        isFavorite = optBoolean("isFavorite"), isPublished = optBoolean("isPublished", true),
+        lastEditedMillis = optLong("lastEditedMillis", System.currentTimeMillis()),
         sortOrder = optInt("sortOrder", 0)
     )
 
@@ -137,4 +142,75 @@ object DatabaseBackup {
 
     private fun JSONObject.optNullableLong(key: String): Long? =
         if (isNull(key) || !has(key)) null else optLong(key)
+}
+
+
+/**
+ * Validate the complete portable snapshot before opening a destructive Room
+ * replacement transaction. Negative IDs are allowed for read-only shared rows;
+ * zero IDs and duplicate IDs are never valid persisted records.
+ */
+internal fun validateBackupIntegrity(
+    classes: List<ClassEntity>,
+    courses: List<CourseEntity>,
+    lectures: List<LectureEntity>,
+    folders: List<TeacherFolderEntity>
+) {
+    require(classes.isNotEmpty() || courses.isNotEmpty() || lectures.isNotEmpty()) {
+        "فایل پشتیبان خالی است؛ برای جلوگیری از پاک شدن اطلاعات فعلی، بازیابی متوقف شد."
+    }
+
+    fun requireUniqueNonZeroIds(ids: List<Long>, label: String) {
+        require(ids.all { it != 0L }) { "شناسهٔ یکی از رکوردهای $label صفر است." }
+        require(ids.size == ids.toSet().size) { "شناسهٔ تکراری در رکوردهای $label وجود دارد." }
+    }
+
+    requireUniqueNonZeroIds(classes.map { it.id }, "کلاس")
+    requireUniqueNonZeroIds(courses.map { it.id }, "درس")
+    requireUniqueNonZeroIds(lectures.map { it.id }, "جلسه")
+    requireUniqueNonZeroIds(folders.map { it.id }, "پوشه")
+
+    val classIds = classes.map { it.id }.toSet()
+    val coursesById = courses.associateBy { it.id }
+    val foldersById = folders.associateBy { it.id }
+
+    require(courses.all { it.classId in classIds }) {
+        "یکی از درس‌ها به کلاسی اشاره می‌کند که در فایل پشتیبان وجود ندارد."
+    }
+    require(lectures.all { it.classId == null || it.classId in classIds }) {
+        "یکی از جلسه‌ها به کلاسی اشاره می‌کند که در فایل پشتیبان وجود ندارد."
+    }
+    require(lectures.all { lecture ->
+        lecture.courseId == null || coursesById.containsKey(lecture.courseId)
+    }) {
+        "یکی از جلسه‌ها به درسی اشاره می‌کند که در فایل پشتیبان وجود ندارد."
+    }
+    require(lectures.all { lecture ->
+        val course = lecture.courseId?.let(coursesById::get)
+        lecture.classId == null || course == null || course.classId == lecture.classId
+    }) {
+        "کلاس ثبت‌شده برای یکی از جلسه‌ها با کلاس درس آن سازگار نیست."
+    }
+
+    require(classes.all { it.folderId == null || foldersById.containsKey(it.folderId) }) {
+        "یکی از کلاس‌ها به پوشه‌ای اشاره می‌کند که در فایل پشتیبان وجود ندارد."
+    }
+    require(folders.all { it.ownerUid.isNotBlank() && it.name.isNotBlank() }) {
+        "مشخصات یکی از پوشه‌ها ناقص است."
+    }
+    require(folders.all { folder ->
+        folder.parentFolderId == null ||
+            foldersById[folder.parentFolderId]?.ownerUid == folder.ownerUid
+    }) {
+        "پوشهٔ والد یکی از پوشه‌ها وجود ندارد یا متعلق به استاد دیگری است."
+    }
+
+    folders.forEach { folder ->
+        val visited = mutableSetOf<Long>()
+        var current: TeacherFolderEntity? = folder
+        while (current != null) {
+            require(visited.add(current.id)) { "در ساختار پوشه‌ها چرخهٔ ارجاع وجود دارد." }
+            current = current.parentFolderId?.let(foldersById::get)
+        }
+    }
 }
