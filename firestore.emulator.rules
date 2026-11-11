@@ -1,0 +1,14 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+    // Emulator-only rules. Never deploy this permissive test policy.
+    match /teacher_data/{uid} {
+      allow read, write: if true;
+      match /records/{recordId} {
+        allow read: if true;
+        allow create, update: if !('name' in request.resource.data)
+                              || request.resource.data.name != 'FORCE_FAILURE';
+      }
+    }
+  }
+}
