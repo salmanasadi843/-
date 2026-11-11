@@ -55,7 +55,7 @@ class FirestoreSyncRepository(
             LEGACY_SCHEMA_VERSION -> {
                 // Legacy arrays cannot be compared safely without a generation marker.
                 // Never replace populated local data during this one-time migration.
-                if (shouldBlockCloudRestore(localRecordCount(), cloudBackupExists = true)) {
+                if (shouldBlockLegacyRestore(localRecordCount(), cloudBackupExists = true)) {
                     throw IllegalStateException(
                         "اطلاعات محلی و پشتیبان قدیمی ابری هم‌زمان موجودند؛ برای جلوگیری از جایگزینی بی‌اجازه، مهاجرت خودکار متوقف شد. ابتدا از اطلاعات محلی فایل پشتیبان بگیرید."
                     )
@@ -87,7 +87,7 @@ class FirestoreSyncRepository(
             data["courses"] !is List<*> ||
             data["lectures"] !is List<*>
         ) return false
-        if (shouldBlockCloudRestore(localRecordCount(), cloudBackupExists = true)) {
+        if (shouldBlockLegacyRestore(localRecordCount(), cloudBackupExists = true)) {
             return false
         }
 
@@ -241,11 +241,10 @@ class FirestoreSyncRepository(
         val hasLocalTeacherData = ownedLocalClasses.isNotEmpty() ||
             ownedLocalCourses.isNotEmpty() || ownedLocalLectures.isNotEmpty() || ownedLocalFolders.isNotEmpty()
 
-        val sameAsCloud = ownedLocalClasses.sortedBy { it.id } == classes.sortedBy { it.id } &&
-            ownedLocalCourses.sortedBy { it.id } == courses.sortedBy { it.id } &&
-            ownedLocalLectures.map { it.copy(audioFilePath = null) }.sortedBy { it.id } ==
-                lectures.map { it.copy(audioFilePath = null) }.sortedBy { it.id } &&
-            ownedLocalFolders.sortedBy { it.id } == folders.filter { it.ownerUid == uid }.sortedBy { it.id }
+        val sameAsCloud = areTeacherSnapshotsEquivalent(
+            ownedLocalClasses, ownedLocalCourses, ownedLocalLectures, ownedLocalFolders,
+            classes, courses, lectures, folders.filter { it.ownerUid == uid }
+        )
 
         if (hasLocalTeacherData && !sameAsCloud) {
             throw IllegalStateException(
@@ -478,8 +477,24 @@ class FirestoreSyncRepository(
 
 
 /** Pure safety predicates are shared with unit tests. */
-internal fun shouldBlockCloudRestore(localRecordCount: Int, cloudBackupExists: Boolean): Boolean =
-    cloudBackupExists && localRecordCount > 0
+internal fun shouldBlockLegacyRestore(localRecordCount: Int, legacyCloudBackupExists: Boolean): Boolean =
+    legacyCloudBackupExists && localRecordCount > 0
+
+internal fun areTeacherSnapshotsEquivalent(
+    localClasses: List<ClassEntity>,
+    localCourses: List<CourseEntity>,
+    localLectures: List<LectureEntity>,
+    localFolders: List<TeacherFolderEntity>,
+    cloudClasses: List<ClassEntity>,
+    cloudCourses: List<CourseEntity>,
+    cloudLectures: List<LectureEntity>,
+    cloudFolders: List<TeacherFolderEntity>
+): Boolean =
+    localClasses.sortedBy { it.id } == cloudClasses.sortedBy { it.id } &&
+        localCourses.sortedBy { it.id } == cloudCourses.sortedBy { it.id } &&
+        localLectures.map { it.copy(audioFilePath = null) }.sortedBy { it.id } ==
+            cloudLectures.map { it.copy(audioFilePath = null) }.sortedBy { it.id } &&
+        localFolders.sortedBy { it.id } == cloudFolders.sortedBy { it.id }
 
 internal fun isRecordCountMismatch(expected: Long?, actual: Int): Boolean =
     expected != null && expected != actual.toLong()
