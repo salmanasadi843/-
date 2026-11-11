@@ -150,7 +150,7 @@ class FirestoreSyncRepository(
         val lectures = mutableListOf<LectureEntity>()
         val rootSnapshot = firestore.collection(TEACHER_DATA).document(uid).get().awaitResult()
         val expectedRecordCount = rootSnapshot.getLong("recordCount")
-        if (expectedRecordCount != null && expectedRecordCount != documents.size.toLong()) {
+        if (isRecordCountMismatch(expectedRecordCount, documents.size)) {
             throw IllegalStateException(
                 "تعداد رکوردهای پشتیبان ابری با فهرست واقعی آن سازگار نیست؛ اطلاعات محلی دست‌نخورده باقی ماند."
             )
@@ -219,7 +219,7 @@ class FirestoreSyncRepository(
     ) {
         // An empty cloud snapshot must never be interpreted as an instruction to
         // erase a populated local database. Treat it as missing/incomplete backup.
-        if (classes.isEmpty() && courses.isEmpty() && lectures.isEmpty()) {
+        if (isEmptyCloudBackup(classes.size, courses.size, lectures.size)) {
             throw IllegalStateException(
                 "نسخه پشتیبان ابری هیچ کلاس، درس یا جلسه‌ای ندارد؛ برای جلوگیری از پاک شدن اطلاعات محلی، بازیابی متوقف شد."
             )
@@ -368,3 +368,11 @@ class FirestoreSyncRepository(
             }
         }
 }
+
+
+/** Pure safety predicates are shared with unit tests. */
+internal fun isRecordCountMismatch(expected: Long?, actual: Int): Boolean =
+    expected != null && expected != actual.toLong()
+
+internal fun isEmptyCloudBackup(classCount: Int, courseCount: Int, lectureCount: Int): Boolean =
+    classCount == 0 && courseCount == 0 && lectureCount == 0
