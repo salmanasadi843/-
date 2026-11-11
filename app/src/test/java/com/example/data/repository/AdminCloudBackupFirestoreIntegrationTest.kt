@@ -1,6 +1,12 @@
 package com.example.data.repository
 
 import android.content.Context
+import androidx.room.Room
+import com.example.data.local.AppDatabase
+import com.example.data.local.ClassEntity
+import com.example.data.local.CourseEntity
+import com.example.data.local.LectureEntity
+import com.example.data.local.TeacherFolderEntity
 import androidx.test.core.app.ApplicationProvider
 import com.google.firebase.FirebaseApp
 import com.google.firebase.FirebaseOptions
@@ -154,6 +160,96 @@ class AdminCloudBackupFirestoreIntegrationTest {
         } catch (failure: Throwable) {
             failure.printStackTrace()
             throw failure
+        }
+    }
+
+    @Test
+    fun failedRoomRestore_rollsBackDeletesAndPreservesExistingLocalData() = runBlocking {
+        val context = ApplicationProvider.getApplicationContext<Context>()
+        val appName = "room-restore-emulator-${UUID.randomUUID()}"
+        val app = FirebaseApp.initializeApp(
+            context,
+            FirebaseOptions.Builder()
+                .setProjectId("demo-darsyar-rules")
+                .setApplicationId("1:123456789:android:room-restore-test")
+                .setApiKey("fake-emulator-api-key")
+                .build(),
+            appName
+        ) ?: error("Firebase Emulator test app could not initialize")
+        val firestore = FirebaseFirestore.getInstance(app)
+        firestore.useEmulator("127.0.0.1", 8080)
+        val uid = "room-rollback-${UUID.randomUUID()}"
+        val database = Room.inMemoryDatabaseBuilder(context, AppDatabase::class.java)
+            .allowMainThreadQueries()
+            .build()
+        try {
+            val classDao = database.classDao()
+            val courseDao = database.courseDao()
+            val lectureDao = database.lectureDao()
+            val folderDao = database.teacherFolderDao()
+
+            folderDao.insert(TeacherFolderEntity(id = 900, ownerUid = uid, name = "پوشهٔ قبلی"))
+            classDao.insert(ClassEntity(id = 900, name = "کلاس محلی سالم", ownerUid = uid, folderId = 900))
+            courseDao.insert(CourseEntity(id = 901, classId = 900, name = "درس محلی سالم"))
+            lectureDao.insertLecture(
+                LectureEntity(id = 902, title = "جلسهٔ محلی سالم", courseName = "درس محلی سالم",
+                    professorName = "استاد", classId = 900, courseId = 901,
+                    transcript = "متن محلی که نباید حذف شود")
+            )
+
+            val root = firestore.collection("teacher_data").document(uid)
+            root.set(
+                mapOf(
+                    "ownerUid" to uid,
+                    "schemaVersion" to 3L,
+                    "activeGeneration" to "generation-room-rollback",
+                    "recordCount" to 3L,
+                    "folders" to listOf(
+                        mapOf("id" to 10L, "ownerUid" to uid, "name" to "ریشه"),
+                        mapOf("id" to 11L, "ownerUid" to uid, "name" to "تکراری", "parentFolderId" to 10L),
+                        mapOf("id" to 12L, "ownerUid" to uid, "name" to "تکراری", "parentFolderId" to 10L)
+                    )
+                )
+            ).awaitTask()
+            val records = root.collection("generations").document("generation-room-rollback")
+                .collection("records")
+            records.document("class_101").set(
+                mapOf("recordType" to "class", "ownerUid" to uid, "id" to 101L,
+                    "name" to "کلاس ابری", "folderId" to 11L)
+            ).awaitTask()
+            records.document("course_301").set(
+                mapOf("recordType" to "course", "ownerUid" to uid, "id" to 301L,
+                    "classId" to 101L, "name" to "درس ابری")
+            ).awaitTask()
+            records.document("lecture_501").set(
+                mapOf("recordType" to "lecture", "ownerUid" to uid, "id" to 501L,
+                    "classId" to 101L, "courseId" to 301L, "title" to "جلسهٔ ابری",
+                    "courseName" to "درس ابری", "professorName" to "استاد",
+                    "transcript" to "متن ابری", "originalTranscript" to "متن خام ابری",
+                    "tags" to "")
+            ).awaitTask()
+
+            val repository = FirestoreSyncRepository(
+                lectureDao, classDao, courseDao, folderDao, firestore, database
+            )
+            var failed = false
+            try {
+                repository.restoreFromCloud(uid)
+            } catch (_: Exception) {
+                failed = true
+            }
+            assertTrue("Duplicate folder path should make the Room restore fail", failed)
+
+            // The folder uniqueness constraint fails after the transaction has cleared
+            // existing rows. Room must roll back every delete and insert atomically.
+            assertEquals("کلاس محلی سالم", classDao.getById(900)?.name)
+            assertEquals("درس محلی سالم", courseDao.getById(901)?.name)
+            assertEquals("متن محلی که نباید حذف شود", lectureDao.getLectureById(902)?.transcript)
+            assertEquals("پوشهٔ قبلی", folderDao.getOwnedFolder(900, uid)?.name)
+            assertEquals(null, classDao.getById(101))
+        } finally {
+            database.close()
+            app.delete()
         }
     }
 
