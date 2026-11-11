@@ -1,5 +1,7 @@
 package com.example.data.repository
 
+import androidx.room.withTransaction
+import com.example.data.local.AppDatabase
 import com.example.data.local.ClassDao
 import com.example.data.local.ClassEntity
 import com.example.data.local.CourseDao
@@ -29,7 +31,8 @@ class FirestoreSyncRepository(
     private val classDao: ClassDao,
     private val courseDao: CourseDao,
     private val teacherFolderDao: TeacherFolderDao? = null,
-    private val firestore: FirebaseFirestore = FirebaseFirestore.getInstance()
+    private val firestore: FirebaseFirestore = FirebaseFirestore.getInstance(),
+    private val database: AppDatabase
 ) {
     private companion object {
         const val SCHEMA_VERSION = 2L
@@ -174,11 +177,7 @@ class FirestoreSyncRepository(
                 )
             }
         }
-        validateAndReplaceLocalData(classes, courses, lectures)
-        teacherFolderDao?.let { dao ->
-            dao.clearForRestore()
-            if (folders.isNotEmpty()) dao.insertAllForRestore(folders)
-        }
+        validateAndReplaceLocalData(classes, courses, lectures, folders)
     }
 
     private suspend fun restoreSnapshot(
@@ -209,13 +208,18 @@ class FirestoreSyncRepository(
             (it as? Map<*, *>)?.asStringMap()?.toLectureEntity()
                 ?: throw IllegalStateException("رکورد جلسه در پشتیبان ابری معتبر نیست.")
         }
-        validateAndReplaceLocalData(classes, courses, lectures)
+        val folders = (snapshot.get("folders") as? List<*>)?.map {
+            (it as? Map<*, *>)?.asStringMap()?.toFolderEntity()
+                ?: throw IllegalStateException("رکورد پوشه در پشتیبان ابری معتبر نیست.")
+        }
+        validateAndReplaceLocalData(classes, courses, lectures, folders)
     }
 
     internal suspend fun validateAndReplaceLocalData(
         classes: List<ClassEntity>,
         courses: List<CourseEntity>,
-        lectures: List<LectureEntity>
+        lectures: List<LectureEntity>,
+        folders: List<TeacherFolderEntity>? = null
     ) {
         // An empty cloud snapshot must never be interpreted as an instruction to
         // erase a populated local database. Treat it as missing/incomplete backup.
@@ -229,13 +233,20 @@ class FirestoreSyncRepository(
             throw IllegalStateException("شناسه یکی از رکوردهای پشتیبان ابری خالی است.")
         }
 
-        // Validate everything before deleting local data; delete children first.
-        lectureDao.clearForRestore()
-        courseDao.clearForRestore()
-        classDao.clearForRestore()
-        if (classes.isNotEmpty()) classDao.insertAllForRestore(classes)
-        if (courses.isNotEmpty()) courseDao.insertAllForRestore(courses)
-        if (lectures.isNotEmpty()) lectureDao.insertAllForRestore(lectures)
+        // Replace all related local tables atomically. If any clear/insert fails,
+        // Room rolls back every table so the previous local backup remains usable.
+        database.withTransaction {
+            lectureDao.clearForRestore()
+            courseDao.clearForRestore()
+            classDao.clearForRestore()
+            if (classes.isNotEmpty()) classDao.insertAllForRestore(classes)
+            if (courses.isNotEmpty()) courseDao.insertAllForRestore(courses)
+            if (lectures.isNotEmpty()) lectureDao.insertAllForRestore(lectures)
+            if (folders != null && teacherFolderDao != null) {
+                teacherFolderDao.clearForRestore()
+                if (folders.isNotEmpty()) teacherFolderDao.insertAllForRestore(folders)
+            }
+        }
     }
 
     private fun ClassEntity.toCloudMap(): Map<String, Any?> = mapOf(
