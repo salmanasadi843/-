@@ -117,7 +117,6 @@ class FirestoreSyncRepository(
         courses.forEach { desired["course_${it.id}"] = mapOf("recordType" to "course") + it.toCloudMap() }
         lectures.forEach { desired["lecture_${it.id}"] = mapOf("recordType" to "lecture") + it.toCloudMap() }
 
-        // Read existing keys so deleted local records are also removed from cloud.
         // Stage every backup under a fresh generation. Existing active records are
         // never overwritten or deleted while the new generation is being uploaded.
         val generation = UUID.randomUUID().toString()
