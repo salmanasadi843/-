@@ -10,6 +10,7 @@ import com.example.data.local.LectureDao
 import com.example.data.local.LectureEntity
 import com.example.data.local.TeacherFolderDao
 import com.example.data.local.TeacherFolderEntity
+import com.example.data.local.validateBackupIntegrity
 import com.google.android.gms.tasks.Task
 import com.google.firebase.firestore.DocumentSnapshot
 import com.google.firebase.firestore.FieldValue
@@ -325,6 +326,9 @@ class FirestoreSyncRepository(
         if (classes.any { it.id == 0L } || courses.any { it.id == 0L } || lectures.any { it.id == 0L }) {
             throw IllegalStateException("شناسه یکی از رکوردهای پشتیبان ابری خالی است.")
         }
+        // Apply the same graph/duplicate/folder checks to cloud restores and
+        // portable JSON imports before any local table is cleared.
+        validateBackupIntegrity(classes, courses, lectures, folders.orEmpty())
 
         // Replace all related local tables atomically. If any clear/insert fails,
         // Room rolls back every table so the previous local backup remains usable.
