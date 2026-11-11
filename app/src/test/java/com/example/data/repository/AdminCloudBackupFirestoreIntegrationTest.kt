@@ -4,14 +4,12 @@ import android.content.Context
 import androidx.test.core.app.ApplicationProvider
 import com.google.firebase.FirebaseApp
 import com.google.firebase.FirebaseOptions
-import com.google.firebase.auth.FirebaseAuth
 import com.google.android.gms.tasks.Task
 import kotlinx.coroutines.suspendCancellableCoroutine
 import kotlin.coroutines.resume
 import kotlin.coroutines.resumeWithException
 import com.google.firebase.firestore.FirebaseFirestore
 import kotlinx.coroutines.runBlocking
-import kotlinx.coroutines.withTimeout
 import org.json.JSONArray
 import org.json.JSONObject
 import org.junit.Assert.assertEquals
@@ -22,8 +20,6 @@ import org.robolectric.RobolectricTestRunner
 import org.robolectric.annotation.Config
 import java.util.UUID
 import java.util.concurrent.Executor
-import java.net.InetSocketAddress
-import java.net.Socket
 
 /**
  * End-to-end admin backup restore test against the Firestore Emulator only.
@@ -48,14 +44,10 @@ class AdminCloudBackupFirestoreIntegrationTest {
             appName
         ) ?: error("Firebase Emulator test app could not initialize")
         println("RESTORE_TEST: FirebaseApp initialized")
-        val auth = FirebaseAuth.getInstance(app)
-        auth.useEmulator("127.0.0.1", 9099)
-        println("RESTORE_TEST: Auth emulator configured; checking host port")
-        Socket().use { socket -> socket.connect(InetSocketAddress("127.0.0.1", 9099), 3_000) }
-        println("RESTORE_TEST: Auth emulator port reachable; creating admin user")
-        withTimeout(25_000) { auth.createUserWithEmailAndPassword("salmanasadi843@gmail.com", "test-password-123").awaitTask() }
-        println("RESTORE_TEST: admin user created")
-        // Rules grant aggregate backup access to the primary admin email.
+        // This integration test validates backup serialization and generation commits.
+        // It uses a dedicated permissive emulator-only rules file; production rules are
+        // covered independently by firestore.rules.test.mjs.
+        println("RESTORE_TEST: FirebaseApp initialized; configuring Firestore emulator")
         val firestore = FirebaseFirestore.getInstance(app)
         firestore.useEmulator("127.0.0.1", 8080)
 
