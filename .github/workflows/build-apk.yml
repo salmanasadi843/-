@@ -35,6 +35,14 @@ jobs:
           distribution: temurin
           java-version: '17'
 
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+
+      - name: Install Firebase CLI
+        run: npm install --global firebase-tools
+
       - name: Set up Android SDK
         uses: android-actions/setup-android@v4
         with:
@@ -51,8 +59,11 @@ jobs:
         with:
           gradle-version: '9.3.1'
 
-      - name: Run Android unit tests
-        run: gradle testDebugUnitTest --stacktrace
+      - name: Run Android unit tests with Firestore Emulator
+        env:
+          FIRESTORE_EMULATOR_HOST: 127.0.0.1:8080
+        run: |
+          firebase emulators:exec --config firebase.emulator.json --project demo-darsyar-generation-tests --only firestore "gradle testDebugUnitTest --stacktrace"
 
       - name: Build Debug APK
         run: gradle assembleDebug --stacktrace
