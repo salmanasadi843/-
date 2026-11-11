@@ -1,0 +1,9 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+    // Emulator-only integration test rules. Production rules are tested separately.
+    match /{document=**} {
+      allow read, write: if true;
+    }
+  }
+}
