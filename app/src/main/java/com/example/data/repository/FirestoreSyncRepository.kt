@@ -246,7 +246,7 @@ class FirestoreSyncRepository(
             classes, courses, lectures, folders.filter { it.ownerUid == uid }
         )
 
-        if (hasLocalTeacherData && !sameAsCloud && !allowLocalReplace) {
+        if (shouldBlockDivergentRestore(hasLocalTeacherData, sameAsCloud, allowLocalReplace)) {
             throw IllegalStateException(
                 "اطلاعات محلی و ابری این استاد یکسان نیستند؛ برای جلوگیری از حذف تغییرات، بازیابی خودکار متوقف شد. ابتدا از اطلاعات محلی فایل پشتیبان بگیرید."
             )
@@ -479,6 +479,12 @@ class FirestoreSyncRepository(
 /** Pure safety predicates are shared with unit tests. */
 internal fun shouldBlockLegacyRestore(localRecordCount: Int, legacyCloudBackupExists: Boolean): Boolean =
     legacyCloudBackupExists && localRecordCount > 0
+
+internal fun shouldBlockDivergentRestore(
+    localDataExists: Boolean,
+    snapshotsEquivalent: Boolean,
+    allowLocalReplace: Boolean
+): Boolean = localDataExists && !snapshotsEquivalent && !allowLocalReplace
 
 internal fun areTeacherSnapshotsEquivalent(
     localClasses: List<ClassEntity>,
