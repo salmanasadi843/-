@@ -144,6 +144,10 @@ class FirestoreSyncRepository(
                 "activeGeneration" to generation,
                 "recordCount" to desired.size,
                 "folders" to folderRows.map { it.toCloudMap() },
+                // Remove legacy schema-1 arrays so migration cannot leave a huge root document.
+                "classes" to FieldValue.delete(),
+                "courses" to FieldValue.delete(),
+                "lectures" to FieldValue.delete(),
                 "updatedAt" to FieldValue.serverTimestamp()
             ),
             SetOptions.merge()
