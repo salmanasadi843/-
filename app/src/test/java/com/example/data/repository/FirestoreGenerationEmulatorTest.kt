@@ -49,10 +49,10 @@ class FirestoreGenerationEmulatorTest {
         ) ?: error("Firebase test app could not initialize")
 
         firestore = FirebaseFirestore.getInstance(app)
-        firestore.useEmulator(parts[0], parts[1].toInt())
         firestore.firestoreSettings = com.google.firebase.firestore.FirebaseFirestoreSettings.Builder()
             .setPersistenceEnabled(false)
             .build()
+        firestore.useEmulator(parts[0], parts[1].toInt())
 
         database = Room.inMemoryDatabaseBuilder(context, AppDatabase::class.java)
             .allowMainThreadQueries()
