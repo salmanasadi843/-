@@ -51,17 +51,15 @@ class FirestoreSyncRepository(
         val snapshot = root.get().awaitResult()
         if (!snapshot.exists()) return false
 
-        // Populated local Room data must not be silently replaced by an
-        // existing cloud snapshot. Keep both copies untouched until conflict
-        // resolution can be explicit.
-        if (shouldBlockCloudRestore(localRecordCount(), cloudBackupExists = true)) {
-            throw IllegalStateException(
-                "هم اطلاعات محلی و هم پشتیبان ابری موجود است؛ برای جلوگیری از جایگزینی بی‌اجازه، همگام‌سازی خودکار متوقف شد. ابتدا از اطلاعات محلی فایل پشتیبان بگیرید."
-            )
-        }
-
         return when (snapshot.getLong("schemaVersion")) {
             LEGACY_SCHEMA_VERSION -> {
+                // Legacy arrays cannot be compared safely without a generation marker.
+                // Never replace populated local data during this one-time migration.
+                if (shouldBlockCloudRestore(localRecordCount(), cloudBackupExists = true)) {
+                    throw IllegalStateException(
+                        "اطلاعات محلی و پشتیبان قدیمی ابری هم‌زمان موجودند؛ برای جلوگیری از جایگزینی بی‌اجازه، مهاجرت خودکار متوقف شد. ابتدا از اطلاعات محلی فایل پشتیبان بگیرید."
+                    )
+                }
                 // Validate and restore the old snapshot before migrating it.
                 restoreSnapshot(snapshot, requireAllCollections = true)
                 uploadSnapshot(uid)
@@ -257,7 +255,6 @@ class FirestoreSyncRepository(
 
         // The private cloud snapshot is per teacher. Retain other teachers' and
         // negative-ID shared rows because this restore replaces the local Room tables.
-        val foreignClassIds = allLocalClasses.filterNot { it in ownedLocalClasses }.map { it.id }.toSet()
         classes += allLocalClasses.filterNot { it in ownedLocalClasses }
         courses += allLocalCourses.filter { it.classId !in ownedClassIds }
         lectures += allLocalLectures.filter { it.classId !in ownedClassIds }
