@@ -24,6 +24,7 @@ jobs:
   build:
     name: Build Debug APK
     runs-on: ubuntu-latest
+    timeout-minutes: 30
 
     steps:
       - name: Checkout
@@ -63,7 +64,7 @@ jobs:
         env:
           FIRESTORE_EMULATOR_HOST: 127.0.0.1:8080
         run: |
-          firebase emulators:exec --config firebase.emulator.json --project demo-darsyar-generation-tests --only firestore "gradle testDebugUnitTest --info --stacktrace"
+          timeout --signal=TERM --kill-after=30s 20m firebase emulators:exec --config firebase.emulator.json --project demo-darsyar-generation-tests --only firestore "gradle testDebugUnitTest --info --stacktrace"
 
       - name: Upload test diagnostics
         if: always()
