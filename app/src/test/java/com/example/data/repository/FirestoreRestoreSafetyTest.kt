@@ -15,6 +15,14 @@ class FirestoreRestoreSafetyTest {
     }
 
     @Test
+    fun divergentRestoreRequiresExplicitReplacementApproval() {
+        assertTrue(shouldBlockDivergentRestore(localDataExists = true, snapshotsEquivalent = false, allowLocalReplace = false))
+        assertFalse(shouldBlockDivergentRestore(localDataExists = true, snapshotsEquivalent = false, allowLocalReplace = true))
+        assertFalse(shouldBlockDivergentRestore(localDataExists = true, snapshotsEquivalent = true, allowLocalReplace = false))
+        assertFalse(shouldBlockDivergentRestore(localDataExists = false, snapshotsEquivalent = false, allowLocalReplace = false))
+    }
+
+    @Test
     fun identicalTeacherSnapshotsAreSafeToRestoreAndDivergentSnapshotsAreBlocked() {
         val localClass = com.example.data.local.ClassEntity(id = 1, name = "کلاس", ownerUid = "teacher")
         val localCourse = com.example.data.local.CourseEntity(id = 2, classId = 1, name = "درس")
