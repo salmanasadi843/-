@@ -8,12 +8,10 @@ import com.example.data.local.ClassEntity
 import com.google.firebase.FirebaseApp
 import com.google.firebase.FirebaseOptions
 import com.google.firebase.firestore.FirebaseFirestore
-import com.google.firebase.firestore.SetOptions
 import com.google.android.gms.tasks.Tasks
 import kotlinx.coroutines.runBlocking
 import org.junit.After
 import org.junit.Assert.assertEquals
-import org.junit.Assert.assertNotEquals
 import org.junit.Assert.assertTrue
 import org.junit.Assume.assumeTrue
 import org.junit.Before
@@ -52,7 +50,7 @@ class FirestoreGenerationEmulatorTest {
 
         firestore = FirebaseFirestore.getInstance(app)
         firestore.useEmulator(parts[0], parts[1].toInt())
-        firestore.firestoreSettings = firestore.firestoreSettings.toBuilder()
+        firestore.firestoreSettings = com.google.firebase.firestore.FirebaseFirestoreSettings.Builder()
             .setPersistenceEnabled(false)
             .build()
 
