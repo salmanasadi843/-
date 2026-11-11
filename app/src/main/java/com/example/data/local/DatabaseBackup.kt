@@ -14,14 +14,31 @@ import java.io.OutputStreamWriter
  * Audio binaries are deliberately excluded; audioUrl is retained.
  */
 object DatabaseBackup {
+    private data class ExportSnapshot(
+        val lectures: List<LectureEntity>,
+        val classes: List<ClassEntity>,
+        val courses: List<CourseEntity>,
+        val folders: List<TeacherFolderEntity>
+    )
+
     fun export(context: Context, uri: Uri) {
         val db = AppDatabase.getDatabase(context)
-        val lectures = kotlinx.coroutines.runBlocking { db.lectureDao().getAllForBackup() }
-        val classes = kotlinx.coroutines.runBlocking { db.classDao().getAllForBackup() }
-        val courses = kotlinx.coroutines.runBlocking { db.courseDao().getAllForBackup() }
-        val folders = kotlinx.coroutines.runBlocking {
-            db.teacherFolderDao().observeFoldersForBackup()
+        // Read every table in one Room transaction so the exported JSON is a
+        // consistent snapshot even if edits or syncs happen during backup creation.
+        val snapshot = kotlinx.coroutines.runBlocking {
+            db.withTransaction {
+                ExportSnapshot(
+                    lectures = db.lectureDao().getAllForBackup(),
+                    classes = db.classDao().getAllForBackup(),
+                    courses = db.courseDao().getAllForBackup(),
+                    folders = db.teacherFolderDao().observeFoldersForBackup()
+                )
+            }
         }
+        val lectures = snapshot.lectures
+        val classes = snapshot.classes
+        val courses = snapshot.courses
+        val folders = snapshot.folders
 
         val root = JSONObject()
             .put("format", "darsyar-backup")
