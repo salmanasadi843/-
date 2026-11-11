@@ -97,6 +97,8 @@ class AdminCloudBackupFirestoreIntegrationTest {
             )
         ).awaitTask()
         protectedRoot.collection("generations").document("original-generation")
+            .set(mapOf("generationId" to "original-generation")).awaitTask()
+        protectedRoot.collection("generations").document("original-generation")
             .collection("records").document("class_existing")
             .set(mapOf("ownerUid" to protectedUid, "recordType" to "class", "id" to 303L, "name" to "نسخهٔ سالم قبلی"))
             .awaitTask()
