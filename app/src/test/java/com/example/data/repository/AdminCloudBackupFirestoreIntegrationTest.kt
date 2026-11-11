@@ -60,13 +60,13 @@ class AdminCloudBackupFirestoreIntegrationTest {
         val report = AdminCloudBackupRestorer(firestore).restoreAll(backup.toString())
         println("RESTORE_TEST: valid restore finished")
         assertEquals(2, report.teachersRestored)
-        assertEquals(4, report.recordsRestored)
+        assertEquals(8, report.recordsRestored)
 
         println("RESTORE_TEST: starting export after restore")
         val exported = AdminCloudBackupExporter(firestore).exportAllTeachers()
         println("RESTORE_TEST: export after restore finished")
         assertEquals(2, exported.getInt("teacherCount"))
-        assertEquals(4, exported.getInt("recordCount"))
+        assertEquals(8, exported.getInt("recordCount"))
         val teachers = exported.getJSONArray("teachers")
         val byOwner = (0 until teachers.length()).associate { i ->
             val teacher = teachers.getJSONObject(i)
@@ -76,11 +76,20 @@ class AdminCloudBackupFirestoreIntegrationTest {
         assertTrue(uidB in byOwner)
         for (uid in listOf(uidA, uidB)) {
             val records = byOwner.getValue(uid).getJSONArray("records")
-            assertEquals(2, records.length())
+            assertEquals(4, records.length())
             val rows = (0 until records.length()).map { records.getJSONObject(it) }
             assertTrue(rows.all { it.getJSONObject("data").getString("ownerUid") == uid })
             assertTrue(rows.any { it.getString("documentId") == "class_${if (uid == uidA) 101 else 202}" })
-            assertTrue(rows.any { it.getString("documentId") == "lecture_${if (uid == uidA) 501 else 602}" })
+            val classId = if (uid == uidA) 101 else 202
+            val courseId = if (uid == uidA) 301 else 402
+            val lectureId = if (uid == uidA) 501 else 602
+            assertTrue(rows.any { it.getString("documentId") == "class_$classId" })
+            assertTrue(rows.any { it.getString("documentId") == "course_$courseId" })
+            assertTrue(rows.any { it.getString("documentId") == "lecture_$lectureId" })
+            val chunk = rows.single { it.getString("documentId") == "lecture_text_${lectureId}_transcript_0" }
+                .getJSONObject("data")
+            assertEquals("متن کامل جلسه $lectureId", chunk.getString("value"))
+            assertEquals(1, byOwner.getValue(uid).getJSONObject("root").getJSONArray("folders").length())
         }
 
         // A malformed later teacher must be rejected before any earlier teacher is staged.
@@ -141,24 +150,97 @@ class AdminCloudBackupFirestoreIntegrationTest {
     }
 
     private fun aggregateBackup(uidA: String, uidB: String): JSONObject {
-        fun teacher(uid: String, classId: Long, lectureId: Long, classTitle: String, lectureTitle: String) =
-            JSONObject()
+        fun teacher(
+            uid: String,
+            classId: Long,
+            courseId: Long,
+            lectureId: Long,
+            folderId: Long,
+            classTitle: String,
+            lectureTitle: String
+        ): JSONObject {
+            val lecture = JSONObject()
+                .put("recordType", "lecture")
+                .put("ownerUid", uid)
+                .put("id", lectureId)
+                .put("classId", classId)
+                .put("courseId", courseId)
+                .put("title", lectureTitle)
+                .put("transcript", "")
+                .put("textChunkCounts", JSONObject().put("transcript", 1))
+            return JSONObject()
                 .put("ownerUid", uid)
                 .put("schemaVersion", 3)
-                .put("root", JSONObject().put("ownerUid", uid).put("activeGeneration", "source-generation")
-                    .put("recordCount", 2).put("folders", JSONArray()))
-                .put("records", JSONArray()
-                    .put(JSONObject().put("documentId", "class_$classId")
-                        .put("data", JSONObject().put("recordType", "class").put("ownerUid", uid)
-                            .put("id", classId).put("name", classTitle)))
-                    .put(JSONObject().put("documentId", "lecture_$lectureId")
-                        .put("data", JSONObject().put("recordType", "lecture").put("ownerUid", uid)
-                            .put("id", lectureId).put("classId", classId).put("title", lectureTitle)
-                            .put("transcript", "متن آزمون $lectureTitle"))))
-        return JSONObject().put("format", "darsyar-admin-cloud-backup").put("version", 1)
-            .put("teacherCount", 2).put("recordCount", 4)
-            .put("teachers", JSONArray()
-                .put(teacher(uidA, 101, 501, "کلاس استاد الف", "جلسه استاد الف"))
-                .put(teacher(uidB, 202, 602, "کلاس استاد ب", "جلسه استاد ب")))
+                .put(
+                    "root",
+                    JSONObject()
+                        .put("ownerUid", uid)
+                        .put("activeGeneration", "source-generation")
+                        .put("recordCount", 4)
+                        .put(
+                            "folders",
+                            JSONArray().put(
+                                JSONObject()
+                                    .put("id", folderId)
+                                    .put("ownerUid", uid)
+                                    .put("name", "پوشهٔ $classTitle")
+                                    .put("parentFolderId", JSONObject.NULL)
+                            )
+                        )
+                )
+                .put(
+                    "records",
+                    JSONArray()
+                        .put(
+                            JSONObject().put("documentId", "class_$classId")
+                                .put(
+                                    "data",
+                                    JSONObject()
+                                        .put("recordType", "class")
+                                        .put("ownerUid", uid)
+                                        .put("id", classId)
+                                        .put("name", classTitle)
+                                        .put("folderId", folderId)
+                                )
+                        )
+                        .put(
+                            JSONObject().put("documentId", "course_$courseId")
+                                .put(
+                                    "data",
+                                    JSONObject()
+                                        .put("recordType", "course")
+                                        .put("ownerUid", uid)
+                                        .put("id", courseId)
+                                        .put("classId", classId)
+                                        .put("title", "درس $classTitle")
+                                )
+                        )
+                        .put(JSONObject().put("documentId", "lecture_$lectureId").put("data", lecture))
+                        .put(
+                            JSONObject().put("documentId", "lecture_text_${lectureId}_transcript_0")
+                                .put(
+                                    "data",
+                                    JSONObject()
+                                        .put("recordType", "lecture_text_chunk")
+                                        .put("ownerUid", uid)
+                                        .put("lectureId", lectureId)
+                                        .put("field", "transcript")
+                                        .put("index", 0)
+                                        .put("value", "متن کامل جلسه $lectureId")
+                                )
+                        )
+                )
+        }
+        return JSONObject()
+            .put("format", "darsyar-admin-cloud-backup")
+            .put("version", 1)
+            .put("teacherCount", 2)
+            .put("recordCount", 8)
+            .put(
+                "teachers",
+                JSONArray()
+                    .put(teacher(uidA, 101, 301, 501, 11, "کلاس استاد الف", "جلسه استاد الف"))
+                    .put(teacher(uidB, 202, 402, 602, 22, "کلاس استاد ب", "جلسه استاد ب"))
+            )
     }
 }
