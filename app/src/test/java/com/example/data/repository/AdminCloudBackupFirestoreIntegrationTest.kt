@@ -22,6 +22,8 @@ import org.robolectric.RobolectricTestRunner
 import org.robolectric.annotation.Config
 import java.util.UUID
 import java.util.concurrent.Executor
+import java.net.InetSocketAddress
+import java.net.Socket
 
 /**
  * End-to-end admin backup restore test against the Firestore Emulator only.
@@ -48,7 +50,9 @@ class AdminCloudBackupFirestoreIntegrationTest {
         println("RESTORE_TEST: FirebaseApp initialized")
         val auth = FirebaseAuth.getInstance(app)
         auth.useEmulator("127.0.0.1", 9099)
-        println("RESTORE_TEST: Auth emulator configured; creating admin user")
+        println("RESTORE_TEST: Auth emulator configured; checking host port")
+        Socket().use { socket -> socket.connect(InetSocketAddress("127.0.0.1", 9099), 3_000) }
+        println("RESTORE_TEST: Auth emulator port reachable; creating admin user")
         withTimeout(25_000) { auth.createUserWithEmailAndPassword("salmanasadi843@gmail.com", "test-password-123").awaitTask() }
         println("RESTORE_TEST: admin user created")
         // Rules grant aggregate backup access to the primary admin email.
