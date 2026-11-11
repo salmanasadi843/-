@@ -1,5 +1,6 @@
 package com.example.data.local
 
+import org.junit.Assert.assertEquals
 import org.junit.Assert.assertThrows
 import org.junit.Test
 
@@ -87,4 +88,25 @@ class DatabaseBackupIntegrityTest {
             )
         }
     }
+    @Test
+    fun preservesMatchingDeviceLocalAudioPathsWithoutInventingPaths() {
+        val restored = listOf(
+            validLecture.copy(audioFilePath = null),
+            validLecture.copy(id = 31, audioFilePath = null),
+            validLecture.copy(id = 32, audioFilePath = "/backup/already-present.mp3")
+        )
+
+        val result = preserveLocalAudioPaths(
+            restored,
+            mapOf(
+                30L to "/device/audio/lecture-30.mp3",
+                32L to "/device/audio/lecture-32.mp3"
+            )
+        )
+
+        assertEquals("/device/audio/lecture-30.mp3", result[0].audioFilePath)
+        assertEquals(null, result[1].audioFilePath)
+        assertEquals("/backup/already-present.mp3", result[2].audioFilePath)
+    }
+
 }
