@@ -60,6 +60,13 @@ object DatabaseBackup {
 
         kotlinx.coroutines.runBlocking {
             db.withTransaction {
+                // Keep device-local audio paths for matching lecture IDs. Portable
+                // JSON intentionally excludes audio binaries and private file paths.
+                val existingAudioPaths = db.lectureDao().getAllForBackup()
+                    .mapNotNull { lecture -> lecture.audioFilePath?.let { lecture.id to it } }
+                    .toMap()
+                val lecturesToRestore = preserveLocalAudioPaths(lectures, existingAudioPaths)
+
                 // Clear child records first, then restore parent records before courses.
                 db.lectureDao().clearForRestore()
                 db.courseDao().clearForRestore()
@@ -68,7 +75,7 @@ object DatabaseBackup {
                 db.teacherFolderDao().insertAllForRestore(folders)
                 db.classDao().insertAllForRestore(classes)
                 db.courseDao().insertAllForRestore(courses)
-                db.lectureDao().insertAllForRestore(lectures)
+                db.lectureDao().insertAllForRestore(lecturesToRestore)
             }
         }
         return "بازیابی انجام شد: ${lectures.size} جلسه، ${classes.size} کلاس و ${courses.size} درس."
@@ -158,6 +165,20 @@ object DatabaseBackup {
         if (isNull(key) || !has(key)) null else optLong(key)
 }
 
+
+/**
+ * Preserve audio paths stored on this device when a portable backup restores
+ * matching lecture IDs. A backup from another device has no matching path and
+ * therefore keeps the restored lecture's null audioFilePath.
+ */
+internal fun preserveLocalAudioPaths(
+    restoredLectures: List<LectureEntity>,
+    existingAudioPaths: Map<Long, String>
+): List<LectureEntity> = restoredLectures.map { lecture ->
+    if (lecture.audioFilePath == null) {
+        lecture.copy(audioFilePath = existingAudioPaths[lecture.id])
+    } else lecture
+}
 
 /**
  * Validate the complete portable snapshot before opening a destructive Room
