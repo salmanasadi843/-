@@ -46,7 +46,7 @@ class FirestoreSyncRepository(
         const val BATCH_LIMIT = 400
     }
 
-    suspend fun restoreFromCloud(uid: String): Boolean {
+    suspend fun restoreFromCloud(uid: String, allowLocalReplace: Boolean = false): Boolean {
         val root = firestore.collection(TEACHER_DATA).document(uid)
         val snapshot = root.get().awaitResult()
         if (!snapshot.exists()) return false
@@ -55,7 +55,7 @@ class FirestoreSyncRepository(
             LEGACY_SCHEMA_VERSION -> {
                 // Legacy arrays cannot be compared safely without a generation marker.
                 // Never replace populated local data during this one-time migration.
-                if (shouldBlockLegacyRestore(localRecordCount(), legacyCloudBackupExists = true)) {
+                if (!allowLocalReplace && shouldBlockLegacyRestore(localRecordCount(), legacyCloudBackupExists = true)) {
                     throw IllegalStateException(
                         "اطلاعات محلی و پشتیبان قدیمی ابری هم‌زمان موجودند؛ برای جلوگیری از جایگزینی بی‌اجازه، مهاجرت خودکار متوقف شد. ابتدا از اطلاعات محلی فایل پشتیبان بگیرید."
                     )
@@ -66,7 +66,7 @@ class FirestoreSyncRepository(
                 true
             }
             SCHEMA_VERSION -> {
-                restoreRecordDocuments(uid)
+                restoreRecordDocuments(uid, allowLocalReplace)
                 true
             }
             else -> throw IllegalStateException(
@@ -79,7 +79,7 @@ class FirestoreSyncRepository(
      * Older shared documents are read-only fallback sources. They are imported
      * only if they contain all three expected arrays, then migrated privately.
      */
-    suspend fun restoreLegacySharedMaterials(uid: String): Boolean {
+    suspend fun restoreLegacySharedMaterials(uid: String, allowLocalReplace: Boolean = false): Boolean {
         val snapshot = firestore.collection(SHARED_MATERIALS).document(uid).get().awaitResult()
         if (!snapshot.exists()) return false
         val data = snapshot.data ?: return false
@@ -87,7 +87,7 @@ class FirestoreSyncRepository(
             data["courses"] !is List<*> ||
             data["lectures"] !is List<*>
         ) return false
-        if (shouldBlockLegacyRestore(localRecordCount(), legacyCloudBackupExists = true)) {
+        if (!allowLocalReplace && shouldBlockLegacyRestore(localRecordCount(), legacyCloudBackupExists = true)) {
             return false
         }
 
@@ -175,7 +175,7 @@ class FirestoreSyncRepository(
         ).awaitResult()
     }
 
-    private suspend fun restoreRecordDocuments(uid: String) {
+    private suspend fun restoreRecordDocuments(uid: String, allowLocalReplace: Boolean) {
         val rootSnapshot = firestore.collection(TEACHER_DATA).document(uid).get().awaitResult()
         val activeGeneration = rootSnapshot.getString("activeGeneration")?.takeIf { it.isNotBlank() }
         val records = firestore.collection(TEACHER_DATA).document(uid).collection(RECORDS)
@@ -246,7 +246,7 @@ class FirestoreSyncRepository(
             classes, courses, lectures, folders.filter { it.ownerUid == uid }
         )
 
-        if (hasLocalTeacherData && !sameAsCloud) {
+        if (hasLocalTeacherData && !sameAsCloud && !allowLocalReplace) {
             throw IllegalStateException(
                 "اطلاعات محلی و ابری این استاد یکسان نیستند؛ برای جلوگیری از حذف تغییرات، بازیابی خودکار متوقف شد. ابتدا از اطلاعات محلی فایل پشتیبان بگیرید."
             )
