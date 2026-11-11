@@ -11,6 +11,7 @@ import com.google.firebase.firestore.FirebaseFirestore
 import com.google.android.gms.tasks.Tasks
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.runBlocking
+import kotlinx.coroutines.withTimeout
 import org.junit.After
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertTrue
@@ -87,7 +88,7 @@ class FirestoreGenerationEmulatorTest {
         )))
         val repository = repository()
 
-        repository.uploadSnapshot(uid)
+        withTimeout(90_000) { repository.uploadSnapshot(uid) }
 
         val root = Tasks.await(rootRef.get())
         val active = requireNotNull(root.getString("activeGeneration"))
@@ -103,7 +104,7 @@ class FirestoreGenerationEmulatorTest {
         assertEquals(1, Tasks.await(recordsRef.whereEqualTo("generation", "older-generation").get()).size())
 
         database.classDao().clearForRestore()
-        repository.restoreFromCloud(uid)
+        withTimeout(90_000) { repository.restoreFromCloud(uid) }
         assertEquals(401, database.classDao().getAllForBackup().size)
         assertEquals(null, database.classDao().getById(9000L))
     }
@@ -131,7 +132,7 @@ class FirestoreGenerationEmulatorTest {
 
         var failed = false
         try {
-            repository().uploadSnapshot(uid)
+            withTimeout(90_000) { repository().uploadSnapshot(uid) }
         } catch (_: Exception) {
             failed = true
         }
