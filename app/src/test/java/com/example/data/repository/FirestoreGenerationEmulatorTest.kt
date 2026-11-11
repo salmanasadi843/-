@@ -109,6 +109,95 @@ class FirestoreGenerationEmulatorTest {
         assertEquals(null, database.classDao().getById(9000L))
     }
 
+
+    @Test
+    fun divergentLocalDataIsKeptUntilExplicitCloudReplacementIsApproved() = runBlocking(Dispatchers.IO) {
+        val local = ClassEntity(id = 700, name = "نسخه محلی", ownerUid = uid)
+        database.classDao().insert(local)
+        val generation = "conflict-generation"
+        val root = firestore.collection("teacher_data").document(uid)
+        Tasks.await(root.set(mapOf(
+            "schemaVersion" to 2L,
+            "ownerUid" to uid,
+            "activeGeneration" to generation,
+            "recordCount" to 1L,
+            "folders" to emptyList<Map<String, Any>>()
+        )))
+        Tasks.await(root.collection("records").document("${generation}__class_700").set(mapOf(
+            "recordType" to "class",
+            "id" to 700L,
+            "name" to "نسخه ابری متفاوت",
+            "ownerUid" to uid,
+            "generation" to generation
+        )))
+
+        var blocked = false
+        try {
+            repository().restoreFromCloud(uid)
+        } catch (_: IllegalStateException) {
+            blocked = true
+        }
+        assertTrue("Divergent local data must not be silently replaced", blocked)
+        assertEquals("نسخه محلی", database.classDao().getById(700)?.name)
+
+        repository().restoreFromCloud(uid, allowLocalReplace = true)
+        assertEquals("نسخه ابری متفاوت", database.classDao().getById(700)?.name)
+    }
+
+    @Test
+    fun identicalCloudRestorePreservesDeviceLocalAudioPath() = runBlocking(Dispatchers.IO) {
+        val localClass = ClassEntity(
+            id = 710, name = "کلاس یکسان", ownerUid = uid,
+            classDateMillis = 10L, createdAtMillis = 11L
+        )
+        val localCourse = com.example.data.local.CourseEntity(
+            id = 720, classId = 710, name = "درس یکسان", createdAtMillis = 12L
+        )
+        val localLecture = com.example.data.local.LectureEntity(
+            id = 730, title = "جلسه یکسان", courseName = "درس یکسان", professorName = "استاد",
+            classId = 710, courseId = 720, dateMillis = 13L,
+            audioFilePath = "/device/audio/session.mp3", transcript = "متن",
+            originalTranscript = "متن خام", lastEditedMillis = 14L
+        )
+        database.classDao().insert(localClass)
+        database.courseDao().insert(localCourse)
+        database.lectureDao().insertLecture(localLecture)
+
+        val generation = "identical-generation"
+        val root = firestore.collection("teacher_data").document(uid)
+        Tasks.await(root.set(mapOf(
+            "schemaVersion" to 2L,
+            "ownerUid" to uid,
+            "activeGeneration" to generation,
+            "recordCount" to 3L,
+            "folders" to emptyList<Map<String, Any>>()
+        )))
+        val records = root.collection("records")
+        Tasks.await(records.document("${generation}__class_710").set(mapOf(
+            "recordType" to "class", "id" to 710L, "name" to "کلاس یکسان",
+            "ownerUid" to uid, "classDateMillis" to 10L, "createdAtMillis" to 11L,
+            "generation" to generation
+        )))
+        Tasks.await(records.document("${generation}__course_720").set(mapOf(
+            "recordType" to "course", "id" to 720L, "classId" to 710L,
+            "name" to "درس یکسان", "createdAtMillis" to 12L,
+            "generation" to generation
+        )))
+        Tasks.await(records.document("${generation}__lecture_730").set(mapOf(
+            "recordType" to "lecture", "id" to 730L, "title" to "جلسه یکسان",
+            "courseName" to "درس یکسان", "professorName" to "استاد",
+            "classId" to 710L, "courseId" to 720L, "dateMillis" to 13L,
+            "transcript" to "متن", "originalTranscript" to "متن خام",
+            "lastEditedMillis" to 14L, "generation" to generation
+        )))
+
+        repository().restoreFromCloud(uid)
+        assertEquals(
+            "/device/audio/session.mp3",
+            database.lectureDao().getLectureById(730)?.audioFilePath
+        )
+    }
+
     @Test
     fun failedSecondBatchLeavesPreviousGenerationActive() = runBlocking(Dispatchers.IO) {
         insertClasses(401, failLast = true)
