@@ -24,16 +24,25 @@ jobs:
   build:
     name: Build Debug APK
     runs-on: ubuntu-latest
+    timeout-minutes: 30
 
     steps:
       - name: Checkout
         uses: actions/checkout@v6
 
-      - name: Set up JDK 17
+      - name: Set up JDK 21 (Gradle and Firestore Emulator)
         uses: actions/setup-java@v5
         with:
           distribution: temurin
-          java-version: '17'
+          java-version: '21'
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+
+      - name: Install Firebase CLI
+        run: npm install --global firebase-tools
 
       - name: Set up Android SDK
         uses: android-actions/setup-android@v4
@@ -51,8 +60,22 @@ jobs:
         with:
           gradle-version: '9.3.1'
 
-      - name: Run Android unit tests
-        run: gradle testDebugUnitTest --stacktrace
+      - name: Run Android unit tests with Firestore Emulator
+        env:
+          FIRESTORE_EMULATOR_HOST: 127.0.0.1:8080
+        run: |
+          timeout --signal=TERM --kill-after=30s 20m firebase emulators:exec --config firebase.emulator.json --project demo-darsyar-generation-tests --only firestore "gradle testDebugUnitTest --info --stacktrace"
+
+      - name: Upload test diagnostics
+        if: always()
+        uses: actions/upload-artifact@v6
+        with:
+          name: firestore-emulator-test-diagnostics
+          path: |
+            app/build/test-results/testDebugUnitTest/**
+            app/build/reports/tests/testDebugUnitTest/**
+            firestore-debug.log
+          if-no-files-found: warn
 
       - name: Build Debug APK
         run: gradle assembleDebug --stacktrace

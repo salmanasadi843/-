@@ -172,7 +172,11 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
 
     /** Restore cloud data first, then autosave subsequent Room changes. */
     @OptIn(FlowPreview::class)
-    fun startCloudSync() {
+    fun startCloudSync(allowLocalReplace: Boolean = false, preferLocalData: Boolean = false) {
+        if (allowLocalReplace && preferLocalData) {
+            _cloudSyncStatus.value = "دو روش متعارض همگام‌سازی هم‌زمان انتخاب شده‌اند؛ عملیات متوقف شد."
+            return
+        }
         if (_userRole.value != UserRole.TEACHER) {
             _cloudSyncStatus.value = "همگام‌سازی خصوصی فقط برای حساب استاد فعال است."
             return
@@ -193,13 +197,23 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
                     _cloudSyncStatus.value = "مجوز استاد لغو شده است؛ همگام‌سازی متوقف شد و اطلاعات محلی ارسال نشد."
                     return@launch
                 }
-                val restored = cloudSyncRepository.restoreFromCloud(uid)
+                val restored = if (preferLocalData) {
+                    false
+                } else {
+                    cloudSyncRepository.restoreFromCloud(uid, allowLocalReplace)
+                }
                 if (!restored) {
-                    // Keep old published material untouched; import it only if it
-                    // follows the known snapshot shape, then create private backup.
-                    cloudSyncRepository.restoreLegacySharedMaterials(uid)
+                    // If the user explicitly prefers this device, do not import an
+                    // older legacy cloud copy before staging the local generation.
+                    if (!preferLocalData) {
+                        cloudSyncRepository.restoreLegacySharedMaterials(uid, allowLocalReplace)
+                    }
                     cloudSyncRepository.uploadSnapshot(uid)
-                    _cloudSyncStatus.value = "پشتیبان‌گیری ابری موفق بود؛ تغییرات بعدی نیز خودکار ارسال می‌شوند."
+                    _cloudSyncStatus.value = if (preferLocalData) {
+                        "نسخهٔ محلی این دستگاه به‌عنوان نسخهٔ فعال پشتیبان ابری ثبت شد؛ نسخه‌های قبلی نیز نگهداری شده‌اند."
+                    } else {
+                        "پشتیبان‌گیری ابری موفق بود؛ تغییرات بعدی نیز خودکار ارسال می‌شوند."
+                    }
                 } else {
                     _cloudSyncStatus.value = "بازیابی اطلاعات از فضای ابری موفق بود؛ تغییرات بعدی خودکار ارسال می‌شوند."
                 }
@@ -238,7 +252,8 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
     private val database = AppDatabase.getDatabase(application)
     val repository = LectureRepository(database.lectureDao(), database.classDao(), database.courseDao())
     private val cloudSyncRepository = FirestoreSyncRepository(
-        database.lectureDao(), database.classDao(), database.courseDao(), database.teacherFolderDao()
+        database.lectureDao(), database.classDao(), database.courseDao(), database.teacherFolderDao(),
+        database = database
     )
     private var cloudSyncJob: Job? = null
 

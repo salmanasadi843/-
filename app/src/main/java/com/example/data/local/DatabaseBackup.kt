@@ -14,14 +14,31 @@ import java.io.OutputStreamWriter
  * Audio binaries are deliberately excluded; audioUrl is retained.
  */
 object DatabaseBackup {
+    private data class ExportSnapshot(
+        val lectures: List<LectureEntity>,
+        val classes: List<ClassEntity>,
+        val courses: List<CourseEntity>,
+        val folders: List<TeacherFolderEntity>
+    )
+
     fun export(context: Context, uri: Uri) {
         val db = AppDatabase.getDatabase(context)
-        val lectures = kotlinx.coroutines.runBlocking { db.lectureDao().getAllForBackup() }
-        val classes = kotlinx.coroutines.runBlocking { db.classDao().getAllForBackup() }
-        val courses = kotlinx.coroutines.runBlocking { db.courseDao().getAllForBackup() }
-        val folders = kotlinx.coroutines.runBlocking {
-            db.teacherFolderDao().observeFoldersForBackup()
+        // Read every table in one Room transaction so the exported JSON is a
+        // consistent snapshot even if edits or syncs happen during backup creation.
+        val snapshot = kotlinx.coroutines.runBlocking {
+            db.withTransaction {
+                ExportSnapshot(
+                    lectures = db.lectureDao().getAllForBackup(),
+                    classes = db.classDao().getAllForBackup(),
+                    courses = db.courseDao().getAllForBackup(),
+                    folders = db.teacherFolderDao().observeFoldersForBackup()
+                )
+            }
         }
+        val lectures = snapshot.lectures
+        val classes = snapshot.classes
+        val courses = snapshot.courses
+        val folders = snapshot.folders
 
         val root = JSONObject()
             .put("format", "darsyar-backup")
@@ -45,14 +62,28 @@ object DatabaseBackup {
         require(root.optString("format") == "darsyar-backup") { "این فایل، پشتیبان معتبر درس‌یار نیست." }
         require(root.optInt("version") in 1..1) { "نسخه فایل پشتیبان پشتیبانی نمی‌شود." }
 
-        val lectures = root.optJSONArray("lectures").toEntitiesTyped { it.toLecture() }
-        val classes = root.optJSONArray("classes").toEntitiesTyped { it.toClassEntity() }
-        val courses = root.optJSONArray("courses").toEntitiesTyped { it.toCourse() }
-        val folders = root.optJSONArray("folders").toEntitiesTyped { it.toFolder() }
+        // Core collections must be present and correctly typed. Treating a missing
+        // or malformed array as empty could silently erase valid local records.
+        val lectures = root.requiredArray("lectures").toEntitiesTyped { it.toLecture() }
+        val classes = root.requiredArray("classes").toEntitiesTyped { it.toClassEntity() }
+        val courses = root.requiredArray("courses").toEntitiesTyped { it.toCourse() }
+        val folders = if (root.has("folders")) {
+            root.requiredArray("folders").toEntitiesTyped { it.toFolder() }
+        } else {
+            emptyList()
+        }
+        validateBackupIntegrity(classes, courses, lectures, folders)
         val db = AppDatabase.getDatabase(context)
 
         kotlinx.coroutines.runBlocking {
             db.withTransaction {
+                // Keep device-local audio paths for matching lecture IDs. Portable
+                // JSON intentionally excludes audio binaries and private file paths.
+                val existingAudioPaths = db.lectureDao().getAllForBackup()
+                    .mapNotNull { lecture -> lecture.audioFilePath?.let { lecture.id to it } }
+                    .toMap()
+                val lecturesToRestore = preserveLocalAudioPaths(lectures, existingAudioPaths)
+
                 // Clear child records first, then restore parent records before courses.
                 db.lectureDao().clearForRestore()
                 db.courseDao().clearForRestore()
@@ -61,10 +92,18 @@ object DatabaseBackup {
                 db.teacherFolderDao().insertAllForRestore(folders)
                 db.classDao().insertAllForRestore(classes)
                 db.courseDao().insertAllForRestore(courses)
-                db.lectureDao().insertAllForRestore(lectures)
+                db.lectureDao().insertAllForRestore(lecturesToRestore)
             }
         }
         return "بازیابی انجام شد: ${lectures.size} جلسه، ${classes.size} کلاس و ${courses.size} درس."
+    }
+
+    private fun JSONObject.requiredArray(key: String): JSONArray {
+        val value = opt(key)
+        require(value is JSONArray) {
+            "فهرست «$key» در فایل پشتیبان وجود ندارد یا ساختار آن خراب است؛ اطلاعات فعلی حفظ شد."
+        }
+        return value
     }
 
     private fun JSONArray?.toEntities(convert: (JSONObject) -> Any): List<Any> {
@@ -82,9 +121,11 @@ object DatabaseBackup {
         .put("professorName", professorName).put("classId", classId ?: JSONObject.NULL)
         .put("courseId", courseId ?: JSONObject.NULL).put("dateMillis", dateMillis)
         .put("audioUrl", audioUrl ?: JSONObject.NULL).put("audioDurationMs", audioDurationMs)
-        .put("transcript", transcript).put("aiSummary", aiSummary ?: JSONObject.NULL)
+        .put("transcript", transcript).put("originalTranscript", originalTranscript)
+        .put("aiSummary", aiSummary ?: JSONObject.NULL)
         .put("aiKeyPoints", aiKeyPoints ?: JSONObject.NULL).put("aiQuizJson", aiQuizJson ?: JSONObject.NULL)
-        .put("tags", tags).put("isFavorite", isFavorite).put("lastEditedMillis", lastEditedMillis).put("sortOrder", sortOrder)
+        .put("tags", tags).put("isFavorite", isFavorite).put("isPublished", isPublished)
+        .put("lastEditedMillis", lastEditedMillis).put("sortOrder", sortOrder)
 
     private fun JSONObject.toLecture() = LectureEntity(
         id = optLong("id"), title = getString("title"), courseName = optString("courseName"),
@@ -92,9 +133,11 @@ object DatabaseBackup {
         courseId = optNullableLong("courseId"), dateMillis = optLong("dateMillis"),
         audioFilePath = null, audioUrl = optNullableString("audioUrl"),
         audioDurationMs = optLong("audioDurationMs"), transcript = optString("transcript"),
+        originalTranscript = if (has("originalTranscript")) optString("originalTranscript") else optString("transcript"),
         aiSummary = optNullableString("aiSummary"), aiKeyPoints = optNullableString("aiKeyPoints"),
         aiQuizJson = optNullableString("aiQuizJson"), tags = optString("tags"),
-        isFavorite = optBoolean("isFavorite"), lastEditedMillis = optLong("lastEditedMillis", System.currentTimeMillis()),
+        isFavorite = optBoolean("isFavorite"), isPublished = optBoolean("isPublished", true),
+        lastEditedMillis = optLong("lastEditedMillis", System.currentTimeMillis()),
         sortOrder = optInt("sortOrder", 0)
     )
 
@@ -137,4 +180,89 @@ object DatabaseBackup {
 
     private fun JSONObject.optNullableLong(key: String): Long? =
         if (isNull(key) || !has(key)) null else optLong(key)
+}
+
+
+/**
+ * Preserve audio paths stored on this device when a portable backup restores
+ * matching lecture IDs. A backup from another device has no matching path and
+ * therefore keeps the restored lecture's null audioFilePath.
+ */
+internal fun preserveLocalAudioPaths(
+    restoredLectures: List<LectureEntity>,
+    existingAudioPaths: Map<Long, String>
+): List<LectureEntity> = restoredLectures.map { lecture ->
+    if (lecture.audioFilePath == null) {
+        lecture.copy(audioFilePath = existingAudioPaths[lecture.id])
+    } else lecture
+}
+
+/**
+ * Validate the complete portable snapshot before opening a destructive Room
+ * replacement transaction. Negative IDs are allowed for read-only shared rows;
+ * zero IDs and duplicate IDs are never valid persisted records.
+ */
+internal fun validateBackupIntegrity(
+    classes: List<ClassEntity>,
+    courses: List<CourseEntity>,
+    lectures: List<LectureEntity>,
+    folders: List<TeacherFolderEntity>
+) {
+    require(classes.isNotEmpty() || courses.isNotEmpty() || lectures.isNotEmpty()) {
+        "فایل پشتیبان خالی است؛ برای جلوگیری از پاک شدن اطلاعات فعلی، بازیابی متوقف شد."
+    }
+
+    fun requireUniqueNonZeroIds(ids: List<Long>, label: String) {
+        require(ids.all { it != 0L }) { "شناسهٔ یکی از رکوردهای $label صفر است." }
+        require(ids.size == ids.toSet().size) { "شناسهٔ تکراری در رکوردهای $label وجود دارد." }
+    }
+
+    requireUniqueNonZeroIds(classes.map { it.id }, "کلاس")
+    requireUniqueNonZeroIds(courses.map { it.id }, "درس")
+    requireUniqueNonZeroIds(lectures.map { it.id }, "جلسه")
+    requireUniqueNonZeroIds(folders.map { it.id }, "پوشه")
+
+    val classIds = classes.map { it.id }.toSet()
+    val coursesById = courses.associateBy { it.id }
+    val foldersById = folders.associateBy { it.id }
+
+    require(courses.all { it.classId in classIds }) {
+        "یکی از درس‌ها به کلاسی اشاره می‌کند که در فایل پشتیبان وجود ندارد."
+    }
+    require(lectures.all { it.classId == null || it.classId in classIds }) {
+        "یکی از جلسه‌ها به کلاسی اشاره می‌کند که در فایل پشتیبان وجود ندارد."
+    }
+    require(lectures.all { lecture ->
+        lecture.courseId == null || coursesById.containsKey(lecture.courseId)
+    }) {
+        "یکی از جلسه‌ها به درسی اشاره می‌کند که در فایل پشتیبان وجود ندارد."
+    }
+    require(lectures.all { lecture ->
+        val course = lecture.courseId?.let(coursesById::get)
+        lecture.classId == null || course == null || course.classId == lecture.classId
+    }) {
+        "کلاس ثبت‌شده برای یکی از جلسه‌ها با کلاس درس آن سازگار نیست."
+    }
+
+    require(classes.all { it.folderId == null || foldersById.containsKey(it.folderId) }) {
+        "یکی از کلاس‌ها به پوشه‌ای اشاره می‌کند که در فایل پشتیبان وجود ندارد."
+    }
+    require(folders.all { it.ownerUid.isNotBlank() && it.name.isNotBlank() }) {
+        "مشخصات یکی از پوشه‌ها ناقص است."
+    }
+    require(folders.all { folder ->
+        folder.parentFolderId == null ||
+            foldersById[folder.parentFolderId]?.ownerUid == folder.ownerUid
+    }) {
+        "پوشهٔ والد یکی از پوشه‌ها وجود ندارد یا متعلق به استاد دیگری است."
+    }
+
+    folders.forEach { folder ->
+        val visited = mutableSetOf<Long>()
+        var current: TeacherFolderEntity? = folder
+        while (current != null) {
+            require(visited.add(current.id)) { "در ساختار پوشه‌ها چرخهٔ ارجاع وجود دارد." }
+            current = current.parentFolderId?.let(foldersById::get)
+        }
+    }
 }
