@@ -106,4 +106,10 @@ jobs:
           fi
           echo "Release certificate matches the previously installed app."
 
-      # Deliberately do not upload or publish this APK. This job verifies signing only.
+      - name: Upload verified signed Release APK
+        uses: actions/upload-artifact@v6
+        with:
+          name: ostadyar-release-apk
+          path: app/build/outputs/apk/release/app-release.apk
+          if-no-files-found: error
+          retention-days: 7
