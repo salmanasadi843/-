@@ -3,7 +3,7 @@ name: Verify Darsyar Release Signing
 on:
   push:
     branches:
-      - test/recovery-scroll-fix-v1.0.3
+      - fix/shared-feed-duplicate-class-merge-v1.0.4
     paths:
       - "app/**"
       - "gradle/**"

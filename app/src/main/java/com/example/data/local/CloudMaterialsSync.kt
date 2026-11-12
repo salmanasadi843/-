@@ -101,40 +101,16 @@ object CloudMaterialsSync {
             // Normalize class identity using both metadata and its published contents.
             // This collapses duplicate copies with different source IDs while preserving
             // same-named classes that contain different courses or sessions.
+            // Class identity is its normalized metadata within the source teacher.
+            // Session/course differences are content updates, not a new class:
+            // all source class IDs with this identity map to one imported ID,
+            // and their courses/lectures are collected below (without deleting data).
+            // Including content in this key caused a second class card whenever
+            // one published copy had an extra session.
             fun classFingerprint(owner: String, item: ClassEntity): String {
-                val courses = validPayloads
-                    .filter { it.first == owner }
-                    .flatMap { (_, payload) ->
-                        val array = payload.optJSONArray("courses") ?: return@flatMap emptyList<CourseEntity>()
-                        (0 until array.length()).mapNotNull { index ->
-                            runCatching { array.getJSONObject(index).toCourse() }.getOrNull()
-                        }
-                    }
-                    .filter { it.classId == item.id }
-                    .map { normalized(it.name) }
-                    .sorted()
-
-                val lectures = validPayloads
-                    .filter { it.first == owner }
-                    .flatMap { (_, payload) ->
-                        val array = payload.optJSONArray("lectures") ?: return@flatMap emptyList<LectureEntity>()
-                        (0 until array.length()).mapNotNull { index ->
-                            runCatching { array.getJSONObject(index).toLecture() }.getOrNull()
-                        }
-                    }
-                    .filter { it.classId == item.id }
-                    .map { lecture ->
-                        listOf(
-                            normalized(lecture.title),
-                            normalized(lecture.courseName),
-                            lecture.dateMillis.toString(),
-                        ).joinToString("~")
-                    }
-                    .sorted()
-
-                val metadata = listOf(item.name, item.teacherName, item.term).joinToString("|") { normalized(it) }
-                val content = (courses + lectures).joinToString("|")
-                return "$metadata##$content"
+                val metadata = listOf(item.name, item.teacherName, item.term)
+                    .joinToString("|") { normalized(it) }
+                return "$owner##$metadata"
             }
 
             val canonicalSourceClasses = sourceClasses
