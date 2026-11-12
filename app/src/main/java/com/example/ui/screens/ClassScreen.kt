@@ -143,7 +143,10 @@ fun ClassScreen(
     val classesToDisplay = if (canManageSelectedTeacher) visibleOwnedClasses else classes
     // Shared/foreign classes are kept in a separate read-only section at the root,
     // never mixed into the teacher's own folders.
-    val visibleOtherClasses = if (selectedFolderId == null && canManageClasses) {
+    // The separate read-only section belongs only on the root class list.
+    // In a selected teacher folder, `classesToDisplay` already contains these rows;
+    // rendering them again would reuse the same LazyColumn keys and crash on scroll.
+    val visibleOtherClasses = if (teacherKey == null && selectedFolderId == null && canManageClasses) {
         classes.filter {
             (it.id > 0L && it.ownerUid.isNotBlank() && it.ownerUid != ownerUid) || it.id < 0L
         }
