@@ -110,7 +110,7 @@ object CloudMaterialsSync {
             fun classFingerprint(owner: String, item: ClassEntity): String {
                 val metadata = listOf(item.name, item.teacherName, item.term)
                     .joinToString("|") { normalized(it) }
-                return "$owner##$metadata"
+                return metadata
             }
 
             val canonicalSourceClasses = sourceClasses
