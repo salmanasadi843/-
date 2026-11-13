@@ -86,6 +86,7 @@ fun HomeScreen(
     val isTeacher = userRole == UserRole.TEACHER
     val isPrimaryTeacher = isTeacher && AuthPreferences.isPrimaryTeacher(LocalContext.current)
     val context = LocalContext.current
+    val currentOwnerUid = AuthPreferences.currentUid(context).orEmpty()
     val isOnline = rememberNetworkConnection()
     var showBulkExportDialog by androidx.compose.runtime.remember { androidx.compose.runtime.mutableStateOf(false) }
     var showAdvancedSearch by remember { mutableStateOf(false) }
@@ -383,7 +384,32 @@ fun HomeScreen(
                 }
             } else {
                 items(classes, key = { it.id }) { classItem ->
-                    val classLectures = lectures.filter { it.classId == classItem.id }.sortedByDescending { it.dateMillis }
+                    val rawClassLectures = lectures.filter { it.classId == classItem.id }
+                    // Keep the home-card count identical to the foreign-class session screen:
+                    // imported cloud copies and older positive-ID local copies are one visible session.
+                    val classLectures = if (
+                        isTeacher && classItem.ownerUid.isNotBlank() &&
+                        classItem.ownerUid != currentOwnerUid
+                    ) {
+                        rawClassLectures.groupBy { lecture ->
+                            listOf(
+                                lecture.courseName.trim().lowercase()
+                                    .replace('ي', 'ی').replace('ك', 'ک')
+                                    .replace(Regex("\\s+"), " "),
+                                lecture.title.trim().lowercase()
+                                    .replace('ي', 'ی').replace('ك', 'ک')
+                                    .replace(Regex("\\s+"), " "),
+                                lecture.dateMillis.toString()
+                            ).joinToString("|")
+                        }.values.map { copies ->
+                            copies.maxByOrNull {
+                                it.transcript.length + (it.aiSummary?.length ?: 0) +
+                                    (it.aiKeyPoints?.length ?: 0) + it.tags.length +
+                                    if (!it.audioUrl.isNullOrBlank()) 1000 else 0
+                            }!!
+                        }
+                    } else rawClassLectures
+                    val sortedClassLectures = classLectures.sortedByDescending { it.dateMillis }
                     Card(
                         Modifier.fillMaxWidth().clickable { viewModel.openClass(classItem.id) },
                         RoundedCornerShape(22.dp),
@@ -437,7 +463,7 @@ fun HomeScreen(
                             }
                             Spacer(Modifier.height(10.dp))
                             if (!isTeacher && classLectures.isNotEmpty()) {
-                                val latest = classLectures.first()
+                                val latest = sortedClassLectures.first()
                                 OutlinedButton(onClick = { onNavigateToDetail(latest.id) }, Modifier.fillMaxWidth()) {
                                     Icon(Icons.Default.PlayArrow, null)
                                     Spacer(Modifier.width(6.dp))
