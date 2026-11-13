@@ -118,11 +118,14 @@ object CloudMaterialsSync {
                 .values
                 .mapNotNull { entries -> entries.maxByOrNull { it.second.createdAtMillis } }
 
-            // Reuse a teacher-owned local class when the same published class is
-            // present in that account's feed; otherwise a positive local card and a
-            // negative shared card would be displayed side by side.
+            // Reuse an existing positive-ID class (owned by this account or a known
+            // foreign teacher) when the same published class arrives in the shared
+            // feed. Otherwise the positive local/legacy card and negative shared
+            // card can both appear in the read-only section.
+            // Matching foreign rows is safe here: they remain untouched; only the
+            // incoming shared course/session foreign keys target their existing ID.
             val localClassIdByFingerprint = runBlocking { db.classDao().getAllForBackup() }
-                .filter { it.id > 0L && it.ownerUid == uid }
+                .filter { it.id > 0L && it.ownerUid.isNotBlank() }
                 .groupBy { item ->
                     listOf(item.name, item.teacherName, item.term)
                         .joinToString("|") { normalized(it) }
