@@ -2,6 +2,12 @@ rules_version = '2';
 service cloud.firestore {
   match /databases/{database}/documents {
     // Emulator-only rules. Never deploy this permissive test policy.
+    match /shared_materials/{uid} {
+      allow read, write: if true;
+      match /records/{recordId} {
+        allow read, write: if true;
+      }
+    }
     match /teacher_data/{uid} {
       allow read, write: if true;
       match /records/{recordId} {
