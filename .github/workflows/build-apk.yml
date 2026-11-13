@@ -10,6 +10,8 @@ on:
       - "settings.gradle.kts"
       - "gradle.properties"
       - "gradlew"
+      - "firebase.emulator.json"
+      - "firestore.emulator.rules"
       - ".github/workflows/build-apk.yml"
   push:
 
@@ -64,7 +66,7 @@ jobs:
         env:
           FIRESTORE_EMULATOR_HOST: 127.0.0.1:8080
         run: |
-          timeout --signal=TERM --kill-after=30s 20m firebase emulators:exec --config firebase.emulator.json --project demo-darsyar-generation-tests --only firestore "gradle testDebugUnitTest --info --stacktrace"
+          timeout --signal=TERM --kill-after=30s 20m firebase emulators:exec --config firebase.emulator.json --project demo-darsyar-generation-tests --only auth,firestore "gradle testDebugUnitTest --info --stacktrace"
 
       - name: Upload test diagnostics
         if: always()
