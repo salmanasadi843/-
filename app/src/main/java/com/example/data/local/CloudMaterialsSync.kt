@@ -125,7 +125,7 @@ object CloudMaterialsSync {
                     ).documents
                     val expectedCount = document.getLong("recordCount")?.toInt()
                         ?: error("تعداد رکوردهای انتشار استاد $owner موجود نیست؛ اطلاعات قبلی حفظ شد.")
-                    require(expectedCount >= 0 && rows.size() == expectedCount) {
+                    require(expectedCount >= 0 && rows.size == expectedCount) {
                         "انتشار استاد $owner ناقص دریافت شد؛ اطلاعات اشتراکی قبلی حفظ شد."
                     }
                     val payload = JSONObject()
