@@ -40,7 +40,7 @@ internal fun deduplicateMirroredSessions(lectures: List<LectureEntity>): List<Le
 
         buildList {
             for (index in 0 until pairedCount) {
-                add(maxOf(local[index], shared[index], compareBy(::richness)))
+                add(listOf(local[index], shared[index]).maxByOrNull(::richness)!!)
             }
             addAll(local.drop(pairedCount))
             addAll(shared.drop(pairedCount))
