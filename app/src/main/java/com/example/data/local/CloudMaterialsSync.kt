@@ -118,18 +118,29 @@ object CloudMaterialsSync {
                 .values
                 .mapNotNull { entries -> entries.maxByOrNull { it.second.createdAtMillis } }
 
+            // Reuse a teacher-owned local class when the same published class is
+            // present in that account's feed; otherwise a positive local card and a
+            // negative shared card would be displayed side by side.
+            val localClassIdByFingerprint = runBlocking { db.classDao().getAllForBackup() }
+                .filter { it.id > 0L && it.ownerUid == uid }
+                .groupBy { item ->
+                    listOf(item.name, item.teacherName, item.term)
+                        .joinToString("|") { normalized(it) }
+                }
+                .mapValues { (_, copies) -> copies.minByOrNull { it.createdAtMillis }!!.id }
+
             val classIdMap = mutableMapOf<String, Long>()
             val fingerprintToClassId = mutableMapOf<String, Long>()
             canonicalSourceClasses.forEach { (owner, item, _) ->
-                // The same published class can appear in feeds from more than one
-                // teacher account. Use its normalized metadata + content as the identity,
-                // not the feed owner, so identical copies share one imported class.
                 val fingerprint = classFingerprint(owner, item)
                 val importedClassId = fingerprintToClassId.getOrPut(fingerprint) {
-                    stableId("shared-feed", "class-content:$fingerprint")
+                    localClassIdByFingerprint[fingerprint]
+                        ?: stableId("shared-feed", "class-content:$fingerprint")
                 }
                 classIdMap["$owner:${item.id}"] = importedClassId
-                if (allClasses.none { it.id == importedClassId }) {
+                // Existing positive local classes are not reinserted or overwritten.
+                // Incoming shared courses/sessions map to their ID and remain read-only.
+                if (importedClassId < 0L && allClasses.none { it.id == importedClassId }) {
                     allClasses += item.copy(id = importedClassId, ownerUid = owner, folderId = null, isPublished = true)
                 }
             }
