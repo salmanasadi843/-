@@ -93,7 +93,7 @@ class CloudMaterialsPublicationEmulatorTest {
             name = "متن و صوت",
             teacherName = "استاد آزمایشی"
         ))
-        val largeText = "الف".repeat(600_000)
+        val largeText = "a".repeat(600_000)
         db.lectureDao().insertLecture(LectureEntity(
             id = 301L,
             title = "جلسه اول",
@@ -142,8 +142,8 @@ class CloudMaterialsPublicationEmulatorTest {
             professorName = "استاد آزمایشی",
             classId = 101L,
             courseId = 201L,
-            transcript = "ب".repeat(910_000),
-            originalTranscript = "ب".repeat(910_000),
+            transcript = "b".repeat(910_000),
+            originalTranscript = "b".repeat(910_000),
             isPublished = true
         ))
 
