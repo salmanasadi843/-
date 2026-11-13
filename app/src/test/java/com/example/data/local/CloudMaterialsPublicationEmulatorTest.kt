@@ -16,7 +16,9 @@ import org.junit.Test
 import org.junit.runner.RunWith
 import org.robolectric.RobolectricTestRunner
 import org.robolectric.annotation.Config
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.runBlocking
+import kotlinx.coroutines.withContext
 import java.util.UUID
 import java.util.concurrent.CountDownLatch
 import java.util.concurrent.TimeUnit
@@ -26,6 +28,7 @@ import java.util.concurrent.TimeUnit
 class CloudMaterialsPublicationEmulatorTest {
     @Test
     fun publishesAggregatePayloadOverOneMiBAsSeparateRecordsAndPreservesOldGenerationOnOversize() = runBlocking {
+        withContext(Dispatchers.IO) {
         val context = ApplicationProvider.getApplicationContext<Context>()
         val app = FirebaseApp.getApps(context).firstOrNull()
             ?: FirebaseApp.initializeApp(
@@ -161,5 +164,6 @@ class CloudMaterialsPublicationEmulatorTest {
             "invalid-generation", afterFailure.getString("activeGeneration"))
 
         AuthPreferences.logout(context)
+        }
     }
 }
