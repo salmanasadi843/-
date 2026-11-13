@@ -48,18 +48,58 @@ object CloudMaterialsSync {
                 lecture.id > 0L && lecture.isPublished &&
                     lecture.classId?.let { it > 0L && it in visibleClassIds } == true
             }
-            val payload = JSONObject()
-                .put("format", "darsyar-shared-materials")
-                .put("version", 1)
-                .put("teacherName", AuthPreferences.currentName(context))
-                .put("classes", JSONArray().apply { classes.forEach { put(it.copy(ownerUid = uid).toJson()) } })
-                .put("courses", JSONArray().apply { courses.forEach { put(it.toJson()) } })
-                .put("lectures", JSONArray().apply { lectures.map { it.toJson() }.forEach { put(it) } })
-            Tasks.await(
+            val payloadRecords = buildList {
+                classes.forEach { add("class" to it.copy(ownerUid = uid).toJson()) }
+                courses.forEach { add("course" to it.toJson()) }
+                lectures.forEach { add("lecture" to it.toJson()) }
+            }
+            // One document per record avoids the 1 MiB limit of a single JSON feed.
+            // A fresh generation is staged first; the root pointer changes only after
+            // every chunk succeeds, so readers keep seeing the previous valid version.
+            val feedRef = firestore.collection("shared_materials").document(uid)
+            val oldRoot = Tasks.await(feedRef.get())
+            val oldOwner = oldRoot.getString("ownerUid")
+            require(!oldRoot.exists() || oldOwner == uid) {
+                "مالکیت مطالب آنلاین با حساب فعلی تطبیق ندارد؛ انتشار متوقف شد."
+            }
+            val generation = java.util.UUID.randomUUID().toString()
+            val recordRefs = payloadRecords.mapIndexed { index, pair ->
+                val json = pair.second.toString()
+                require(json.toByteArray(Charsets.UTF_8).size < 900_000) {
+                    "یکی از جلسات به‌تنهایی بیش از حد مجاز بزرگ است؛ انتشار متوقف شد و نسخه قبلی حفظ شد."
+                }
+                val recordId = "${pair.first}_${when (pair.first) {
+                    "class" -> pair.second.optLong("id")
+                    "course" -> pair.second.optLong("id")
+                    else -> pair.second.optLong("id")
+                }}"
                 firestore.collection("shared_materials").document(uid)
-                    .set(mapOf("ownerUid" to uid, "payload" to payload.toString(), "updatedAt" to System.currentTimeMillis()))
-            )
-            "مطالب متنی و لینک‌های صوت با موفقیت در فضای آنلاین به‌روزرسانی شد."
+                    .collection("records").document("${generation}__${recordId}") to mapOf(
+                        "ownerUid" to uid,
+                        "generation" to generation,
+                        "recordType" to pair.first,
+                        "dataJson" to json
+                    )
+            }
+            recordRefs.chunked(400).forEach { chunk ->
+                val batch = firestore.batch()
+                chunk.forEach { (ref, data) -> batch.set(ref, data) }
+                Tasks.await(batch.commit())
+            }
+            // Publish the new generation atomically after all records are staged.
+            Tasks.await(feedRef.set(mapOf(
+                "ownerUid" to uid,
+                "schemaVersion" to 2,
+                "activeGeneration" to generation,
+                "teacherName" to AuthPreferences.currentName(context),
+                "classCount" to classes.size,
+                "courseCount" to courses.size,
+                "lectureCount" to lectures.size,
+                "recordCount" to recordRefs.size,
+                "payload" to com.google.firebase.firestore.FieldValue.delete(),
+                "updatedAt" to System.currentTimeMillis()
+            ), com.google.firebase.firestore.SetOptions.merge()))
+            "انتشار مرحله‌ای انجام شد: ${classes.size} کلاس، ${courses.size} درس و ${lectures.size} جلسه. نسخه قبلی تا تکمیل انتشار جدید حفظ شد."
         } else {
             val documents = Tasks.await(firestore.collection("shared_materials").get()).documents
                 .filter { it.id != uid }
@@ -68,9 +108,38 @@ object CloudMaterialsSync {
             val allLectures = mutableListOf<LectureEntity>()
             val validPayloads = documents.mapNotNull { document ->
                 val owner = document.getString("ownerUid") ?: document.id
-                val payloadText = document.getString("payload") ?: return@mapNotNull null
-                val payload = runCatching { JSONObject(payloadText) }.getOrNull() ?: return@mapNotNull null
-                if (payload.optString("format") != "darsyar-shared-materials") null else owner to payload
+                val schemaVersion = document.getLong("schemaVersion")
+                if (schemaVersion == 2L) {
+                    val generation = document.getString("activeGeneration") ?: return@mapNotNull null
+                    val rows = Tasks.await(
+                        firestore.collection("shared_materials").document(document.id)
+                            .collection("records").whereEqualTo("generation", generation).get()
+                    ).documents
+                    val payload = JSONObject()
+                        .put("format", "darsyar-shared-materials")
+                        .put("version", 2)
+                        .put("teacherName", document.getString("teacherName") ?: "استاد")
+                    val grouped = mapOf(
+                        "class" to JSONArray(),
+                        "course" to JSONArray(),
+                        "lecture" to JSONArray()
+                    )
+                    rows.forEach { row ->
+                        val type = row.getString("recordType") ?: return@forEach
+                        val json = row.getString("dataJson") ?: return@forEach
+                        val array = grouped[type] ?: return@forEach
+                        runCatching { array.put(JSONObject(json)) }
+                    }
+                    payload.put("classes", grouped.getValue("class"))
+                        .put("courses", grouped.getValue("course"))
+                        .put("lectures", grouped.getValue("lecture"))
+                    owner to payload
+                } else {
+                    // Backward compatibility: read existing version-1 JSON feeds.
+                    val payloadText = document.getString("payload") ?: return@mapNotNull null
+                    val payload = runCatching { JSONObject(payloadText) }.getOrNull() ?: return@mapNotNull null
+                    if (payload.optString("format") != "darsyar-shared-materials") null else owner to payload
+                }
             }
 
             // Merge duplicate class cards by normalized name + teacher + term, but remap
