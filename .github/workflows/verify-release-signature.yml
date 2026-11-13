@@ -1,6 +1,9 @@
 name: Verify Darsyar Release Signing
 
 on:
+  pull_request:
+    branches:
+      - fix/keep-teacher-class-identities-v1.0.8
   push:
     branches:
       - fix/keep-teacher-class-identities-v1.0.8

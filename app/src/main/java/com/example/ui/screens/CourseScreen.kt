@@ -65,13 +65,28 @@ fun ClassSessionsScreen(
     val classSessions = allLectures
         .filter { it.classId == classId || (it.classId == null && it.courseId in courseIdsForClass) }
     // Legacy sessions keep their previous date-based order until a manual order is saved.
-    val sessions = if (classSessions.any { it.sortOrder != 0 }) {
-        classSessions.sortedWith(
+    // A foreign teacher's published feed may coexist with an older positive-ID
+    // local copy. Keep every Room row untouched, but show a single richer card for
+    // matching copies (same course/title/date) to avoid doubled session counts.
+    fun sessionDisplayKey(lecture: LectureEntity): String = listOf(
+        lecture.courseName.trim().lowercase().replace('ي', 'ی').replace('ك', 'ک').replace(Regex("\\s+"), " "),
+        lecture.title.trim().lowercase().replace('ي', 'ی').replace('ك', 'ک').replace(Regex("\\s+"), " "),
+        lecture.dateMillis.toString()
+    ).joinToString("|")
+    val displaySessions = if (classOwnerUid.isNotBlank() && classOwnerUid != currentOwnerUid) {
+        classSessions.groupBy(::sessionDisplayKey).values.map { copies ->
+            copies.maxByOrNull { it.transcript.length + (it.aiSummary?.length ?: 0) +
+                (it.aiKeyPoints?.length ?: 0) + it.tags.length +
+                if (!it.audioUrl.isNullOrBlank()) 1000 else 0 }!!
+        }
+    } else classSessions
+    val sessions = if (displaySessions.any { it.sortOrder != 0 }) {
+        displaySessions.sortedWith(
             compareBy<LectureEntity> { if (it.sortOrder == 0) Int.MAX_VALUE else it.sortOrder }
                 .thenByDescending { it.dateMillis }
         )
     } else {
-        classSessions.sortedByDescending { it.dateMillis }
+        displaySessions.sortedByDescending { it.dateMillis }
     }
 
     Scaffold(
