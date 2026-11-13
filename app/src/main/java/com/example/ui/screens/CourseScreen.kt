@@ -64,14 +64,16 @@ fun ClassSessionsScreen(
     }
     val classSessions = allLectures
         .filter { it.classId == classId || (it.classId == null && it.courseId in courseIdsForClass) }
+    // Keep Room rows intact; collapse only mirrored positive-local / negative-shared copies.
+    val displaySessions = deduplicateMirroredSessions(classSessions)
     // Legacy sessions keep their previous date-based order until a manual order is saved.
-    val sessions = if (classSessions.any { it.sortOrder != 0 }) {
-        classSessions.sortedWith(
+    val sessions = if (displaySessions.any { it.sortOrder != 0 }) {
+        displaySessions.sortedWith(
             compareBy<LectureEntity> { if (it.sortOrder == 0) Int.MAX_VALUE else it.sortOrder }
                 .thenByDescending { it.dateMillis }
         )
     } else {
-        classSessions.sortedByDescending { it.dateMillis }
+        displaySessions.sortedByDescending { it.dateMillis }
     }
 
     Scaffold(
