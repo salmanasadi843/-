@@ -2,6 +2,13 @@ rules_version = '2';
 service cloud.firestore {
   match /databases/{database}/documents {
     // Emulator-only rules. Never deploy this permissive test policy.
+    // AuthPreferences.login reads the signed-in user's profile and approval record.
+    match /users/{uid} {
+      allow read, write: if request.auth != null && request.auth.uid == uid;
+    }
+    match /approved_teachers/{uid} {
+      allow read, write: if request.auth != null && request.auth.uid == uid;
+    }
     match /shared_materials/{uid} {
       allow read, write: if true;
       match /records/{recordId} {
