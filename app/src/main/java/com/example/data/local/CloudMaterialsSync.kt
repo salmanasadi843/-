@@ -103,18 +103,31 @@ object CloudMaterialsSync {
         } else {
             val documents = Tasks.await(firestore.collection("shared_materials").get()).documents
                 .filter { it.id != uid }
+            // An empty or partially readable feed must never erase the previously
+            // imported shared cache on this device.
+            require(documents.isNotEmpty()) {
+                "هیچ فید انتشار معتبری دریافت نشد؛ اطلاعات اشتراکی قبلی گوشی حفظ شد."
+            }
             val allClasses = mutableListOf<ClassEntity>()
             val allCourses = mutableListOf<CourseEntity>()
             val allLectures = mutableListOf<LectureEntity>()
-            val validPayloads = documents.mapNotNull { document ->
+            val validPayloads = documents.map { document ->
                 val owner = document.getString("ownerUid") ?: document.id
+                require(owner == document.id) { "مالک فید انتشار معتبر نیست؛ همگام‌سازی متوقف شد." }
                 val schemaVersion = document.getLong("schemaVersion")
                 if (schemaVersion == 2L) {
-                    val generation = document.getString("activeGeneration") ?: return@mapNotNull null
+                    val generation = requireNotNull(document.getString("activeGeneration")) {
+                        "نسل فعال انتشار استاد $owner مشخص نیست؛ اطلاعات قبلی حفظ شد."
+                    }
                     val rows = Tasks.await(
                         firestore.collection("shared_materials").document(document.id)
                             .collection("records").whereEqualTo("generation", generation).get()
                     ).documents
+                    val expectedCount = document.getLong("recordCount")?.toInt()
+                        ?: error("تعداد رکوردهای انتشار استاد $owner موجود نیست؛ اطلاعات قبلی حفظ شد.")
+                    require(expectedCount >= 0 && rows.size() == expectedCount) {
+                        "انتشار استاد $owner ناقص دریافت شد؛ اطلاعات اشتراکی قبلی حفظ شد."
+                    }
                     val payload = JSONObject()
                         .put("format", "darsyar-shared-materials")
                         .put("version", 2)
@@ -125,10 +138,24 @@ object CloudMaterialsSync {
                         "lecture" to JSONArray()
                     )
                     rows.forEach { row ->
-                        val type = row.getString("recordType") ?: return@forEach
-                        val json = row.getString("dataJson") ?: return@forEach
-                        val array = grouped[type] ?: return@forEach
-                        runCatching { array.put(JSONObject(json)) }
+                        require(row.getString("ownerUid") == owner && row.getString("generation") == generation) {
+                            "مالکیت یا نسل یکی از رکوردهای انتشار ناسازگار است؛ اطلاعات قبلی حفظ شد."
+                        }
+                        val type = requireNotNull(row.getString("recordType")) {
+                            "نوع یکی از رکوردهای انتشار مشخص نیست؛ اطلاعات قبلی حفظ شد."
+                        }
+                        val json = requireNotNull(row.getString("dataJson")) {
+                            "محتوای یکی از رکوردهای انتشار ناقص است؛ اطلاعات قبلی حفظ شد."
+                        }
+                        val array = requireNotNull(grouped[type]) {
+                            "نوع رکورد انتشار ناشناخته است؛ اطلاعات قبلی حفظ شد."
+                        }
+                        array.put(JSONObject(json))
+                    }
+                    require(grouped.getValue("class").length() == document.getLong("classCount")?.toInt() &&
+                        grouped.getValue("course").length() == document.getLong("courseCount")?.toInt() &&
+                        grouped.getValue("lecture").length() == document.getLong("lectureCount")?.toInt()) {
+                        "تعداد کلاس‌ها یا جلسات انتشار با فهرست رکوردها سازگار نیست؛ اطلاعات قبلی حفظ شد."
                     }
                     payload.put("classes", grouped.getValue("class"))
                         .put("courses", grouped.getValue("course"))
@@ -136,9 +163,14 @@ object CloudMaterialsSync {
                     owner to payload
                 } else {
                     // Backward compatibility: read existing version-1 JSON feeds.
-                    val payloadText = document.getString("payload") ?: return@mapNotNull null
-                    val payload = runCatching { JSONObject(payloadText) }.getOrNull() ?: return@mapNotNull null
-                    if (payload.optString("format") != "darsyar-shared-materials") null else owner to payload
+                    val payloadText = requireNotNull(document.getString("payload")) {
+                        "فید قدیمی استاد $owner قابل خواندن نیست؛ اطلاعات قبلی حفظ شد."
+                    }
+                    val payload = JSONObject(payloadText)
+                    require(payload.optString("format") == "darsyar-shared-materials") {
+                        "قالب فید قدیمی استاد $owner معتبر نیست؛ اطلاعات قبلی حفظ شد."
+                    }
+                    owner to payload
                 }
             }
 
