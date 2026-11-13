@@ -67,6 +67,7 @@ fun HomeScreen(
 ) {
     val allClasses by viewModel.repository.allClasses.collectAsState(initial = emptyList())
     val allLectures by viewModel.repository.allLectures.collectAsState(initial = emptyList())
+    val allCourses by viewModel.repository.allCoursesDetailed.collectAsState(initial = emptyList())
     val studentSyncStatus by viewModel.studentMaterialsSyncStatus.collectAsState()
     LaunchedEffect(userRole) { if (userRole == UserRole.STUDENT) viewModel.startStudentMaterialsSync() }
     // While refreshing, do not expose stale cached classes whose publication may have been revoked.
@@ -86,7 +87,6 @@ fun HomeScreen(
     val isTeacher = userRole == UserRole.TEACHER
     val isPrimaryTeacher = isTeacher && AuthPreferences.isPrimaryTeacher(LocalContext.current)
     val context = LocalContext.current
-    val currentOwnerUid = AuthPreferences.currentUid(context).orEmpty()
     val isOnline = rememberNetworkConnection()
     var showBulkExportDialog by androidx.compose.runtime.remember { androidx.compose.runtime.mutableStateOf(false) }
     var showAdvancedSearch by remember { mutableStateOf(false) }
@@ -384,31 +384,18 @@ fun HomeScreen(
                 }
             } else {
                 items(classes, key = { it.id }) { classItem ->
-                    val rawClassLectures = lectures.filter { it.classId == classItem.id }
-                    // Keep the home-card count identical to the foreign-class session screen:
-                    // imported cloud copies and older positive-ID local copies are one visible session.
-                    val classLectures = if (
-                        isTeacher && classItem.ownerUid.isNotBlank() &&
-                        classItem.ownerUid != currentOwnerUid
-                    ) {
-                        rawClassLectures.groupBy { lecture ->
-                            listOf(
-                                lecture.courseName.trim().lowercase()
-                                    .replace('ي', 'ی').replace('ك', 'ک')
-                                    .replace(Regex("\\s+"), " "),
-                                lecture.title.trim().lowercase()
-                                    .replace('ي', 'ی').replace('ك', 'ک')
-                                    .replace(Regex("\\s+"), " "),
-                                lecture.dateMillis.toString()
-                            ).joinToString("|")
-                        }.values.map { copies ->
-                            copies.maxByOrNull {
-                                it.transcript.length + (it.aiSummary?.length ?: 0) +
-                                    (it.aiKeyPoints?.length ?: 0) + it.tags.length +
-                                    if (!it.audioUrl.isNullOrBlank()) 1000 else 0
-                            }!!
+                    val courseIdsForClass = allCourses
+                        .filter { it.classId == classItem.id }
+                        .map { it.id }
+                        .toSet()
+                    // Use the exact same session source and mirrored-copy rule as the class detail screen.
+                    // Only a positive local ID paired with a negative shared-feed ID is collapsed.
+                    val classLectures = deduplicateMirroredSessions(
+                        lectures.filter {
+                            it.classId == classItem.id ||
+                                (it.classId == null && it.courseId in courseIdsForClass)
                         }
-                    } else rawClassLectures
+                    )
                     val sortedClassLectures = classLectures.sortedByDescending { it.dateMillis }
                     Card(
                         Modifier.fillMaxWidth().clickable { viewModel.openClass(classItem.id) },
