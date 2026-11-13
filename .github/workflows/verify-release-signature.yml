@@ -3,7 +3,7 @@ name: Verify Darsyar Release Signing
 on:
   push:
     branches:
-      - fix/teacher-feed-local-class-dedupe-v1.0.6
+      - fix/shared-feed-foreign-positive-dedupe-v1.0.7
     paths:
       - "app/**"
       - "gradle/**"
