@@ -16,6 +16,7 @@ import org.junit.Test
 import org.junit.runner.RunWith
 import org.robolectric.RobolectricTestRunner
 import org.robolectric.annotation.Config
+import kotlinx.coroutines.runBlocking
 import java.util.UUID
 import java.util.concurrent.CountDownLatch
 import java.util.concurrent.TimeUnit
@@ -24,7 +25,7 @@ import java.util.concurrent.TimeUnit
 @Config(sdk = [35])
 class CloudMaterialsPublicationEmulatorTest {
     @Test
-    fun publishesAggregatePayloadOverOneMiBAsSeparateRecordsAndPreservesOldGenerationOnOversize() {
+    fun publishesAggregatePayloadOverOneMiBAsSeparateRecordsAndPreservesOldGenerationOnOversize() = runBlocking {
         val context = ApplicationProvider.getApplicationContext<Context>()
         val app = FirebaseApp.getApps(context).firstOrNull()
             ?: FirebaseApp.initializeApp(
