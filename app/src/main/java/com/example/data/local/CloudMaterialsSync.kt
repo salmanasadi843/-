@@ -110,7 +110,7 @@ object CloudMaterialsSync {
             fun classFingerprint(owner: String, item: ClassEntity): String {
                 val metadata = listOf(item.name, item.teacherName, item.term)
                     .joinToString("|") { normalized(it) }
-                return metadata
+                return "$owner|$metadata"
             }
 
             val canonicalSourceClasses = sourceClasses
@@ -127,8 +127,9 @@ object CloudMaterialsSync {
             val localClassIdByFingerprint = runBlocking { db.classDao().getAllForBackup() }
                 .filter { it.id > 0L && it.ownerUid.isNotBlank() }
                 .groupBy { item ->
-                    listOf(item.name, item.teacherName, item.term)
+                    val metadata = listOf(item.name, item.teacherName, item.term)
                         .joinToString("|") { normalized(it) }
+                    "${item.ownerUid}|$metadata"
                 }
                 .mapValues { (_, copies) -> copies.minByOrNull { it.createdAtMillis }!!.id }
 

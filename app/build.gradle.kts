@@ -28,8 +28,8 @@ android {
         applicationId = "com.aistudio.lecturehub.kqmzv"
         minSdk = 24
         targetSdk = 36
-        versionCode = 8
-        versionName = "1.0.7"
+        versionCode = 9
+        versionName = "1.0.8"
 
         buildConfigField("String", "DARSYAR_API_BASE_URL", "\"$escapedDarsyarApiBaseUrl\"")
 
