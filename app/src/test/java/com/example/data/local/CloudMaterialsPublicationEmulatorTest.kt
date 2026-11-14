@@ -26,7 +26,7 @@ import java.util.concurrent.TimeUnit
 @RunWith(RobolectricTestRunner::class)
 @Config(sdk = [35])
 class CloudMaterialsPublicationEmulatorTest {
-    @Test
+    @Test(timeout = 180_000)
     fun publishesAggregatePayloadOverOneMiBAsSeparateRecordsAndPreservesOldGenerationOnOversize() = runBlocking {
         withContext(Dispatchers.IO) {
         val context = ApplicationProvider.getApplicationContext<Context>()
