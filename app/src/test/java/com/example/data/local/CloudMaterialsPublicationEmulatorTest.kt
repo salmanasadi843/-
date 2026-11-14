@@ -9,16 +9,12 @@ import com.google.firebase.firestore.FirebaseFirestore
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertNotEquals
 import org.junit.Assert.assertTrue
-import org.junit.Before
 import org.junit.Test
 import org.junit.runner.RunWith
 import org.robolectric.RobolectricTestRunner
 import org.robolectric.annotation.Config
-import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.runBlocking
-import kotlinx.coroutines.withContext
 import java.util.UUID
-import java.util.concurrent.TimeUnit
 import java.util.concurrent.TimeUnit
 
 @RunWith(RobolectricTestRunner::class)
@@ -26,7 +22,6 @@ import java.util.concurrent.TimeUnit
 class CloudMaterialsPublicationEmulatorTest {
     @Test(timeout = 180_000)
     fun publishesAggregatePayloadOverOneMiBAsSeparateRecordsAndPreservesOldGenerationOnOversize() = runBlocking {
-        withContext(Dispatchers.IO) {
         println("PUBTEST checkpoint: start")
         val context = ApplicationProvider.getApplicationContext<Context>()
         // Production code in AuthPreferences and CloudMaterialsSync uses the DEFAULT
@@ -153,7 +148,5 @@ class CloudMaterialsPublicationEmulatorTest {
             "invalid-generation", afterFailure.getString("activeGeneration"))
 
         println("PUBTEST checkpoint: oversized generation preserved; test finishing")
-        AuthPreferences.logout(context)
-        }
     }
 }
