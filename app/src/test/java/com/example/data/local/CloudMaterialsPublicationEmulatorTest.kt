@@ -2,11 +2,9 @@ package com.example.data.local
 
 import android.content.Context
 import androidx.test.core.app.ApplicationProvider
-import com.example.ui.screens.AuthPreferences
 import com.google.android.gms.tasks.Tasks
 import com.google.firebase.FirebaseApp
 import com.google.firebase.FirebaseOptions
-import com.google.firebase.auth.FirebaseAuth
 import com.google.firebase.firestore.FirebaseFirestore
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertNotEquals
@@ -21,7 +19,6 @@ import kotlinx.coroutines.runBlocking
 import kotlinx.coroutines.withContext
 import java.util.UUID
 import java.util.concurrent.TimeUnit
-import java.util.concurrent.CountDownLatch
 import java.util.concurrent.TimeUnit
 
 @RunWith(RobolectricTestRunner::class)
@@ -51,41 +48,23 @@ class CloudMaterialsPublicationEmulatorTest {
         val parts = emulatorHost.split(":")
         require(parts.size == 2) { "FIRESTORE_EMULATOR_HOST must be host:port" }
 
-        val auth = FirebaseAuth.getInstance(app)
-        auth.useEmulator(parts[0], 9099)
         val firestore = FirebaseFirestore.getInstance(app)
         firestore.firestoreSettings = com.google.firebase.firestore.FirebaseFirestoreSettings.Builder()
             .setPersistenceEnabled(false)
             .build()
         firestore.useEmulator(parts[0], parts[1].toInt())
 
-        val suffix = UUID.randomUUID().toString().replace("-", "")
-        val email = "publication-$suffix@example.invalid"
-        val password = "TestPass123!"
-        println("PUBTEST checkpoint: emulator configured on app ${app.name}; creating auth user")
-        val user = Tasks.await(auth.createUserWithEmailAndPassword(email, password), 30, TimeUnit.SECONDS).user
-            ?: error("Firebase Auth emulator did not return a user")
-        val uid = user.uid
-
+        val uid = "publication-test-${UUID.randomUUID()}"
+        println("PUBTEST checkpoint: emulator configured; using isolated test UID")
         Tasks.await(firestore.collection("users").document(uid).set(mapOf(
-            "uid" to uid, "email" to email, "name" to "استاد آزمایشی", "role" to "TEACHER"
+            "uid" to uid, "name" to "استاد آزمایشی", "role" to "TEACHER"
         )), 30, TimeUnit.SECONDS)
         Tasks.await(firestore.collection("approved_teachers").document(uid).set(mapOf(
             "ownerUid" to uid, "enabled" to true, "approved" to true
         )), 30, TimeUnit.SECONDS)
 
-        println("PUBTEST checkpoint: firestore seed complete; AuthPreferences.login")
-        val loginLatch = CountDownLatch(1)
-        var loginFailure: Throwable? = null
-        AuthPreferences.login(context, email, password) { result ->
-            loginFailure = result.exceptionOrNull()
-            loginLatch.countDown()
-        }
-        assertTrue("Teacher login did not finish", loginLatch.await(30, TimeUnit.SECONDS))
-        loginFailure?.let { throw AssertionError("Teacher login failed", it) }
-        assertEquals(uid, AuthPreferences.currentUid(context))
+        println("PUBTEST checkpoint: preparing Room")
 
-        println("PUBTEST checkpoint: login succeeded; preparing Room")
         val db = AppDatabase.getDatabase(context)
         db.lectureDao().clearForRestore()
         db.courseDao().clearForRestore()
@@ -162,7 +141,7 @@ class CloudMaterialsPublicationEmulatorTest {
 
         var oversizedRejected = false
         try {
-            CloudMaterialsSync.sync(context)
+            CloudMaterialsSync.syncAsTeacherForEmulatorTest(context, uid)
         } catch (_: IllegalArgumentException) {
             oversizedRejected = true
         }
