@@ -59,16 +59,16 @@ class CloudMaterialsPublicationEmulatorTest {
         val email = "publication-$suffix@example.invalid"
         val password = "TestPass123!"
         println("PUBTEST checkpoint: emulator configured; creating auth user")
-        val user = Tasks.await(auth.createUserWithEmailAndPassword(email, password)).user
+        val user = Tasks.await(auth.createUserWithEmailAndPassword(email, password), 30, TimeUnit.SECONDS).user
             ?: error("Firebase Auth emulator did not return a user")
         val uid = user.uid
 
         Tasks.await(firestore.collection("users").document(uid).set(mapOf(
             "uid" to uid, "email" to email, "name" to "استاد آزمایشی", "role" to "TEACHER"
-        )))
+        )), 30, TimeUnit.SECONDS)
         Tasks.await(firestore.collection("approved_teachers").document(uid).set(mapOf(
             "ownerUid" to uid, "enabled" to true, "approved" to true
-        )))
+        )), 30, TimeUnit.SECONDS)
 
         println("PUBTEST checkpoint: firestore seed complete; AuthPreferences.login")
         val loginLatch = CountDownLatch(1)
@@ -128,11 +128,11 @@ class CloudMaterialsPublicationEmulatorTest {
         val message = CloudMaterialsSync.sync(context)
         assertTrue(message.contains("2 جلسه"))
         val root = firestore.collection("shared_materials").document(uid)
-        val publishedRoot = Tasks.await(root.get())
+        val publishedRoot = Tasks.await(root.get(), 30, TimeUnit.SECONDS)
         val activeGeneration = requireNotNull(publishedRoot.getString("activeGeneration"))
         assertEquals(4L, publishedRoot.getLong("recordCount"))
         val activeRecords = Tasks.await(
-            root.collection("records").whereEqualTo("generation", activeGeneration).get()
+            root.collection("records").whereEqualTo("generation", activeGeneration).get(), 30, TimeUnit.SECONDS
         )
         assertEquals(4, activeRecords.size())
         val payloadBytes = activeRecords.documents.sumOf {
