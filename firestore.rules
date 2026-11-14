@@ -102,6 +102,22 @@ service cloud.firestore {
                             && request.resource.data.ownerUid == teacherUid;
       allow delete: if approvedTeacher(teacherUid)
                     && resource.data.ownerUid == teacherUid;
+
+      // Version-2 publication stores each class/course/session in its own document.
+      // The teacher can write only inside their own feed; authenticated users can read.
+      match /records/{recordId} {
+        allow read: if request.auth != null;
+        allow create: if approvedTeacher(teacherUid)
+                      && request.resource.data.ownerUid == teacherUid
+                      && request.resource.data.generation is string
+                      && request.resource.data.recordType in ['class', 'course', 'lecture']
+                      && request.resource.data.dataJson is string;
+        allow update: if approvedTeacher(teacherUid)
+                      && resource.data.ownerUid == teacherUid
+                      && request.resource.data.ownerUid == teacherUid;
+        allow delete: if approvedTeacher(teacherUid)
+                      && resource.data.ownerUid == teacherUid;
+      }
     }
 
     function activeTeacher(uid) {
