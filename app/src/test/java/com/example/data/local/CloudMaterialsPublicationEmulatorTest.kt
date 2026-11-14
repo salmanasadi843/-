@@ -13,6 +13,7 @@ import org.junit.Test
 import org.junit.runner.RunWith
 import org.robolectric.RobolectricTestRunner
 import org.robolectric.annotation.Config
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.runBlocking
 import java.util.UUID
 import java.util.concurrent.TimeUnit
@@ -21,7 +22,7 @@ import java.util.concurrent.TimeUnit
 @Config(sdk = [35])
 class CloudMaterialsPublicationEmulatorTest {
     @Test(timeout = 180_000)
-    fun publishesAggregatePayloadOverOneMiBAsSeparateRecordsAndPreservesOldGenerationOnOversize() = runBlocking {
+    fun publishesAggregatePayloadOverOneMiBAsSeparateRecordsAndPreservesOldGenerationOnOversize() = runBlocking(Dispatchers.IO) {
         println("PUBTEST checkpoint: start")
         val context = ApplicationProvider.getApplicationContext<Context>()
         // Production code in AuthPreferences and CloudMaterialsSync uses the DEFAULT
