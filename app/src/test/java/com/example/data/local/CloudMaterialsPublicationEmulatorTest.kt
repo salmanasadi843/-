@@ -29,6 +29,7 @@ class CloudMaterialsPublicationEmulatorTest {
     @Test(timeout = 180_000)
     fun publishesAggregatePayloadOverOneMiBAsSeparateRecordsAndPreservesOldGenerationOnOversize() = runBlocking {
         withContext(Dispatchers.IO) {
+        println("PUBTEST checkpoint: start")
         val context = ApplicationProvider.getApplicationContext<Context>()
         val app = FirebaseApp.getApps(context).firstOrNull()
             ?: FirebaseApp.initializeApp(
@@ -57,6 +58,7 @@ class CloudMaterialsPublicationEmulatorTest {
         val suffix = UUID.randomUUID().toString().replace("-", "")
         val email = "publication-$suffix@example.invalid"
         val password = "TestPass123!"
+        println("PUBTEST checkpoint: emulator configured; creating auth user")
         val user = Tasks.await(auth.createUserWithEmailAndPassword(email, password)).user
             ?: error("Firebase Auth emulator did not return a user")
         val uid = user.uid
@@ -68,6 +70,7 @@ class CloudMaterialsPublicationEmulatorTest {
             "ownerUid" to uid, "enabled" to true, "approved" to true
         )))
 
+        println("PUBTEST checkpoint: firestore seed complete; AuthPreferences.login")
         val loginLatch = CountDownLatch(1)
         var loginFailure: Throwable? = null
         AuthPreferences.login(context, email, password) { result ->
@@ -78,6 +81,7 @@ class CloudMaterialsPublicationEmulatorTest {
         loginFailure?.let { throw AssertionError("Teacher login failed", it) }
         assertEquals(uid, AuthPreferences.currentUid(context))
 
+        println("PUBTEST checkpoint: login succeeded; preparing Room")
         val db = AppDatabase.getDatabase(context)
         db.lectureDao().clearForRestore()
         db.courseDao().clearForRestore()
@@ -120,6 +124,7 @@ class CloudMaterialsPublicationEmulatorTest {
             isPublished = true
         ))
 
+        println("PUBTEST checkpoint: Room seeded; first CloudMaterialsSync.sync")
         val message = CloudMaterialsSync.sync(context)
         assertTrue(message.contains("2 جلسه"))
         val root = firestore.collection("shared_materials").document(uid)
@@ -138,6 +143,7 @@ class CloudMaterialsPublicationEmulatorTest {
             requireNotNull(it.getString("dataJson")).toByteArray(Charsets.UTF_8).size < 900_000
         })
 
+        println("PUBTEST checkpoint: first generation validated; inserting oversized record")
         db.lectureDao().insertLecture(LectureEntity(
             id = 303L,
             title = "جلسه بیش از حد بزرگ",
@@ -163,6 +169,7 @@ class CloudMaterialsPublicationEmulatorTest {
         assertNotEquals("The active generation must not be replaced after a rejected upload",
             "invalid-generation", afterFailure.getString("activeGeneration"))
 
+        println("PUBTEST checkpoint: oversized generation preserved; test finishing")
         AuthPreferences.logout(context)
         }
     }
