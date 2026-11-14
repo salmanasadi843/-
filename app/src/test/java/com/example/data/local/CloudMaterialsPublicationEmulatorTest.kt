@@ -31,7 +31,10 @@ class CloudMaterialsPublicationEmulatorTest {
         withContext(Dispatchers.IO) {
         println("PUBTEST checkpoint: start")
         val context = ApplicationProvider.getApplicationContext<Context>()
-        val app = FirebaseApp.getApps(context).firstOrNull()
+        // Production code in AuthPreferences and CloudMaterialsSync uses the DEFAULT
+        // Firebase app. Never select the first app: other tests create named apps and
+        // their iteration order is not a valid way to obtain the default instance.
+        val app = FirebaseApp.getApps(context).firstOrNull { it.name == "[DEFAULT]" }
             ?: FirebaseApp.initializeApp(
                 context,
                 FirebaseOptions.Builder()
@@ -39,7 +42,7 @@ class CloudMaterialsPublicationEmulatorTest {
                     .setApplicationId("1:123456789:android:publication-tests")
                     .setApiKey("fake-emulator-api-key")
                     .build()
-            ) ?: error("Firebase test app could not initialize")
+            ) ?: error("Default Firebase test app could not initialize")
 
         val emulatorHost = requireNotNull(System.getenv("FIRESTORE_EMULATOR_HOST")) {
             "Firestore Emulator is required for this integration test"
@@ -58,7 +61,7 @@ class CloudMaterialsPublicationEmulatorTest {
         val suffix = UUID.randomUUID().toString().replace("-", "")
         val email = "publication-$suffix@example.invalid"
         val password = "TestPass123!"
-        println("PUBTEST checkpoint: emulator configured; creating auth user")
+        println("PUBTEST checkpoint: emulator configured on app ${app.name}; creating auth user")
         val user = Tasks.await(auth.createUserWithEmailAndPassword(email, password), 30, TimeUnit.SECONDS).user
             ?: error("Firebase Auth emulator did not return a user")
         val uid = user.uid
