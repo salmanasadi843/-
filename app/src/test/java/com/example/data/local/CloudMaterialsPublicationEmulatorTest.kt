@@ -20,6 +20,7 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.runBlocking
 import kotlinx.coroutines.withContext
 import java.util.UUID
+import java.util.concurrent.TimeUnit
 import java.util.concurrent.CountDownLatch
 import java.util.concurrent.TimeUnit
 
@@ -128,7 +129,7 @@ class CloudMaterialsPublicationEmulatorTest {
         ))
 
         println("PUBTEST checkpoint: Room seeded; first CloudMaterialsSync.sync")
-        val message = CloudMaterialsSync.sync(context)
+        val message = CloudMaterialsSync.syncAsTeacherForEmulatorTest(context, uid)
         assertTrue(message.contains("2 جلسه"))
         val root = firestore.collection("shared_materials").document(uid)
         val publishedRoot = Tasks.await(root.get(), 30, TimeUnit.SECONDS)
