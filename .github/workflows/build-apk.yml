@@ -66,7 +66,7 @@ jobs:
         env:
           FIRESTORE_EMULATOR_HOST: 127.0.0.1:8080
         run: |
-          timeout --signal=TERM --kill-after=30s 20m firebase emulators:exec --config firebase.emulator.json --project demo-darsyar-generation-tests --only auth,firestore "echo AUTH_EMULATOR_REST_PROBE; curl -sS -o /tmp/auth-emulator-probe.json -w AUTH_HTTP=%{http_code\\n -X POST \\\x27http://127.0.0.1:9099/identitytoolkit.googleapis.com/v1/accounts:signUp?key=fake-emulator-api-key\\x27 -H \\\x27Content-Type: application/json\\x27 -d \\\x27{\\\"email\\\":\\\"probe@example.invalid\\\",\\\"password\\\":\\\"TestPass123!\\\",\\\"returnSecureToken\\\":true}\\x27; cat /tmp/auth-emulator-probe.json; gradle testDebugUnitTest --info --stacktrace"
+          timeout --signal=TERM --kill-after=30s 20m firebase emulators:exec --config firebase.emulator.json --project demo-darsyar-generation-tests --only auth,firestore "echo AUTH_EMULATOR_PROBE; curl -sS -o /tmp/auth-emulator-probe.txt -w AUTH_HTTP=%{http_code} http://127.0.0.1:9099/; cat /tmp/auth-emulator-probe.txt; gradle testDebugUnitTest --info --stacktrace"
 
       - name: Upload test diagnostics
         if: always()
