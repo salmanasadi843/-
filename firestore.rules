@@ -13,7 +13,8 @@ service cloud.firestore {
              && exists(/databases/$(database)/documents/users/$(uid))
              && get(/databases/$(database)/documents/users/$(uid)).data.role == 'TEACHER'
              && (
-               isPrimaryTeacher()
+               uid == 'xgUdnaQ6X0hPobOUwx3SDI0BJVc2'
+               || isPrimaryTeacher()
                || (
                  exists(/databases/$(database)/documents/approved_teachers/$(uid))
                  && (

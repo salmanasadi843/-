@@ -5,11 +5,13 @@ on:
     branches:
       - fix/keep-teacher-class-identities-v1.0.8
       - fix/mirror-only-session-count-v1.1.0
+      - fix/publish-materials-per-document-v1.1.1
   push:
     branches:
       - fix/keep-teacher-class-identities-v1.0.8
       - fix/mirror-only-session-count-v1.1.0
       - fix/publish-materials-per-document-v1.1.1
+      - fix/student-shared-materials-visibility
     paths:
       - "app/**"
       - "gradle/**"
@@ -119,3 +121,5 @@ jobs:
           path: app/build/outputs/apk/release/app-release.apk
           if-no-files-found: error
           retention-days: 7
+
+# Keep this workflow path in the push filter so isolated release-signature checks can be triggered by branch updates.

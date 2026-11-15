@@ -17,6 +17,7 @@ const projectId = "demo-darsyar-publication-rules";
 const teacherUid = "teacher-owner";
 const otherTeacherUid = "teacher-other";
 const studentUid = "student-reader";
+const primaryAdminUid = "xgUdnaQ6X0hPobOUwx3SDI0BJVc2";
 
 let testEnv;
 
@@ -50,6 +51,7 @@ beforeEach(async () => {
       enabled: true
     });
     await setDoc(doc(db, "users", studentUid), { role: "STUDENT" });
+    await setDoc(doc(db, "users", primaryAdminUid), { role: "TEACHER" });
   });
 });
 
@@ -68,6 +70,25 @@ test("approved teacher can publish a root and separate version-2 records", async
       generation: "generation-a",
       recordType: "lecture",
       dataJson: JSON.stringify({ id: 1, transcript: "متن درس" })
+    }
+  ));
+});
+
+test("primary admin UID can publish even when token email is not the configured email", async () => {
+  const db = testEnv.authenticatedContext(primaryAdminUid, { email: "admin-alias@example.com" }).firestore();
+  await assertSucceeds(setDoc(doc(db, "shared_materials", primaryAdminUid), {
+    ownerUid: primaryAdminUid,
+    schemaVersion: 2,
+    activeGeneration: "admin-generation",
+    recordCount: 1
+  }));
+  await assertSucceeds(setDoc(
+    doc(db, "shared_materials", primaryAdminUid, "records", "admin-generation__lecture_1"),
+    {
+      ownerUid: primaryAdminUid,
+      generation: "admin-generation",
+      recordType: "lecture",
+      dataJson: JSON.stringify({ id: 1, transcript: "متن مدیر" })
     }
   ));
 });
