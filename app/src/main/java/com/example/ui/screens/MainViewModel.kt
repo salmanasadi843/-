@@ -1304,7 +1304,7 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
                 }
 
                 Log.e(TAG, "All transcription providers failed: ${providerErrors.joinToString(" | ")}")
-                _aiError.value = "تبدیل صوت انجام نشد. علت هر سرویس:\\n• " + providerErrors.joinToString("\\n• ")
+                _aiError.value = "تبدیل صوت انجام نشد. علت هر سرویس:\n• " + providerErrors.joinToString("\n• ")
                 _transcriptionProgress.value = TranscriptionProgress(
                     "تبدیل صوت ناموفق بود", 100,
                     totalBytes = audioFile.length(),

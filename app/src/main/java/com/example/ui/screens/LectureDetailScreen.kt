@@ -623,12 +623,6 @@ fun TranscriptTab(
         mutableStateOf(if (searchQuery.isNotBlank() && !containsSearchTerm(originalText, searchQuery) && containsSearchTerm(correctedText, searchQuery)) 1 else 0)
     }
     val displayedTranscript = if (selectedTextTab == 0) originalText else correctedText
-    val highlightedTranscript = highlightSearchTerms(
-        displayedTranscript,
-        searchQuery,
-        MaterialTheme.colorScheme.tertiaryContainer,
-        MaterialTheme.colorScheme.onTertiaryContainer
-    )
     val hasText = originalText.isNotBlank() || correctedText.isNotBlank()
 
     LaunchedEffect(lecture.id, searchQuery, selectedTextTab, transcriptLayout, transcriptTopPx) {
@@ -656,6 +650,14 @@ fun TranscriptTab(
     var handoutLineSpacing by remember(lecture.id) {
         mutableStateOf(handoutPrefs.getFloat("line_spacing", 1f).coerceIn(0.85f, 1.3f))
     }
+
+    val highlightedTranscript = formatTranscriptWithHeadings(
+        content = displayedTranscript,
+        query = searchQuery,
+        background = MaterialTheme.colorScheme.tertiaryContainer,
+        foreground = MaterialTheme.colorScheme.onTertiaryContainer,
+        headingScale = handoutHeadingScale
+    )
 
     Column(
         modifier = Modifier
@@ -789,7 +791,10 @@ fun TranscriptTab(
                     text = highlightedTranscript,
                     modifier = Modifier.padding(horizontal = 18.dp, vertical = 20.dp),
                     onTextLayout = { transcriptLayout = it },
-                    style = MaterialTheme.typography.bodyLarge.copy(lineHeight = 32.sp),
+                    style = MaterialTheme.typography.bodyLarge.copy(
+                        fontSize = handoutBodyFontSize.sp,
+                        lineHeight = (handoutBodyFontSize * 1.7f * handoutLineSpacing).sp
+                    ),
                     textAlign = TextAlign.Start
                 )
             }
@@ -1015,9 +1020,11 @@ fun AiSummaryTab(
                         lineHeight = 22.sp
                     )
                 } else {
-                    Text(
-                        text = lecture.aiSummary,
-                        style = MaterialTheme.typography.bodyMedium.copy(lineHeight = 26.sp)
+                    FormattedHandoutContent(
+                        content = lecture.aiSummary.orEmpty(),
+                        bodyFontSize = 17f,
+                        headingScale = 1f,
+                        lineSpacingScale = 1f
                     )
                 }
             }
@@ -1386,58 +1393,132 @@ private fun containsSearchTerm(content: String, query: String): Boolean {
         .filter { it.isNotBlank() }.any(normalized::contains)
 }
 
-private fun highlightSearchTerms(
+private fun formatTranscriptWithHeadings(
     content: String,
     query: String,
-    background: androidx.compose.ui.graphics.Color,
-    foreground: androidx.compose.ui.graphics.Color
+    background: Color,
+    foreground: Color,
+    headingScale: Float
 ) = buildAnnotatedString {
-    if (query.isBlank() || content.isBlank()) {
-        append(content)
-        return@buildAnnotatedString
+    append(content)
+
+    val numberPattern = Regex("""^([0-9۰-۹]+(?:[ـ.-][0-9۰-۹]+)*[.)]?)\s+(.+)$""")
+    val letterPattern = Regex("""^([الفبپتثجچحخدذرزژسشصضطظعغفقکگلمنوهی])[).ـ]\\s*(.+)$""")
+
+    var offset = 0
+    val lines = content.split('\n')
+    lines.forEachIndexed { index, rawLine ->
+        val leading = rawLine.indexOfFirst { !it.isWhitespace() }.let { if (it < 0) 0 else it }
+        val line = rawLine.trim()
+        if (line.isNotEmpty()) {
+            val start = offset + leading
+            val end = offset + rawLine.length
+            val markdownLevel = line.takeWhile { it == '#' }.length
+            val cleanLine = line.dropWhile { it == '#' }.trim()
+            val numbered = numberPattern.matchEntire(cleanLine)
+            val lettered = letterPattern.matchEntire(cleanLine)
+
+            when {
+                markdownLevel > 0 -> {
+                    val markerEnd = (start + markdownLevel).coerceAtMost(end)
+                    if (markerEnd > start) {
+                        addStyle(
+                            SpanStyle(fontSize = 0.sp, color = Color.Transparent),
+                            start,
+                            markerEnd
+                        )
+                    }
+                    if (end > markerEnd) {
+                        val size = when (markdownLevel) {
+                            1 -> 27f
+                            2 -> 24f
+                            3 -> 21f
+                            else -> 18f
+                        }
+                        addStyle(
+                            SpanStyle(
+                                fontSize = (size * headingScale).sp,
+                                fontWeight = FontWeight.Bold,
+                                color = Color.Black
+                            ),
+                            markerEnd,
+                            end
+                        )
+                    }
+                }
+                numbered != null -> {
+                    val prefix = numbered.groupValues[1]
+                    val level = prefix.trimEnd('.', ')').split(Regex("[ـ.-]")).size
+                    val size = when (level) {
+                        1 -> 25f
+                        2 -> 22f
+                        3 -> 19f
+                        else -> 17f
+                    }
+                    addStyle(
+                        SpanStyle(
+                            fontSize = (size * headingScale).sp,
+                            fontWeight = FontWeight.Bold,
+                            color = Color.Black
+                        ),
+                        start,
+                        end
+                    )
+                }
+                lettered != null -> {
+                    addStyle(
+                        SpanStyle(
+                            fontSize = (17f * headingScale).sp,
+                            fontWeight = FontWeight.SemiBold,
+                            color = Color.Black
+                        ),
+                        start,
+                        end
+                    )
+                }
+            }
+        }
+        offset += rawLine.length + if (index < lines.lastIndex) 1 else 0
     }
 
-    val normalized = StringBuilder()
-    val originalIndexes = mutableListOf<Int>()
-    content.forEachIndexed { index, char ->
-        val normalizedChar = normalizeSearchForHighlight(char.toString())
-        normalizedChar.forEach { outputChar ->
-            normalized.append(outputChar)
-            originalIndexes += index
+    if (query.isNotBlank() && content.isNotBlank()) {
+        val normalized = StringBuilder()
+        val originalIndexes = mutableListOf<Int>()
+        content.forEachIndexed { index, char ->
+            normalizeSearchForHighlight(char.toString()).forEach { normalizedChar ->
+                normalized.append(normalizedChar)
+                originalIndexes += index
+            }
+        }
+
+        val terms = normalizeSearchForHighlight(query).split(Regex("\\s+"))
+            .filter { it.length >= 2 }.distinct()
+        val ranges = mutableListOf<IntRange>()
+        terms.forEach { term ->
+            var from = 0
+            while (from <= normalized.length - term.length) {
+                val found = normalized.indexOf(term, from)
+                if (found < 0) break
+                val start = originalIndexes.getOrNull(found)
+                val end = originalIndexes.getOrNull(found + term.length - 1)?.plus(1)
+                if (start != null && end != null && end > start) ranges += start until end
+                from = found + term.length
+            }
+        }
+
+        val merged = ranges.sortedBy { it.first }.fold(mutableListOf<IntRange>()) { acc, range ->
+            val last = acc.lastOrNull()
+            if (last != null && range.first <= last.last + 1) {
+                acc[acc.lastIndex] = last.first..maxOf(last.last, range.last)
+            } else acc += range
+            acc
+        }
+        merged.forEach { range ->
+            addStyle(
+                SpanStyle(background = background, color = foreground),
+                range.first,
+                range.last + 1
+            )
         }
     }
-
-    val terms = normalizeSearchForHighlight(query).split(Regex("\\s+"))
-        .filter { it.length >= 2 }.distinct()
-    val ranges = mutableListOf<IntRange>()
-    terms.forEach { term ->
-        var from = 0
-        while (from <= normalized.length - term.length) {
-            val found = normalized.indexOf(term, from)
-            if (found < 0) break
-            val start = originalIndexes.getOrNull(found)
-            val end = originalIndexes.getOrNull(found + term.length - 1)?.plus(1)
-            if (start != null && end != null && end > start) ranges += start until end
-            from = found + term.length
-        }
-    }
-
-    val merged = ranges.sortedBy { it.first }.fold(mutableListOf<IntRange>()) { acc, range ->
-        val last = acc.lastOrNull()
-        if (last != null && range.first <= last.last + 1) {
-            acc[acc.lastIndex] = last.first..maxOf(last.last, range.last)
-        } else acc += range
-        acc
-    }
-
-    var cursor = 0
-    merged.forEach { range ->
-        if (range.first > cursor) append(content.substring(cursor, range.first))
-        withStyle(SpanStyle(background = background, color = foreground)) {
-            append(content.substring(range.first, range.last + 1))
-        }
-        cursor = range.last + 1
-    }
-    if (cursor < content.length) append(content.substring(cursor))
 }
-

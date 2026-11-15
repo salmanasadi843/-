@@ -1,0 +1,52 @@
+name: Firestore Publication Rules
+
+on:
+  pull_request:
+    paths:
+      - "firestore.rules"
+      - "firebase.publication-tests.json"
+      - "tools/firestore-rules-tests/**"
+      - ".github/workflows/firestore-publication-rules.yml"
+  push:
+    paths:
+      - "firestore.rules"
+      - "firebase.publication-tests.json"
+      - "tools/firestore-rules-tests/**"
+      - ".github/workflows/firestore-publication-rules.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: firestore-publication-rules-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  publication-rules:
+    name: Verify publication access rules
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v6
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+
+      - name: Install Firebase CLI
+        run: npm install --global firebase-tools
+
+      - name: Install rules test dependencies
+        working-directory: tools/firestore-rules-tests
+        run: npm install --no-audit --no-fund
+
+      - name: Run production Firestore rules against isolated emulators
+        run: |
+          timeout --signal=TERM --kill-after=20s 10m firebase emulators:exec \
+            --config firebase.publication-tests.json \
+            --project demo-darsyar-publication-rules \
+            --only auth,firestore \
+            "npm --prefix tools/firestore-rules-tests test"
