@@ -123,21 +123,7 @@ jobs:
           profile: pixel_5
           disable-animations: true
           script: |
-            set -euo pipefail
-            APK="app/build/outputs/apk/release/app-release.apk"
-            PACKAGE="com.aistudio.lecturehub.kqmzv"
-            echo "=== Install on Android 12 / API 31 ==="
-            echo "Installing signed APK directly; package metadata is already validated during the build and signature check."
-            adb install -r "$APK"
-            echo "=== Installed package ==="
-            adb shell dumpsys package "$PACKAGE" | grep -E "versionCode=|versionName=|minSdk=|targetSdk="
-            echo "=== Resolve launcher ==="
-            adb shell cmd package resolve-activity --brief "$PACKAGE"
-            echo "=== Launch application ==="
-            adb shell monkey -p "$PACKAGE" -c android.intent.category.LAUNCHER 1
-            sleep 5
-            adb shell pidof "$PACKAGE"
-            echo "Android 12 install and launch test passed."
+            bash -euo pipefail -c 'APK="app/build/outputs/apk/release/app-release.apk"; PACKAGE="com.aistudio.lecturehub.kqmzv"; echo "=== Install on Android 12 / API 31 ==="; adb install -r "$APK"; echo "=== Installed package ==="; adb shell dumpsys package "$PACKAGE" | grep -E "versionCode=|versionName=|minSdk=|targetSdk="; echo "=== Resolve launcher ==="; adb shell cmd package resolve-activity --brief "$PACKAGE"; echo "=== Launch application ==="; adb shell monkey -p "$PACKAGE" -c android.intent.category.LAUNCHER 1; sleep 5; adb shell pidof "$PACKAGE"; echo "Android 12 install and launch test passed."'
 
       - name: Upload verified signed Release APK
         uses: actions/upload-artifact@v6
