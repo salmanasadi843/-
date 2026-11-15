@@ -11,9 +11,10 @@ service cloud.firestore {
       return request.auth != null
              && request.auth.uid == uid
              && (
-               // The primary administrator is trusted by their authenticated email.
-               // Do not make their publication depend on a possibly stale cached profile role.
-               isPrimaryTeacher()
+               // The primary administrator is trusted by their immutable Firebase Auth UID.
+               // This bypass is scoped to the administrator's own publication feed.
+               uid == 'xgUdnaQ6X0hPobOUwx3SDI0BJVc2'
+               || isPrimaryTeacher()
                || (
                  exists(/databases/$(database)/documents/users/$(uid))
                  && get(/databases/$(database)/documents/users/$(uid)).data.role == 'TEACHER'
