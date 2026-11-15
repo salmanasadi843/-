@@ -10,12 +10,15 @@ service cloud.firestore {
     function approvedTeacher(uid) {
       return request.auth != null
              && request.auth.uid == uid
-             && exists(/databases/$(database)/documents/users/$(uid))
-             && get(/databases/$(database)/documents/users/$(uid)).data.role == 'TEACHER'
              && (
-               isPrimaryTeacher()
+               // The primary administrator is trusted by their immutable Firebase Auth UID.
+               // This bypass is scoped to the administrator's own publication feed.
+               uid == 'xgUdnaQ6X0hPobOUwx3SDI0BJVc2'
+               || isPrimaryTeacher()
                || (
-                 exists(/databases/$(database)/documents/approved_teachers/$(uid))
+                 exists(/databases/$(database)/documents/users/$(uid))
+                 && get(/databases/$(database)/documents/users/$(uid)).data.role == 'TEACHER'
+                 && exists(/databases/$(database)/documents/approved_teachers/$(uid))
                  && (
                    get(/databases/$(database)/documents/approved_teachers/$(uid)).data.enabled == true
                    || get(/databases/$(database)/documents/approved_teachers/$(uid)).data.approved == true

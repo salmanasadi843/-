@@ -53,6 +53,49 @@ beforeEach(async () => {
   });
 });
 
+test("primary administrator UID can publish with a stale profile role and a different email", async () => {
+  const adminUid = "xgUdnaQ6X0hPobOUwx3SDI0BJVc2";
+  await testEnv.withSecurityRulesDisabled(async (context) => {
+    await setDoc(doc(context.firestore(), "users", adminUid), { role: "STUDENT" });
+  });
+
+  const db = testEnv.authenticatedContext(adminUid, {
+    email: "admin-alias@example.test",
+    email_verified: true
+  }).firestore();
+
+  await assertSucceeds(setDoc(doc(db, "shared_materials", adminUid), {
+    ownerUid: adminUid,
+    schemaVersion: 2,
+    activeGeneration: "admin-generation",
+    recordCount: 1
+  }));
+  await assertSucceeds(setDoc(
+    doc(db, "shared_materials", adminUid, "records", "admin-generation__lecture_1"),
+    {
+      ownerUid: adminUid,
+      generation: "admin-generation",
+      recordType: "lecture",
+      dataJson: JSON.stringify({ id: 1, transcript: "متن مدیر" })
+    }
+  ));
+
+  // The primary administrator must not use this bypass for another owner's feed.
+  await assertFails(setDoc(doc(db, "shared_materials", otherTeacherUid), {
+    ownerUid: otherTeacherUid,
+    schemaVersion: 2
+  }));
+  await assertFails(setDoc(
+    doc(db, "shared_materials", otherTeacherUid, "records", "forged-admin-record"),
+    {
+      ownerUid: otherTeacherUid,
+      generation: "admin-generation",
+      recordType: "lecture",
+      dataJson: "{}"
+    }
+  ));
+});
+
 test("approved teacher can publish a root and separate version-2 records", async () => {
   const db = testEnv.authenticatedContext(teacherUid).firestore();
   await assertSucceeds(setDoc(doc(db, "shared_materials", teacherUid), {
