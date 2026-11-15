@@ -1367,7 +1367,7 @@ private fun normalizeSearchForHighlight(value: String): String =
         .replace('ؤ', 'و').replace('إ', 'ا').replace('أ', 'ا').replace('آ', 'ا')
         .replace(Regex("[\\u064B-\\u065F\\u0670]"), "")
         .replace(Regex("[\\u200C\\u200F\\u202A-\\u202E]"), " ")
-        .replace(Regex("\s+"), " ")
+        .replace(Regex("\\s+"), " ")
         .trim()
 
 private fun findFirstSearchOffset(content: String, query: String): Int? {
@@ -1379,7 +1379,7 @@ private fun findFirstSearchOffset(content: String, query: String): Int? {
             originalIndexes += index
         }
     }
-    val terms = normalizeSearchForHighlight(query).split(Regex("\s+"))
+    val terms = normalizeSearchForHighlight(query).split(Regex("\\s+"))
         .filter { it.length >= 2 }.distinct()
     val firstNormalizedIndex = terms.mapNotNull { term ->
         normalized.indexOf(term).takeIf { it >= 0 }
@@ -1389,7 +1389,7 @@ private fun findFirstSearchOffset(content: String, query: String): Int? {
 
 private fun containsSearchTerm(content: String, query: String): Boolean {
     val normalized = normalizeSearchForHighlight(content)
-    return normalizeSearchForHighlight(query).split(Regex("\s+"))
+    return normalizeSearchForHighlight(query).split(Regex("\\s+"))
         .filter { it.isNotBlank() }.any(normalized::contains)
 }
 
@@ -1491,7 +1491,7 @@ private fun formatTranscriptWithHeadings(
             }
         }
 
-        val terms = normalizeSearchForHighlight(query).split(Regex("\s+"))
+        val terms = normalizeSearchForHighlight(query).split(Regex("\\s+"))
             .filter { it.length >= 2 }.distinct()
         val ranges = mutableListOf<IntRange>()
         terms.forEach { term ->
