@@ -96,10 +96,10 @@ class CloudMaterialsPublicationEmulatorTest {
         val message = CloudMaterialsSync.syncAsTeacherForEmulatorTest(context, uid, firestore)
         assertTrue(message.contains("2 جلسه"))
         val root = firestore.collection("shared_materials").document(uid)
-        val publishedRoot = root.get()
+        val publishedRoot = Tasks.await(root.get())
         val activeGeneration = requireNotNull(publishedRoot.getString("activeGeneration"))
         assertEquals(4L, publishedRoot.getLong("recordCount"))
-        val activeRecords = root.collection("records").whereEqualTo("generation", activeGeneration).get().awaitTask()
+        val activeRecords = Tasks.await(root.collection("records").whereEqualTo("generation", activeGeneration).get())
         assertEquals(4, activeRecords.size())
         val payloadBytes = activeRecords.documents.sumOf {
             requireNotNull(it.getString("dataJson")).toByteArray(Charsets.UTF_8).size
@@ -129,7 +129,7 @@ class CloudMaterialsPublicationEmulatorTest {
             oversizedRejected = true
         }
         assertTrue("An individually oversized record must stop publication", oversizedRejected)
-        val afterFailure = root.get().awaitTask()
+        val afterFailure = Tasks.await(root.get())
         assertEquals(activeGeneration, afterFailure.getString("activeGeneration"))
         assertEquals(4L, afterFailure.getLong("recordCount"))
         assertNotEquals("The active generation must not be replaced after a rejected upload",
