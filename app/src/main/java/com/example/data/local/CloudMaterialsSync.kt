@@ -31,20 +31,21 @@ object CloudMaterialsSync {
 
     // Test-only entry point: bypasses Firebase Auth SDK in Robolectric while exercising
     // the exact same Firestore publication implementation against the emulator.
-    internal fun syncAsTeacherForEmulatorTest(context: Context, uid: String): String {
+    internal fun syncAsTeacherForEmulatorTest(context: Context, uid: String, firestore: FirebaseFirestore): String {
         require(uid.isNotBlank()) { "Test UID must not be blank" }
-        return syncInternal(context, receiveOnly = false, publicationTestUid = uid)
+        return syncInternal(context, receiveOnly = false, publicationTestUid = uid, firestoreOverride = firestore)
     }
 
     private fun syncInternal(
         context: Context,
         receiveOnly: Boolean,
-        publicationTestUid: String? = null
+        publicationTestUid: String? = null,
+        firestoreOverride: FirebaseFirestore? = null
     ): String {
         val uid = publicationTestUid ?: AuthPreferences.currentUid(context)
             ?: error("ابتدا وارد حساب کاربری شوید.")
         val db = AppDatabase.getDatabase(context)
-        val firestore = FirebaseFirestore.getInstance()
+        val firestore = firestoreOverride ?: FirebaseFirestore.getInstance()
 
         return if (publicationTestUid != null || (AuthPreferences.currentRole(context) == UserRole.TEACHER && !receiveOnly)) {
             val allClasses = runBlocking { db.classDao().getAllForBackup() }
