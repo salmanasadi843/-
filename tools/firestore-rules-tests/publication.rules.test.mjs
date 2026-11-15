@@ -53,14 +53,14 @@ beforeEach(async () => {
   });
 });
 
-test("primary administrator can publish even when the stored profile role is stale", async () => {
-  const adminUid = "primary-admin";
+test("primary administrator UID can publish with a stale profile role and a different email", async () => {
+  const adminUid = "xgUdnaQ6X0hPobOUwx3SDI0BJVc2";
   await testEnv.withSecurityRulesDisabled(async (context) => {
     await setDoc(doc(context.firestore(), "users", adminUid), { role: "STUDENT" });
   });
 
   const db = testEnv.authenticatedContext(adminUid, {
-    email: "salmanasadi843@gmail.com",
+    email: "admin-alias@example.test",
     email_verified: true
   }).firestore();
 
