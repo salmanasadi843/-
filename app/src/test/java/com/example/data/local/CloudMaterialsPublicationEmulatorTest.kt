@@ -27,18 +27,15 @@ class CloudMaterialsPublicationEmulatorTest {
     fun publishesAggregatePayloadOverOneMiBAsSeparateRecordsAndPreservesOldGenerationOnOversize() = runBlocking(Dispatchers.IO) {
         println("PUBTEST checkpoint: start")
         val context = ApplicationProvider.getApplicationContext<Context>()
-        // Production code in AuthPreferences and CloudMaterialsSync uses the DEFAULT
-        // Firebase app. Never select the first app: other tests create named apps and
-        // their iteration order is not a valid way to obtain the default instance.
-        val app = FirebaseApp.getApps(context).firstOrNull { it.name == "[DEFAULT]" }
-            ?: FirebaseApp.initializeApp(
-                context,
-                FirebaseOptions.Builder()
-                    .setProjectId("demo-darsyar-generation-tests")
-                    .setApplicationId("1:123456789:android:publication-tests")
-                    .setApiKey("fake-emulator-api-key")
-                    .build()
-            ) ?: error("Default Firebase test app could not initialize")
+        val app = FirebaseApp.initializeApp(
+            context,
+            FirebaseOptions.Builder()
+                .setProjectId("demo-darsyar-generation-tests")
+                .setApplicationId("1:123456789:android:publication-tests")
+                .setApiKey("fake-emulator-api-key")
+                .build(),
+            "publication-test-${UUID.randomUUID()}"
+        ) ?: error("Firebase test app could not initialize")
 
         val emulatorHost = requireNotNull(System.getenv("FIRESTORE_EMULATOR_HOST")) {
             "Firestore Emulator is required for this integration test"
@@ -106,7 +103,7 @@ class CloudMaterialsPublicationEmulatorTest {
         ))
 
         println("PUBTEST checkpoint: Room seeded; first CloudMaterialsSync.sync")
-        val message = CloudMaterialsSync.syncAsTeacherForEmulatorTest(context, uid)
+        val message = CloudMaterialsSync.syncAsTeacherForEmulatorTest(context, uid, firestore)
         assertTrue(message.contains("2 جلسه"))
         val root = firestore.collection("shared_materials").document(uid)
         val publishedRoot = root.get().awaitTask()
