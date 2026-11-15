@@ -10,12 +10,14 @@ service cloud.firestore {
     function approvedTeacher(uid) {
       return request.auth != null
              && request.auth.uid == uid
-             && exists(/databases/$(database)/documents/users/$(uid))
-             && get(/databases/$(database)/documents/users/$(uid)).data.role == 'TEACHER'
              && (
+               // The primary administrator is trusted by their authenticated email.
+               // Do not make their publication depend on a possibly stale cached profile role.
                isPrimaryTeacher()
                || (
-                 exists(/databases/$(database)/documents/approved_teachers/$(uid))
+                 exists(/databases/$(database)/documents/users/$(uid))
+                 && get(/databases/$(database)/documents/users/$(uid)).data.role == 'TEACHER'
+                 && exists(/databases/$(database)/documents/approved_teachers/$(uid))
                  && (
                    get(/databases/$(database)/documents/approved_teachers/$(uid)).data.enabled == true
                    || get(/databases/$(database)/documents/approved_teachers/$(uid)).data.approved == true
