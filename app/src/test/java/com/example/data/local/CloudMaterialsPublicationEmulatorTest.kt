@@ -2,7 +2,10 @@ package com.example.data.local
 
 import android.content.Context
 import androidx.test.core.app.ApplicationProvider
-import com.google.android.gms.tasks.Tasks
+import com.google.android.gms.tasks.Task
+import kotlinx.coroutines.suspendCancellableCoroutine
+import kotlin.coroutines.resume
+import kotlin.coroutines.resumeWithException
 import com.google.firebase.FirebaseApp
 import com.google.firebase.FirebaseOptions
 import com.google.firebase.firestore.FirebaseFirestore
@@ -16,7 +19,6 @@ import org.robolectric.annotation.Config
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.runBlocking
 import java.util.UUID
-import java.util.concurrent.TimeUnit
 
 @RunWith(RobolectricTestRunner::class)
 @Config(sdk = [35])
@@ -52,12 +54,12 @@ class CloudMaterialsPublicationEmulatorTest {
 
         val uid = "publication-test-${UUID.randomUUID()}"
         println("PUBTEST checkpoint: emulator configured; using isolated test UID")
-        Tasks.await(firestore.collection("users").document(uid).set(mapOf(
+        firestore.collection("users").document(uid).set(mapOf(
             "uid" to uid, "name" to "استاد آزمایشی", "role" to "TEACHER"
-        )), 30, TimeUnit.SECONDS)
-        Tasks.await(firestore.collection("approved_teachers").document(uid).set(mapOf(
+        )).awaitTask()
+        firestore.collection("approved_teachers").document(uid).set(mapOf(
             "ownerUid" to uid, "enabled" to true, "approved" to true
-        )), 30, TimeUnit.SECONDS)
+        )).awaitTask()
 
         println("PUBTEST checkpoint: preparing Room")
 
@@ -107,12 +109,10 @@ class CloudMaterialsPublicationEmulatorTest {
         val message = CloudMaterialsSync.syncAsTeacherForEmulatorTest(context, uid)
         assertTrue(message.contains("2 جلسه"))
         val root = firestore.collection("shared_materials").document(uid)
-        val publishedRoot = Tasks.await(root.get(), 30, TimeUnit.SECONDS)
+        val publishedRoot = root.get().awaitTask()
         val activeGeneration = requireNotNull(publishedRoot.getString("activeGeneration"))
         assertEquals(4L, publishedRoot.getLong("recordCount"))
-        val activeRecords = Tasks.await(
-            root.collection("records").whereEqualTo("generation", activeGeneration).get(), 30, TimeUnit.SECONDS
-        )
+        val activeRecords = root.collection("records").whereEqualTo("generation", activeGeneration).get().awaitTask()
         assertEquals(4, activeRecords.size())
         val payloadBytes = activeRecords.documents.sumOf {
             requireNotNull(it.getString("dataJson")).toByteArray(Charsets.UTF_8).size
@@ -142,12 +142,19 @@ class CloudMaterialsPublicationEmulatorTest {
             oversizedRejected = true
         }
         assertTrue("An individually oversized record must stop publication", oversizedRejected)
-        val afterFailure = Tasks.await(root.get())
+        val afterFailure = root.get().awaitTask()
         assertEquals(activeGeneration, afterFailure.getString("activeGeneration"))
         assertEquals(4L, afterFailure.getLong("recordCount"))
         assertNotEquals("The active generation must not be replaced after a rejected upload",
             "invalid-generation", afterFailure.getString("activeGeneration"))
 
         println("PUBTEST checkpoint: oversized generation preserved; test finishing")
+    }
+}
+
+private suspend fun <T> Task<T>.awaitTask(): T = suspendCancellableCoroutine { continuation ->
+    addOnCompleteListener { task ->
+        if (task.isSuccessful) continuation.resume(task.result)
+        else continuation.resumeWithException(task.exception ?: IllegalStateException("Firebase task failed"))
     }
 }
