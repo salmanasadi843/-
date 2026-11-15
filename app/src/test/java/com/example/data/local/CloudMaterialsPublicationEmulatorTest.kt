@@ -2,10 +2,7 @@ package com.example.data.local
 
 import android.content.Context
 import androidx.test.core.app.ApplicationProvider
-import com.google.android.gms.tasks.Task
-import kotlinx.coroutines.suspendCancellableCoroutine
-import kotlin.coroutines.resume
-import kotlin.coroutines.resumeWithException
+import com.google.android.gms.tasks.Tasks
 import com.google.firebase.FirebaseApp
 import com.google.firebase.FirebaseOptions
 import com.google.firebase.firestore.FirebaseFirestore
@@ -51,13 +48,6 @@ class CloudMaterialsPublicationEmulatorTest {
 
         val uid = "publication-test-${UUID.randomUUID()}"
         println("PUBTEST checkpoint: emulator configured; using isolated test UID")
-        firestore.collection("users").document(uid).set(mapOf(
-            "uid" to uid, "name" to "استاد آزمایشی", "role" to "TEACHER"
-        )).awaitTask()
-        firestore.collection("approved_teachers").document(uid).set(mapOf(
-            "ownerUid" to uid, "enabled" to true, "approved" to true
-        )).awaitTask()
-
         println("PUBTEST checkpoint: preparing Room")
 
         val db = AppDatabase.getDatabase(context)
@@ -106,7 +96,7 @@ class CloudMaterialsPublicationEmulatorTest {
         val message = CloudMaterialsSync.syncAsTeacherForEmulatorTest(context, uid, firestore)
         assertTrue(message.contains("2 جلسه"))
         val root = firestore.collection("shared_materials").document(uid)
-        val publishedRoot = root.get().awaitTask()
+        val publishedRoot = root.get()
         val activeGeneration = requireNotNull(publishedRoot.getString("activeGeneration"))
         assertEquals(4L, publishedRoot.getLong("recordCount"))
         val activeRecords = root.collection("records").whereEqualTo("generation", activeGeneration).get().awaitTask()
@@ -149,9 +139,3 @@ class CloudMaterialsPublicationEmulatorTest {
     }
 }
 
-private suspend fun <T> Task<T>.awaitTask(): T = suspendCancellableCoroutine { continuation ->
-    addOnCompleteListener { task ->
-        if (task.isSuccessful) continuation.resume(task.result)
-        else continuation.resumeWithException(task.exception ?: IllegalStateException("Firebase task failed"))
-    }
-}
