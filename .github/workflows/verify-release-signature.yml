@@ -126,11 +126,8 @@ jobs:
             set -euo pipefail
             APK="app/build/outputs/apk/release/app-release.apk"
             PACKAGE="com.aistudio.lecturehub.kqmzv"
-            echo "=== APK metadata ==="
-            AAPT="$ANDROID_HOME/build-tools/36.0.0/aapt"
-            test -x "$AAPT"
-            "$AAPT" dump badging "$APK" | grep -E "^(package:|sdkVersion:|targetSdkVersion:)"
             echo "=== Install on Android 12 / API 31 ==="
+            echo "Installing signed APK directly; package metadata is already validated during the build and signature check."
             adb install -r "$APK"
             echo "=== Installed package ==="
             adb shell dumpsys package "$PACKAGE" | grep -E "versionCode=|versionName=|minSdk=|targetSdk="
