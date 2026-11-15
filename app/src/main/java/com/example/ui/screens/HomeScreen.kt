@@ -67,6 +67,7 @@ fun HomeScreen(
 ) {
     val allClasses by viewModel.repository.allClasses.collectAsState(initial = emptyList())
     val allLectures by viewModel.repository.allLectures.collectAsState(initial = emptyList())
+    val allCourses by viewModel.repository.allCoursesDetailed.collectAsState(initial = emptyList())
     val studentSyncStatus by viewModel.studentMaterialsSyncStatus.collectAsState()
     LaunchedEffect(userRole) { if (userRole == UserRole.STUDENT) viewModel.startStudentMaterialsSync() }
     // While refreshing, do not expose stale cached classes whose publication may have been revoked.
@@ -383,7 +384,19 @@ fun HomeScreen(
                 }
             } else {
                 items(classes, key = { it.id }) { classItem ->
-                    val classLectures = lectures.filter { it.classId == classItem.id }.sortedByDescending { it.dateMillis }
+                    val courseIdsForClass = allCourses
+                        .filter { it.classId == classItem.id }
+                        .map { it.id }
+                        .toSet()
+                    // Use the exact same session source and mirrored-copy rule as the class detail screen.
+                    // Only a positive local ID paired with a negative shared-feed ID is collapsed.
+                    val classLectures = deduplicateMirroredSessions(
+                        lectures.filter {
+                            it.classId == classItem.id ||
+                                (it.classId == null && it.courseId in courseIdsForClass)
+                        }
+                    )
+                    val sortedClassLectures = classLectures.sortedByDescending { it.dateMillis }
                     Card(
                         Modifier.fillMaxWidth().clickable { viewModel.openClass(classItem.id) },
                         RoundedCornerShape(22.dp),
@@ -437,7 +450,7 @@ fun HomeScreen(
                             }
                             Spacer(Modifier.height(10.dp))
                             if (!isTeacher && classLectures.isNotEmpty()) {
-                                val latest = classLectures.first()
+                                val latest = sortedClassLectures.first()
                                 OutlinedButton(onClick = { onNavigateToDetail(latest.id) }, Modifier.fillMaxWidth()) {
                                     Icon(Icons.Default.PlayArrow, null)
                                     Spacer(Modifier.width(6.dp))
