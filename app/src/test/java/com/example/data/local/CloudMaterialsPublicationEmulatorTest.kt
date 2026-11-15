@@ -134,7 +134,7 @@ class CloudMaterialsPublicationEmulatorTest {
 
         var oversizedRejected = false
         try {
-            CloudMaterialsSync.syncAsTeacherForEmulatorTest(context, uid)
+            CloudMaterialsSync.syncAsTeacherForEmulatorTest(context, uid, firestore)
         } catch (_: IllegalArgumentException) {
             oversizedRejected = true
         }
