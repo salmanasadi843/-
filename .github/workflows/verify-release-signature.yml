@@ -120,3 +120,5 @@ jobs:
           path: app/build/outputs/apk/release/app-release.apk
           if-no-files-found: error
           retention-days: 7
+
+# Keep this workflow path in the push filter so isolated release-signature checks can be triggered by branch updates.
