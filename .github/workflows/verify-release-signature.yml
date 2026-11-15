@@ -4,9 +4,12 @@ on:
   pull_request:
     branches:
       - fix/keep-teacher-class-identities-v1.0.8
+      - fix/mirror-only-session-count-v1.1.0
   push:
     branches:
       - fix/keep-teacher-class-identities-v1.0.8
+      - fix/mirror-only-session-count-v1.1.0
+      - fix/publish-materials-per-document-v1.1.1
     paths:
       - "app/**"
       - "gradle/**"
