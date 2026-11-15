@@ -212,40 +212,44 @@ object GeminiApiService {
             val jsonObject =
                 JSONObject(responseBody)
 
-            val candidates =
-                jsonObject.optJSONArray("candidates")
-
-            if (candidates == null || candidates.length() == 0) {
+            val candidates = jsonObject.optJSONArray("candidates")
+            val firstCandidate = candidates?.optJSONObject(0)
+            if (firstCandidate == null) {
+                val apiError = jsonObject.optJSONObject("error")?.optString("message").orEmpty()
+                val blockReason = jsonObject.optJSONObject("promptFeedback")?.optString("blockReason").orEmpty()
+                val detail = listOf(apiError, blockReason).filter { it.isNotBlank() }.joinToString("؛ ")
                 return@withContext Result.failure(
-                    Exception(
-                        "پاسخی از هوش مصنوعی دریافت نشد"
+                    IllegalStateException(
+                        if (detail.isNotBlank()) "Gemini پاسخی تولید نکرد: $detail"
+                        else "Gemini هیچ پاسخ متنی برنگرداند؛ ممکن است درخواست مسدود یا پاسخ سرویس ناقص باشد."
                     )
                 )
             }
 
-            val firstCandidate =
-                candidates.getJSONObject(0)
-
-            val content =
-                firstCandidate.getJSONObject("content")
-
-            val parts =
-                content.getJSONArray("parts")
-
-            val textBuilder =
-                StringBuilder()
-
-            for (i in 0 until parts.length()) {
-                val part =
-                    parts.getJSONObject(i)
-
-                textBuilder.append(
-                    part.optString("text", "")
-                )
+            val parts = firstCandidate.optJSONObject("content")?.optJSONArray("parts")
+            val textBuilder = StringBuilder()
+            if (parts != null) {
+                for (i in 0 until parts.length()) {
+                    val part = parts.optJSONObject(i) ?: continue
+                    val text = part.optString("text").trim()
+                    if (text.isNotBlank()) textBuilder.append(text)
+                }
             }
 
-            val resultText =
-                textBuilder.toString().trim()
+            val resultText = textBuilder.toString().trim()
+            if (resultText.isBlank()) {
+                val finishReason = firstCandidate.optString("finishReason").takeIf { it.isNotBlank() }
+                val blockReason = jsonObject.optJSONObject("promptFeedback")?.optString("blockReason")
+                    ?.takeIf { it.isNotBlank() }
+                val detail = listOfNotNull(blockReason, finishReason).joinToString("؛ ")
+                Log.w(TAG, "Gemini response contained no text. $detail")
+                return@withContext Result.failure(
+                    IllegalStateException(
+                        if (detail.isNotBlank()) "Gemini پاسخ متنی نداد: $detail"
+                        else "ساختار پاسخ Gemini فاقد متن قابل‌خواندن بود."
+                    )
+                )
+            }
 
             Result.success(resultText)
 
@@ -733,38 +737,27 @@ $question
             val json =
                 JSONObject(responseBody)
 
-            val candidates =
-                json.optJSONArray("candidates")
-
-            if (candidates == null ||
-                candidates.length() == 0
-            ) {
-
+            val candidates = json.optJSONArray("candidates")
+            val firstCandidate = candidates?.optJSONObject(0)
+            if (firstCandidate == null) {
+                val apiError = json.optJSONObject("error")?.optString("message").orEmpty()
+                val blockReason = json.optJSONObject("promptFeedback")?.optString("blockReason").orEmpty()
+                val detail = listOf(apiError, blockReason).filter { it.isNotBlank() }.joinToString("؛ ")
                 return@withContext Result.failure(
-                    Exception(
-                        "هوش مصنوعی متنی برای فایل صوتی برنگرداند."
+                    IllegalStateException(
+                        if (detail.isNotBlank()) "Gemini برای فایل صوتی پاسخی تولید نکرد: $detail"
+                        else "Gemini برای فایل صوتی متن برنگرداند؛ پاسخ سرویس فاقد نامزد متنی بود."
                     )
                 )
             }
 
-            val parts =
-                candidates
-                    .getJSONObject(0)
-                    .getJSONObject("content")
-                    .getJSONArray("parts")
-
-            val textBuilder =
-                StringBuilder()
-
-            for (i in 0 until parts.length()) {
-
-                val text =
-                    parts
-                        .getJSONObject(i)
-                        .optString("text")
-
-                if (text.isNotBlank()) {
-                    textBuilder.append(text)
+            val parts = firstCandidate.optJSONObject("content")?.optJSONArray("parts")
+            val textBuilder = StringBuilder()
+            if (parts != null) {
+                for (i in 0 until parts.length()) {
+                    val part = parts.optJSONObject(i) ?: continue
+                    val text = part.optString("text").trim()
+                    if (text.isNotBlank()) textBuilder.append(text)
                 }
             }
 
