@@ -237,14 +237,23 @@ object CloudMaterialsSync {
             // card can both appear in the read-only section.
             // Matching foreign rows is safe here: they remain untouched; only the
             // incoming shared course/session foreign keys target their existing ID.
-            val localClassIdByFingerprint = runBlocking { db.classDao().getAllForBackup() }
-                .filter { it.id > 0L && it.ownerUid.isNotBlank() }
-                .groupBy { item ->
-                    val metadata = listOf(item.name, item.teacherName, item.term)
-                        .joinToString("|") { normalized(it) }
-                    "${item.ownerUid}|$metadata"
-                }
-                .mapValues { (_, copies) -> copies.minByOrNull { it.createdAtMillis }!!.id }
+            // Student screens intentionally show only negative-ID shared rows.
+            // Reusing a positive local class ID here would attach the imported sessions
+            // to a class that the student UI filters out, even though sync succeeds.
+            // Secondary teachers may still reuse matching local class IDs to avoid
+            // duplicate read-only class cards.
+            val localClassIdByFingerprint = if (AuthPreferences.currentRole(context) == UserRole.STUDENT) {
+                emptyMap()
+            } else {
+                runBlocking { db.classDao().getAllForBackup() }
+                    .filter { it.id > 0L && it.ownerUid.isNotBlank() }
+                    .groupBy { item ->
+                        val metadata = listOf(item.name, item.teacherName, item.term)
+                            .joinToString("|") { normalized(it) }
+                        "${item.ownerUid}|$metadata"
+                    }
+                    .mapValues { (_, copies) -> copies.minByOrNull { it.createdAtMillis }!!.id }
+            }
 
             val classIdMap = mutableMapOf<String, Long>()
             val fingerprintToClassId = mutableMapOf<String, Long>()
