@@ -79,6 +79,21 @@ test("primary administrator can publish even when the stored profile role is sta
       dataJson: JSON.stringify({ id: 1, transcript: "متن مدیر" })
     }
   ));
+
+  // The primary administrator must not use this bypass for another owner's feed.
+  await assertFails(setDoc(doc(db, "shared_materials", otherTeacherUid), {
+    ownerUid: otherTeacherUid,
+    schemaVersion: 2
+  }));
+  await assertFails(setDoc(
+    doc(db, "shared_materials", otherTeacherUid, "records", "forged-admin-record"),
+    {
+      ownerUid: otherTeacherUid,
+      generation: "admin-generation",
+      recordType: "lecture",
+      dataJson: "{}"
+    }
+  ));
 });
 
 test("approved teacher can publish a root and separate version-2 records", async () => {
