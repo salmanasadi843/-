@@ -107,6 +107,20 @@ class SharedLectureDeduplicatorTest {
         assertEquals(36, importedDuplicates.size)
         assertTrue(result.importedToInsert.isEmpty())
         assertEquals(36, result.skippedDuplicateCount)
+        assertEquals(36, result.duplicateImportedIdsToDelete.size)
+    }
+
+    @Test
+    fun keepsAnImportedSessionWhenItIsMissingFromTheLatestCloudFeed() {
+        val oldImported = lecture(id = -501L, transcript = "قدیمی اما یکتا")
+
+        val result = SharedLectureDeduplicator.reconcile(
+            existingLocal = emptyList(),
+            imported = listOf(oldImported)
+        )
+
+        assertEquals(listOf(oldImported), result.importedToInsert)
+        assertTrue(result.duplicateImportedIdsToDelete.isEmpty())
     }
 
     @Test
