@@ -41,20 +41,22 @@ object CloudMaterialsSync {
             val allLectures = runBlocking { db.lectureDao().getAllForBackup() }
             // Imported/shared records use stable negative IDs. They belong to their
             // original teacher and must never be republished or managed by this account.
-            val classes = allClasses.filter { it.id > 0L && it.ownerUid == uid && it.isPublished }
+            // Public sharing is automatic in this app version; every owned class
+            // and its sessions are included. Private-class controls are deferred.
+            val classes = allClasses.filter { it.id > 0L && it.ownerUid == uid }
             val visibleClassIds = classes.map { it.id }.toSet()
             val courses = allCourses.filter { it.id > 0L && it.classId > 0L && it.classId in visibleClassIds }
             val lectures = allLectures.filter { lecture ->
-                lecture.id > 0L && lecture.isPublished &&
+                lecture.id > 0L &&
                     lecture.classId?.let { it > 0L && it in visibleClassIds } == true
             }
             val payload = JSONObject()
                 .put("format", "darsyar-shared-materials")
                 .put("version", 1)
                 .put("teacherName", AuthPreferences.currentName(context))
-                .put("classes", JSONArray().apply { classes.forEach { put(it.copy(ownerUid = uid).toJson()) } })
+                .put("classes", JSONArray().apply { classes.forEach { put(it.copy(ownerUid = uid, isPublished = true).toJson()) } })
                 .put("courses", JSONArray().apply { courses.forEach { put(it.toJson()) } })
-                .put("lectures", JSONArray().apply { lectures.map { it.toJson() }.forEach { put(it) } })
+                .put("lectures", JSONArray().apply { lectures.map { it.copy(isPublished = true).toJson() }.forEach { put(it) } })
             Tasks.await(
                 firestore.collection("shared_materials").document(uid)
                     .set(mapOf("ownerUid" to uid, "payload" to payload.toString(), "updatedAt" to System.currentTimeMillis()))
