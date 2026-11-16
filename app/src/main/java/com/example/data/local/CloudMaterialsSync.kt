@@ -195,8 +195,6 @@ object CloudMaterialsSync {
                 // teacher account. Use its normalized metadata + content as the identity,
                 // not the feed owner, so identical copies share one imported class.
                 val fingerprint = classFingerprint(owner, item)
-                val classSignature = listOf(item.name, item.teacherName, item.term)
-                    .joinToString("|") { normalized(it) }
                 val importedClassId = fingerprintToClassId.getOrPut(fingerprint) {
                     localClassIdByFingerprint[fingerprint]
                         ?: stableId("shared-feed", "class-content:$fingerprint")
