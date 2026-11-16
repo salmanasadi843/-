@@ -49,7 +49,7 @@ class FirestoreSyncRepository(
         return when (snapshot.getLong("schemaVersion")) {
             LEGACY_SCHEMA_VERSION -> {
                 // Validate and restore the old snapshot before migrating it.
-                restoreSnapshot(snapshot, requireAllCollections = true)
+                restoreSnapshot(snapshot, requireAllCollections = true, ownerUid = uid)
                 uploadSnapshot(uid)
                 true
             }
@@ -95,7 +95,7 @@ class FirestoreSyncRepository(
             if (classes.isEmpty() && courses.isEmpty() && lectures.isEmpty()) {
                 throw IllegalStateException("پشتیبان قدیمی خالی است؛ اطلاعات محلی جایگزین نشد.")
             }
-            validateAndReplaceLocalData(classes, courses, lectures)
+            validateAndMergeLocalData(ownerUid, classes, courses, lectures)
             return true
         }
 
@@ -215,7 +215,8 @@ class FirestoreSyncRepository(
 
     private suspend fun restoreSnapshot(
         snapshot: DocumentSnapshot,
-        requireAllCollections: Boolean
+        requireAllCollections: Boolean,
+        ownerUid: String
     ) {
         val rawClasses = snapshot.get("classes") as? List<*>
         val rawCourses = snapshot.get("courses") as? List<*>
@@ -260,21 +261,17 @@ class FirestoreSyncRepository(
             lectures.map { it.id }.distinct().size == lectures.size) {
             "شناسه تکراری در پشتیبان وجود دارد؛ اطلاعات محلی تغییر نکرد."
         }
-        database.withTransaction {
-            val classIds = classDao.getAllForBackup().map { it.id }.toSet()
-            val courseIds = courseDao.getAllForBackup().map { it.id }.toSet()
-            val lectureIds = lectureDao.getAllForBackup().map { it.id }.toSet()
-            val unionClasses = classIds + classes.map { it.id }
-            val unionCourses = courseIds + courses.map { it.id }
-            val addClasses = classes.filter { it.id !in classIds }
-            val addCourses = courses.filter { it.id !in courseIds && it.classId in unionClasses }
-            val addLectures = lectures.filter { it.id !in lectureIds &&
-                (it.classId == null || it.classId in unionClasses) &&
-                (it.courseId == null || it.courseId in unionCourses) }
-            if (addClasses.isNotEmpty()) classDao.insertAllForRestore(addClasses)
-            if (addCourses.isNotEmpty()) courseDao.insertAllForRestore(addCourses)
-            if (addLectures.isNotEmpty()) lectureDao.insertAllForRestore(addLectures)
-        }
+        val classIds = classDao.getAllForBackup().map { it.id }.toSet()
+        val courseIds = courseDao.getAllForBackup().map { it.id }.toSet()
+        val lectureIds = lectureDao.getAllForBackup().map { it.id }.toSet()
+        val unionClasses = classIds + classes.map { it.id }
+        val unionCourses = courseIds + courses.map { it.id }
+        val addClasses = classes.filter { it.id !in classIds }
+        val addCourses = courses.filter { it.id !in courseIds && it.classId in unionClasses }
+        val addLectures = lectures.filter { it.id !in lectureIds && (it.classId == null || it.classId in unionClasses) && (it.courseId == null || it.courseId in unionCourses) }
+        if (addClasses.isNotEmpty()) classDao.insertAllForRestore(addClasses)
+        if (addCourses.isNotEmpty()) courseDao.insertAllForRestore(addCourses)
+        if (addLectures.isNotEmpty()) lectureDao.insertAllForRestore(addLectures)
     }
 
     private fun ClassEntity.toCloudMap(): Map<String, Any?> = mapOf(
