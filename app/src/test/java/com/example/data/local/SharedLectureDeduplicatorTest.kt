@@ -75,12 +75,12 @@ class SharedLectureDeduplicatorTest {
                     val duplicateCount = when (classIndex) {
                         0 -> if (sessionIndex < 16) 1 else 0
                         2 -> if (sessionIndex < 14) 1 else 0
-                        else -> if (sessionIndex < 5) 1 else 0
+                        else -> if (sessionIndex < 6) 1 else 0
                     }
                     if (duplicateCount == 1) {
                         importedDuplicates += lecture(
                             id = -id,
-                            title = if (classIndex == 2 && sessionIndex == 0) "$title." else title,
+                            title = if (classIndex == 3 && sessionIndex == 5) "$title." else title,
                             classId = classIndex + 1L,
                             dateMillis = date,
                             transcript = transcript,
@@ -90,16 +90,6 @@ class SharedLectureDeduplicatorTest {
                 }
             }
         }
-
-        // Add the 36th pair: the real backup's single punctuation-only title variant.
-        importedDuplicates += lecture(
-            id = -999L,
-            title = "جلسه نمونه 1-17.",
-            classId = 1L,
-            dateMillis = 1_016L,
-            transcript = "متن ناشناس جلسه 1-17",
-            originalTranscript = ""
-        )
 
         val result = SharedLectureDeduplicator.reconcile(local, importedDuplicates)
 
