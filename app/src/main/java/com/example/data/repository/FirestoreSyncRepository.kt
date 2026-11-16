@@ -15,7 +15,6 @@ import com.google.firebase.firestore.FirebaseFirestore
 import org.json.JSONObject
 import kotlinx.coroutines.suspendCancellableCoroutine
 import kotlinx.coroutines.withTimeout
-import com.google.android.gms.tasks.OnCompleteListener
 import kotlin.coroutines.resume
 import kotlin.coroutines.resumeWithException
 
@@ -476,8 +475,9 @@ class FirestoreSyncRepository(
      */
     private suspend fun <T> Task<T>.awaitResult(): T = withTimeout(20_000L) {
         suspendCancellableCoroutine { continuation ->
-            val listener = OnCompleteListener<T> { task ->
-                if (!continuation.isActive) return@OnCompleteListener
+            addOnCompleteListener { task ->
+                // The coroutine may have timed out while the Firebase task was pending.
+                if (!continuation.isActive) return@addOnCompleteListener
                 if (task.isSuccessful) {
                     continuation.resume(task.result)
                 } else {
@@ -485,10 +485,6 @@ class FirestoreSyncRepository(
                         task.exception ?: IllegalStateException("درخواست Firebase ناموفق بود.")
                     )
                 }
-            }
-            addOnCompleteListener(listener)
-            continuation.invokeOnCancellation {
-                removeOnCompleteListener(listener)
             }
         }
     }
