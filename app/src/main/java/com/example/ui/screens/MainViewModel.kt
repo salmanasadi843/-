@@ -195,11 +195,23 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
                 }
                 val restored = cloudSyncRepository.restoreFromCloud(uid)
                 if (!restored) {
-                    // Keep old published material untouched; import it only if it
-                    // follows the known snapshot shape, then create private backup.
-                    cloudSyncRepository.restoreLegacySharedMaterials(uid)
-                    cloudSyncRepository.uploadSnapshot(uid)
-                    _cloudSyncStatus.value = "پشتیبان‌گیری ابری موفق بود؛ تغییرات بعدی نیز خودکار ارسال می‌شوند."
+                    val legacyRestored = cloudSyncRepository.restoreLegacySharedMaterials(uid)
+                    if (legacyRestored) {
+                        cloudSyncRepository.uploadSnapshot(uid)
+                        _cloudSyncStatus.value = "بازیابی پشتیبان قدیمی موفق بود و نسخه خصوصی جدید نیز ذخیره شد."
+                    } else {
+                        val localClasses = database.classDao().getAllForBackup()
+                        val localCourses = database.courseDao().getAllForBackup()
+                        val localLectures = database.lectureDao().getAllForBackup()
+                        if (localClasses.isEmpty() && localCourses.isEmpty() && localLectures.isEmpty()) {
+                            _cloudSyncStatus.value =
+                                "پشتیبان قابل‌بازیابی پیدا نشد؛ چون اطلاعات محلی هم خالی است، برای جلوگیری از بازنویسی پشتیبان ابری هیچ داده‌ای ارسال نشد."
+                            return@launch
+                        }
+                        cloudSyncRepository.uploadSnapshot(uid)
+                        _cloudSyncStatus.value =
+                            "پشتیبان قبلی پیدا نشد؛ از اطلاعات موجود روی دستگاه یک پشتیبان تازه ساخته شد."
+                    }
                 } else {
                     _cloudSyncStatus.value = "بازیابی اطلاعات از فضای ابری موفق بود؛ تغییرات بعدی خودکار ارسال می‌شوند."
                 }
