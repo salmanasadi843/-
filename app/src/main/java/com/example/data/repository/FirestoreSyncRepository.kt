@@ -12,6 +12,7 @@ import com.google.android.gms.tasks.Task
 import com.google.firebase.firestore.DocumentSnapshot
 import com.google.firebase.firestore.FieldValue
 import com.google.firebase.firestore.FirebaseFirestore
+import org.json.JSONObject
 import kotlinx.coroutines.suspendCancellableCoroutine
 import kotlin.coroutines.resume
 import kotlin.coroutines.resumeWithException
@@ -52,10 +53,7 @@ class FirestoreSyncRepository(
                 uploadSnapshot(uid)
                 true
             }
-            SCHEMA_VERSION -> {
-                restoreRecordDocuments(uid)
-                true
-            }
+            SCHEMA_VERSION -> restoreRecordDocuments(uid)
             else -> throw IllegalStateException(
                 "نسخه پشتیبان ابری قابل‌شناسایی نیست؛ برای جلوگیری از حذف اطلاعات، بازیابی متوقف شد."
             )
@@ -63,24 +61,48 @@ class FirestoreSyncRepository(
     }
 
     /**
-     * Older shared documents are read-only fallback sources. They are imported
-     * only if they contain all three expected arrays, then migrated privately.
+     * Imports both legacy layouts: direct Firestore arrays and the older JSON
+     * string stored in shared_materials/{uid}.payload.
      */
     suspend fun restoreLegacySharedMaterials(uid: String): Boolean {
         val snapshot = firestore.collection(SHARED_MATERIALS).document(uid).get().awaitResult()
         if (!snapshot.exists()) return false
         val data = snapshot.data ?: return false
-        if (data["classes"] !is List<*> ||
-            data["courses"] !is List<*> ||
-            data["lectures"] !is List<*>
-        ) return false
 
-        return try {
-            restoreSnapshot(snapshot, requireAllCollections = true)
-            true
-        } catch (_: IllegalStateException) {
-            false
+        val payloadText = data["payload"] as? String
+        if (payloadText != null) {
+            val payload = try { JSONObject(payloadText) } catch (error: Exception) {
+                throw IllegalStateException("خواندن پشتیبان قدیمی ناموفق بود؛ هیچ اطلاعاتی جایگزین نشد.", error)
+            }
+            if (payload.optString("format") != "darsyar-shared-materials") {
+                throw IllegalStateException("قالب پشتیبان قدیمی شناخته‌شده نیست؛ اطلاعات دست‌نخورده باقی ماند.")
+            }
+            val rawClasses = payload.optJSONArray("classes")
+                ?: throw IllegalStateException("فهرست کلاس‌ها در پشتیبان قدیمی وجود ندارد.")
+            val rawCourses = payload.optJSONArray("courses")
+                ?: throw IllegalStateException("فهرست درس‌ها در پشتیبان قدیمی وجود ندارد.")
+            val rawLectures = payload.optJSONArray("lectures")
+                ?: throw IllegalStateException("فهرست جلسات در پشتیبان قدیمی وجود ندارد.")
+            val classes = (0 until rawClasses.length()).map {
+                rawClasses.getJSONObject(it).toStringMap().toClassEntity()
+            }
+            val courses = (0 until rawCourses.length()).map {
+                rawCourses.getJSONObject(it).toStringMap().toCourseEntity()
+            }
+            val lectures = (0 until rawLectures.length()).map {
+                rawLectures.getJSONObject(it).toStringMap().toLectureEntity()
+            }
+            if (classes.isEmpty() && courses.isEmpty() && lectures.isEmpty()) {
+                throw IllegalStateException("پشتیبان قدیمی خالی است؛ اطلاعات محلی جایگزین نشد.")
+            }
+            validateAndReplaceLocalData(classes, courses, lectures)
+            return true
         }
+
+        if (data["classes"] !is List<*> || data["courses"] !is List<*> ||
+            data["lectures"] !is List<*>) return false
+        restoreSnapshot(snapshot, requireAllCollections = true)
+        return true
     }
 
     suspend fun uploadSnapshot(uid: String) {
@@ -137,7 +159,10 @@ class FirestoreSyncRepository(
         ).awaitResult()
     }
 
-    private suspend fun restoreRecordDocuments(uid: String) {
+    private suspend fun restoreRecordDocuments(uid: String): Boolean {
+        val rootSnapshot = firestore.collection(TEACHER_DATA).document(uid).get().awaitResult()
+        val expectedCount = rootSnapshot.getLong("recordCount")
+            ?: throw IllegalStateException("تعداد رکوردهای پشتیبان مشخص نیست؛ بازیابی برای حفظ اطلاعات متوقف شد.")
         val documents = firestore.collection(TEACHER_DATA)
             .document(uid)
             .collection(RECORDS)
@@ -145,10 +170,17 @@ class FirestoreSyncRepository(
             .awaitResult()
             .documents
 
+        if (documents.size.toLong() != expectedCount) {
+            throw IllegalStateException(
+                "پشتیبان ابری ناقص است (تعداد مورد انتظار: $expectedCount، دریافت‌شده: ${documents.size})؛ اطلاعات محلی دست‌نخورده باقی ماند."
+            )
+        }
+        // An empty v2 marker is not proof that the account has no older backup.
+        if (expectedCount == 0L) return false
+
         val classes = mutableListOf<ClassEntity>()
         val courses = mutableListOf<CourseEntity>()
         val lectures = mutableListOf<LectureEntity>()
-        val rootSnapshot = firestore.collection(TEACHER_DATA).document(uid).get().awaitResult()
         val folders = teacherFolderDao?.let {
             (rootSnapshot.get("folders") as? List<*>)?.mapNotNull { value ->
                 (value as? Map<*, *>)?.asStringMap()?.toFolderEntity()
@@ -168,11 +200,17 @@ class FirestoreSyncRepository(
                 )
             }
         }
+        // A marker containing only class/course records is not a complete
+        // lecture backup when the legacy shared snapshot may still hold lessons.
+        // Return false BEFORE touching Room so the caller can try that source.
+        if (lectures.isEmpty() && classes.isNotEmpty()) return false
+
         validateAndReplaceLocalData(classes, courses, lectures)
         teacherFolderDao?.let { dao ->
             dao.clearForRestore()
             if (folders.isNotEmpty()) dao.insertAllForRestore(folders)
         }
+        return true
     }
 
     private suspend fun restoreSnapshot(
@@ -328,6 +366,17 @@ class FirestoreSyncRepository(
         parentFolderId = nullableNumber("parentFolderId"),
         createdAtMillis = number("createdAtMillis", System.currentTimeMillis())
     )
+
+    private fun JSONObject.toStringMap(): Map<String, Any?> {
+        val result = linkedMapOf<String, Any?>()
+        val iterator = keys()
+        while (iterator.hasNext()) {
+            val key = iterator.next()
+            val value = get(key)
+            result[key] = if (value === JSONObject.NULL) null else value
+        }
+        return result
+    }
 
     private fun Map<*, *>.asStringMap(): Map<String, Any?>? {
         if (keys.any { it !is String }) return null

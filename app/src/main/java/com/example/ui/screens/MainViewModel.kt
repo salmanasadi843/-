@@ -195,11 +195,23 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
                 }
                 val restored = cloudSyncRepository.restoreFromCloud(uid)
                 if (!restored) {
-                    // Keep old published material untouched; import it only if it
-                    // follows the known snapshot shape, then create private backup.
-                    cloudSyncRepository.restoreLegacySharedMaterials(uid)
-                    cloudSyncRepository.uploadSnapshot(uid)
-                    _cloudSyncStatus.value = "پشتیبان‌گیری ابری موفق بود؛ تغییرات بعدی نیز خودکار ارسال می‌شوند."
+                    val legacyRestored = cloudSyncRepository.restoreLegacySharedMaterials(uid)
+                    if (legacyRestored) {
+                        cloudSyncRepository.uploadSnapshot(uid)
+                        _cloudSyncStatus.value = "بازیابی پشتیبان قدیمی موفق بود و نسخه خصوصی جدید نیز ذخیره شد."
+                    } else {
+                        val localClasses = database.classDao().getAllForBackup()
+                        val localCourses = database.courseDao().getAllForBackup()
+                        val localLectures = database.lectureDao().getAllForBackup()
+                        if (localClasses.isEmpty() && localCourses.isEmpty() && localLectures.isEmpty()) {
+                            _cloudSyncStatus.value =
+                                "پشتیبان قابل‌بازیابی پیدا نشد؛ چون اطلاعات محلی هم خالی است، برای جلوگیری از بازنویسی پشتیبان ابری هیچ داده‌ای ارسال نشد."
+                            return@launch
+                        }
+                        cloudSyncRepository.uploadSnapshot(uid)
+                        _cloudSyncStatus.value =
+                            "پشتیبان قبلی پیدا نشد؛ از اطلاعات موجود روی دستگاه یک پشتیبان تازه ساخته شد."
+                    }
                 } else {
                     _cloudSyncStatus.value = "بازیابی اطلاعات از فضای ابری موفق بود؛ تغییرات بعدی خودکار ارسال می‌شوند."
                 }
@@ -220,8 +232,18 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
                                 cloudSyncJob?.cancel()
                                 return@collect
                             }
+                            // Keep the private recovery snapshot and public student feed in sync.
                             cloudSyncRepository.uploadSnapshot(uid)
-                            _cloudSyncStatus.value = "همگام‌سازی ابری موفق — آخرین ارسال انجام شد."
+                            try {
+                                withContext(Dispatchers.IO) {
+                                    CloudMaterialsSync.sync(app)
+                                }
+                                _cloudSyncStatus.value = "پشتیبان‌گیری و انتشار خودکار مطالب برای دانشجویان موفق بود."
+                            } catch (publicationError: Exception) {
+                                Log.e(TAG, "Automatic public materials sync failed; private backup succeeded", publicationError)
+                                _cloudSyncStatus.value =
+                                    "پشتیبان‌گیری ابری موفق بود، اما انتشار خودکار ناموفق ماند: ${publicationError.localizedMessage ?: "خطای نامشخص"}"
+                            }
                         } catch (e: Exception) {
                             Log.e(TAG, "Teacher cloud backup failed", e)
                             _cloudSyncStatus.value = "همگام‌سازی ناموفق بود: ${e.localizedMessage ?: "خطای نامشخص"}"
@@ -897,27 +919,6 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
             loadLecture(newId)
 
             onSaved(newId)
-        }
-    }
-
-    fun setClassPublished(classItem: ClassEntity, published: Boolean) {
-        viewModelScope.launch {
-            if (!teacherPermissionGranted()) { denyTeacherMutation(); return@launch }
-            if (classItem.id < 0L) {
-                _cloudSyncStatus.value = "تغییر وضعیت انتشار کلاس استاد دیگر مجاز نیست."
-                return@launch
-            }
-            repository.saveClass(classItem.copy(isPublished = published))
-            // Refresh the shared student feed immediately after class visibility changes.
-            try {
-                withContext(Dispatchers.IO) {
-                    CloudMaterialsSync.sync(getApplication<Application>())
-                }
-            } catch (e: Exception) {
-                Log.e(TAG, "Could not refresh published class feed", e)
-                _cloudSyncStatus.value =
-                    "وضعیت انتشار کلاس در دستگاه ذخیره شد؛ همگام‌سازی آنلاین ناموفق بود و باید دوباره تلاش شود."
-            }
         }
     }
 
