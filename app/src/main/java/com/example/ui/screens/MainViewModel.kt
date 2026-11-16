@@ -137,12 +137,21 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
                 // recover the authenticated teacher's private backup before fetching
                 // other teachers' publications. Never upload an empty local snapshot here.
                 if (ownedLocalCount == 0) {
-                    val restoredPrivate = withContext(Dispatchers.IO) {
-                        cloudSyncRepository.restoreFromCloud(uid)
-                    }
-                    if (!restoredPrivate) {
+                    val restoredPrivate = runCatching {
                         withContext(Dispatchers.IO) {
-                            cloudSyncRepository.restoreLegacySharedMaterials(uid)
+                            cloudSyncRepository.restoreFromCloud(uid)
+                        }
+                    }
+                    if (restoredPrivate.getOrNull() != true) {
+                        restoredPrivate.exceptionOrNull()?.let {
+                            Log.w(TAG, "Private restore timed out; trying legacy backup", it)
+                        }
+                        runCatching {
+                            withContext(Dispatchers.IO) {
+                                cloudSyncRepository.restoreLegacySharedMaterials(uid)
+                            }
+                        }.onFailure {
+                            Log.w(TAG, "Legacy restore also failed; continuing to published feed", it)
                         }
                     }
                 }
@@ -210,13 +219,29 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
                     _cloudSyncStatus.value = "مجوز استاد لغو شده است؛ همگام‌سازی متوقف شد و اطلاعات محلی ارسال نشد."
                     return@launch
                 }
-                val restored = cloudSyncRepository.restoreFromCloud(uid)
-                if (!restored) {
-                    val legacyRestored = cloudSyncRepository.restoreLegacySharedMaterials(uid)
-                    if (legacyRestored) {
+                // Try both cloud backup locations independently. A timeout on the
+                // private document must not prevent recovery from the legacy document.
+                val privateRestore = runCatching { cloudSyncRepository.restoreFromCloud(uid) }
+                if (privateRestore.getOrNull() == true) {
+                    _cloudSyncStatus.value = "بازیابی اطلاعات از فضای ابری موفق بود؛ تغییرات بعدی خودکار ارسال می‌شوند."
+                } else {
+                    privateRestore.exceptionOrNull()?.let {
+                        Log.w(TAG, "Private cloud backup read failed; trying legacy backup", it)
+                    }
+                    val legacyRestore = runCatching {
+                        cloudSyncRepository.restoreLegacySharedMaterials(uid)
+                    }
+                    if (legacyRestore.getOrNull() == true) {
                         cloudSyncRepository.uploadSnapshot(uid)
                         _cloudSyncStatus.value = "بازیابی پشتیبان قدیمی موفق بود و نسخه خصوصی جدید نیز ذخیره شد."
                     } else {
+                        val readFailure = privateRestore.exceptionOrNull() ?: legacyRestore.exceptionOrNull()
+                        if (readFailure != null) {
+                            Log.e(TAG, "Cloud backup reads failed; local data was kept", readFailure)
+                            _cloudSyncStatus.value =
+                                "خواندن پشتیبان ابری ناموفق بود؛ احتمالاً ارتباط با Firebase برقرار نشده است. اطلاعات محلی حفظ شد و هیچ داده‌ای ارسال یا جایگزین نشد. علت: ${readFailure.localizedMessage ?: readFailure.javaClass.simpleName}"
+                            return@launch
+                        }
                         val localClasses = database.classDao().getAllForBackup()
                         val localCourses = database.courseDao().getAllForBackup()
                         val localLectures = database.lectureDao().getAllForBackup()
@@ -229,8 +254,6 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
                         _cloudSyncStatus.value =
                             "پشتیبان قبلی پیدا نشد؛ از اطلاعات موجود روی دستگاه یک پشتیبان تازه ساخته شد."
                     }
-                } else {
-                    _cloudSyncStatus.value = "بازیابی اطلاعات از فضای ابری موفق بود؛ تغییرات بعدی خودکار ارسال می‌شوند."
                 }
 
                 combine(
