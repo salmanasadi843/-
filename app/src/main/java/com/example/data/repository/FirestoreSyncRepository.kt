@@ -200,6 +200,11 @@ class FirestoreSyncRepository(
                 )
             }
         }
+        // A marker containing only class/course records is not a complete
+        // lecture backup when the legacy shared snapshot may still hold lessons.
+        // Return false BEFORE touching Room so the caller can try that source.
+        if (lectures.isEmpty() && classes.isNotEmpty()) return false
+
         validateAndReplaceLocalData(classes, courses, lectures)
         teacherFolderDao?.let { dao ->
             dao.clearForRestore()
