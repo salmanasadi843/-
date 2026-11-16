@@ -101,7 +101,7 @@ class FirestoreSyncRepository(
 
         if (data["classes"] !is List<*> || data["courses"] !is List<*> ||
             data["lectures"] !is List<*>) return false
-        restoreSnapshot(snapshot, requireAllCollections = true)
+        restoreSnapshot(snapshot, requireAllCollections = true, ownerUid = uid)
         return true
     }
 
