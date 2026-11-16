@@ -475,8 +475,9 @@ class FirestoreSyncRepository(
      */
     private suspend fun <T> Task<T>.awaitResult(): T = withTimeout(20_000L) {
         suspendCancellableCoroutine { continuation ->
-            val listener = com.google.android.gms.tasks.OnCompleteListener<T> { task ->
-                if (!continuation.isActive) return@OnCompleteListener
+            addOnCompleteListener { task ->
+                // Ignore late completion after the coroutine has timed out.
+                if (!continuation.isActive) return@addOnCompleteListener
                 if (task.isSuccessful) {
                     continuation.resume(task.result)
                 } else {
@@ -484,11 +485,6 @@ class FirestoreSyncRepository(
                         task.exception ?: IllegalStateException("درخواست Firebase ناموفق بود.")
                     )
                 }
-            }
-            addOnCompleteListener(listener)
-            // Do not leave a Firebase listener attached after timeout/cancellation.
-            continuation.invokeOnCancellation {
-                removeOnCompleteListener(listener)
             }
         }
     }
