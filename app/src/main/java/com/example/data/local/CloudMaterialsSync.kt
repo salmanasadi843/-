@@ -261,15 +261,20 @@ object CloudMaterialsSync {
                     }!!
                 }
 
+            val importedCandidates = SharedLectureDeduplicator.mergeSameIdCopies(
+                existingLocalLectures.filter { it.id < 0L } + uniqueLectures.distinctBy { it.id }
+            )
             val reconciled = SharedLectureDeduplicator.reconcile(
-                existingLocal = existingLocalLectures,
-                imported = uniqueLectures.distinctBy { it.id }
+                existingLocal = existingLocalLectures.filter { it.id > 0L },
+                imported = importedCandidates
             )
             runBlocking {
                 db.withTransaction {
-                    db.lectureDao().clearCloudSharedData()
-                    db.courseDao().clearCloudSharedData()
-                    db.classDao().clearCloudSharedData()
+                    // Keep previously cached shared rows that are temporarily absent
+                    // from the feed. Delete only negative-ID sessions proven duplicates.
+                    if (reconciled.duplicateImportedIdsToDelete.isNotEmpty()) {
+                        db.lectureDao().deleteLecturesByIds(reconciled.duplicateImportedIdsToDelete)
+                    }
                     db.classDao().insertAllForRestore(allClasses.distinctBy { it.id })
                     db.courseDao().insertAllForRestore(allCourses.distinctBy { it.id })
                     if (reconciled.localRecordsToUpdate.isNotEmpty()) {
@@ -280,7 +285,7 @@ object CloudMaterialsSync {
                     }
                 }
             }
-            "مطالب آنلاین به‌روزرسانی شد: ${reconciled.importedToInsert.size} جلسه جدید؛ ${reconciled.skippedDuplicateCount} نسخه تکراری ادغام شد."
+            "مطالب آنلاین به‌روزرسانی شد: ${reconciled.importedToInsert.size} جلسه اشتراکی حفظ/به‌روزرسانی شد؛ ${reconciled.skippedDuplicateCount} نسخه تکراری شناسایی شد."
         }
     }
 
