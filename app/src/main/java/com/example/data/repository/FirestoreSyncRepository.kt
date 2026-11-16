@@ -11,6 +11,7 @@ import com.example.data.local.TeacherFolderEntity
 import com.google.android.gms.tasks.Task
 import com.google.firebase.firestore.DocumentSnapshot
 import com.google.firebase.firestore.FieldValue
+import com.google.firebase.auth.FirebaseAuth
 import com.google.firebase.firestore.FirebaseFirestore
 import org.json.JSONObject
 import kotlinx.coroutines.suspendCancellableCoroutine
@@ -47,8 +48,32 @@ class FirestoreSyncRepository(
      * Read-only diagnostics. This method never restores, migrates, or writes data.
      */
     suspend fun inspectCloudBackup(uid: String): String {
-        // Read each backup independently: an offline/error on one document must
-        // not prevent inspection of the other backup source.
+        // Read-only diagnostics: never restore, migrate, upload, or modify cloud data.
+        val authReport = try {
+            val user = FirebaseAuth.getInstance().currentUser
+                ?: throw IllegalStateException("نشست ورود Firebase فعال نیست.")
+            if (user.uid != uid) {
+                throw IllegalStateException("شناسه حساب فعال با شناسه درخواستی یکسان نیست.")
+            }
+            // Force-refresh only the authentication token; do not print or persist it.
+            user.getIdToken(true).awaitResult()
+            "احراز هویت Firebase: دریافت توکن تازه موفق بود."
+        } catch (error: Exception) {
+            "احراز هویت Firebase ناموفق بود: ${error.localizedMessage ?: error.javaClass.simpleName}"
+        }
+
+        val profileReport = try {
+            val profile = firestore.collection("users").document(uid)
+                .get(com.google.firebase.firestore.Source.SERVER).awaitResult()
+            if (profile.exists()) {
+                "پروفایل کاربر: سند موجود است؛ نقش ثبت‌شده: ${profile.getString("role") ?: "نامشخص"}."
+            } else {
+                "پروفایل کاربر: سند users/{uid} در سرور وجود ندارد."
+            }
+        } catch (error: Exception) {
+            "خواندن پروفایل کاربر ناموفق بود: ${error.localizedMessage ?: error.javaClass.simpleName}"
+        }
+
         val privateReport = try {
             val snapshot = firestore.collection(TEACHER_DATA).document(uid).get().awaitResult()
             if (!snapshot.exists()) {
@@ -100,7 +125,7 @@ class FirestoreSyncRepository(
             "خواندن پشتیبان قدیمی ناموفق بود: ${error.localizedMessage ?: error.javaClass.simpleName}"
         }
 
-        return "$privateReport\n$legacyReport\nاین گزارش فقط‌خواندنی است؛ هیچ داده‌ای تغییر نکرد."
+        return "$authReport\\n$profileReport\\n$privateReport\\n$legacyReport\\nاین گزارش فقط‌خواندنی است؛ هیچ داده‌ای تغییر نکرد."
     }
 
     suspend fun restoreFromCloud(uid: String): Boolean {
