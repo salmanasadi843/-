@@ -157,11 +157,13 @@ object CloudMaterialsSync {
 
             val classIdMap = mutableMapOf<String, Long>()
             val fingerprintToClassId = mutableMapOf<String, Long>()
-            val localClassIdBySignature = existingLocalClasses.associate { local ->
-                val signature = listOf(local.name, local.teacherName, local.term)
-                    .joinToString("|") { normalized(it) }
-                "${local.ownerUid}:$signature" to local.id
-            }
+            val localClassIdBySignature = existingLocalClasses
+                .filter { it.id > 0L }
+                .associate { local ->
+                    val signature = listOf(local.name, local.teacherName, local.term)
+                        .joinToString("|") { normalized(it) }
+                    "${local.ownerUid}:$signature" to local.id
+                }
             canonicalSourceClasses.forEach { (owner, item, _) ->
                 // The same published class can appear in feeds from more than one
                 // teacher account. Use its normalized metadata + content as the identity,
