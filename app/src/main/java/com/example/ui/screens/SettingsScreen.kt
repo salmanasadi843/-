@@ -220,6 +220,7 @@ fun SettingsScreen(
             verticalArrangement = Arrangement.spacedBy(16.dp)
         ) {
             val cloudSyncStatus by viewModel.cloudSyncStatus.collectAsState()
+            val cloudBackupDiagnostic by viewModel.cloudBackupDiagnostic.collectAsState()
             Card(
                 colors = CardDefaults.cardColors(
                     containerColor = MaterialTheme.colorScheme.surface
@@ -242,6 +243,17 @@ fun SettingsScreen(
                     ) {
                         Text("بررسی و تلاش دوباره")
                     }
+                    OutlinedButton(
+                        onClick = { viewModel.inspectCloudBackup() },
+                        enabled = !cloudBusy
+                    ) {
+                        Text("گزارش فقط‌خواندنی پشتیبان")
+                    }
+                    Text(
+                        cloudBackupDiagnostic,
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
                     Text(
                         "موفقیت این بخش یعنی برنامه توانسته عملیات ابری را انجام دهد؛ برای تأیید نهایی ذخیره داده‌ها می‌توان بعداً فایربیس را هم بررسی کرد.",
                         style = MaterialTheme.typography.bodySmall,

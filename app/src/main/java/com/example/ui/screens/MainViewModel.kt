@@ -129,6 +129,32 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
 
         teacherPublishedSyncJob = viewModelScope.launch {
             try {
+                val uid = AuthPreferences.currentUid(app) ?: return@launch
+                val ownedLocalCount = withContext(Dispatchers.IO) {
+                    database.classDao().getAllForBackup().count { it.id > 0L && it.ownerUid == uid }
+                }
+                // If Room has no owned classes (e.g. after reinstall/cleared app data),
+                // recover the authenticated teacher's private backup before fetching
+                // other teachers' publications. Never upload an empty local snapshot here.
+                if (ownedLocalCount == 0) {
+                    val restoredPrivate = runCatching {
+                        withContext(Dispatchers.IO) {
+                            cloudSyncRepository.restoreFromCloud(uid)
+                        }
+                    }
+                    if (restoredPrivate.getOrNull() != true) {
+                        restoredPrivate.exceptionOrNull()?.let {
+                            Log.w(TAG, "Private restore timed out; trying legacy backup", it)
+                        }
+                        runCatching {
+                            withContext(Dispatchers.IO) {
+                                cloudSyncRepository.restoreLegacySharedMaterials(uid)
+                            }
+                        }.onFailure {
+                            Log.w(TAG, "Legacy restore also failed; continuing to published feed", it)
+                        }
+                    }
+                }
                 val result = withContext(Dispatchers.IO) {
                     CloudMaterialsSync.syncPublishedForTeacher(app)
                 }
@@ -193,15 +219,41 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
                     _cloudSyncStatus.value = "مجوز استاد لغو شده است؛ همگام‌سازی متوقف شد و اطلاعات محلی ارسال نشد."
                     return@launch
                 }
-                val restored = cloudSyncRepository.restoreFromCloud(uid)
-                if (!restored) {
-                    // Keep old published material untouched; import it only if it
-                    // follows the known snapshot shape, then create private backup.
-                    cloudSyncRepository.restoreLegacySharedMaterials(uid)
-                    cloudSyncRepository.uploadSnapshot(uid)
-                    _cloudSyncStatus.value = "پشتیبان‌گیری ابری موفق بود؛ تغییرات بعدی نیز خودکار ارسال می‌شوند."
-                } else {
+                // Try both cloud backup locations independently. A timeout on the
+                // private document must not prevent recovery from the legacy document.
+                val privateRestore = runCatching { cloudSyncRepository.restoreFromCloud(uid) }
+                if (privateRestore.getOrNull() == true) {
                     _cloudSyncStatus.value = "بازیابی اطلاعات از فضای ابری موفق بود؛ تغییرات بعدی خودکار ارسال می‌شوند."
+                } else {
+                    privateRestore.exceptionOrNull()?.let {
+                        Log.w(TAG, "Private cloud backup read failed; trying legacy backup", it)
+                    }
+                    val legacyRestore = runCatching {
+                        cloudSyncRepository.restoreLegacySharedMaterials(uid)
+                    }
+                    if (legacyRestore.getOrNull() == true) {
+                        cloudSyncRepository.uploadSnapshot(uid)
+                        _cloudSyncStatus.value = "بازیابی پشتیبان قدیمی موفق بود و نسخه خصوصی جدید نیز ذخیره شد."
+                    } else {
+                        val readFailure = privateRestore.exceptionOrNull() ?: legacyRestore.exceptionOrNull()
+                        if (readFailure != null) {
+                            Log.e(TAG, "Cloud backup reads failed; local data was kept", readFailure)
+                            _cloudSyncStatus.value =
+                                "خواندن پشتیبان ابری ناموفق بود؛ احتمالاً ارتباط با Firebase برقرار نشده است. اطلاعات محلی حفظ شد و هیچ داده‌ای ارسال یا جایگزین نشد. علت: ${readFailure.localizedMessage ?: readFailure.javaClass.simpleName}"
+                            return@launch
+                        }
+                        val localClasses = database.classDao().getAllForBackup()
+                        val localCourses = database.courseDao().getAllForBackup()
+                        val localLectures = database.lectureDao().getAllForBackup()
+                        if (localClasses.isEmpty() && localCourses.isEmpty() && localLectures.isEmpty()) {
+                            _cloudSyncStatus.value =
+                                "پشتیبان قابل‌بازیابی پیدا نشد؛ چون اطلاعات محلی هم خالی است، برای جلوگیری از بازنویسی پشتیبان ابری هیچ داده‌ای ارسال نشد."
+                            return@launch
+                        }
+                        cloudSyncRepository.uploadSnapshot(uid)
+                        _cloudSyncStatus.value =
+                            "پشتیبان قبلی پیدا نشد؛ از اطلاعات موجود روی دستگاه یک پشتیبان تازه ساخته شد."
+                    }
                 }
 
                 combine(
@@ -220,8 +272,18 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
                                 cloudSyncJob?.cancel()
                                 return@collect
                             }
+                            // Keep the private recovery snapshot and public student feed in sync.
                             cloudSyncRepository.uploadSnapshot(uid)
-                            _cloudSyncStatus.value = "همگام‌سازی ابری موفق — آخرین ارسال انجام شد."
+                            try {
+                                withContext(Dispatchers.IO) {
+                                    CloudMaterialsSync.sync(app)
+                                }
+                                _cloudSyncStatus.value = "پشتیبان‌گیری و انتشار خودکار مطالب برای دانشجویان موفق بود."
+                            } catch (publicationError: Exception) {
+                                Log.e(TAG, "Automatic public materials sync failed; private backup succeeded", publicationError)
+                                _cloudSyncStatus.value =
+                                    "پشتیبان‌گیری ابری موفق بود، اما انتشار خودکار ناموفق ماند: ${publicationError.localizedMessage ?: "خطای نامشخص"}"
+                            }
                         } catch (e: Exception) {
                             Log.e(TAG, "Teacher cloud backup failed", e)
                             _cloudSyncStatus.value = "همگام‌سازی ناموفق بود: ${e.localizedMessage ?: "خطای نامشخص"}"
@@ -231,6 +293,30 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
                 // A failed cloud read must never trigger a destructive local upload.
                 Log.e(TAG, "Teacher cloud restore failed; local data was kept", e)
                 _cloudSyncStatus.value = "اتصال یا بازیابی ابری ناموفق بود: ${e.localizedMessage ?: "خطای نامشخص"}. اطلاعات محلی حفظ شد."
+            }
+        }
+    }
+
+
+    private val _cloudBackupDiagnostic = MutableStateFlow("هنوز بررسی نشده است.")
+    val cloudBackupDiagnostic: StateFlow<String> = _cloudBackupDiagnostic.asStateFlow()
+
+    fun inspectCloudBackup() {
+        val uid = AuthPreferences.currentUid(getApplication<Application>())
+        if (uid.isNullOrBlank()) {
+            _cloudBackupDiagnostic.value = "حساب کاربری مشخص نیست؛ ابتدا وارد حساب استاد شوید."
+            return
+        }
+        viewModelScope.launch {
+            _cloudBackupDiagnostic.value = "در حال خواندن اطلاعات پشتیبان ابری…"
+            try {
+                _cloudBackupDiagnostic.value = withContext(Dispatchers.IO) {
+                    cloudSyncRepository.inspectCloudBackup(uid)
+                }
+            } catch (error: Exception) {
+                Log.e(TAG, "Read-only cloud backup inspection failed", error)
+                _cloudBackupDiagnostic.value =
+                    "بررسی ناموفق بود (این خطا به معنی خالی بودن پشتیبان نیست): ${error.localizedMessage ?: "خطای نامشخص"}"
             }
         }
     }
@@ -897,27 +983,6 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
             loadLecture(newId)
 
             onSaved(newId)
-        }
-    }
-
-    fun setClassPublished(classItem: ClassEntity, published: Boolean) {
-        viewModelScope.launch {
-            if (!teacherPermissionGranted()) { denyTeacherMutation(); return@launch }
-            if (classItem.id < 0L) {
-                _cloudSyncStatus.value = "تغییر وضعیت انتشار کلاس استاد دیگر مجاز نیست."
-                return@launch
-            }
-            repository.saveClass(classItem.copy(isPublished = published))
-            // Refresh the shared student feed immediately after class visibility changes.
-            try {
-                withContext(Dispatchers.IO) {
-                    CloudMaterialsSync.sync(getApplication<Application>())
-                }
-            } catch (e: Exception) {
-                Log.e(TAG, "Could not refresh published class feed", e)
-                _cloudSyncStatus.value =
-                    "وضعیت انتشار کلاس در دستگاه ذخیره شد؛ همگام‌سازی آنلاین ناموفق بود و باید دوباره تلاش شود."
-            }
         }
     }
 

@@ -41,28 +41,42 @@ object CloudMaterialsSync {
             val allLectures = runBlocking { db.lectureDao().getAllForBackup() }
             // Imported/shared records use stable negative IDs. They belong to their
             // original teacher and must never be republished or managed by this account.
-            val classes = allClasses.filter { it.id > 0L && it.ownerUid == uid && it.isPublished }
+            // Public sharing is automatic in this app version; every owned class
+            // and its sessions are included. Private-class controls are deferred.
+            val classes = allClasses.filter { it.id > 0L && it.ownerUid == uid }
             val visibleClassIds = classes.map { it.id }.toSet()
             val courses = allCourses.filter { it.id > 0L && it.classId > 0L && it.classId in visibleClassIds }
             val lectures = allLectures.filter { lecture ->
-                lecture.id > 0L && lecture.isPublished &&
+                lecture.id > 0L &&
                     lecture.classId?.let { it > 0L && it in visibleClassIds } == true
             }
             val payload = JSONObject()
                 .put("format", "darsyar-shared-materials")
                 .put("version", 1)
                 .put("teacherName", AuthPreferences.currentName(context))
-                .put("classes", JSONArray().apply { classes.forEach { put(it.copy(ownerUid = uid).toJson()) } })
+                .put("classes", JSONArray().apply { classes.forEach { put(it.copy(ownerUid = uid, isPublished = true).toJson()) } })
                 .put("courses", JSONArray().apply { courses.forEach { put(it.toJson()) } })
-                .put("lectures", JSONArray().apply { lectures.map { it.toJson() }.forEach { put(it) } })
-            Tasks.await(
-                firestore.collection("shared_materials").document(uid)
-                    .set(mapOf("ownerUid" to uid, "payload" to payload.toString(), "updatedAt" to System.currentTimeMillis()))
-            )
-            "مطالب متنی و لینک‌های صوت با موفقیت در فضای آنلاین به‌روزرسانی شد."
+                .put("lectures", JSONArray().apply { lectures.map { it.copy(isPublished = true).toJson() }.forEach { put(it) } })
+            val feedRef = firestore.collection("shared_materials").document(uid)
+            val oldDoc = Tasks.await(feedRef.get())
+            require(!oldDoc.exists() || oldDoc.getString("ownerUid") == uid) { "مالکیت سند آنلاین تطبیق ندارد؛ انتشار متوقف شد." }
+            val oldText = oldDoc.getString("payload")
+            require(!oldDoc.exists() || !oldText.isNullOrBlank()) { "سند آنلاین قبلی خالی است؛ انتشار متوقف شد." }
+            if (!oldText.isNullOrBlank()) {
+                val oldPayload = runCatching { JSONObject(oldText) }.getOrElse { error("ساختار پشتیبان آنلاین خراب است؛ انتشار متوقف شد.") }
+                require(oldPayload.optString("format") == "darsyar-shared-materials") { "قالب پشتیبان آنلاین ناشناخته است." }
+                payload.put("classes", mergeById(oldPayload.optJSONArray("classes"), payload.optJSONArray("classes")))
+                payload.put("courses", mergeById(oldPayload.optJSONArray("courses"), payload.optJSONArray("courses")))
+                payload.put("lectures", mergeById(oldPayload.optJSONArray("lectures"), payload.optJSONArray("lectures")))
+            }
+            Tasks.await(feedRef.set(mapOf("ownerUid" to uid, "payload" to payload.toString(), "updatedAt" to System.currentTimeMillis())))
+            "انتشار امن انجام شد؛ رکوردهای قبلیِ غایب از گوشی حفظ شدند."
         } else {
             val documents = Tasks.await(firestore.collection("shared_materials").get()).documents
                 .filter { it.id != uid }
+            val existingLocalClasses = runBlocking { db.classDao().getAllForBackup() }
+            val existingLocalCourses = runBlocking { db.courseDao().getAllForBackup() }
+            val existingLocalLectures = runBlocking { db.lectureDao().getAllForBackup() }
             val allClasses = mutableListOf<ClassEntity>()
             val allCourses = mutableListOf<CourseEntity>()
             val allLectures = mutableListOf<LectureEntity>()
@@ -84,6 +98,9 @@ object CloudMaterialsSync {
                     .replace('ـ', ' ')
                     .replace(Regex("[\\u200c\\u200d]"), "")
                     .replace(Regex("\\s+"), " ")
+
+            fun normalizedTitle(value: String): String =
+                normalized(value).trimEnd('.', '。', '．', '!', '؟', '?', '،', ',')
 
             val sourceClasses = mutableListOf<Triple<String, ClassEntity, String>>()
             validPayloads.forEach { (owner, payload) ->
@@ -112,6 +129,7 @@ object CloudMaterialsSync {
                     }
                     .filter { it.classId == item.id }
                     .map { normalized(it.name) }
+                    .distinct()
                     .sorted()
 
                 val lectures = validPayloads
@@ -125,14 +143,16 @@ object CloudMaterialsSync {
                     .filter { it.classId == item.id }
                     .map { lecture ->
                         listOf(
-                            normalized(lecture.title),
+                            normalizedTitle(lecture.title),
                             normalized(lecture.courseName),
                             lecture.dateMillis.toString(),
                         ).joinToString("~")
                     }
+                    .distinct()
                     .sorted()
 
-                val metadata = listOf(item.name, item.teacherName, item.term).joinToString("|") { normalized(it) }
+                val metadata = listOf(item.name, item.teacherName, item.term)
+                    .joinToString("|") { normalized(it) } + "|date:${item.classDateMillis}"
                 val content = (courses + lectures).joinToString("|")
                 return "$metadata##$content"
             }
@@ -144,16 +164,44 @@ object CloudMaterialsSync {
 
             val classIdMap = mutableMapOf<String, Long>()
             val fingerprintToClassId = mutableMapOf<String, Long>()
+            fun localClassFingerprint(item: ClassEntity): String {
+                val courses = existingLocalCourses
+                    .filter { it.classId == item.id }
+                    .map { normalized(it.name) }
+                    .distinct()
+                    .sorted()
+                val lectures = existingLocalLectures
+                    .filter { it.classId == item.id }
+                    .map { lecture ->
+                        listOf(
+                            normalizedTitle(lecture.title),
+                            normalized(lecture.courseName),
+                            lecture.dateMillis.toString()
+                        ).joinToString("~")
+                    }
+                    .distinct()
+                    .sorted()
+                val metadata = listOf(item.name, item.teacherName, item.term)
+                    .joinToString("|") { normalized(it) } + "|date:${item.classDateMillis}"
+                return "$metadata##${(courses + lectures).joinToString("|")}"
+            }
+
+            val ownedLocalClasses = existingLocalClasses.filter { it.id > 0L }
+            val localClassIdByFingerprint = ownedLocalClasses.associate { local ->
+                localClassFingerprint(local) to local.id
+            }
             canonicalSourceClasses.forEach { (owner, item, _) ->
                 // The same published class can appear in feeds from more than one
                 // teacher account. Use its normalized metadata + content as the identity,
                 // not the feed owner, so identical copies share one imported class.
                 val fingerprint = classFingerprint(owner, item)
                 val importedClassId = fingerprintToClassId.getOrPut(fingerprint) {
-                    stableId("shared-feed", "class-content:$fingerprint")
+                    localClassIdByFingerprint[fingerprint]
+                        ?: stableId("shared-feed", "class-content:$fingerprint")
                 }
                 classIdMap["$owner:${item.id}"] = importedClassId
-                if (allClasses.none { it.id == importedClassId }) {
+                if (existingLocalClasses.none { it.id == importedClassId } &&
+                    allClasses.none { it.id == importedClassId }) {
                     allClasses += item.copy(id = importedClassId, ownerUid = owner, folderId = null, isPublished = true)
                 }
             }
@@ -221,8 +269,9 @@ object CloudMaterialsSync {
                     listOf(
                         lecture.classId?.toString().orEmpty(),
                         normalized(lecture.courseName),
-                        normalized(lecture.title),
-                        lecture.dateMillis.toString()
+                        normalized(lecture.title).trimEnd('.', '。', '．', '!', '؟', '?', '،', ','),
+                        lecture.dateMillis.toString(),
+                        normalized(lecture.transcript)
                     ).joinToString("|")
                 }
                 .values
@@ -236,18 +285,45 @@ object CloudMaterialsSync {
                     }!!
                 }
 
+            val importedCandidates = SharedLectureDeduplicator.mergeSameIdCopies(
+                existingLocalLectures.filter { it.id < 0L } + uniqueLectures.distinctBy { it.id }
+            )
+            val reconciled = SharedLectureDeduplicator.reconcile(
+                existingLocal = existingLocalLectures.filter { it.id > 0L },
+                imported = importedCandidates
+            )
             runBlocking {
                 db.withTransaction {
-                    db.lectureDao().clearCloudSharedData()
-                    db.courseDao().clearCloudSharedData()
-                    db.classDao().clearCloudSharedData()
+                    // Keep previously cached shared rows that are temporarily absent
+                    // from the feed. Delete only negative-ID sessions proven duplicates.
+                    if (reconciled.duplicateImportedIdsToDelete.isNotEmpty()) {
+                        db.lectureDao().deleteLecturesByIds(reconciled.duplicateImportedIdsToDelete)
+                    }
                     db.classDao().insertAllForRestore(allClasses.distinctBy { it.id })
                     db.courseDao().insertAllForRestore(allCourses.distinctBy { it.id })
-                    db.lectureDao().insertAllForRestore(uniqueLectures.distinctBy { it.id })
+                    if (reconciled.localRecordsToUpdate.isNotEmpty()) {
+                        db.lectureDao().insertAllForRestore(reconciled.localRecordsToUpdate)
+                    }
+                    if (reconciled.importedToInsert.isNotEmpty()) {
+                        db.lectureDao().insertAllForRestore(reconciled.importedToInsert)
+                    }
                 }
             }
-            "مطالب آنلاین به‌روزرسانی شد: ${uniqueLectures.size} جلسه یکتا از ${documents.size} حساب استاد."
+            "مطالب آنلاین به‌روزرسانی شد: ${reconciled.importedToInsert.size} جلسه اشتراکی حفظ/به‌روزرسانی شد؛ ${reconciled.skippedDuplicateCount} نسخه تکراری شناسایی شد."
         }
+    }
+
+    private fun mergeById(oldArray: JSONArray?, newArray: JSONArray?): JSONArray {
+        val map = linkedMapOf<String, JSONObject>()
+        fun id(item: JSONObject): String { val value=item.optLong("id", Long.MIN_VALUE); require(value!=Long.MIN_VALUE); return value.toString() }
+        oldArray?.let { for (i in 0 until it.length()) { val item=it.optJSONObject(i) ?: error("رکورد آنلاین خراب است."); map[id(item)]=JSONObject(item.toString()) } }
+        newArray?.let { for (i in 0 until it.length()) {
+            val item=it.optJSONObject(i) ?: error("رکورد محلی انتشار خراب است."); val key=id(item); val old=map[key]; val merged=JSONObject(item.toString())
+            if(old!=null && merged.optString("transcript").isBlank() && old.optString("transcript").isNotBlank()) merged.put("transcript",old.optString("transcript"))
+            if(old!=null) listOf("aiSummary","aiKeyPoints","tags","audioUrl","originalTranscript").forEach { field -> if((!merged.has(field)||merged.isNull(field)||merged.optString(field).isBlank())&&old.has(field)&&!old.isNull(field)&&old.optString(field).isNotBlank()) merged.put(field,old.get(field)) }
+            if(old!=null && merged.optLong("lastEditedMillis")<old.optLong("lastEditedMillis")) merged.put("lastEditedMillis",old.optLong("lastEditedMillis")); map[key]=merged
+        } }
+        return JSONArray().apply { map.values.forEach { put(it) } }
     }
 
     private fun stableId(owner: String, key: String): Long {
