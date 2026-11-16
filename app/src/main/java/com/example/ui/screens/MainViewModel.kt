@@ -257,6 +257,30 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
         }
     }
 
+
+    private val _cloudBackupDiagnostic = MutableStateFlow("هنوز بررسی نشده است.")
+    val cloudBackupDiagnostic: StateFlow<String> = _cloudBackupDiagnostic.asStateFlow()
+
+    fun inspectCloudBackup() {
+        val uid = AuthPreferences.currentUid(getApplication<Application>())
+        if (uid.isNullOrBlank()) {
+            _cloudBackupDiagnostic.value = "حساب کاربری مشخص نیست؛ ابتدا وارد حساب استاد شوید."
+            return
+        }
+        viewModelScope.launch {
+            _cloudBackupDiagnostic.value = "در حال خواندن اطلاعات پشتیبان ابری…"
+            try {
+                _cloudBackupDiagnostic.value = withContext(Dispatchers.IO) {
+                    cloudSyncRepository.inspectCloudBackup(uid)
+                }
+            } catch (error: Exception) {
+                Log.e(TAG, "Read-only cloud backup inspection failed", error)
+                _cloudBackupDiagnostic.value =
+                    "بررسی ناموفق بود (این خطا به معنی خالی بودن پشتیبان نیست): ${error.localizedMessage ?: "خطای نامشخص"}"
+            }
+        }
+    }
+
     private val database = AppDatabase.getDatabase(application)
     val repository = LectureRepository(database.lectureDao(), database.classDao(), database.courseDao())
     private val cloudSyncRepository = FirestoreSyncRepository(
