@@ -129,6 +129,23 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
 
         teacherPublishedSyncJob = viewModelScope.launch {
             try {
+                val uid = AuthPreferences.currentUid(app) ?: return@launch
+                val ownedLocalCount = withContext(Dispatchers.IO) {
+                    database.classDao().getAllForBackup().count { it.id > 0L && it.ownerUid == uid }
+                }
+                // If Room has no owned classes (e.g. after reinstall/cleared app data),
+                // recover the authenticated teacher's private backup before fetching
+                // other teachers' publications. Never upload an empty local snapshot here.
+                if (ownedLocalCount == 0) {
+                    val restoredPrivate = withContext(Dispatchers.IO) {
+                        cloudSyncRepository.restoreFromCloud(uid)
+                    }
+                    if (!restoredPrivate) {
+                        withContext(Dispatchers.IO) {
+                            cloudSyncRepository.restoreLegacySharedMaterials(uid)
+                        }
+                    }
+                }
                 val result = withContext(Dispatchers.IO) {
                     CloudMaterialsSync.syncPublishedForTeacher(app)
                 }
