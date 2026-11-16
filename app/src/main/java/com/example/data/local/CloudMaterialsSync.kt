@@ -74,6 +74,8 @@ object CloudMaterialsSync {
         } else {
             val documents = Tasks.await(firestore.collection("shared_materials").get()).documents
                 .filter { it.id != uid }
+            val existingLocalClasses = db.classDao().getAllForBackup()
+            val existingLocalLectures = db.lectureDao().getAllForBackup()
             val allClasses = mutableListOf<ClassEntity>()
             val allCourses = mutableListOf<CourseEntity>()
             val allLectures = mutableListOf<LectureEntity>()
@@ -155,16 +157,25 @@ object CloudMaterialsSync {
 
             val classIdMap = mutableMapOf<String, Long>()
             val fingerprintToClassId = mutableMapOf<String, Long>()
+            val localClassIdBySignature = existingLocalClasses.associate { local ->
+                val signature = listOf(local.name, local.teacherName, local.term)
+                    .joinToString("|") { normalized(it) }
+                "${local.ownerUid}:$signature" to local.id
+            }
             canonicalSourceClasses.forEach { (owner, item, _) ->
                 // The same published class can appear in feeds from more than one
                 // teacher account. Use its normalized metadata + content as the identity,
                 // not the feed owner, so identical copies share one imported class.
                 val fingerprint = classFingerprint(owner, item)
+                val classSignature = listOf(item.name, item.teacherName, item.term)
+                    .joinToString("|") { normalized(it) }
                 val importedClassId = fingerprintToClassId.getOrPut(fingerprint) {
-                    stableId("shared-feed", "class-content:$fingerprint")
+                    localClassIdBySignature["$owner:$classSignature"]
+                        ?: stableId("shared-feed", "class-content:$fingerprint")
                 }
                 classIdMap["$owner:${item.id}"] = importedClassId
-                if (allClasses.none { it.id == importedClassId }) {
+                if (existingLocalClasses.none { it.id == importedClassId } &&
+                    allClasses.none { it.id == importedClassId }) {
                     allClasses += item.copy(id = importedClassId, ownerUid = owner, folderId = null, isPublished = true)
                 }
             }
@@ -232,8 +243,9 @@ object CloudMaterialsSync {
                     listOf(
                         lecture.classId?.toString().orEmpty(),
                         normalized(lecture.courseName),
-                        normalized(lecture.title),
-                        lecture.dateMillis.toString()
+                        normalized(lecture.title).trimEnd('.', '。', '．', '!', '؟', '?', '،', ','),
+                        lecture.dateMillis.toString(),
+                        normalized(lecture.transcript)
                     ).joinToString("|")
                 }
                 .values
@@ -247,6 +259,10 @@ object CloudMaterialsSync {
                     }!!
                 }
 
+            val reconciled = SharedLectureDeduplicator.reconcile(
+                existingLocal = existingLocalLectures,
+                imported = uniqueLectures.distinctBy { it.id }
+            )
             runBlocking {
                 db.withTransaction {
                     db.lectureDao().clearCloudSharedData()
@@ -254,10 +270,15 @@ object CloudMaterialsSync {
                     db.classDao().clearCloudSharedData()
                     db.classDao().insertAllForRestore(allClasses.distinctBy { it.id })
                     db.courseDao().insertAllForRestore(allCourses.distinctBy { it.id })
-                    db.lectureDao().insertAllForRestore(uniqueLectures.distinctBy { it.id })
+                    if (reconciled.localRecordsToUpdate.isNotEmpty()) {
+                        db.lectureDao().insertAllForRestore(reconciled.localRecordsToUpdate)
+                    }
+                    if (reconciled.importedToInsert.isNotEmpty()) {
+                        db.lectureDao().insertAllForRestore(reconciled.importedToInsert)
+                    }
                 }
             }
-            "مطالب آنلاین به‌روزرسانی شد: ${uniqueLectures.size} جلسه یکتا از ${documents.size} حساب استاد."
+            "مطالب آنلاین به‌روزرسانی شد: ${reconciled.importedToInsert.size} جلسه جدید؛ ${reconciled.skippedDuplicateCount} نسخه تکراری ادغام شد."
         }
     }
 
