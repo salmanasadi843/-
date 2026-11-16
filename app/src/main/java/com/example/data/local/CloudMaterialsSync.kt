@@ -151,7 +151,8 @@ object CloudMaterialsSync {
                     .distinct()
                     .sorted()
 
-                val metadata = listOf(item.name, item.teacherName, item.term).joinToString("|") { normalized(it) }
+                val metadata = listOf(item.name, item.teacherName, item.term)
+                    .joinToString("|") { normalized(it) } + "|date:${item.classDateMillis}"
                 val content = (courses + lectures).joinToString("|")
                 return "$metadata##$content"
             }
@@ -181,16 +182,11 @@ object CloudMaterialsSync {
                     .distinct()
                     .sorted()
                 val metadata = listOf(item.name, item.teacherName, item.term)
-                    .joinToString("|") { normalized(it) }
+                    .joinToString("|") { normalized(it) } + "|date:${item.classDateMillis}"
                 return "$metadata##${(courses + lectures).joinToString("|")}"
             }
 
             val ownedLocalClasses = existingLocalClasses.filter { it.id > 0L }
-            val localClassIdBySignature = ownedLocalClasses.associate { local ->
-                val signature = listOf(local.name, local.teacherName, local.term)
-                    .joinToString("|") { normalized(it) }
-                "${local.ownerUid}:$signature" to local.id
-            }
             val localClassIdByFingerprint = ownedLocalClasses.associate { local ->
                 localClassFingerprint(local) to local.id
             }
@@ -202,8 +198,7 @@ object CloudMaterialsSync {
                 val classSignature = listOf(item.name, item.teacherName, item.term)
                     .joinToString("|") { normalized(it) }
                 val importedClassId = fingerprintToClassId.getOrPut(fingerprint) {
-                    localClassIdBySignature["$owner:$classSignature"]
-                        ?: localClassIdByFingerprint[fingerprint]
+                    localClassIdByFingerprint[fingerprint]
                         ?: stableId("shared-feed", "class-content:$fingerprint")
                 }
                 classIdMap["$owner:${item.id}"] = importedClassId
