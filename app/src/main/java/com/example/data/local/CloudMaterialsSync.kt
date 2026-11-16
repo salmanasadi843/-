@@ -74,9 +74,9 @@ object CloudMaterialsSync {
         } else {
             val documents = Tasks.await(firestore.collection("shared_materials").get()).documents
                 .filter { it.id != uid }
-            val existingLocalClasses = db.classDao().getAllForBackup()
-            val existingLocalCourses = db.courseDao().getAllForBackup()
-            val existingLocalLectures = db.lectureDao().getAllForBackup()
+            val existingLocalClasses = runBlocking { db.classDao().getAllForBackup() }
+            val existingLocalCourses = runBlocking { db.courseDao().getAllForBackup() }
+            val existingLocalLectures = runBlocking { db.lectureDao().getAllForBackup() }
             val allClasses = mutableListOf<ClassEntity>()
             val allCourses = mutableListOf<CourseEntity>()
             val allLectures = mutableListOf<LectureEntity>()
