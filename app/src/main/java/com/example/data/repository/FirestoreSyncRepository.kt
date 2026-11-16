@@ -41,6 +41,59 @@ class FirestoreSyncRepository(
         const val BATCH_LIMIT = 400
     }
 
+
+    /**
+     * Read-only diagnostics. This method never restores, migrates, or writes data.
+     */
+    suspend fun inspectCloudBackup(uid: String): String {
+        val privateSnapshot = firestore.collection(TEACHER_DATA).document(uid).get().awaitResult()
+        val privateReport = if (!privateSnapshot.exists()) {
+            "پشتیبان خصوصی: سند وجود ندارد."
+        } else {
+            val version = privateSnapshot.getLong("schemaVersion")
+            when (version) {
+                SCHEMA_VERSION -> {
+                    val records = firestore.collection(TEACHER_DATA).document(uid)
+                        .collection(RECORDS).get().awaitResult()
+                    val classes = records.documents.count { it.getString("recordType") == "class" }
+                    val courses = records.documents.count { it.getString("recordType") == "course" }
+                    val lectures = records.documents.count { it.getString("recordType") == "lecture" }
+                    val expected = privateSnapshot.getLong("recordCount")
+                    "پشتیبان خصوصی: موجود؛ نسخه ۲؛ رکورد ثبت‌شده در ریشه: ${expected ?: "نامشخص"}؛ دریافت‌شده: ${records.size()} (کلاس: $classes، درس: $courses، جلسه: $lectures)."
+                }
+                LEGACY_SCHEMA_VERSION -> {
+                    val classes = (privateSnapshot.get("classes") as? List<*>)?.size
+                    val courses = (privateSnapshot.get("courses") as? List<*>)?.size
+                    val lectures = (privateSnapshot.get("lectures") as? List<*>)?.size
+                    "پشتیبان خصوصی: موجود؛ نسخه ۱؛ کلاس: ${classes ?: "نامشخص"}، درس: ${courses ?: "نامشخص"}، جلسه: ${lectures ?: "نامشخص"}."
+                }
+                else -> "پشتیبان خصوصی: سند موجود است، اما نسخهٔ آن نامشخص است (${version ?: "بدون نسخه"})."
+            }
+        }
+
+        val legacySnapshot = firestore.collection(SHARED_MATERIALS).document(uid).get().awaitResult()
+        val legacyReport = if (!legacySnapshot.exists()) {
+            "پشتیبان قدیمی shared_materials: سند وجود ندارد."
+        } else {
+            val payloadText = legacySnapshot.getString("payload")
+            if (payloadText != null) {
+                val payload = try { JSONObject(payloadText) } catch (error: Exception) {
+                    return "$privateReport\nپشتیبان قدیمی: سند موجود است، اما محتوای JSON قابل‌خواندن نیست."
+                }
+                val classes = payload.optJSONArray("classes")?.length()
+                val courses = payload.optJSONArray("courses")?.length()
+                val lectures = payload.optJSONArray("lectures")?.length()
+                "پشتیبان قدیمی shared_materials: سند موجود؛ کلاس: ${classes ?: "نامشخص"}، درس: ${courses ?: "نامشخص"}، جلسه: ${lectures ?: "نامشخص"}."
+            } else {
+                val classes = (legacySnapshot.get("classes") as? List<*>)?.size
+                val courses = (legacySnapshot.get("courses") as? List<*>)?.size
+                val lectures = (legacySnapshot.get("lectures") as? List<*>)?.size
+                "پشتیبان قدیمی shared_materials: سند موجود؛ کلاس: ${classes ?: "نامشخص"}، درس: ${courses ?: "نامشخص"}، جلسه: ${lectures ?: "نامشخص"}."
+            }
+        }
+        return "$privateReport\n$legacyReport\nاین گزارش فقط‌خواندنی است؛ هیچ داده‌ای تغییر نکرد."
+    }
+
     suspend fun restoreFromCloud(uid: String): Boolean {
         val root = firestore.collection(TEACHER_DATA).document(uid)
         val snapshot = root.get().awaitResult()
