@@ -99,6 +99,9 @@ object CloudMaterialsSync {
                     .replace(Regex("[\\u200c\\u200d]"), "")
                     .replace(Regex("\\s+"), " ")
 
+            fun normalizedTitle(value: String): String =
+                normalized(value).trimEnd('.', '。', '．', '!', '؟', '?', '،', ',')
+
             val sourceClasses = mutableListOf<Triple<String, ClassEntity, String>>()
             validPayloads.forEach { (owner, payload) ->
                 payload.optJSONArray("classes")?.let { array ->
@@ -140,7 +143,7 @@ object CloudMaterialsSync {
                     .filter { it.classId == item.id }
                     .map { lecture ->
                         listOf(
-                            normalized(lecture.title),
+                            normalizedTitle(lecture.title),
                             normalized(lecture.courseName),
                             lecture.dateMillis.toString(),
                         ).joinToString("~")
