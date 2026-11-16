@@ -49,6 +49,67 @@ class SharedLectureDeduplicatorTest {
     }
 
     @Test
+    fun backupShapeOfEightyRowsCollapsesThirtySixImportedDuplicatesToFortyFourUniqueSessions() {
+        val local = mutableListOf<LectureEntity>()
+        val importedDuplicates = mutableListOf<LectureEntity>()
+        var id = 1L
+        val classUniqueCounts = listOf(20, 2, 16, 6)
+
+        classUniqueCounts.forEachIndexed { classIndex, uniqueCount ->
+            repeat(uniqueCount) { sessionIndex ->
+                val title = "جلسه نمونه ${classIndex + 1}-${sessionIndex + 1}"
+                val transcript = "متن ناشناس جلسه ${classIndex + 1}-${sessionIndex + 1}"
+                val date = 1_000L + sessionIndex
+                local += lecture(
+                    id = id++,
+                    title = title,
+                    classId = classIndex + 1L,
+                    dateMillis = date,
+                    transcript = transcript,
+                    originalTranscript = "نسخه خام مستقل"
+                )
+                if (classIndex != 1) {
+                    // The supplied backup has 16 + 0 + 14 + 5 = 35 exact
+                    // title/date/content pairs; one additional pair differs only
+                    // by trailing title punctuation.
+                    val duplicateCount = when (classIndex) {
+                        0 -> if (sessionIndex < 16) 1 else 0
+                        2 -> if (sessionIndex < 14) 1 else 0
+                        else -> if (sessionIndex < 5) 1 else 0
+                    }
+                    if (duplicateCount == 1) {
+                        importedDuplicates += lecture(
+                            id = -id,
+                            title = if (classIndex == 2 && sessionIndex == 0) "$title." else title,
+                            classId = classIndex + 1L,
+                            dateMillis = date,
+                            transcript = transcript,
+                            originalTranscript = ""
+                        )
+                    }
+                }
+            }
+        }
+
+        // Add the 36th pair: the real backup's single punctuation-only title variant.
+        importedDuplicates += lecture(
+            id = -999L,
+            title = "جلسه نمونه 1-17.",
+            classId = 1L,
+            dateMillis = 1_016L,
+            transcript = "متن ناشناس جلسه 1-17",
+            originalTranscript = ""
+        )
+
+        val result = SharedLectureDeduplicator.reconcile(local, importedDuplicates)
+
+        assertEquals(44, local.size)
+        assertEquals(36, importedDuplicates.size)
+        assertTrue(result.importedToInsert.isEmpty())
+        assertEquals(36, result.skippedDuplicateCount)
+    }
+
+    @Test
     fun duplicateEnrichmentUpdatesExistingRecordWithoutChangingItsId() {
         val local = lecture(id = 11L, originalTranscript = "")
         val imported = lecture(
