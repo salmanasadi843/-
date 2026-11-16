@@ -125,7 +125,7 @@ class FirestoreSyncRepository(
             "خواندن پشتیبان قدیمی ناموفق بود: ${error.localizedMessage ?: error.javaClass.simpleName}"
         }
 
-        return "$authReport\\n$profileReport\\n$privateReport\\n$legacyReport\\nاین گزارش فقط‌خواندنی است؛ هیچ داده‌ای تغییر نکرد."
+        return "$authReport\n$profileReport\n$privateReport\n$legacyReport\nاین گزارش فقط‌خواندنی است؛ هیچ داده‌ای تغییر نکرد."
     }
 
     suspend fun restoreFromCloud(uid: String): Boolean {
