@@ -242,7 +242,7 @@ class FirestoreSyncRepository(
             (it as? Map<*, *>)?.asStringMap()?.toLectureEntity()
                 ?: throw IllegalStateException("رکورد جلسه در پشتیبان ابری معتبر نیست.")
         }
-        validateAndReplaceLocalData(classes, courses, lectures)
+        validateAndMergeLocalData(ownerUid, classes, courses, lectures)
     }
 
     /** Additive recovery: never clear Room based on a potentially incomplete cloud snapshot. */
