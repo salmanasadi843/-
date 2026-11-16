@@ -57,11 +57,20 @@ object CloudMaterialsSync {
                 .put("classes", JSONArray().apply { classes.forEach { put(it.copy(ownerUid = uid, isPublished = true).toJson()) } })
                 .put("courses", JSONArray().apply { courses.forEach { put(it.toJson()) } })
                 .put("lectures", JSONArray().apply { lectures.map { it.copy(isPublished = true).toJson() }.forEach { put(it) } })
-            Tasks.await(
-                firestore.collection("shared_materials").document(uid)
-                    .set(mapOf("ownerUid" to uid, "payload" to payload.toString(), "updatedAt" to System.currentTimeMillis()))
-            )
-            "مطالب متنی و لینک‌های صوت با موفقیت در فضای آنلاین به‌روزرسانی شد."
+            val feedRef = firestore.collection("shared_materials").document(uid)
+            val oldDoc = Tasks.await(feedRef.get())
+            require(!oldDoc.exists() || oldDoc.getString("ownerUid") == uid) { "مالکیت سند آنلاین تطبیق ندارد؛ انتشار متوقف شد." }
+            val oldText = oldDoc.getString("payload")
+            require(!oldDoc.exists() || !oldText.isNullOrBlank()) { "سند آنلاین قبلی خالی است؛ انتشار متوقف شد." }
+            if (!oldText.isNullOrBlank()) {
+                val oldPayload = runCatching { JSONObject(oldText) }.getOrElse { error("ساختار پشتیبان آنلاین خراب است؛ انتشار متوقف شد.") }
+                require(oldPayload.optString("format") == "darsyar-shared-materials") { "قالب پشتیبان آنلاین ناشناخته است." }
+                payload.put("classes", mergeById(oldPayload.optJSONArray("classes"), payload.optJSONArray("classes")))
+                payload.put("courses", mergeById(oldPayload.optJSONArray("courses"), payload.optJSONArray("courses")))
+                payload.put("lectures", mergeById(oldPayload.optJSONArray("lectures"), payload.optJSONArray("lectures")))
+            }
+            Tasks.await(feedRef.set(mapOf("ownerUid" to uid, "payload" to payload.toString(), "updatedAt" to System.currentTimeMillis())))
+            "انتشار امن انجام شد؛ رکوردهای قبلیِ غایب از گوشی حفظ شدند."
         } else {
             val documents = Tasks.await(firestore.collection("shared_materials").get()).documents
                 .filter { it.id != uid }
@@ -250,6 +259,19 @@ object CloudMaterialsSync {
             }
             "مطالب آنلاین به‌روزرسانی شد: ${uniqueLectures.size} جلسه یکتا از ${documents.size} حساب استاد."
         }
+    }
+
+    private fun mergeById(oldArray: JSONArray?, newArray: JSONArray?): JSONArray {
+        val map = linkedMapOf<String, JSONObject>()
+        fun id(item: JSONObject): String { val value=item.optLong("id", Long.MIN_VALUE); require(value!=Long.MIN_VALUE); return value.toString() }
+        oldArray?.let { for (i in 0 until it.length()) { val item=it.optJSONObject(i) ?: error("رکورد آنلاین خراب است."); map[id(item)]=JSONObject(item.toString()) } }
+        newArray?.let { for (i in 0 until it.length()) {
+            val item=it.optJSONObject(i) ?: error("رکورد محلی انتشار خراب است."); val key=id(item); val old=map[key]; val merged=JSONObject(item.toString())
+            if(old!=null && merged.optString("transcript").isBlank() && old.optString("transcript").isNotBlank()) merged.put("transcript",old.optString("transcript"))
+            if(old!=null) listOf("aiSummary","aiKeyPoints","tags","audioUrl","originalTranscript").forEach { field -> if((!merged.has(field)||merged.isNull(field)||merged.optString(field).isBlank())&&old.has(field)&&!old.isNull(field)&&old.optString(field).isNotBlank()) merged.put(field,old.get(field)) }
+            if(old!=null && merged.optLong("lastEditedMillis")<old.optLong("lastEditedMillis")) merged.put("lastEditedMillis",old.optLong("lastEditedMillis")); map[key]=merged
+        } }
+        return JSONArray().apply { map.values.forEach { put(it) } }
     }
 
     private fun stableId(owner: String, key: String): Long {
