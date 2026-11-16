@@ -13,9 +13,12 @@ import com.google.firebase.firestore.DocumentSnapshot
 import com.google.firebase.firestore.FieldValue
 import com.google.firebase.auth.FirebaseAuth
 import com.google.firebase.firestore.FirebaseFirestore
+import com.google.firebase.firestore.FirebaseFirestoreException
+import android.os.SystemClock
 import org.json.JSONObject
 import kotlinx.coroutines.suspendCancellableCoroutine
 import kotlinx.coroutines.withTimeout
+import kotlinx.coroutines.TimeoutCancellationException
 import kotlin.coroutines.resume
 import kotlin.coroutines.resumeWithException
 
@@ -49,6 +52,7 @@ class FirestoreSyncRepository(
      */
     suspend fun inspectCloudBackup(uid: String): String {
         // Read-only diagnostics: never restore, migrate, upload, or modify cloud data.
+        val authStartedAt = SystemClock.elapsedRealtime()
         val authReport = try {
             val user = FirebaseAuth.getInstance().currentUser
                 ?: throw IllegalStateException("نشست ورود Firebase فعال نیست.")
@@ -59,9 +63,10 @@ class FirestoreSyncRepository(
             user.getIdToken(true).awaitResult()
             "احراز هویت Firebase: دریافت توکن تازه موفق بود."
         } catch (error: Exception) {
-            "احراز هویت Firebase ناموفق بود: ${error.localizedMessage ?: error.javaClass.simpleName}"
+            diagnosticFailure("احراز هویت Firebase", error, authStartedAt)
         }
 
+        val profileStartedAt = SystemClock.elapsedRealtime()
         val profileReport = try {
             val profile = firestore.collection("users").document(uid)
                 .get(com.google.firebase.firestore.Source.SERVER).awaitResult()
@@ -71,9 +76,10 @@ class FirestoreSyncRepository(
                 "پروفایل کاربر: سند users/{uid} در سرور وجود ندارد."
             }
         } catch (error: Exception) {
-            "خواندن پروفایل کاربر ناموفق بود: ${error.localizedMessage ?: error.javaClass.simpleName}"
+            diagnosticFailure("خواندن پروفایل کاربر", error, profileStartedAt)
         }
 
+        val privateStartedAt = SystemClock.elapsedRealtime()
         val privateReport = try {
             val snapshot = firestore.collection(TEACHER_DATA).document(uid).get().awaitResult()
             if (!snapshot.exists()) {
@@ -99,9 +105,10 @@ class FirestoreSyncRepository(
                 }
             }
         } catch (error: Exception) {
-            "خواندن پشتیبان خصوصی ناموفق بود: ${error.localizedMessage ?: error.javaClass.simpleName}"
+            diagnosticFailure("خواندن پشتیبان خصوصی", error, privateStartedAt)
         }
 
+        val legacyStartedAt = SystemClock.elapsedRealtime()
         val legacyReport = try {
             val snapshot = firestore.collection(SHARED_MATERIALS).document(uid).get().awaitResult()
             if (!snapshot.exists()) {
@@ -122,10 +129,44 @@ class FirestoreSyncRepository(
                 }
             }
         } catch (error: Exception) {
-            "خواندن پشتیبان قدیمی ناموفق بود: ${error.localizedMessage ?: error.javaClass.simpleName}"
+            diagnosticFailure("خواندن پشتیبان قدیمی", error, legacyStartedAt)
         }
 
         return "$authReport\n$profileReport\n$privateReport\n$legacyReport\nاین گزارش فقط‌خواندنی است؛ هیچ داده‌ای تغییر نکرد."
+    }
+
+    private fun diagnosticFailure(
+        operation: String,
+        error: Exception,
+        startedAtMs: Long
+    ): String {
+        val chain = generateSequence(error as Throwable?) { it.cause }
+            .take(4)
+            .joinToString(" ← ") { cause ->
+                val message = cause.message?.takeIf { it.isNotBlank() }?.take(160)
+                if (message == null) cause.javaClass.simpleName
+                else "${cause.javaClass.simpleName}: $message"
+            }
+        val firestoreError = generateSequence(error as Throwable?) { it.cause }
+            .filterIsInstance<FirebaseFirestoreException>()
+            .firstOrNull()
+        val elapsedMs = (SystemClock.elapsedRealtime() - startedAtMs).coerceAtLeast(0L)
+        val category = when (firestoreError?.code) {
+            FirebaseFirestoreException.Code.PERMISSION_DENIED ->
+                "مجوز Firestore رد شده است"
+            FirebaseFirestoreException.Code.UNAUTHENTICATED ->
+                "احراز هویت درخواست Firestore پذیرفته نشده است"
+            FirebaseFirestoreException.Code.UNAVAILABLE ->
+                "سرویس Firestore در دسترس نیست"
+            FirebaseFirestoreException.Code.DEADLINE_EXCEEDED ->
+                "مهلت درخواست در سمت سرویس تمام شده است"
+            else -> when (error) {
+                is TimeoutCancellationException -> "مهلت ۲۰ ثانیه‌ای برنامه تمام شد؛ علت اصلی هنوز مشخص نیست"
+                else -> "خطای درخواست ابری"
+            }
+        }
+        val code = firestoreError?.code?.name ?: "بدون کد Firestore"
+        return "$operation: $category؛ زمان: ${elapsedMs}ms؛ کد: $code؛ جزئیات: $chain"
     }
 
     suspend fun restoreFromCloud(uid: String): Boolean {
