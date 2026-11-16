@@ -49,6 +49,17 @@ class SharedLectureDeduplicatorTest {
     }
 
     @Test
+    fun doesNotCollapseDifferentRowsWhenTranscriptIsBlank() {
+        val first = lecture(id = -1L, transcript = "")
+        val second = lecture(id = -2L, transcript = "")
+
+        val result = SharedLectureDeduplicator.reconcile(emptyList(), listOf(first, second))
+
+        assertEquals(2, result.importedToInsert.size)
+        assertTrue(result.duplicateImportedIdsToDelete.isEmpty())
+    }
+
+    @Test
     fun backupShapeOfEightyRowsCollapsesThirtySixImportedDuplicatesToFortyFourUniqueSessions() {
         val local = mutableListOf<LectureEntity>()
         val importedDuplicates = mutableListOf<LectureEntity>()
