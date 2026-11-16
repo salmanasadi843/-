@@ -160,6 +160,10 @@ class FirestoreSyncRepository(
 
     private suspend fun restoreRecordDocuments(uid: String): Boolean {
         val rootSnapshot = firestore.collection(TEACHER_DATA).document(uid).get().awaitResult()
+        val rootOwner = rootSnapshot.getString("ownerUid")
+        if (!rootOwner.isNullOrBlank() && rootOwner != uid) {
+            throw IllegalStateException("مالک پشتیبان ابری با حساب فعلی تطبیق ندارد؛ بازیابی متوقف شد.")
+        }
         val expectedCount = rootSnapshot.getLong("recordCount")
             ?: throw IllegalStateException("تعداد رکوردهای پشتیبان مشخص نیست؛ بازیابی برای حفظ اطلاعات متوقف شد.")
         val documents = firestore.collection(TEACHER_DATA)
