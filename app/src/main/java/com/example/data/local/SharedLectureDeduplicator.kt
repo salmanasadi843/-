@@ -66,13 +66,17 @@ internal object SharedLectureDeduplicator {
         )
     }
 
-    private fun duplicateKey(item: LectureEntity): String = listOf(
-        item.classId?.toString().orEmpty(),
-        normalize(item.courseName),
-        normalizeTitle(item.title),
-        item.dateMillis.toString(),
-        normalize(item.transcript)
-    ).joinToString("|")
+    private fun duplicateKey(item: LectureEntity): String {
+        val base = listOf(
+            item.classId?.toString().orEmpty(),
+            normalize(item.courseName),
+            normalizeTitle(item.title),
+            item.dateMillis.toString()
+        ).joinToString("|")
+        val transcript = normalize(item.transcript)
+        // Without a full transcript there is not enough evidence to collapse rows.
+        return if (transcript.isBlank()) "$base|blank-id:${item.id}" else "$base|$transcript"
+    }
 
     private fun normalize(value: String): String = value
         .trim()
@@ -103,8 +107,8 @@ internal object SharedLectureDeduplicator {
     ): LectureEntity = local.copy(
         transcript = richer(local.transcript, incoming.transcript).orEmpty(),
         originalTranscript = richer(local.originalTranscript, incoming.originalTranscript).orEmpty(),
-        audioUrl = richer(local.audioUrl, incoming.audioUrl),
-        audioFilePath = richer(local.audioFilePath, incoming.audioFilePath),
+        audioUrl = local.audioUrl?.takeIf { it.isNotBlank() } ?: incoming.audioUrl,
+        audioFilePath = local.audioFilePath?.takeIf { it.isNotBlank() } ?: incoming.audioFilePath,
         audioDurationMs = maxOf(local.audioDurationMs, incoming.audioDurationMs),
         aiSummary = richer(local.aiSummary, incoming.aiSummary),
         aiKeyPoints = richer(local.aiKeyPoints, incoming.aiKeyPoints),
