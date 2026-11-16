@@ -38,7 +38,9 @@ internal object SharedLectureDeduplicator {
 
         return Result(
             importedToInsert = insert,
-            localRecordsToUpdate = updates.values.filter { it != existingLocal.firstOrNull { row -> row.id == it.id } },
+            localRecordsToUpdate = updates.values.filter { updated ->
+                existingLocal.firstOrNull { original -> original.id == updated.id } != updated
+            },
             skippedDuplicateCount = skipped
         )
     }
