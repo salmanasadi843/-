@@ -14,6 +14,8 @@ import com.google.firebase.firestore.FieldValue
 import com.google.firebase.firestore.FirebaseFirestore
 import org.json.JSONObject
 import kotlinx.coroutines.suspendCancellableCoroutine
+import kotlinx.coroutines.withTimeout
+import com.google.android.gms.tasks.OnCompleteListener
 import kotlin.coroutines.resume
 import kotlin.coroutines.resumeWithException
 
@@ -467,9 +469,15 @@ class FirestoreSyncRepository(
     private fun Map<String, Any?>.nullableNumber(key: String): Long? =
         (this[key] as? Number)?.toLong()
 
-    private suspend fun <T> Task<T>.awaitResult(): T =
+    /**
+     * Bound every Firestore task so a stalled network cannot leave recovery
+     * spinning forever. Remove the listener on cancellation/timeout and ignore
+     * late task completion after the coroutine has been cancelled.
+     */
+    private suspend fun <T> Task<T>.awaitResult(): T = withTimeout(20_000L) {
         suspendCancellableCoroutine { continuation ->
-            addOnCompleteListener { task ->
+            val listener = OnCompleteListener<T> { task ->
+                if (!continuation.isActive) return@OnCompleteListener
                 if (task.isSuccessful) {
                     continuation.resume(task.result)
                 } else {
@@ -478,6 +486,11 @@ class FirestoreSyncRepository(
                     )
                 }
             }
+            addOnCompleteListener(listener)
+            continuation.invokeOnCancellation {
+                removeOnCompleteListener(listener)
+            }
         }
+    }
 }
 
