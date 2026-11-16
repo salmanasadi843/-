@@ -95,7 +95,7 @@ class FirestoreSyncRepository(
             if (classes.isEmpty() && courses.isEmpty() && lectures.isEmpty()) {
                 throw IllegalStateException("پشتیبان قدیمی خالی است؛ اطلاعات محلی جایگزین نشد.")
             }
-            validateAndMergeLocalData(ownerUid, classes, courses, lectures)
+            validateAndMergeLocalData(uid, classes, courses, lectures)
             return true
         }
 
