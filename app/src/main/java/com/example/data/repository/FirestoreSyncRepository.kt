@@ -115,10 +115,6 @@ class FirestoreSyncRepository(
         }
         val lectures = lectureDao.getAllForBackup()
             .filter { it.id > 0L && it.classId in ownedClassIds }
-            .filterNot {
-                it.title == "جلسه ۴: شبکه‌های عصبی و یادگیری عمیق" ||
-                    it.title == "جلسه ۷: سری و تبدیل فوریه و کاربرد در سیگنال"
-            }
 
         val root = firestore.collection(TEACHER_DATA).document(uid)
         val records = root.collection(RECORDS)
@@ -127,22 +123,25 @@ class FirestoreSyncRepository(
         courses.forEach { desired["course_${it.id}"] = mapOf("recordType" to "course") + it.toCloudMap() }
         lectures.forEach { desired["lecture_${it.id}"] = mapOf("recordType" to "lecture") + it.toCloudMap() }
 
-        // Read existing keys so deleted local records are also removed from cloud.
+        // Safe recovery: absence from Room never means deletion from cloud.
         val existing = records.get().awaitResult().documents
-        val staleRefs = existing.filter { it.id !in desired.keys }.map { it.reference }
-
-        val operations = mutableListOf<Pair<com.google.firebase.firestore.DocumentReference, Map<String, Any?>?>>()
-        desired.forEach { (id, data) -> operations += records.document(id) to data }
-        staleRefs.forEach { operations += it to null }
-
-        // Firestore batches have a 500-write maximum; leave room below the limit.
-        operations.chunked(BATCH_LIMIT).forEach { chunk ->
-            val batch = firestore.batch()
-            chunk.forEach { (ref, data) ->
-                if (data == null) batch.delete(ref) else batch.set(ref, data)
+        if (existing.isNotEmpty()) {
+            val rootSnapshot = root.get().awaitResult()
+            if (!rootSnapshot.exists() || rootSnapshot.getString("ownerUid") != uid ||
+                rootSnapshot.getLong("schemaVersion") != SCHEMA_VERSION ||
+                rootSnapshot.getLong("recordCount") != existing.size.toLong()) {
+                throw IllegalStateException("ساختار پشتیبان ابری با رکوردهای موجود تطبیق ندارد؛ ارسال متوقف شد.")
             }
+        }
+        if (desired.isEmpty() && existing.isNotEmpty()) {
+            throw IllegalStateException("ارسال پشتیبان خالی متوقف شد؛ ${existing.size} رکورد ابری موجود است.")
+        }
+        desired.entries.chunked(BATCH_LIMIT).forEach { chunk ->
+            val batch = firestore.batch()
+            chunk.forEach { (id, data) -> batch.set(records.document(id), data) }
             batch.commit().awaitResult()
         }
+        val mergedRecordCount = (existing.map { it.id }.toSet() + desired.keys).size
 
         // Keep folder metadata in the existing owner document, avoiding new Firebase rule paths.
         val folderRows = teacherFolderDao?.observeFoldersForBackup()?.filter { it.ownerUid == uid }.orEmpty()
@@ -152,7 +151,7 @@ class FirestoreSyncRepository(
             mapOf(
                 "schemaVersion" to SCHEMA_VERSION,
                 "ownerUid" to uid,
-                "recordCount" to desired.size,
+                "recordCount" to mergedRecordCount,
                 "folders" to folderRows.map { it.toCloudMap() },
                 "updatedAt" to FieldValue.serverTimestamp()
             )
@@ -205,10 +204,11 @@ class FirestoreSyncRepository(
         // Return false BEFORE touching Room so the caller can try that source.
         if (lectures.isEmpty() && classes.isNotEmpty()) return false
 
-        validateAndReplaceLocalData(classes, courses, lectures)
+        validateAndMergeLocalData(uid, classes, courses, lectures)
         teacherFolderDao?.let { dao ->
-            dao.clearForRestore()
-            if (folders.isNotEmpty()) dao.insertAllForRestore(folders)
+            val existingIds = dao.observeFoldersForBackup().map { it.id }.toSet()
+            val missing = folders.filter { it.id !in existingIds && it.ownerUid == uid && it.id > 0L }
+            if (missing.isNotEmpty()) dao.insertAllForRestore(missing)
         }
         return true
     }
@@ -244,22 +244,37 @@ class FirestoreSyncRepository(
         validateAndReplaceLocalData(classes, courses, lectures)
     }
 
-    private suspend fun validateAndReplaceLocalData(
+    /** Additive recovery: never clear Room based on a potentially incomplete cloud snapshot. */
+    private suspend fun validateAndMergeLocalData(
+        uid: String,
         classes: List<ClassEntity>,
         courses: List<CourseEntity>,
         lectures: List<LectureEntity>
     ) {
-        if (classes.any { it.id == 0L } || courses.any { it.id == 0L } || lectures.any { it.id == 0L }) {
-            throw IllegalStateException("شناسه یکی از رکوردهای پشتیبان ابری خالی است.")
+        if (classes.any { it.id <= 0L || (it.ownerUid.isNotBlank() && it.ownerUid != uid) } ||
+            courses.any { it.id <= 0L } || lectures.any { it.id <= 0L }) {
+            throw IllegalStateException("شناسه یا مالکیت یکی از رکوردهای پشتیبان معتبر نیست؛ اطلاعات محلی تغییر نکرد.")
         }
-
-        // Validate everything before deleting local data; delete children first.
-        lectureDao.clearForRestore()
-        courseDao.clearForRestore()
-        classDao.clearForRestore()
-        if (classes.isNotEmpty()) classDao.insertAllForRestore(classes)
-        if (courses.isNotEmpty()) courseDao.insertAllForRestore(courses)
-        if (lectures.isNotEmpty()) lectureDao.insertAllForRestore(lectures)
+        require(classes.map { it.id }.distinct().size == classes.size &&
+            courses.map { it.id }.distinct().size == courses.size &&
+            lectures.map { it.id }.distinct().size == lectures.size) {
+            "شناسه تکراری در پشتیبان وجود دارد؛ اطلاعات محلی تغییر نکرد."
+        }
+        database.withTransaction {
+            val classIds = classDao.getAllForBackup().map { it.id }.toSet()
+            val courseIds = courseDao.getAllForBackup().map { it.id }.toSet()
+            val lectureIds = lectureDao.getAllForBackup().map { it.id }.toSet()
+            val unionClasses = classIds + classes.map { it.id }
+            val unionCourses = courseIds + courses.map { it.id }
+            val addClasses = classes.filter { it.id !in classIds }
+            val addCourses = courses.filter { it.id !in courseIds && it.classId in unionClasses }
+            val addLectures = lectures.filter { it.id !in lectureIds &&
+                (it.classId == null || it.classId in unionClasses) &&
+                (it.courseId == null || it.courseId in unionCourses) }
+            if (addClasses.isNotEmpty()) classDao.insertAllForRestore(addClasses)
+            if (addCourses.isNotEmpty()) courseDao.insertAllForRestore(addCourses)
+            if (addLectures.isNotEmpty()) lectureDao.insertAllForRestore(addLectures)
+        }
     }
 
     private fun ClassEntity.toCloudMap(): Map<String, Any?> = mapOf(
