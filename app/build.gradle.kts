@@ -62,9 +62,11 @@ android {
             signingConfig = signingConfigs.getByName("release")
         }
 
-        // از Debug Keystore پیش‌فرض Android استفاده می‌شود.
-        // نیازی به debug.keystore داخل Repository نیست.
+        // Debug app gets a separate package so it can be installed beside Release.
+        // It is signed with Android's default debug key, not the Release key.
         debug {
+            applicationIdSuffix = ".debug"
+            versionNameSuffix = "-debug"
             isMinifyEnabled = false
         }
     }

@@ -5,6 +5,7 @@ on:
     branches:
       - fix/keep-teacher-class-identities-v1.0.8
       - fix/mirror-only-session-count-v1.1.0
+      - fix/publish-materials-per-document-v1.1.1
   push:
     branches:
       - fix/keep-teacher-class-identities-v1.0.8
@@ -31,7 +32,7 @@ jobs:
   verify-release:
     name: Build and verify existing Release certificate
     runs-on: ubuntu-latest
-    timeout-minutes: 30
+    timeout-minutes: 45
 
     steps:
       - name: Checkout
@@ -51,6 +52,7 @@ jobs:
       - name: Install Android SDK 36
         shell: bash
         run: |
+          set -euo pipefail
           yes | sdkmanager --licenses >/dev/null || true
           sdkmanager "platforms;android-36" "build-tools;36.0.0" "platform-tools"
 
@@ -111,6 +113,17 @@ jobs:
             exit 1
           fi
           echo "Release certificate matches the previously installed app."
+
+      - name: Install and launch the signed Release APK on Android 12
+        uses: reactivecircus/android-emulator-runner@v2
+        with:
+          api-level: 31
+          target: default
+          arch: x86_64
+          profile: pixel_5
+          disable-animations: true
+          script: |
+            bash -euo pipefail -c 'APK="app/build/outputs/apk/release/app-release.apk"; PACKAGE="com.aistudio.lecturehub.kqmzv"; echo "=== Install on Android 12 / API 31 ==="; adb install -r "$APK"; echo "=== Installed package ==="; adb shell dumpsys package "$PACKAGE" | grep -E "versionCode=|versionName=|minSdk=|targetSdk="; echo "=== Resolve launcher ==="; adb shell cmd package resolve-activity --brief "$PACKAGE"; echo "=== Launch application ==="; adb shell monkey -p "$PACKAGE" -c android.intent.category.LAUNCHER 1; sleep 5; adb shell pidof "$PACKAGE"; echo "Android 12 install and launch test passed."'
 
       - name: Upload verified signed Release APK
         uses: actions/upload-artifact@v6
