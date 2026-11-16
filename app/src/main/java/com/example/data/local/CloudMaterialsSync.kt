@@ -75,6 +75,7 @@ object CloudMaterialsSync {
             val documents = Tasks.await(firestore.collection("shared_materials").get()).documents
                 .filter { it.id != uid }
             val existingLocalClasses = db.classDao().getAllForBackup()
+            val existingLocalCourses = db.courseDao().getAllForBackup()
             val existingLocalLectures = db.lectureDao().getAllForBackup()
             val allClasses = mutableListOf<ClassEntity>()
             val allCourses = mutableListOf<CourseEntity>()
@@ -125,6 +126,7 @@ object CloudMaterialsSync {
                     }
                     .filter { it.classId == item.id }
                     .map { normalized(it.name) }
+                    .distinct()
                     .sorted()
 
                 val lectures = validPayloads
@@ -143,6 +145,7 @@ object CloudMaterialsSync {
                             lecture.dateMillis.toString(),
                         ).joinToString("~")
                     }
+                    .distinct()
                     .sorted()
 
                 val metadata = listOf(item.name, item.teacherName, item.term).joinToString("|") { normalized(it) }
@@ -157,13 +160,37 @@ object CloudMaterialsSync {
 
             val classIdMap = mutableMapOf<String, Long>()
             val fingerprintToClassId = mutableMapOf<String, Long>()
-            val localClassIdBySignature = existingLocalClasses
-                .filter { it.id > 0L }
-                .associate { local ->
-                    val signature = listOf(local.name, local.teacherName, local.term)
-                        .joinToString("|") { normalized(it) }
-                    "${local.ownerUid}:$signature" to local.id
-                }
+            fun localClassFingerprint(item: ClassEntity): String {
+                val courses = existingLocalCourses
+                    .filter { it.classId == item.id }
+                    .map { normalized(it.name) }
+                    .distinct()
+                    .sorted()
+                val lectures = existingLocalLectures
+                    .filter { it.classId == item.id }
+                    .map { lecture ->
+                        listOf(
+                            normalized(lecture.title),
+                            normalized(lecture.courseName),
+                            lecture.dateMillis.toString()
+                        ).joinToString("~")
+                    }
+                    .distinct()
+                    .sorted()
+                val metadata = listOf(item.name, item.teacherName, item.term)
+                    .joinToString("|") { normalized(it) }
+                return "$metadata##${(courses + lectures).joinToString("|")}"
+            }
+
+            val ownedLocalClasses = existingLocalClasses.filter { it.id > 0L }
+            val localClassIdBySignature = ownedLocalClasses.associate { local ->
+                val signature = listOf(local.name, local.teacherName, local.term)
+                    .joinToString("|") { normalized(it) }
+                "${local.ownerUid}:$signature" to local.id
+            }
+            val localClassIdByFingerprint = ownedLocalClasses.associate { local ->
+                localClassFingerprint(local) to local.id
+            }
             canonicalSourceClasses.forEach { (owner, item, _) ->
                 // The same published class can appear in feeds from more than one
                 // teacher account. Use its normalized metadata + content as the identity,
@@ -173,6 +200,7 @@ object CloudMaterialsSync {
                     .joinToString("|") { normalized(it) }
                 val importedClassId = fingerprintToClassId.getOrPut(fingerprint) {
                     localClassIdBySignature["$owner:$classSignature"]
+                        ?: localClassIdByFingerprint[fingerprint]
                         ?: stableId("shared-feed", "class-content:$fingerprint")
                 }
                 classIdMap["$owner:${item.id}"] = importedClassId
