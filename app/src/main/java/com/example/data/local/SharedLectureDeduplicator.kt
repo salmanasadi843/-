@@ -1,17 +1,24 @@
 package com.example.data.local
 
 /**
- * Prevents a published/imported copy from being stored beside an already-owned
- * copy of the same session. Positive IDs are local records; imported records use
- * negative IDs. A match is deliberately strict: class, course, date, title and
- * normalized full transcript must all match.
+ * Reconciles shared copies against locally owned sessions without treating an
+ * absent cloud row as a deletion. Positive IDs are owned rows; negative IDs are
+ * imported rows.
  */
 internal object SharedLectureDeduplicator {
     data class Result(
         val importedToInsert: List<LectureEntity>,
         val localRecordsToUpdate: List<LectureEntity>,
+        val duplicateImportedIdsToDelete: List<Long>,
         val skippedDuplicateCount: Int
     )
+
+    fun mergeSameIdCopies(items: List<LectureEntity>): List<LectureEntity> =
+        items.groupBy { it.id }.values.map { copies ->
+            copies.drop(1).fold(copies.first()) { current, next ->
+                mergeWithoutChangingLocalIdentity(current, next)
+            }
+        }
 
     fun reconcile(
         existingLocal: List<LectureEntity>,
@@ -20,27 +27,41 @@ internal object SharedLectureDeduplicator {
         val localByKey = existingLocal
             .filter { it.id > 0L && it.classId != null && it.transcript.isNotBlank() }
             .groupBy(::duplicateKey)
-        val updates = linkedMapOf<Long, LectureEntity>()
-        val insert = mutableListOf<LectureEntity>()
+        val localUpdates = linkedMapOf<Long, LectureEntity>()
+        val retainedImports = linkedMapOf<String, LectureEntity>()
+        val duplicateIds = linkedSetOf<Long>()
         var skipped = 0
 
         imported.forEach { incoming ->
             val key = duplicateKey(incoming)
-            val match = localByKey[key]?.firstOrNull()
-            if (match == null) {
-                insert += incoming
+            val ownedMatch = localByKey[key]?.firstOrNull()
+            if (ownedMatch != null) {
+                skipped++
+                if (incoming.id < 0L) duplicateIds += incoming.id
+                val current = localUpdates[ownedMatch.id] ?: ownedMatch
+                localUpdates[ownedMatch.id] = mergeWithoutChangingLocalIdentity(current, incoming)
+                return@forEach
+            }
+
+            val priorImport = retainedImports[key]
+            if (priorImport == null) {
+                retainedImports[key] = incoming
             } else {
                 skipped++
-                val current = updates[match.id] ?: match
-                updates[match.id] = mergeWithoutChangingLocalIdentity(current, incoming)
+                val merged = mergeWithoutChangingLocalIdentity(priorImport, incoming)
+                retainedImports[key] = merged
+                if (incoming.id < 0L && incoming.id != priorImport.id) {
+                    duplicateIds += incoming.id
+                }
             }
         }
 
         return Result(
-            importedToInsert = insert,
-            localRecordsToUpdate = updates.values.filter { updated ->
+            importedToInsert = retainedImports.values.toList(),
+            localRecordsToUpdate = localUpdates.values.filter { updated ->
                 existingLocal.firstOrNull { original -> original.id == updated.id } != updated
             },
+            duplicateImportedIdsToDelete = duplicateIds.toList(),
             skippedDuplicateCount = skipped
         )
     }
