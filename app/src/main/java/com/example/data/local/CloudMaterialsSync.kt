@@ -173,7 +173,7 @@ object CloudMaterialsSync {
                     .filter { it.classId == item.id }
                     .map { lecture ->
                         listOf(
-                            normalized(lecture.title),
+                            normalizedTitle(lecture.title),
                             normalized(lecture.courseName),
                             lecture.dateMillis.toString()
                         ).joinToString("~")
