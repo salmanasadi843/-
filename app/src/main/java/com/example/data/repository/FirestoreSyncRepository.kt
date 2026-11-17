@@ -232,7 +232,7 @@ class FirestoreSyncRepository(
             val restoredLegacy = restoreLegacySnapshot(uid, legacySnapshot)
             if (restoredLegacy) {
                 if (migrateLegacyToPrivate) uploadSnapshot(uid)
-                return@coroutineScope true
+                return@supervisorScope true
             }
         }
 
