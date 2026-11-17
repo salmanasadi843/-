@@ -17,7 +17,6 @@ import com.google.firebase.firestore.FirebaseFirestoreException
 import android.os.SystemClock
 import org.json.JSONObject
 import kotlinx.coroutines.async
-import kotlinx.coroutines.awaitAll
 import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.suspendCancellableCoroutine
 import kotlinx.coroutines.withTimeout
@@ -198,7 +197,10 @@ class FirestoreSyncRepository(
      * sequentially after both reads finish. Thus slow sources overlap without
      * racing writes into the local Room database.
      */
-    suspend fun restoreFromCloudOrLegacy(uid: String): Boolean = coroutineScope {
+    suspend fun restoreFromCloudOrLegacy(
+        uid: String,
+        migrateLegacyToPrivate: Boolean = false
+    ): Boolean = coroutineScope {
         val privateRead = async {
             val rootSnapshot = firestore.collection(TEACHER_DATA).document(uid).get().awaitResult()
             if (!rootSnapshot.exists()) return@async null
@@ -228,7 +230,10 @@ class FirestoreSyncRepository(
         val legacySnapshot = legacyResult.getOrNull()
         if (legacySnapshot != null) {
             val restoredLegacy = restoreLegacySnapshot(uid, legacySnapshot)
-            if (restoredLegacy) return@coroutineScope true
+            if (restoredLegacy) {
+                if (migrateLegacyToPrivate) uploadSnapshot(uid)
+                return@coroutineScope true
+            }
         }
 
         val failure = privateRestoreFailure ?: legacyResult.exceptionOrNull()
