@@ -16,6 +16,9 @@ import com.google.firebase.firestore.FirebaseFirestore
 import com.google.firebase.firestore.FirebaseFirestoreException
 import android.os.SystemClock
 import org.json.JSONObject
+import kotlinx.coroutines.async
+import kotlinx.coroutines.awaitAll
+import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.suspendCancellableCoroutine
 import kotlinx.coroutines.withTimeout
 import kotlinx.coroutines.TimeoutCancellationException
@@ -186,18 +189,71 @@ class FirestoreSyncRepository(
     }
 
     suspend fun restoreFromCloud(uid: String): Boolean {
-        val root = firestore.collection(TEACHER_DATA).document(uid)
-        val snapshot = root.get().awaitResult()
-        if (!snapshot.exists()) return false
+        val snapshot = firestore.collection(TEACHER_DATA).document(uid).get().awaitResult()
+        return restorePrivateSnapshot(uid, snapshot, null)
+    }
 
+    /**
+     * Fetch both independent backup sources concurrently, but apply any restore
+     * sequentially after both reads finish. Thus slow sources overlap without
+     * racing writes into the local Room database.
+     */
+    suspend fun restoreFromCloudOrLegacy(uid: String): Boolean = coroutineScope {
+        val privateRead = async {
+            val rootSnapshot = firestore.collection(TEACHER_DATA).document(uid).get().awaitResult()
+            if (!rootSnapshot.exists()) return@async null
+            val records = if (rootSnapshot.getLong("schemaVersion") == SCHEMA_VERSION) {
+                firestore.collection(TEACHER_DATA).document(uid)
+                    .collection(RECORDS).get().awaitResult().documents
+            } else null
+            PrivateBackupRead(rootSnapshot, records)
+        }
+        val legacyRead = async {
+            firestore.collection(SHARED_MATERIALS).document(uid).get().awaitResult()
+        }
+
+        val privateResult = runCatching { privateRead.await() }
+        val legacyResult = runCatching { legacyRead.await() }
+        var privateRestoreFailure: Throwable? = privateResult.exceptionOrNull()
+
+        val privateBackup = privateResult.getOrNull()
+        if (privateBackup != null) {
+            val restored = runCatching {
+                restorePrivateSnapshot(uid, privateBackup.root, privateBackup.records)
+            }
+            if (restored.getOrNull() == true) return@coroutineScope true
+            if (restored.isFailure) privateRestoreFailure = restored.exceptionOrNull()
+        }
+
+        val legacySnapshot = legacyResult.getOrNull()
+        if (legacySnapshot != null) {
+            val restoredLegacy = restoreLegacySnapshot(uid, legacySnapshot)
+            if (restoredLegacy) return@coroutineScope true
+        }
+
+        val failure = privateRestoreFailure ?: legacyResult.exceptionOrNull()
+        if (failure != null) throw failure
+        false
+    }
+
+    private data class PrivateBackupRead(
+        val root: DocumentSnapshot,
+        val records: List<DocumentSnapshot>?
+    )
+
+    private suspend fun restorePrivateSnapshot(
+        uid: String,
+        snapshot: DocumentSnapshot,
+        records: List<DocumentSnapshot>?
+    ): Boolean {
+        if (!snapshot.exists()) return false
         return when (snapshot.getLong("schemaVersion")) {
             LEGACY_SCHEMA_VERSION -> {
-                // Validate and restore the old snapshot before migrating it.
                 restoreSnapshot(snapshot, requireAllCollections = true, ownerUid = uid)
                 uploadSnapshot(uid)
                 true
             }
-            SCHEMA_VERSION -> restoreRecordDocuments(uid, snapshot)
+            SCHEMA_VERSION -> restoreRecordDocuments(uid, snapshot, records)
             else -> throw IllegalStateException(
                 "نسخه پشتیبان ابری قابل‌شناسایی نیست؛ برای جلوگیری از حذف اطلاعات، بازیابی متوقف شد."
             )
@@ -210,6 +266,10 @@ class FirestoreSyncRepository(
      */
     suspend fun restoreLegacySharedMaterials(uid: String): Boolean {
         val snapshot = firestore.collection(SHARED_MATERIALS).document(uid).get().awaitResult()
+        return restoreLegacySnapshot(uid, snapshot)
+    }
+
+    private suspend fun restoreLegacySnapshot(uid: String, snapshot: DocumentSnapshot): Boolean {
         if (!snapshot.exists()) return false
         val data = snapshot.data ?: return false
 
@@ -248,7 +308,6 @@ class FirestoreSyncRepository(
         restoreSnapshot(snapshot, requireAllCollections = true, ownerUid = uid)
         return true
     }
-
     suspend fun uploadSnapshot(uid: String) {
         // Shared published records are imported with negative IDs. They belong to
         // their original teachers and must never enter this account's private backup.
@@ -304,7 +363,8 @@ class FirestoreSyncRepository(
 
     private suspend fun restoreRecordDocuments(
         uid: String,
-        rootSnapshot: DocumentSnapshot
+        rootSnapshot: DocumentSnapshot,
+        prefetchedRecords: List<DocumentSnapshot>? = null
     ): Boolean {
         val rootOwner = rootSnapshot.getString("ownerUid")
         if (!rootOwner.isNullOrBlank() && rootOwner != uid) {
@@ -312,7 +372,7 @@ class FirestoreSyncRepository(
         }
         val expectedCount = rootSnapshot.getLong("recordCount")
             ?: throw IllegalStateException("تعداد رکوردهای پشتیبان مشخص نیست؛ بازیابی برای حفظ اطلاعات متوقف شد.")
-        val documents = firestore.collection(TEACHER_DATA)
+        val documents = prefetchedRecords ?: firestore.collection(TEACHER_DATA)
             .document(uid)
             .collection(RECORDS)
             .get()
