@@ -13,9 +13,14 @@ import com.google.firebase.firestore.DocumentSnapshot
 import com.google.firebase.firestore.FieldValue
 import com.google.firebase.auth.FirebaseAuth
 import com.google.firebase.firestore.FirebaseFirestore
+import com.google.firebase.firestore.FirebaseFirestoreException
+import android.os.SystemClock
 import org.json.JSONObject
+import kotlinx.coroutines.async
+import kotlinx.coroutines.supervisorScope
 import kotlinx.coroutines.suspendCancellableCoroutine
 import kotlinx.coroutines.withTimeout
+import kotlinx.coroutines.TimeoutCancellationException
 import kotlin.coroutines.resume
 import kotlin.coroutines.resumeWithException
 
@@ -49,6 +54,7 @@ class FirestoreSyncRepository(
      */
     suspend fun inspectCloudBackup(uid: String): String {
         // Read-only diagnostics: never restore, migrate, upload, or modify cloud data.
+        val authStartedAt = SystemClock.elapsedRealtime()
         val authReport = try {
             val user = FirebaseAuth.getInstance().currentUser
                 ?: throw IllegalStateException("نشست ورود Firebase فعال نیست.")
@@ -59,9 +65,10 @@ class FirestoreSyncRepository(
             user.getIdToken(true).awaitResult()
             "احراز هویت Firebase: دریافت توکن تازه موفق بود."
         } catch (error: Exception) {
-            "احراز هویت Firebase ناموفق بود: ${error.localizedMessage ?: error.javaClass.simpleName}"
+            diagnosticFailure("احراز هویت Firebase", error, authStartedAt)
         }
 
+        val profileStartedAt = SystemClock.elapsedRealtime()
         val profileReport = try {
             val profile = firestore.collection("users").document(uid)
                 .get(com.google.firebase.firestore.Source.SERVER).awaitResult()
@@ -71,39 +78,57 @@ class FirestoreSyncRepository(
                 "پروفایل کاربر: سند users/{uid} در سرور وجود ندارد."
             }
         } catch (error: Exception) {
-            "خواندن پروفایل کاربر ناموفق بود: ${error.localizedMessage ?: error.javaClass.simpleName}"
+            diagnosticFailure("خواندن پروفایل کاربر", error, profileStartedAt)
         }
 
+        var privateRecordsReport = "مجموعه رکوردهای پشتیبان خصوصی: به دلیل نامشخص بودن نسخهٔ سند ریشه، بررسی نشد."
+        val privateStartedAt = SystemClock.elapsedRealtime()
         val privateReport = try {
-            val snapshot = firestore.collection(TEACHER_DATA).document(uid).get().awaitResult()
+            val snapshot = firestore.collection(TEACHER_DATA).document(uid)
+                .get(com.google.firebase.firestore.Source.SERVER).awaitResult()
             if (!snapshot.exists()) {
-                "پشتیبان خصوصی: سند وجود ندارد."
+                privateRecordsReport = "مجموعه رکوردهای پشتیبان خصوصی: سند ریشه وجود ندارد؛ بررسی نشد."
+                "پشتیبان خصوصی: سند ریشه در سرور وجود ندارد."
             } else {
                 when (snapshot.getLong("schemaVersion")) {
                     SCHEMA_VERSION -> {
-                        val records = firestore.collection(TEACHER_DATA).document(uid)
-                            .collection(RECORDS).get().awaitResult()
-                        val classes = records.documents.count { it.getString("recordType") == "class" }
-                        val courses = records.documents.count { it.getString("recordType") == "course" }
-                        val lectures = records.documents.count { it.getString("recordType") == "lecture" }
                         val expected = snapshot.getLong("recordCount")
-                        "پشتیبان خصوصی: موجود؛ نسخه ۲؛ رکورد ثبت‌شده در ریشه: ${expected ?: "نامشخص"}؛ دریافت‌شده: ${records.documents.size} (کلاس: $classes، درس: $courses، جلسه: $lectures)."
+                        val recordsStartedAt = SystemClock.elapsedRealtime()
+                        privateRecordsReport = try {
+                            val records = firestore.collection(TEACHER_DATA).document(uid)
+                                .collection(RECORDS)
+                                .get(com.google.firebase.firestore.Source.SERVER).awaitResult()
+                            val classes = records.documents.count { it.getString("recordType") == "class" }
+                            val courses = records.documents.count { it.getString("recordType") == "course" }
+                            val lectures = records.documents.count { it.getString("recordType") == "lecture" }
+                            "مجموعه رکوردهای پشتیبان خصوصی: دریافت موفق؛ مورد انتظار در ریشه: ${expected ?: "نامشخص"}؛ دریافت‌شده: ${records.documents.size} (کلاس: $classes، درس: $courses، جلسه: $lectures)."
+                        } catch (error: Exception) {
+                            diagnosticFailure("خواندن مجموعه رکوردهای پشتیبان خصوصی", error, recordsStartedAt)
+                        }
+                        "پشتیبان خصوصی: سند ریشه موجود است؛ نسخه ۲؛ تعداد رکورد مورد انتظار: ${expected ?: "نامشخص"}."
                     }
                     LEGACY_SCHEMA_VERSION -> {
+                        privateRecordsReport = "مجموعه رکوردهای پشتیبان خصوصی: نسخهٔ ۱ از این مجموعه استفاده نمی‌کند."
                         val classes = (snapshot.get("classes") as? List<*>)?.size
                         val courses = (snapshot.get("courses") as? List<*>)?.size
                         val lectures = (snapshot.get("lectures") as? List<*>)?.size
-                        "پشتیبان خصوصی: موجود؛ نسخه ۱؛ کلاس: ${classes ?: "نامشخص"}، درس: ${courses ?: "نامشخص"}، جلسه: ${lectures ?: "نامشخص"}."
+                        "پشتیبان خصوصی: سند موجود؛ نسخه ۱؛ کلاس: ${classes ?: "نامشخص"}، درس: ${courses ?: "نامشخص"}، جلسه: ${lectures ?: "نامشخص"}."
                     }
-                    else -> "پشتیبان خصوصی: سند موجود است، اما نسخهٔ آن نامشخص است (${snapshot.getLong("schemaVersion") ?: "بدون نسخه"})."
+                    else -> {
+                        privateRecordsReport = "مجموعه رکوردهای پشتیبان خصوصی: نسخهٔ سند ریشه قابل تشخیص نیست؛ بررسی نشد."
+                        "پشتیبان خصوصی: سند موجود است، اما نسخهٔ آن نامشخص است (${snapshot.getLong("schemaVersion") ?: "بدون نسخه"})."
+                    }
                 }
             }
         } catch (error: Exception) {
-            "خواندن پشتیبان خصوصی ناموفق بود: ${error.localizedMessage ?: error.javaClass.simpleName}"
+            privateRecordsReport = "مجموعه رکوردهای پشتیبان خصوصی: به علت ناموفق بودن خواندن سند ریشه، بررسی نشد."
+            diagnosticFailure("خواندن سند ریشه پشتیبان خصوصی", error, privateStartedAt)
         }
 
+        val legacyStartedAt = SystemClock.elapsedRealtime()
         val legacyReport = try {
-            val snapshot = firestore.collection(SHARED_MATERIALS).document(uid).get().awaitResult()
+            val snapshot = firestore.collection(SHARED_MATERIALS).document(uid)
+                .get(com.google.firebase.firestore.Source.SERVER).awaitResult()
             if (!snapshot.exists()) {
                 "پشتیبان قدیمی shared_materials: سند وجود ندارد."
             } else {
@@ -122,25 +147,131 @@ class FirestoreSyncRepository(
                 }
             }
         } catch (error: Exception) {
-            "خواندن پشتیبان قدیمی ناموفق بود: ${error.localizedMessage ?: error.javaClass.simpleName}"
+            diagnosticFailure("خواندن پشتیبان قدیمی", error, legacyStartedAt)
         }
 
-        return "$authReport\n$profileReport\n$privateReport\n$legacyReport\nاین گزارش فقط‌خواندنی است؛ هیچ داده‌ای تغییر نکرد."
+        return "$authReport\n$profileReport\n$privateReport\n$privateRecordsReport\n$legacyReport\nاین گزارش فقط‌خواندنی است؛ هیچ داده‌ای تغییر نکرد."
+    }
+
+    private fun diagnosticFailure(
+        operation: String,
+        error: Exception,
+        startedAtMs: Long
+    ): String {
+        val chain = generateSequence(error as Throwable?) { it.cause }
+            .take(4)
+            .joinToString(" ← ") { cause ->
+                val message = cause.message?.takeIf { it.isNotBlank() }?.take(160)
+                if (message == null) cause.javaClass.simpleName
+                else "${cause.javaClass.simpleName}: $message"
+            }
+        val firestoreError = generateSequence(error as Throwable?) { it.cause }
+            .filterIsInstance<FirebaseFirestoreException>()
+            .firstOrNull()
+        val elapsedMs = (SystemClock.elapsedRealtime() - startedAtMs).coerceAtLeast(0L)
+        val category = when (firestoreError?.code) {
+            FirebaseFirestoreException.Code.PERMISSION_DENIED ->
+                "مجوز Firestore رد شده است"
+            FirebaseFirestoreException.Code.UNAUTHENTICATED ->
+                "احراز هویت درخواست Firestore پذیرفته نشده است"
+            FirebaseFirestoreException.Code.UNAVAILABLE ->
+                "سرویس Firestore در دسترس نیست"
+            FirebaseFirestoreException.Code.DEADLINE_EXCEEDED ->
+                "مهلت درخواست در سمت سرویس تمام شده است"
+            else -> when (error) {
+                is TimeoutCancellationException -> "مهلت ۲۰ ثانیه‌ای برنامه تمام شد؛ علت اصلی هنوز مشخص نیست"
+                else -> "خطای درخواست ابری"
+            }
+        }
+        val code = firestoreError?.code?.name ?: "بدون کد Firestore"
+        return "$operation: $category؛ زمان: ${elapsedMs}ms؛ کد: $code؛ جزئیات: $chain"
     }
 
     suspend fun restoreFromCloud(uid: String): Boolean {
-        val root = firestore.collection(TEACHER_DATA).document(uid)
-        val snapshot = root.get().awaitResult()
-        if (!snapshot.exists()) return false
+        val snapshot = firestore.collection(TEACHER_DATA).document(uid).get().awaitResult()
+        return restorePrivateSnapshot(uid, snapshot, null)
+    }
 
+    /**
+     * Fetch both independent backup sources concurrently, but apply any restore
+     * sequentially after both reads finish. Thus slow sources overlap without
+     * racing writes into the local Room database.
+     */
+    suspend fun restoreFromCloudOrLegacy(
+        uid: String,
+        migrateLegacyToPrivate: Boolean = false
+    ): Boolean = supervisorScope {
+        // The root marker, v2 record collection, and legacy document are
+        // independent Firestore reads. Start all three together so a slow
+        // root read cannot add another full 20-second wait for the records.
+        val privateRootRead = async {
+            firestore.collection(TEACHER_DATA).document(uid).get().awaitResult()
+        }
+        val privateRecordsRead = async {
+            firestore.collection(TEACHER_DATA).document(uid)
+                .collection(RECORDS).get().awaitResult()
+        }
+        val legacyRead = async {
+            firestore.collection(SHARED_MATERIALS).document(uid).get().awaitResult()
+        }
+
+        val rootResult = runCatching { privateRootRead.await() }
+        val recordsResult = runCatching { privateRecordsRead.await() }
+        val privateResult = runCatching {
+            val rootSnapshot = rootResult.getOrThrow()
+            if (!rootSnapshot.exists()) {
+                null
+            } else {
+                val records = if (rootSnapshot.getLong("schemaVersion") == SCHEMA_VERSION) {
+                    recordsResult.getOrThrow().documents
+                } else null
+                PrivateBackupRead(rootSnapshot, records)
+            }
+        }
+        val legacyResult = runCatching { legacyRead.await() }
+        var privateRestoreFailure: Throwable? = privateResult.exceptionOrNull()
+
+        val privateBackup = privateResult.getOrNull()
+        if (privateBackup != null) {
+            val restored = runCatching {
+                restorePrivateSnapshot(uid, privateBackup.root, privateBackup.records)
+            }
+            if (restored.getOrNull() == true) return@supervisorScope true
+            if (restored.isFailure) privateRestoreFailure = restored.exceptionOrNull()
+        }
+
+        val legacySnapshot = legacyResult.getOrNull()
+        if (legacySnapshot != null) {
+            val restoredLegacy = restoreLegacySnapshot(uid, legacySnapshot)
+            if (restoredLegacy) {
+                if (migrateLegacyToPrivate) uploadSnapshot(uid)
+                return@supervisorScope true
+            }
+        }
+
+        val failure = privateRestoreFailure ?: legacyResult.exceptionOrNull()
+        if (failure != null) throw failure
+        false
+    }
+
+    private data class PrivateBackupRead(
+        val root: DocumentSnapshot,
+        val records: List<DocumentSnapshot>?
+    )
+
+    private suspend fun restorePrivateSnapshot(
+        uid: String,
+        snapshot: DocumentSnapshot,
+        records: List<DocumentSnapshot>?
+    ): Boolean {
+        if (!snapshot.exists()) return false
         return when (snapshot.getLong("schemaVersion")) {
             LEGACY_SCHEMA_VERSION -> {
-                // Validate and restore the old snapshot before migrating it.
                 restoreSnapshot(snapshot, requireAllCollections = true, ownerUid = uid)
                 uploadSnapshot(uid)
                 true
             }
-            SCHEMA_VERSION -> restoreRecordDocuments(uid)
+            SCHEMA_VERSION -> restoreRecordDocuments(uid, snapshot, records)
             else -> throw IllegalStateException(
                 "نسخه پشتیبان ابری قابل‌شناسایی نیست؛ برای جلوگیری از حذف اطلاعات، بازیابی متوقف شد."
             )
@@ -153,6 +284,10 @@ class FirestoreSyncRepository(
      */
     suspend fun restoreLegacySharedMaterials(uid: String): Boolean {
         val snapshot = firestore.collection(SHARED_MATERIALS).document(uid).get().awaitResult()
+        return restoreLegacySnapshot(uid, snapshot)
+    }
+
+    private suspend fun restoreLegacySnapshot(uid: String, snapshot: DocumentSnapshot): Boolean {
         if (!snapshot.exists()) return false
         val data = snapshot.data ?: return false
 
@@ -191,7 +326,6 @@ class FirestoreSyncRepository(
         restoreSnapshot(snapshot, requireAllCollections = true, ownerUid = uid)
         return true
     }
-
     suspend fun uploadSnapshot(uid: String) {
         // Shared published records are imported with negative IDs. They belong to
         // their original teachers and must never enter this account's private backup.
@@ -245,15 +379,18 @@ class FirestoreSyncRepository(
         ).awaitResult()
     }
 
-    private suspend fun restoreRecordDocuments(uid: String): Boolean {
-        val rootSnapshot = firestore.collection(TEACHER_DATA).document(uid).get().awaitResult()
+    private suspend fun restoreRecordDocuments(
+        uid: String,
+        rootSnapshot: DocumentSnapshot,
+        prefetchedRecords: List<DocumentSnapshot>? = null
+    ): Boolean {
         val rootOwner = rootSnapshot.getString("ownerUid")
         if (!rootOwner.isNullOrBlank() && rootOwner != uid) {
             throw IllegalStateException("مالک پشتیبان ابری با حساب فعلی تطبیق ندارد؛ بازیابی متوقف شد.")
         }
         val expectedCount = rootSnapshot.getLong("recordCount")
             ?: throw IllegalStateException("تعداد رکوردهای پشتیبان مشخص نیست؛ بازیابی برای حفظ اطلاعات متوقف شد.")
-        val documents = firestore.collection(TEACHER_DATA)
+        val documents = prefetchedRecords ?: firestore.collection(TEACHER_DATA)
             .document(uid)
             .collection(RECORDS)
             .get()

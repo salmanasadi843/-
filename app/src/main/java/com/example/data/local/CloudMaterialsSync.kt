@@ -35,7 +35,14 @@ object CloudMaterialsSync {
         val db = AppDatabase.getDatabase(context)
         val firestore = FirebaseFirestore.getInstance()
 
-        return if (AuthPreferences.currentRole(context) == UserRole.TEACHER && !receiveOnly) {
+        // The primary administrator is stored with the TEACHER role for authorization,
+        // but must consume other teachers' published feeds rather than publish only
+        // its own feed. Ordinary teachers continue to publish their owned materials.
+        return if (
+            AuthPreferences.currentRole(context) == UserRole.TEACHER &&
+            !AuthPreferences.isPrimaryTeacher(context) &&
+            !receiveOnly
+        ) {
             val allClasses = runBlocking { db.classDao().getAllForBackup() }
             val allCourses = runBlocking { db.courseDao().getAllForBackup() }
             val allLectures = runBlocking { db.lectureDao().getAllForBackup() }

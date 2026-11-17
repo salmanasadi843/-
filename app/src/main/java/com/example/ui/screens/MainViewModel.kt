@@ -137,22 +137,12 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
                 // recover the authenticated teacher's private backup before fetching
                 // other teachers' publications. Never upload an empty local snapshot here.
                 if (ownedLocalCount == 0) {
-                    val restoredPrivate = runCatching {
+                    runCatching {
                         withContext(Dispatchers.IO) {
-                            cloudSyncRepository.restoreFromCloud(uid)
+                            cloudSyncRepository.restoreFromCloudOrLegacy(uid)
                         }
-                    }
-                    if (restoredPrivate.getOrNull() != true) {
-                        restoredPrivate.exceptionOrNull()?.let {
-                            Log.w(TAG, "Private restore timed out; trying legacy backup", it)
-                        }
-                        runCatching {
-                            withContext(Dispatchers.IO) {
-                                cloudSyncRepository.restoreLegacySharedMaterials(uid)
-                            }
-                        }.onFailure {
-                            Log.w(TAG, "Legacy restore also failed; continuing to published feed", it)
-                        }
+                    }.onFailure {
+                        Log.w(TAG, "Cloud backup reads failed; continuing to published feed", it)
                     }
                 }
                 val result = withContext(Dispatchers.IO) {
@@ -221,39 +211,30 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
                 }
                 // Try both cloud backup locations independently. A timeout on the
                 // private document must not prevent recovery from the legacy document.
-                val privateRestore = runCatching { cloudSyncRepository.restoreFromCloud(uid) }
-                if (privateRestore.getOrNull() == true) {
+                val cloudRestore = runCatching {
+                    cloudSyncRepository.restoreFromCloudOrLegacy(uid, migrateLegacyToPrivate = true)
+                }
+                if (cloudRestore.getOrNull() == true) {
                     _cloudSyncStatus.value = "بازیابی اطلاعات از فضای ابری موفق بود؛ تغییرات بعدی خودکار ارسال می‌شوند."
                 } else {
-                    privateRestore.exceptionOrNull()?.let {
-                        Log.w(TAG, "Private cloud backup read failed; trying legacy backup", it)
-                    }
-                    val legacyRestore = runCatching {
-                        cloudSyncRepository.restoreLegacySharedMaterials(uid)
-                    }
-                    if (legacyRestore.getOrNull() == true) {
-                        cloudSyncRepository.uploadSnapshot(uid)
-                        _cloudSyncStatus.value = "بازیابی پشتیبان قدیمی موفق بود و نسخه خصوصی جدید نیز ذخیره شد."
-                    } else {
-                        val readFailure = privateRestore.exceptionOrNull() ?: legacyRestore.exceptionOrNull()
-                        if (readFailure != null) {
-                            Log.e(TAG, "Cloud backup reads failed; local data was kept", readFailure)
-                            _cloudSyncStatus.value =
-                                "خواندن پشتیبان ابری ناموفق بود؛ احتمالاً ارتباط با Firebase برقرار نشده است. اطلاعات محلی حفظ شد و هیچ داده‌ای ارسال یا جایگزین نشد. علت: ${readFailure.localizedMessage ?: readFailure.javaClass.simpleName}"
-                            return@launch
-                        }
-                        val localClasses = database.classDao().getAllForBackup()
-                        val localCourses = database.courseDao().getAllForBackup()
-                        val localLectures = database.lectureDao().getAllForBackup()
-                        if (localClasses.isEmpty() && localCourses.isEmpty() && localLectures.isEmpty()) {
-                            _cloudSyncStatus.value =
-                                "پشتیبان قابل‌بازیابی پیدا نشد؛ چون اطلاعات محلی هم خالی است، برای جلوگیری از بازنویسی پشتیبان ابری هیچ داده‌ای ارسال نشد."
-                            return@launch
-                        }
-                        cloudSyncRepository.uploadSnapshot(uid)
+                    val readFailure = cloudRestore.exceptionOrNull()
+                    if (readFailure != null) {
+                        Log.e(TAG, "Cloud backup reads failed; local data was kept", readFailure)
                         _cloudSyncStatus.value =
-                            "پشتیبان قبلی پیدا نشد؛ از اطلاعات موجود روی دستگاه یک پشتیبان تازه ساخته شد."
+                            "خواندن پشتیبان ابری ناموفق بود؛ اطلاعات محلی حفظ شد و هیچ داده‌ای ارسال یا جایگزین نشد. علت: ${readFailure.localizedMessage ?: readFailure.javaClass.simpleName}"
+                        return@launch
                     }
+                    val localClasses = database.classDao().getAllForBackup()
+                    val localCourses = database.courseDao().getAllForBackup()
+                    val localLectures = database.lectureDao().getAllForBackup()
+                    if (localClasses.isEmpty() && localCourses.isEmpty() && localLectures.isEmpty()) {
+                        _cloudSyncStatus.value =
+                            "پشتیبان قابل‌بازیابی پیدا نشد؛ چون اطلاعات محلی هم خالی است، برای جلوگیری از بازنویسی پشتیبان ابری هیچ داده‌ای ارسال نشد."
+                        return@launch
+                    }
+                    cloudSyncRepository.uploadSnapshot(uid)
+                    _cloudSyncStatus.value =
+                        "پشتیبان قبلی پیدا نشد؛ از اطلاعات موجود روی دستگاه یک پشتیبان تازه ساخته شد."
                 }
 
                 combine(
