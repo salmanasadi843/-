@@ -79,38 +79,54 @@ class FirestoreSyncRepository(
             diagnosticFailure("خواندن پروفایل کاربر", error, profileStartedAt)
         }
 
+        var privateRecordsReport = "مجموعه رکوردهای پشتیبان خصوصی: به دلیل نامشخص بودن نسخهٔ سند ریشه، بررسی نشد."
         val privateStartedAt = SystemClock.elapsedRealtime()
         val privateReport = try {
-            val snapshot = firestore.collection(TEACHER_DATA).document(uid).get().awaitResult()
+            val snapshot = firestore.collection(TEACHER_DATA).document(uid)
+                .get(com.google.firebase.firestore.Source.SERVER).awaitResult()
             if (!snapshot.exists()) {
-                "پشتیبان خصوصی: سند وجود ندارد."
+                privateRecordsReport = "مجموعه رکوردهای پشتیبان خصوصی: سند ریشه وجود ندارد؛ بررسی نشد."
+                "پشتیبان خصوصی: سند ریشه در سرور وجود ندارد."
             } else {
                 when (snapshot.getLong("schemaVersion")) {
                     SCHEMA_VERSION -> {
-                        val records = firestore.collection(TEACHER_DATA).document(uid)
-                            .collection(RECORDS).get().awaitResult()
-                        val classes = records.documents.count { it.getString("recordType") == "class" }
-                        val courses = records.documents.count { it.getString("recordType") == "course" }
-                        val lectures = records.documents.count { it.getString("recordType") == "lecture" }
                         val expected = snapshot.getLong("recordCount")
-                        "پشتیبان خصوصی: موجود؛ نسخه ۲؛ رکورد ثبت‌شده در ریشه: ${expected ?: "نامشخص"}؛ دریافت‌شده: ${records.documents.size} (کلاس: $classes، درس: $courses، جلسه: $lectures)."
+                        privateRecordsReport = try {
+                            val recordsStartedAt = SystemClock.elapsedRealtime()
+                            val records = firestore.collection(TEACHER_DATA).document(uid)
+                                .collection(RECORDS)
+                                .get(com.google.firebase.firestore.Source.SERVER).awaitResult()
+                            val classes = records.documents.count { it.getString("recordType") == "class" }
+                            val courses = records.documents.count { it.getString("recordType") == "course" }
+                            val lectures = records.documents.count { it.getString("recordType") == "lecture" }
+                            "مجموعه رکوردهای پشتیبان خصوصی: دریافت موفق؛ مورد انتظار در ریشه: ${expected ?: "نامشخص"}؛ دریافت‌شده: ${records.documents.size} (کلاس: $classes، درس: $courses، جلسه: $lectures)."
+                        } catch (error: Exception) {
+                            diagnosticFailure("خواندن مجموعه رکوردهای پشتیبان خصوصی", error, recordsStartedAt)
+                        }
+                        "پشتیبان خصوصی: سند ریشه موجود است؛ نسخه ۲؛ تعداد رکورد مورد انتظار: ${expected ?: "نامشخص"}."
                     }
                     LEGACY_SCHEMA_VERSION -> {
+                        privateRecordsReport = "مجموعه رکوردهای پشتیبان خصوصی: نسخهٔ ۱ از این مجموعه استفاده نمی‌کند."
                         val classes = (snapshot.get("classes") as? List<*>)?.size
                         val courses = (snapshot.get("courses") as? List<*>)?.size
                         val lectures = (snapshot.get("lectures") as? List<*>)?.size
-                        "پشتیبان خصوصی: موجود؛ نسخه ۱؛ کلاس: ${classes ?: "نامشخص"}، درس: ${courses ?: "نامشخص"}، جلسه: ${lectures ?: "نامشخص"}."
+                        "پشتیبان خصوصی: سند موجود؛ نسخه ۱؛ کلاس: ${classes ?: "نامشخص"}، درس: ${courses ?: "نامشخص"}، جلسه: ${lectures ?: "نامشخص"}."
                     }
-                    else -> "پشتیبان خصوصی: سند موجود است، اما نسخهٔ آن نامشخص است (${snapshot.getLong("schemaVersion") ?: "بدون نسخه"})."
+                    else -> {
+                        privateRecordsReport = "مجموعه رکوردهای پشتیبان خصوصی: نسخهٔ سند ریشه قابل تشخیص نیست؛ بررسی نشد."
+                        "پشتیبان خصوصی: سند موجود است، اما نسخهٔ آن نامشخص است (${snapshot.getLong("schemaVersion") ?: "بدون نسخه"})."
+                    }
                 }
             }
         } catch (error: Exception) {
-            diagnosticFailure("خواندن پشتیبان خصوصی", error, privateStartedAt)
+            privateRecordsReport = "مجموعه رکوردهای پشتیبان خصوصی: به علت ناموفق بودن خواندن سند ریشه، بررسی نشد."
+            diagnosticFailure("خواندن سند ریشه پشتیبان خصوصی", error, privateStartedAt)
         }
 
         val legacyStartedAt = SystemClock.elapsedRealtime()
         val legacyReport = try {
-            val snapshot = firestore.collection(SHARED_MATERIALS).document(uid).get().awaitResult()
+            val snapshot = firestore.collection(SHARED_MATERIALS).document(uid)
+                .get(com.google.firebase.firestore.Source.SERVER).awaitResult()
             if (!snapshot.exists()) {
                 "پشتیبان قدیمی shared_materials: سند وجود ندارد."
             } else {
@@ -132,7 +148,7 @@ class FirestoreSyncRepository(
             diagnosticFailure("خواندن پشتیبان قدیمی", error, legacyStartedAt)
         }
 
-        return "$authReport\n$profileReport\n$privateReport\n$legacyReport\nاین گزارش فقط‌خواندنی است؛ هیچ داده‌ای تغییر نکرد."
+        return "$authReport\n$profileReport\n$privateReport\n$privateRecordsReport\n$legacyReport\nاین گزارش فقط‌خواندنی است؛ هیچ داده‌ای تغییر نکرد."
     }
 
     private fun diagnosticFailure(
