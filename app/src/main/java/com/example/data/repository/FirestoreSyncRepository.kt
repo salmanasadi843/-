@@ -91,8 +91,8 @@ class FirestoreSyncRepository(
                 when (snapshot.getLong("schemaVersion")) {
                     SCHEMA_VERSION -> {
                         val expected = snapshot.getLong("recordCount")
+                        val recordsStartedAt = SystemClock.elapsedRealtime()
                         privateRecordsReport = try {
-                            val recordsStartedAt = SystemClock.elapsedRealtime()
                             val records = firestore.collection(TEACHER_DATA).document(uid)
                                 .collection(RECORDS)
                                 .get(com.google.firebase.firestore.Source.SERVER).awaitResult()
