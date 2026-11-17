@@ -17,7 +17,7 @@ import com.google.firebase.firestore.FirebaseFirestoreException
 import android.os.SystemClock
 import org.json.JSONObject
 import kotlinx.coroutines.async
-import kotlinx.coroutines.coroutineScope
+import kotlinx.coroutines.supervisorScope
 import kotlinx.coroutines.suspendCancellableCoroutine
 import kotlinx.coroutines.withTimeout
 import kotlinx.coroutines.TimeoutCancellationException
@@ -200,7 +200,7 @@ class FirestoreSyncRepository(
     suspend fun restoreFromCloudOrLegacy(
         uid: String,
         migrateLegacyToPrivate: Boolean = false
-    ): Boolean = coroutineScope {
+    ): Boolean = supervisorScope {
         val privateRead = async {
             val rootSnapshot = firestore.collection(TEACHER_DATA).document(uid).get().awaitResult()
             if (!rootSnapshot.exists()) return@async null
@@ -223,7 +223,7 @@ class FirestoreSyncRepository(
             val restored = runCatching {
                 restorePrivateSnapshot(uid, privateBackup.root, privateBackup.records)
             }
-            if (restored.getOrNull() == true) return@coroutineScope true
+            if (restored.getOrNull() == true) return@supervisorScope true
             if (restored.isFailure) privateRestoreFailure = restored.exceptionOrNull()
         }
 
