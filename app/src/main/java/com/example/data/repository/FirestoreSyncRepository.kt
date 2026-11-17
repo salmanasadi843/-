@@ -201,20 +201,33 @@ class FirestoreSyncRepository(
         uid: String,
         migrateLegacyToPrivate: Boolean = false
     ): Boolean = supervisorScope {
-        val privateRead = async {
-            val rootSnapshot = firestore.collection(TEACHER_DATA).document(uid).get().awaitResult()
-            if (!rootSnapshot.exists()) return@async null
-            val records = if (rootSnapshot.getLong("schemaVersion") == SCHEMA_VERSION) {
-                firestore.collection(TEACHER_DATA).document(uid)
-                    .collection(RECORDS).get().awaitResult().documents
-            } else null
-            PrivateBackupRead(rootSnapshot, records)
+        // The root marker, v2 record collection, and legacy document are
+        // independent Firestore reads. Start all three together so a slow
+        // root read cannot add another full 20-second wait for the records.
+        val privateRootRead = async {
+            firestore.collection(TEACHER_DATA).document(uid).get().awaitResult()
+        }
+        val privateRecordsRead = async {
+            firestore.collection(TEACHER_DATA).document(uid)
+                .collection(RECORDS).get().awaitResult()
         }
         val legacyRead = async {
             firestore.collection(SHARED_MATERIALS).document(uid).get().awaitResult()
         }
 
-        val privateResult = runCatching { privateRead.await() }
+        val rootResult = runCatching { privateRootRead.await() }
+        val recordsResult = runCatching { privateRecordsRead.await() }
+        val privateResult = runCatching {
+            val rootSnapshot = rootResult.getOrThrow()
+            if (!rootSnapshot.exists()) {
+                null
+            } else {
+                val records = if (rootSnapshot.getLong("schemaVersion") == SCHEMA_VERSION) {
+                    recordsResult.getOrThrow().documents
+                } else null
+                PrivateBackupRead(rootSnapshot, records)
+            }
+        }
         val legacyResult = runCatching { legacyRead.await() }
         var privateRestoreFailure: Throwable? = privateResult.exceptionOrNull()
 
