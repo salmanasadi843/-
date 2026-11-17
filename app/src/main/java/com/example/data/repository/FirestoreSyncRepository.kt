@@ -197,7 +197,7 @@ class FirestoreSyncRepository(
                 uploadSnapshot(uid)
                 true
             }
-            SCHEMA_VERSION -> restoreRecordDocuments(uid)
+            SCHEMA_VERSION -> restoreRecordDocuments(uid, snapshot)
             else -> throw IllegalStateException(
                 "نسخه پشتیبان ابری قابل‌شناسایی نیست؛ برای جلوگیری از حذف اطلاعات، بازیابی متوقف شد."
             )
@@ -302,8 +302,10 @@ class FirestoreSyncRepository(
         ).awaitResult()
     }
 
-    private suspend fun restoreRecordDocuments(uid: String): Boolean {
-        val rootSnapshot = firestore.collection(TEACHER_DATA).document(uid).get().awaitResult()
+    private suspend fun restoreRecordDocuments(
+        uid: String,
+        rootSnapshot: DocumentSnapshot
+    ): Boolean {
         val rootOwner = rootSnapshot.getString("ownerUid")
         if (!rootOwner.isNullOrBlank() && rootOwner != uid) {
             throw IllegalStateException("مالک پشتیبان ابری با حساب فعلی تطبیق ندارد؛ بازیابی متوقف شد.")
