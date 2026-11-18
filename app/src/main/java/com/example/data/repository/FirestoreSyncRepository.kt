@@ -108,7 +108,7 @@ class FirestoreSyncRepository(
             }
         } catch (error: Exception) {
             val elapsed = (SystemClock.elapsedRealtime() - restProbeStartedAt).coerceAtLeast(0L)
-            "آزمون REST فقط‌خواندنی (HTTP/1.1): ناموفق؛ زمان ${elapsed}ms؛ ${error.javaClass.simpleName}: ${error.message ?: "بدون جزئیات"}."
+            "آزمون REST فقط‌خواندنی (HTTP/1.1): ناموفق؛ زمان \${elapsed}ms؛ \${error.javaClass.simpleName}: \${error.message ?: "بدون جزئیات"}."
         }
 
         val profileStartedAt = SystemClock.elapsedRealtime()
