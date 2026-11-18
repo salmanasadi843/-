@@ -12,6 +12,11 @@ import com.google.android.gms.tasks.Task
 import com.google.firebase.firestore.DocumentSnapshot
 import com.google.firebase.firestore.FieldValue
 import com.google.firebase.auth.FirebaseAuth
+import com.google.firebase.FirebaseApp
+import okhttp3.OkHttpClient
+import okhttp3.Protocol
+import okhttp3.Request
+import java.util.concurrent.TimeUnit
 import com.google.firebase.firestore.FirebaseFirestore
 import com.google.firebase.firestore.FirebaseFirestoreException
 import android.os.SystemClock
@@ -66,6 +71,44 @@ class FirestoreSyncRepository(
             "احراز هویت Firebase: دریافت توکن تازه موفق بود."
         } catch (error: Exception) {
             diagnosticFailure("احراز هویت Firebase", error, authStartedAt)
+        }
+
+        // Read-only control probe: call the Firestore REST endpoint over HTTP/1.1.
+        // This helps distinguish Android Firestore SDK transport failures from
+        // project/auth/rules/network failures without reading or changing app data.
+        val restProbeStartedAt = SystemClock.elapsedRealtime()
+        val restProbeReport = try {
+            val user = FirebaseAuth.getInstance().currentUser
+                ?: throw IllegalStateException("نشست ورود Firebase فعال نیست.")
+            val token = user.getIdToken(true).awaitResult().token
+                ?: throw IllegalStateException("توکن Firebase خالی است.")
+            val projectId = FirebaseApp.getInstance().options.projectId
+                ?: throw IllegalStateException("شناسه پروژه Firebase در دسترس نیست.")
+            val request = Request.Builder()
+                .url("https://firestore.googleapis.com/v1/projects/$projectId/databases/(default)/documents/users/$uid")
+                .header("Authorization", "Bearer $token")
+                .header("Accept", "application/json")
+                .get()
+                .build()
+            val client = OkHttpClient.Builder()
+                .protocols(listOf(Protocol.HTTP_1_1))
+                .connectTimeout(8, TimeUnit.SECONDS)
+                .readTimeout(8, TimeUnit.SECONDS)
+                .callTimeout(10, TimeUnit.SECONDS)
+                .build()
+            client.newCall(request).execute().use { response ->
+                val status = response.code
+                when (status) {
+                    200 -> "آزمون REST فقط‌خواندنی (HTTP/1.1): موفق؛ سرور Firestore پاسخ داد."
+                    404 -> "آزمون REST فقط‌خواندنی (HTTP/1.1): سرور پاسخ داد، اما سند پروفایل پیدا نشد."
+                    401 -> "آزمون REST فقط‌خواندنی (HTTP/1.1): سرور پاسخ داد، اما توکن را نپذیرفت."
+                    403 -> "آزمون REST فقط‌خواندنی (HTTP/1.1): دسترسی به سند پروفایل رد شد."
+                    else -> "آزمون REST فقط‌خواندنی (HTTP/1.1): پاسخ HTTP $status."
+                }
+            }
+        } catch (error: Exception) {
+            val elapsed = (SystemClock.elapsedRealtime() - restProbeStartedAt).coerceAtLeast(0L)
+            "آزمون REST فقط‌خواندنی (HTTP/1.1): ناموفق؛ زمان ${elapsed}ms؛ ${error.javaClass.simpleName}: ${error.message ?: "بدون جزئیات"}."
         }
 
         val profileStartedAt = SystemClock.elapsedRealtime()
@@ -150,7 +193,7 @@ class FirestoreSyncRepository(
             diagnosticFailure("خواندن پشتیبان قدیمی", error, legacyStartedAt)
         }
 
-        return "$authReport\n$profileReport\n$privateReport\n$privateRecordsReport\n$legacyReport\nاین گزارش فقط‌خواندنی است؛ هیچ داده‌ای تغییر نکرد."
+        return "$authReport\n$restProbeReport\n$profileReport\n$privateReport\n$privateRecordsReport\n$legacyReport\nاین گزارش فقط‌خواندنی است؛ هیچ داده‌ای تغییر نکرد."
     }
 
     private fun diagnosticFailure(
