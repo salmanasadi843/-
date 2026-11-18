@@ -79,6 +79,77 @@ object CloudMaterialsSync {
             Tasks.await(feedRef.set(mapOf("ownerUid" to uid, "payload" to payload.toString(), "updatedAt" to System.currentTimeMillis())))
             "انتشار امن انجام شد؛ رکوردهای قبلیِ غایب از گوشی حفظ شدند."
         } else {
+            // The primary administrator must both publish its own classes for students
+            // and continue receiving other teachers' published feeds. Keep this write
+            // separate from the receive path so the admin's own positive IDs stay local.
+            if (
+                AuthPreferences.currentRole(context) == UserRole.TEACHER &&
+                AuthPreferences.isPrimaryTeacher(context) &&
+                !receiveOnly
+            ) {
+                val adminClasses = runBlocking { db.classDao().getAllForBackup() }
+                    .filter { it.id > 0L && it.ownerUid == uid }
+                val adminClassIds = adminClasses.map { it.id }.toSet()
+                val adminCourses = runBlocking { db.courseDao().getAllForBackup() }
+                    .filter { it.id > 0L && it.classId > 0L && it.classId in adminClassIds }
+                val adminLectures = runBlocking { db.lectureDao().getAllForBackup() }
+                    .filter { lecture ->
+                        lecture.id > 0L &&
+                            lecture.classId?.let { it > 0L && it in adminClassIds } == true
+                    }
+                val adminPayload = JSONObject()
+                    .put("format", "darsyar-shared-materials")
+                    .put("version", 1)
+                    .put("teacherName", AuthPreferences.currentName(context))
+                    .put("classes", JSONArray().apply {
+                        adminClasses.forEach { put(it.copy(ownerUid = uid, isPublished = true).toJson()) }
+                    })
+                    .put("courses", JSONArray().apply {
+                        adminCourses.forEach { put(it.toJson()) }
+                    })
+                    .put("lectures", JSONArray().apply {
+                        adminLectures.forEach { put(it.copy(isPublished = true).toJson()) }
+                    })
+
+                val adminFeedRef = firestore.collection("shared_materials").document(uid)
+                val oldAdminDoc = Tasks.await(adminFeedRef.get())
+                require(
+                    !oldAdminDoc.exists() || oldAdminDoc.getString("ownerUid") == uid
+                ) { "مالکیت سند آنلاین مدیر تطبیق ندارد؛ انتشار متوقف شد." }
+                val oldAdminText = oldAdminDoc.getString("payload")
+                require(
+                    !oldAdminDoc.exists() || !oldAdminText.isNullOrBlank()
+                ) { "سند آنلاین قبلی مدیر خالی است؛ انتشار متوقف شد." }
+                if (!oldAdminText.isNullOrBlank()) {
+                    val oldAdminPayload = runCatching { JSONObject(oldAdminText) }
+                        .getOrElse { error("ساختار پشتیبان آنلاین مدیر خراب است؛ انتشار متوقف شد.") }
+                    require(
+                        oldAdminPayload.optString("format") == "darsyar-shared-materials"
+                    ) { "قالب پشتیبان آنلاین مدیر ناشناخته است." }
+                    adminPayload.put(
+                        "classes",
+                        mergeById(oldAdminPayload.optJSONArray("classes"), adminPayload.optJSONArray("classes"))
+                    )
+                    adminPayload.put(
+                        "courses",
+                        mergeById(oldAdminPayload.optJSONArray("courses"), adminPayload.optJSONArray("courses"))
+                    )
+                    adminPayload.put(
+                        "lectures",
+                        mergeById(oldAdminPayload.optJSONArray("lectures"), adminPayload.optJSONArray("lectures"))
+                    )
+                }
+                Tasks.await(
+                    adminFeedRef.set(
+                        mapOf(
+                            "ownerUid" to uid,
+                            "payload" to adminPayload.toString(),
+                            "updatedAt" to System.currentTimeMillis()
+                        )
+                    )
+                )
+            }
+
             val documents = Tasks.await(firestore.collection("shared_materials").get()).documents
                 .filter { it.id != uid }
             val existingLocalClasses = runBlocking { db.classDao().getAllForBackup() }
