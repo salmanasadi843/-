@@ -4,6 +4,7 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import okhttp3.OkHttpClient
 import okhttp3.Request
+import okhttp3.Protocol
 import org.json.JSONObject
 import java.net.URLEncoder
 import java.util.concurrent.TimeUnit
@@ -16,6 +17,7 @@ internal object FirestoreRestBackupPreview {
     suspend fun inspect(projectId: String, uid: String, idToken: String): String =
         withContext(Dispatchers.IO) {
             val client = OkHttpClient.Builder()
+                .protocols(listOf(Protocol.HTTP_1_1))
                 .connectTimeout(10, TimeUnit.SECONDS)
                 .readTimeout(20, TimeUnit.SECONDS)
                 .callTimeout(30, TimeUnit.SECONDS)
