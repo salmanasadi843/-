@@ -156,15 +156,38 @@ internal object FirestoreRestBackupPreview {
         execute(client, "$BASE/$projectId/databases/(default)/documents/$pathAndQuery", token)
 
     private fun execute(client: OkHttpClient, url: String, token: String): JSONObject {
-        val request = Request.Builder().url(url)
-            .header("Authorization", "Bearer $token")
-            .header("Accept", "application/json")
-            .get().build()
-        client.newCall(request).execute().use { response ->
-            val body = response.body?.string().orEmpty()
-            if (!response.isSuccessful) error("Firestore REST پاسخ HTTP ${response.code} داد.")
-            return JSONObject(body)
+        // Firestore may briefly rate-limit diagnostic reads (HTTP 429).
+        // Retry only rate limits and transient server errors; never retry
+        // authentication, permission, or malformed-request failures.
+        val maxRetries = 3
+        for (attempt in 0..maxRetries) {
+            val request = Request.Builder().url(url)
+                .header("Authorization", "Bearer $token")
+                .header("Accept", "application/json")
+                .get().build()
+            var retryDelayMs = 0L
+            client.newCall(request).execute().use { response ->
+                val body = response.body?.string().orEmpty()
+                if (response.isSuccessful) return JSONObject(body)
+
+                val retryable = response.code == 429 ||
+                    response.code == 500 || response.code == 502 ||
+                    response.code == 503 || response.code == 504
+                if (!retryable || attempt == maxRetries) {
+                    error("Firestore REST پاسخ HTTP ${response.code} داد؛ تلاش مجدد: $attempt از $maxRetries.")
+                }
+
+                val retryAfterSeconds = response.header("Retry-After")?.toLongOrNull()
+                val exponentialDelay = 1_000L * (1L shl attempt)
+                retryDelayMs = if (retryAfterSeconds != null) {
+                    (retryAfterSeconds * 1_000L).coerceIn(1_000L, 8_000L)
+                } else {
+                    exponentialDelay.coerceAtMost(8_000L)
+                }
+            }
+            if (retryDelayMs > 0L) Thread.sleep(retryDelayMs)
         }
+        error("Firestore REST پس از تلاش‌های محدود پاسخ نداد.")
     }
 
     private fun encode(value: String): String = URLEncoder.encode(value, "UTF-8")
