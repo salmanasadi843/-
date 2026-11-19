@@ -256,7 +256,19 @@ class FirestoreSyncRepository(
             diagnosticFailure("خواندن پشتیبان قدیمی", error, legacyStartedAt)
         }
 
-        return "$authReport\n$restProbeReport\n$restBackupProbeReport\n$profileReport\n$privateReport\n$privateRecordsReport\n$legacyReport\nاین گزارش فقط‌خواندنی است؛ هیچ داده‌ای تغییر نکرد."
+        val restPreviewReport = try {
+            val user = FirebaseAuth.getInstance().currentUser
+                ?: throw IllegalStateException("نشست ورود Firebase فعال نیست.")
+            val token = user.getIdToken(false).awaitResult().token
+                ?: throw IllegalStateException("توکن Firebase خالی است.")
+            val projectId = FirebaseApp.getInstance().options.projectId
+                ?: throw IllegalStateException("شناسه پروژه Firebase در دسترس نیست.")
+            FirestoreRestBackupPreview.inspect(projectId, uid, token)
+        } catch (error: Exception) {
+            "REST پیش‌نمایش فقط‌خواندنی ناموفق بود: ${error.javaClass.simpleName}: ${error.message ?: "بدون جزئیات"}"
+        }
+
+        return "$authReport\n$restProbeReport\n$restBackupProbeReport\n$restPreviewReport\n$profileReport\n$privateReport\n$privateRecordsReport\n$legacyReport\nاین گزارش فقط‌خواندنی است؛ هیچ داده‌ای تغییر نکرد."
     }
 
     private fun diagnosticFailure(
