@@ -126,7 +126,8 @@ internal object FirestoreRestBackupPreview {
         projectId: String,
         encodedUid: String,
         token: String
-    ): String = try {
+    ): String {
+        return try {
         val document = getDocument(client, projectId, "shared_materials/$encodedUid", token)
         val fields = document.optJSONObject("fields")
             ?: return "پشتیبان قدیمی shared_materials: سند فاقد فیلدهای قابل‌خواندن است."
@@ -145,6 +146,7 @@ internal object FirestoreRestBackupPreview {
         }
     } catch (error: Exception) {
         "پشتیبان قدیمی: بررسی REST ناموفق؛ ${error.javaClass.simpleName}: ${error.message?.take(100) ?: "بدون جزئیات"}"
+        }
     }
 
     private fun getDocument(client: OkHttpClient, projectId: String, path: String, token: String): JSONObject =
