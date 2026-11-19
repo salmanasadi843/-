@@ -111,6 +111,47 @@ class FirestoreSyncRepository(
             "آزمون REST فقط‌خواندنی (HTTP/1.1): ناموفق؛ زمان ${elapsed}ms؛ ${error.javaClass.simpleName}: ${error.message ?: "بدون جزئیات"}."
         }
 
+        // Read-only REST checks for the actual backup paths. The previous probe
+        // checked only users/{uid}; these checks distinguish SDK transport issues
+        // from path-specific document/rules problems without exposing document data.
+        val restBackupProbeReport = try {
+            val user = FirebaseAuth.getInstance().currentUser
+                ?: throw IllegalStateException("نشست ورود Firebase فعال نیست.")
+            val token = user.getIdToken(false).awaitResult().token
+                ?: throw IllegalStateException("توکن Firebase خالی است.")
+            val projectId = FirebaseApp.getInstance().options.projectId
+                ?: throw IllegalStateException("شناسه پروژه Firebase در دسترس نیست.")
+            val client = OkHttpClient.Builder()
+                .protocols(listOf(Protocol.HTTP_1_1))
+                .connectTimeout(8, TimeUnit.SECONDS)
+                .readTimeout(8, TimeUnit.SECONDS)
+                .callTimeout(8, TimeUnit.SECONDS)
+                .build()
+            fun readRestPath(documentPath: String, countDocuments: Boolean = false): String {
+                val request = Request.Builder()
+                    .url("https://firestore.googleapis.com/v1/projects/$projectId/databases/(default)/documents/$documentPath")
+                    .header("Authorization", "Bearer $token")
+                    .header("Accept", "application/json")
+                    .get()
+                    .build()
+                client.newCall(request).execute().use { response ->
+                    val body = response.body?.string().orEmpty()
+                    val suffix = if (response.isSuccessful && countDocuments) {
+                        val count = JSONObject(body).optJSONArray("documents")?.length() ?: 0
+                        "؛ تعداد رکوردهای دریافتی: $count"
+                    } else ""
+                    "$documentPath: HTTP ${response.code}$suffix"
+                }
+            }
+            listOf(
+                readRestPath("teacher_data/$uid"),
+                readRestPath("teacher_data/$uid/records?pageSize=1000", countDocuments = true),
+                readRestPath("shared_materials/$uid")
+            ).joinToString("\n")
+        } catch (error: Exception) {
+            val detail = error.message?.take(120) ?: error.javaClass.simpleName
+            "آزمون REST مسیرهای پشتیبان: ناموفق؛ ${error.javaClass.simpleName}: $detail"
+        }
         val profileStartedAt = SystemClock.elapsedRealtime()
         val profileReport = try {
             val profile = firestore.collection("users").document(uid)
