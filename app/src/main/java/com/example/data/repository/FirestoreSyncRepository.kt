@@ -151,7 +151,7 @@ class FirestoreSyncRepository(
 
             // Read-only comparison of the same Firestore document over HTTP/2.
             val http2Client = OkHttpClient.Builder()
-                .protocols(listOf(Protocol.HTTP_2))
+                .protocols(listOf(Protocol.HTTP_2, Protocol.HTTP_1_1))
                 .connectTimeout(8, TimeUnit.SECONDS)
                 .readTimeout(8, TimeUnit.SECONDS)
                 .callTimeout(8, TimeUnit.SECONDS)
@@ -164,7 +164,7 @@ class FirestoreSyncRepository(
                 .build()
             val http2Result = try {
                 http2Client.newCall(http2Request).execute().use { response ->
-                    "آزمون REST با HTTP/2: HTTP ${response.code}"
+                    "آزمون REST با پروتکل ${response.protocol}: HTTP ${response.code}"
                 }
             } catch (error: Exception) {
                 "آزمون REST با HTTP/2: ناموفق؛ ${error.javaClass.simpleName}: ${error.message?.take(100) ?: "بدون جزئیات"}"
