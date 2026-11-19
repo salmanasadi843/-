@@ -55,6 +55,8 @@ internal object FirestoreRestBackupPreview {
             val courses = mutableMapOf<Long, JSONObject>()
             val lectures = mutableMapOf<Long, JSONObject>()
             val errors = mutableListOf<String>()
+            val rawTypeCounts = mutableMapOf<String, Int>()
+            val documentNamesByTypeAndId = mutableMapOf<String, String>()
 
             for (doc in all) {
                 val f = doc.optJSONObject("fields")
@@ -67,17 +69,25 @@ internal object FirestoreRestBackupPreview {
                     errors += "شناسه نامعتبر در " + doc.optString("name").substringAfterLast("/")
                     continue
                 }
-                val target = when (f.stringValue("recordType")) {
+                val recordType = f.stringValue("recordType")
+                rawTypeCounts[recordType] = (rawTypeCounts[recordType] ?: 0) + 1
+                val target = when (recordType) {
                     "class" -> classes
                     "course" -> courses
                     "lecture" -> lectures
                     else -> {
-                        errors += "نوع رکورد ناشناخته"
+                        errors += "نوع رکورد ناشناخته در سند " + doc.optString("name").substringAfterLast("/")
                         continue
                     }
                 }
-                if (target.put(id, f) != null) errors += "شناسه تکراری: $id"
-                if (f.stringValue("recordType") == "class" &&
+                val identityKey = "$recordType:$id"
+                val documentName = doc.optString("name").substringAfterLast("/")
+                val previousDocument = documentNamesByTypeAndId.putIfAbsent(identityKey, documentName)
+                if (previousDocument != null) {
+                    errors += "شناسه تکراری $id برای $recordType در اسناد $previousDocument و $documentName"
+                }
+                target.put(id, f)
+                if (recordType == "class" &&
                     f.stringValue("ownerUid").isNotBlank() &&
                     f.stringValue("ownerUid") != uid
                 ) errors += "مالکیت کلاس $id با حساب فعلی تطبیق ندارد"
@@ -96,17 +106,46 @@ internal object FirestoreRestBackupPreview {
 
             val actual = all.size.toLong()
             val countStatus = if (actual == expected) "مطابق" else "مغایر"
+            val legacySummary = inspectLegacySharedMaterials(client, projectId, encodedUid, idToken)
             val valid = errors.isEmpty() && actual == expected && lectures.isNotEmpty()
             buildString {
                 appendLine("REST پیش‌نمایش فقط‌خواندنی: " + if (valid) "اعتبارسنجی اولیه موفق" else "نیازمند بررسی؛ هیچ داده‌ای بازیابی نشد")
                 appendLine("نسخه: 2؛ تعداد اعلام‌شده: $expected؛ تعداد خوانده‌شده: $actual ($countStatus)")
-                appendLine("کلاس: ${classes.size}؛ درس: ${courses.size}؛ جلسه: ${lectures.size}")
+                appendLine("تعداد خام اسناد بر اساس نوع: کلاس ${rawTypeCounts["class"] ?: 0}؛ درس ${rawTypeCounts["course"] ?: 0}؛ جلسه ${rawTypeCounts["lecture"] ?: 0}")
+                appendLine("شناسه‌های یکتای معتبر: کلاس ${classes.size}؛ درس ${courses.size}؛ جلسه ${lectures.size}")
+                appendLine(legacySummary)
                 append("موارد نیازمند بررسی: ")
                 append(if (errors.isEmpty()) "ندارد" else errors.distinct().take(12).joinToString("؛ "))
                 appendLine()
                 append("هیچ اطلاعاتی در Firebase یا حافظه گوشی تغییر نکرد.")
             }
         }
+
+    private fun inspectLegacySharedMaterials(
+        client: OkHttpClient,
+        projectId: String,
+        encodedUid: String,
+        token: String
+    ): String = try {
+        val document = getDocument(client, projectId, "shared_materials/$encodedUid", token)
+        val fields = document.optJSONObject("fields")
+            ?: return "پشتیبان قدیمی shared_materials: سند فاقد فیلدهای قابل‌خواندن است."
+        val payloadText = fields.optJSONObject("payload")?.optString("stringValue").orEmpty()
+        val payload = if (payloadText.isNotBlank()) JSONObject(payloadText) else null
+        if (payload != null && payload.optString("format") == "darsyar-shared-materials") {
+            val classes = payload.optJSONArray("classes")?.length() ?: 0
+            val courses = payload.optJSONArray("courses")?.length() ?: 0
+            val lectures = payload.optJSONArray("lectures")?.length() ?: 0
+            "پشتیبان قدیمی: قالب شناخته‌شده؛ کلاس $classes؛ درس $courses؛ جلسه $lectures"
+        } else {
+            val classCount = fields.optJSONObject("classes")?.optJSONObject("arrayValue")?.optJSONArray("values")?.length() ?: 0
+            val courseCount = fields.optJSONObject("courses")?.optJSONObject("arrayValue")?.optJSONArray("values")?.length() ?: 0
+            val lectureCount = fields.optJSONObject("lectures")?.optJSONObject("arrayValue")?.optJSONArray("values")?.length() ?: 0
+            "پشتیبان قدیمی: سند موجود؛ آرایه مستقیم کلاس $classCount؛ درس $courseCount؛ جلسه $lectureCount؛ قالب payload تشخیص داده نشد."
+        }
+    } catch (error: Exception) {
+        "پشتیبان قدیمی: بررسی REST ناموفق؛ ${error.javaClass.simpleName}: ${error.message?.take(100) ?: "بدون جزئیات"}"
+    }
 
     private fun getDocument(client: OkHttpClient, projectId: String, path: String, token: String): JSONObject =
         execute(client, "$BASE/$projectId/databases/(default)/documents/$path", token)
