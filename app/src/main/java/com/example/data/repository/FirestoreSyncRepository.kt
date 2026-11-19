@@ -234,7 +234,7 @@ class FirestoreSyncRepository(
             diagnosticFailure("خواندن پشتیبان قدیمی", error, legacyStartedAt)
         }
 
-        return "$authReport\n$restProbeReport\n$profileReport\n$privateReport\n$privateRecordsReport\n$legacyReport\nاین گزارش فقط‌خواندنی است؛ هیچ داده‌ای تغییر نکرد."
+        return "$authReport\n$restProbeReport\n$restBackupProbeReport\n$profileReport\n$privateReport\n$privateRecordsReport\n$legacyReport\nاین گزارش فقط‌خواندنی است؛ هیچ داده‌ای تغییر نکرد."
     }
 
     private fun diagnosticFailure(
