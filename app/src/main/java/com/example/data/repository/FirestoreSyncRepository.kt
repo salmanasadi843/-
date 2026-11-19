@@ -143,11 +143,33 @@ class FirestoreSyncRepository(
                     return "$documentPath: HTTP ${response.code}$suffix"
                 }
             }
-            listOf(
+            val http11Results = listOf(
                 readRestPath("teacher_data/$uid"),
                 readRestPath("teacher_data/$uid/records?pageSize=1000", countDocuments = true),
                 readRestPath("shared_materials/$uid")
             ).joinToString("\n")
+
+            // Read-only comparison of the same Firestore document over HTTP/2.
+            val http2Client = OkHttpClient.Builder()
+                .protocols(listOf(Protocol.HTTP_2))
+                .connectTimeout(8, TimeUnit.SECONDS)
+                .readTimeout(8, TimeUnit.SECONDS)
+                .callTimeout(8, TimeUnit.SECONDS)
+                .build()
+            val http2Request = Request.Builder()
+                .url("https://firestore.googleapis.com/v1/projects/$projectId/databases/(default)/documents/teacher_data/$uid")
+                .header("Authorization", "Bearer $token")
+                .header("Accept", "application/json")
+                .get()
+                .build()
+            val http2Result = try {
+                http2Client.newCall(http2Request).execute().use { response ->
+                    "آزمون REST با HTTP/2: HTTP ${response.code}"
+                }
+            } catch (error: Exception) {
+                "آزمون REST با HTTP/2: ناموفق؛ ${error.javaClass.simpleName}: ${error.message?.take(100) ?: "بدون جزئیات"}"
+            }
+            "$http11Results\n$http2Result"
         } catch (error: Exception) {
             val detail = error.message?.take(120) ?: error.javaClass.simpleName
             "آزمون REST مسیرهای پشتیبان: ناموفق؛ ${error.javaClass.simpleName}: $detail"
