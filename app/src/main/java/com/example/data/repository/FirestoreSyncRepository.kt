@@ -140,7 +140,7 @@ class FirestoreSyncRepository(
                         val count = JSONObject(body).optJSONArray("documents")?.length() ?: 0
                         "؛ تعداد رکوردهای دریافتی: $count"
                     } else ""
-                    "$documentPath: HTTP ${response.code}$suffix"
+                    return "$documentPath: HTTP ${response.code}$suffix"
                 }
             }
             listOf(
