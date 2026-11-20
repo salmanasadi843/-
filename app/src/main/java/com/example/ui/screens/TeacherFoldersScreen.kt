@@ -60,15 +60,8 @@ fun TeacherFoldersScreen(
     val allClasses by viewModel.repository.allClasses.collectAsState(initial = emptyList())
     val syncStatus by viewModel.studentMaterialsSyncStatus.collectAsState()
     val canManage = userRole == UserRole.TEACHER || AuthPreferences.isPrimaryTeacher(context)
-    val studentReady = canManage || (
-        syncStatus != "مطالب آنلاین هنوز بررسی نشده‌اند." &&
-        !syncStatus.contains("در حال دریافت") &&
-        !syncStatus.contains("دریافت خودکار مطالب انجام نشد")
-    )
-    LaunchedEffect(userRole) {
-        if (userRole == UserRole.STUDENT) viewModel.startStudentMaterialsSync()
-        else viewModel.syncPublishedMaterialsForTeacher()
-    }
+    // Cloud refresh is manual; keep locally cached published classes visible.
+    val studentReady = true
 
     var hiddenKeys by remember(uid) { mutableStateOf(prefs.getStringSet("hidden_keys", emptySet())?.toSet().orEmpty()) }
     var deletedKeys by remember(uid) { mutableStateOf(prefs.getStringSet("deleted_keys", emptySet())?.toSet().orEmpty()) }
