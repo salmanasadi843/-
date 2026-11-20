@@ -58,34 +58,22 @@ class FirestoreSyncRepository(
      * Read-only diagnostics. This method never restores, migrates, or writes data.
      */
     suspend fun inspectCloudBackup(uid: String): String {
-        // Read-only diagnostics: never restore, migrate, upload, or modify cloud data.
-        val authStartedAt = SystemClock.elapsedRealtime()
-        val authReport = try {
+        // One bounded, read-only request per run. Do not fan out into multiple
+        // REST/SDK probes when Firestore is already rate-limiting this client.
+        val startedAt = SystemClock.elapsedRealtime()
+        return try {
             val user = FirebaseAuth.getInstance().currentUser
                 ?: throw IllegalStateException("نشست ورود Firebase فعال نیست.")
             if (user.uid != uid) {
                 throw IllegalStateException("شناسه حساب فعال با شناسه درخواستی یکسان نیست.")
             }
-            // Force-refresh only the authentication token; do not print or persist it.
-            user.getIdToken(true).awaitResult()
-            "احراز هویت Firebase: دریافت توکن تازه موفق بود."
-        } catch (error: Exception) {
-            diagnosticFailure("احراز هویت Firebase", error, authStartedAt)
-        }
-
-        // Read-only control probe: call the Firestore REST endpoint over HTTP/1.1.
-        // This helps distinguish Android Firestore SDK transport failures from
-        // project/auth/rules/network failures without reading or changing app data.
-        val restProbeStartedAt = SystemClock.elapsedRealtime()
-        val restProbeReport = try {
-            val user = FirebaseAuth.getInstance().currentUser
-                ?: throw IllegalStateException("نشست ورود Firebase فعال نیست.")
             val token = user.getIdToken(true).awaitResult().token
                 ?: throw IllegalStateException("توکن Firebase خالی است.")
             val projectId = FirebaseApp.getInstance().options.projectId
                 ?: throw IllegalStateException("شناسه پروژه Firebase در دسترس نیست.")
+
             val request = Request.Builder()
-                .url("https://firestore.googleapis.com/v1/projects/$projectId/databases/(default)/documents/users/$uid")
+                .url("https://firestore.googleapis.com/v1/projects/$projectId/databases/(default)/documents/teacher_data/$uid")
                 .header("Authorization", "Bearer $token")
                 .header("Accept", "application/json")
                 .get()
@@ -96,179 +84,42 @@ class FirestoreSyncRepository(
                 .readTimeout(8, TimeUnit.SECONDS)
                 .callTimeout(10, TimeUnit.SECONDS)
                 .build()
+
             client.newCall(request).execute().use { response ->
-                val status = response.code
-                when (status) {
-                    200 -> "آزمون REST فقط‌خواندنی (HTTP/1.1): موفق؛ سرور Firestore پاسخ داد."
-                    404 -> "آزمون REST فقط‌خواندنی (HTTP/1.1): سرور پاسخ داد، اما سند پروفایل پیدا نشد."
-                    401 -> "آزمون REST فقط‌خواندنی (HTTP/1.1): سرور پاسخ داد، اما توکن را نپذیرفت."
-                    403 -> "آزمون REST فقط‌خواندنی (HTTP/1.1): دسترسی به سند پروفایل رد شد."
-                    else -> "آزمون REST فقط‌خواندنی (HTTP/1.1): پاسخ HTTP $status."
-                }
-            }
-        } catch (error: Exception) {
-            val elapsed = (SystemClock.elapsedRealtime() - restProbeStartedAt).coerceAtLeast(0L)
-            "آزمون REST فقط‌خواندنی (HTTP/1.1): ناموفق؛ زمان ${elapsed}ms؛ ${error.javaClass.simpleName}: ${error.message ?: "بدون جزئیات"}."
-        }
-
-        // Read-only REST checks for the actual backup paths. The previous probe
-        // checked only users/{uid}; these checks distinguish SDK transport issues
-        // from path-specific document/rules problems without exposing document data.
-        val restBackupProbeReport = try {
-            val user = FirebaseAuth.getInstance().currentUser
-                ?: throw IllegalStateException("نشست ورود Firebase فعال نیست.")
-            val token = user.getIdToken(false).awaitResult().token
-                ?: throw IllegalStateException("توکن Firebase خالی است.")
-            val projectId = FirebaseApp.getInstance().options.projectId
-                ?: throw IllegalStateException("شناسه پروژه Firebase در دسترس نیست.")
-            val client = OkHttpClient.Builder()
-                .protocols(listOf(Protocol.HTTP_1_1))
-                .connectTimeout(8, TimeUnit.SECONDS)
-                .readTimeout(8, TimeUnit.SECONDS)
-                .callTimeout(8, TimeUnit.SECONDS)
-                .build()
-            fun readRestPath(documentPath: String, countDocuments: Boolean = false): String {
-                val request = Request.Builder()
-                    .url("https://firestore.googleapis.com/v1/projects/$projectId/databases/(default)/documents/$documentPath")
-                    .header("Authorization", "Bearer $token")
-                    .header("Accept", "application/json")
-                    .get()
-                    .build()
-                client.newCall(request).execute().use { response ->
-                    val body = response.body?.string().orEmpty()
-                    val suffix = if (response.isSuccessful && countDocuments) {
-                        val count = JSONObject(body).optJSONArray("documents")?.length() ?: 0
-                        "؛ تعداد رکوردهای دریافتی: $count"
-                    } else ""
-                    return "$documentPath: HTTP ${response.code}$suffix"
-                }
-            }
-            val http11Results = listOf(
-                readRestPath("teacher_data/$uid"),
-                readRestPath("teacher_data/$uid/records?pageSize=1000", countDocuments = true),
-                readRestPath("shared_materials/$uid")
-            ).joinToString("\n")
-
-            // Read-only comparison of the same Firestore document over HTTP/2.
-            val http2Client = OkHttpClient.Builder()
-                .protocols(listOf(Protocol.HTTP_2, Protocol.HTTP_1_1))
-                .connectTimeout(8, TimeUnit.SECONDS)
-                .readTimeout(8, TimeUnit.SECONDS)
-                .callTimeout(8, TimeUnit.SECONDS)
-                .build()
-            val http2Request = Request.Builder()
-                .url("https://firestore.googleapis.com/v1/projects/$projectId/databases/(default)/documents/teacher_data/$uid")
-                .header("Authorization", "Bearer $token")
-                .header("Accept", "application/json")
-                .get()
-                .build()
-            val http2Result = try {
-                http2Client.newCall(http2Request).execute().use { response ->
-                    "آزمون REST با پروتکل ${response.protocol}: HTTP ${response.code}"
-                }
-            } catch (error: Exception) {
-                "آزمون REST با HTTP/2: ناموفق؛ ${error.javaClass.simpleName}: ${error.message?.take(100) ?: "بدون جزئیات"}"
-            }
-            "$http11Results\n$http2Result"
-        } catch (error: Exception) {
-            val detail = error.message?.take(120) ?: error.javaClass.simpleName
-            "آزمون REST مسیرهای پشتیبان: ناموفق؛ ${error.javaClass.simpleName}: $detail"
-        }
-        val profileStartedAt = SystemClock.elapsedRealtime()
-        val profileReport = try {
-            val profile = firestore.collection("users").document(uid)
-                .get(com.google.firebase.firestore.Source.SERVER).awaitResult()
-            if (profile.exists()) {
-                "پروفایل کاربر: سند موجود است؛ نقش ثبت‌شده: ${profile.getString("role") ?: "نامشخص"}."
-            } else {
-                "پروفایل کاربر: سند users/{uid} در سرور وجود ندارد."
-            }
-        } catch (error: Exception) {
-            diagnosticFailure("خواندن پروفایل کاربر", error, profileStartedAt)
-        }
-
-        var privateRecordsReport = "مجموعه رکوردهای پشتیبان خصوصی: به دلیل نامشخص بودن نسخهٔ سند ریشه، بررسی نشد."
-        val privateStartedAt = SystemClock.elapsedRealtime()
-        val privateReport = try {
-            val snapshot = firestore.collection(TEACHER_DATA).document(uid)
-                .get(com.google.firebase.firestore.Source.SERVER).awaitResult()
-            if (!snapshot.exists()) {
-                privateRecordsReport = "مجموعه رکوردهای پشتیبان خصوصی: سند ریشه وجود ندارد؛ بررسی نشد."
-                "پشتیبان خصوصی: سند ریشه در سرور وجود ندارد."
-            } else {
-                when (snapshot.getLong("schemaVersion")) {
-                    SCHEMA_VERSION -> {
-                        val expected = snapshot.getLong("recordCount")
-                        val recordsStartedAt = SystemClock.elapsedRealtime()
-                        privateRecordsReport = try {
-                            val records = firestore.collection(TEACHER_DATA).document(uid)
-                                .collection(RECORDS)
-                                .get(com.google.firebase.firestore.Source.SERVER).awaitResult()
-                            val classes = records.documents.count { it.getString("recordType") == "class" }
-                            val courses = records.documents.count { it.getString("recordType") == "course" }
-                            val lectures = records.documents.count { it.getString("recordType") == "lecture" }
-                            "مجموعه رکوردهای پشتیبان خصوصی: دریافت موفق؛ مورد انتظار در ریشه: ${expected ?: "نامشخص"}؛ دریافت‌شده: ${records.documents.size} (کلاس: $classes، درس: $courses، جلسه: $lectures)."
-                        } catch (error: Exception) {
-                            diagnosticFailure("خواندن مجموعه رکوردهای پشتیبان خصوصی", error, recordsStartedAt)
-                        }
-                        "پشتیبان خصوصی: سند ریشه موجود است؛ نسخه ۲؛ تعداد رکورد مورد انتظار: ${expected ?: "نامشخص"}."
+                val body = response.body?.string().orEmpty()
+                val elapsed = (SystemClock.elapsedRealtime() - startedAt).coerceAtLeast(0L)
+                if (!response.isSuccessful) {
+                    val retryAfter = response.header("Retry-After")
+                    val details = body.take(900).ifBlank { "بدون متن خطا" }
+                    buildString {
+                        appendLine("احراز هویت Firebase: دریافت توکن تازه موفق بود.")
+                        appendLine("فقط یک درخواست خواندن REST به سند ریشه پشتیبان خصوصی ارسال شد.")
+                        appendLine("نتیجه: HTTP ${response.code}؛ زمان ${elapsed}ms.")
+                        if (!retryAfter.isNullOrBlank()) appendLine("Retry-After: $retryAfter")
+                        appendLine("جزئیات پاسخ سرور: $details")
+                        append("هیچ داده‌ای در Firebase یا حافظه گوشی تغییر نکرد؛ هیچ تلاش مجدد یا خواندن دیگری انجام نشد.")
                     }
-                    LEGACY_SCHEMA_VERSION -> {
-                        privateRecordsReport = "مجموعه رکوردهای پشتیبان خصوصی: نسخهٔ ۱ از این مجموعه استفاده نمی‌کند."
-                        val classes = (snapshot.get("classes") as? List<*>)?.size
-                        val courses = (snapshot.get("courses") as? List<*>)?.size
-                        val lectures = (snapshot.get("lectures") as? List<*>)?.size
-                        "پشتیبان خصوصی: سند موجود؛ نسخه ۱؛ کلاس: ${classes ?: "نامشخص"}، درس: ${courses ?: "نامشخص"}، جلسه: ${lectures ?: "نامشخص"}."
-                    }
-                    else -> {
-                        privateRecordsReport = "مجموعه رکوردهای پشتیبان خصوصی: نسخهٔ سند ریشه قابل تشخیص نیست؛ بررسی نشد."
-                        "پشتیبان خصوصی: سند موجود است، اما نسخهٔ آن نامشخص است (${snapshot.getLong("schemaVersion") ?: "بدون نسخه"})."
-                    }
-                }
-            }
-        } catch (error: Exception) {
-            privateRecordsReport = "مجموعه رکوردهای پشتیبان خصوصی: به علت ناموفق بودن خواندن سند ریشه، بررسی نشد."
-            diagnosticFailure("خواندن سند ریشه پشتیبان خصوصی", error, privateStartedAt)
-        }
-
-        val legacyStartedAt = SystemClock.elapsedRealtime()
-        val legacyReport = try {
-            val snapshot = firestore.collection(SHARED_MATERIALS).document(uid)
-                .get(com.google.firebase.firestore.Source.SERVER).awaitResult()
-            if (!snapshot.exists()) {
-                "پشتیبان قدیمی shared_materials: سند وجود ندارد."
-            } else {
-                val payloadText = snapshot.getString("payload")
-                if (payloadText != null) {
-                    val payload = JSONObject(payloadText)
-                    val classes = payload.optJSONArray("classes")?.length()
-                    val courses = payload.optJSONArray("courses")?.length()
-                    val lectures = payload.optJSONArray("lectures")?.length()
-                    "پشتیبان قدیمی shared_materials: سند موجود؛ کلاس: ${classes ?: "نامشخص"}، درس: ${courses ?: "نامشخص"}، جلسه: ${lectures ?: "نامشخص"}."
                 } else {
-                    val classes = (snapshot.get("classes") as? List<*>)?.size
-                    val courses = (snapshot.get("courses") as? List<*>)?.size
-                    val lectures = (snapshot.get("lectures") as? List<*>)?.size
-                    "پشتیبان قدیمی shared_materials: سند موجود؛ کلاس: ${classes ?: "نامشخص"}، درس: ${courses ?: "نامشخص"}، جلسه: ${lectures ?: "نامشخص"}."
+                    val document = JSONObject(body)
+                    val fields = document.optJSONObject("fields")
+                    val schema = fields?.optJSONObject("schemaVersion")?.optString("integerValue")
+                        ?: "نامشخص"
+                    val count = fields?.optJSONObject("recordCount")?.optString("integerValue")
+                        ?: "نامشخص"
+                    val owner = fields?.optJSONObject("ownerUid")?.optString("stringValue").orEmpty()
+                    buildString {
+                        appendLine("احراز هویت Firebase: دریافت توکن تازه موفق بود.")
+                        appendLine("خواندن فقط‌خواندنی سند ریشه پشتیبان خصوصی: موفق؛ HTTP ${response.code}؛ زمان ${elapsed}ms.")
+                        appendLine("نسخه پشتیبان: $schema؛ تعداد اعلام‌شده رکوردها: $count.")
+                        appendLine("تطبیق مالکیت: ${if (owner.isBlank()) "در سند ثبت نشده" else if (owner == uid) "مطابق حساب فعلی" else "مغایر با حساب فعلی"}.")
+                        append("این مرحله فقط سند ریشه را خواند؛ مجموعه رکوردها و پشتیبان قدیمی هنوز بررسی نشده‌اند و هیچ داده‌ای تغییر نکرد.")
+                    }
                 }
             }
         } catch (error: Exception) {
-            diagnosticFailure("خواندن پشتیبان قدیمی", error, legacyStartedAt)
+            val elapsed = (SystemClock.elapsedRealtime() - startedAt).coerceAtLeast(0L)
+            "گزارش فقط‌خواندنی تک‌درخواستی ناموفق بود؛ زمان ${elapsed}ms؛ ${error.javaClass.simpleName}: ${error.message ?: "بدون جزئیات"}. هیچ داده‌ای تغییر نکرد."
         }
-
-        val restPreviewReport = try {
-            val user = FirebaseAuth.getInstance().currentUser
-                ?: throw IllegalStateException("نشست ورود Firebase فعال نیست.")
-            val token = user.getIdToken(false).awaitResult().token
-                ?: throw IllegalStateException("توکن Firebase خالی است.")
-            val projectId = FirebaseApp.getInstance().options.projectId
-                ?: throw IllegalStateException("شناسه پروژه Firebase در دسترس نیست.")
-            FirestoreRestBackupPreview.inspect(projectId, uid, token)
-        } catch (error: Exception) {
-            "REST پیش‌نمایش فقط‌خواندنی ناموفق بود: ${error.javaClass.simpleName}: ${error.message ?: "بدون جزئیات"}"
-        }
-
-        return "$authReport\n$restProbeReport\n$restBackupProbeReport\n$restPreviewReport\n$profileReport\n$privateReport\n$privateRecordsReport\n$legacyReport\nاین گزارش فقط‌خواندنی است؛ هیچ داده‌ای تغییر نکرد."
     }
 
     private fun diagnosticFailure(
