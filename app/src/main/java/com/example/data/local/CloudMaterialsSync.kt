@@ -73,6 +73,17 @@ object CloudMaterialsSync {
                             .put("isPublished", true)
                             .put("createdAtMillis", doc.getLong("createdAtMillis") ?: 0L)
                             .put("ownerUid", owner))
+                        (doc.get("courses") as? List<*>)?.forEach { raw ->
+                            val row = raw as? Map<*, *> ?: return@forEach
+                            val courseId = row["id"]?.toString()?.toLongOrNull() ?: return@forEach
+                            val courseClassId = row["classId"]?.toString()?.toLongOrNull() ?: return@forEach
+                            coursesById.putIfAbsent(courseId.toString(), JSONObject()
+                                .put("id", courseId).put("classId", courseClassId)
+                                .put("name", row["name"]?.toString() ?: "")
+                                .put("teacherName", row["teacherName"]?.toString() ?: "")
+                                .put("description", row["description"]?.toString() ?: "")
+                                .put("createdAtMillis", row["createdAtMillis"]?.toString()?.toLongOrNull() ?: 0L))
+                        }
                     } else {
                         val classId = doc.getString("classId") ?: return@forEach
                         val lessonId = doc.getString("lessonId") ?: return@forEach
@@ -262,11 +273,19 @@ object CloudMaterialsSync {
 
         val classDocs = classes.map { item ->
             val id = item.id.toString()
+            val classCourses = courses.filter { it.classId == item.id }.map { course ->
+                mapOf<String, Any?>(
+                    "id" to course.id.toString(), "classId" to id, "name" to course.name,
+                    "teacherName" to course.teacherName, "description" to course.description,
+                    "createdAtMillis" to course.createdAtMillis
+                )
+            }
             firestore.collection("published_classes").document("${uid}__${id}") to mapOf<String, Any?>(
                 "ownerUid" to uid, "classId" to id, "name" to item.name,
                 "teacherName" to item.teacherName, "description" to item.description,
                 "term" to item.term, "classDateMillis" to item.classDateMillis,
-                "createdAtMillis" to item.createdAtMillis, "isPublished" to true
+                "createdAtMillis" to item.createdAtMillis, "isPublished" to true,
+                "courses" to classCourses
             )
         }
         val courseById = courses.associateBy { it.id }
