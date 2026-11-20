@@ -119,6 +119,10 @@ fun SettingsScreen(
             cloudBusy = false
             cloudError = result.isFailure
             cloudStatus = result.getOrElse { "همگام‌سازی آنلاین ناموفق بود: ${it.localizedMessage}" }
+            if (result.isSuccess && AuthPreferences.currentRole(context) == UserRole.TEACHER) {
+                // This read happens only after the teacher explicitly presses Publish.
+                viewModel.syncPublishedMaterialsForTeacher()
+            }
         }
     }
     val restoreBackup = rememberLauncherForActivityResult(ActivityResultContracts.OpenDocument()) { uri ->
@@ -222,14 +226,8 @@ fun SettingsScreen(
                     Spacer(Modifier.height(8.dp))
                     Text(cloudSyncStatus, style = MaterialTheme.typography.bodyMedium)
                     Spacer(Modifier.height(12.dp))
-                    OutlinedButton(
-                        onClick = { viewModel.startCloudSync() },
-                        enabled = !cloudBusy
-                    ) {
-                        Text("بررسی و تلاش دوباره")
-                    }
                     Text(
-                        "موفقیت این بخش یعنی برنامه توانسته عملیات ابری را انجام دهد؛ برای تأیید نهایی ذخیره داده‌ها می‌توان بعداً فایربیس را هم بررسی کرد.",
+                        "همگام‌سازی خصوصی و بازیابی ابری هنگام ورود یا تغییر اطلاعات به‌صورت خودکار اجرا نمی‌شود. برای جلوگیری از جایگزینی ناخواسته اطلاعات محلی، بازیابی فقط باید با فرمان جداگانه و پس از بررسی پشتیبان انجام شود.",
                         style = MaterialTheme.typography.bodySmall,
                         color = MaterialTheme.colorScheme.onSurfaceVariant
                     )
