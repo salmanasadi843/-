@@ -51,9 +51,11 @@ object CloudMaterialsSync {
                 val lessonIds = (index.get("lessonIds") as? List<*>)?.mapNotNull { it as? String }.orEmpty()
                 val refs = classIds.map { firestore.collection("published_classes").document("${owner}__${it}") } +
                     lessonIds.map { firestore.collection("published_lessons").document("${owner}__${it}") }
-                val snapshots = refs.chunked(100).flatMap { chunk ->
-                    if (chunk.isEmpty()) emptyList() else Tasks.await(firestore.getAll(*chunk.toTypedArray()))
-                }
+                val snapshots = runCatching {
+                    refs.chunked(100).flatMap { chunk ->
+                        if (chunk.isEmpty()) emptyList() else Tasks.await(firestore.getAll(*chunk.toTypedArray()))
+                    }
+                }.getOrElse { emptyList() }
                 val classesArray = JSONArray()
                 val coursesById = linkedMapOf<String, JSONObject>()
                 val lecturesArray = JSONArray()
