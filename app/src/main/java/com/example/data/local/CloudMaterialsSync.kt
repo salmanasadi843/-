@@ -73,10 +73,10 @@ object CloudMaterialsSync {
                             .put("isPublished", true)
                             .put("createdAtMillis", doc.getLong("createdAtMillis") ?: 0L)
                             .put("ownerUid", owner))
-                        (doc.get("courses") as? List<*>)?.forEach { raw ->
-                            val row = raw as? Map<*, *> ?: return@forEach
-                            val courseId = row["id"]?.toString()?.toLongOrNull() ?: return@forEach
-                            val courseClassId = row["classId"]?.toString()?.toLongOrNull() ?: return@forEach
+                        (doc.get("courses") as? List<*>)?.forEach courseRow@ { raw ->
+                            val row = raw as? Map<*, *> ?: return@courseRow
+                            val courseId = row["id"]?.toString()?.toLongOrNull() ?: return@courseRow
+                            val courseClassId = row["classId"]?.toString()?.toLongOrNull() ?: return@courseRow
                             coursesById.putIfAbsent(courseId.toString(), JSONObject()
                                 .put("id", courseId).put("classId", courseClassId)
                                 .put("name", row["name"]?.toString() ?: "")
