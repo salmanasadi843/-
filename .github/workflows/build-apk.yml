@@ -89,6 +89,15 @@ jobs:
       - name: Build signed Release APK
         run: gradle assembleRelease --no-configuration-cache --stacktrace
 
+      - name: Verify signed Release APK
+        shell: bash
+        run: |
+          set -euo pipefail
+          APK="app/build/outputs/apk/release/app-release.apk"
+          test -s "$APK"
+          "$ANDROID_HOME/build-tools/36.0.0/apksigner" verify --verbose --print-certs "$APK"
+          "$ANDROID_HOME/build-tools/36.0.0/aapt" dump badging "$APK" | head -n 1
+
       - name: Upload Debug APK
         uses: actions/upload-artifact@v6
         with:
