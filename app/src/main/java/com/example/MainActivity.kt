@@ -82,12 +82,7 @@ fun OstadYarApp(
                 result.onSuccess { role ->
                     userRole = role
                     viewModel.setUserRole(role)
-                    if (role == UserRole.TEACHER) {
-                        viewModel.startCloudSync()
-                    } else {
-                        // دانشجو هنگام ورود، مطالب منتشرشده را خودکار دریافت می‌کند.
-                        viewModel.startStudentMaterialsSync()
-                    }
+                    // Cloud reads and writes are manual only; login must stay local-first.
                 }.onFailure {
                     // اگر مجوز استاد لغو شده یا قابل تأیید نباشد، نشست قبلی نباید
                     // با نقش ذخیره‌شده محلی اجازه ساخت/ویرایش بدهد.

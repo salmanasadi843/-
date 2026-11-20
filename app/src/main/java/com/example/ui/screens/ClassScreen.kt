@@ -42,11 +42,8 @@ fun ClassScreen(
     val allClasses by viewModel.repository.allClasses.collectAsState(initial = emptyList())
     // Never expose teacher-local or unpublished classes in student mode.
     val studentSyncStatus by viewModel.studentMaterialsSyncStatus.collectAsState()
-    val studentFeedReady = canManageClasses || (
-        studentSyncStatus != "مطالب آنلاین هنوز بررسی نشده‌اند." &&
-        !studentSyncStatus.contains("در حال دریافت") &&
-        !studentSyncStatus.contains("دریافت خودکار مطالب انجام نشد")
-    )
+    // Cloud refresh is manual; keep locally cached published classes visible.
+    val studentFeedReady = true
     // Keep the student list unchanged (its published-feed deduplication is already verified).
     // In teacher mode, collapse duplicate imported cards by their visible class identity,
     // while never collapsing teacher-owned positive-ID classes.
@@ -86,13 +83,7 @@ fun ClassScreen(
             else -> allVisibleClasses.filter { teacherFolderKey(it, ownerUid.ifBlank { "local" }) == teacherKey }
         }
     }
-    // Refresh the published feed whenever a student opens the class list so revoked visibility is applied.
-    LaunchedEffect(userRole) {
-        when (userRole) {
-            UserRole.STUDENT -> viewModel.startStudentMaterialsSync()
-            UserRole.TEACHER -> viewModel.syncPublishedMaterialsForTeacher()
-        }
-    }
+    // Opening the class list must not trigger Firestore reads.
     val folderDao = remember(ownerUid) { AppDatabase.getDatabase(context).teacherFolderDao() }
     val classDao = remember { AppDatabase.getDatabase(context).classDao() }
     val folders by remember(ownerUid) { folderDao.observeFolders(ownerUid) }.collectAsState(initial = emptyList())

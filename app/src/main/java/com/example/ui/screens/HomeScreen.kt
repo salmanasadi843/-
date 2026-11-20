@@ -64,13 +64,8 @@ fun HomeScreen(
     val allClasses by viewModel.repository.allClasses.collectAsState(initial = emptyList())
     val allLectures by viewModel.repository.allLectures.collectAsState(initial = emptyList())
     val studentSyncStatus by viewModel.studentMaterialsSyncStatus.collectAsState()
-    LaunchedEffect(userRole) { if (userRole == UserRole.STUDENT) viewModel.startStudentMaterialsSync() }
-    // While refreshing, do not expose stale cached classes whose publication may have been revoked.
-    val studentFeedReady = userRole != UserRole.STUDENT || (
-        studentSyncStatus != "مطالب آنلاین هنوز بررسی نشده‌اند." &&
-        !studentSyncStatus.contains("در حال دریافت") &&
-        !studentSyncStatus.contains("دریافت خودکار مطالب انجام نشد")
-    )
+    // Cloud refresh is user-triggered. Show locally cached published material without network access.
+    val studentFeedReady = true
     val classes = if (userRole == UserRole.STUDENT) {
         if (studentFeedReady) allClasses.filter { it.id < 0L && it.isPublished }
         else emptyList()
