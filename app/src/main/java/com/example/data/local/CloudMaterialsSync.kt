@@ -372,6 +372,7 @@ object CloudMaterialsSync {
         courseId = nullableLong("courseId"), dateMillis = optLong("dateMillis"),
         audioFilePath = null, audioUrl = nullableString("audioUrl"),
         audioDurationMs = optLong("audioDurationMs"), transcript = optString("transcript"),
+        originalTranscript = optString("originalTranscript", optString("transcript")),
         aiSummary = nullableString("aiSummary"), aiKeyPoints = nullableString("aiKeyPoints"),
         tags = optString("tags"), isPublished = optBoolean("isPublished", true), lastEditedMillis = optLong("lastEditedMillis"),
         sortOrder = optInt("sortOrder", 0)
