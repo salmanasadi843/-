@@ -51,11 +51,9 @@ object CloudMaterialsSync {
                 val lessonIds = (index.get("lessonIds") as? List<*>)?.mapNotNull { it as? String }.orEmpty()
                 val refs = classIds.map { firestore.collection("published_classes").document("${owner}__${it}") } +
                     lessonIds.map { firestore.collection("published_lessons").document("${owner}__${it}") }
-                val snapshots = runCatching {
-                    refs.chunked(100).flatMap { chunk ->
-                        if (chunk.isEmpty()) emptyList() else Tasks.await(firestore.getAll(*chunk.toTypedArray()))
-                    }
-                }.getOrElse { emptyList() }
+                val snapshots = refs.chunked(100).flatMap { chunk ->
+                    if (chunk.isEmpty()) emptyList() else Tasks.await(firestore.getAll(*chunk.toTypedArray()))
+                }
                 val classesArray = JSONArray()
                 val coursesById = linkedMapOf<String, JSONObject>()
                 val lecturesArray = JSONArray()
@@ -134,6 +132,11 @@ object CloudMaterialsSync {
                 val payloadText = document.getString("payload") ?: return@forEach
                 val payload = runCatching { JSONObject(payloadText) }.getOrNull() ?: return@forEach
                 if (payload.optString("format") == "darsyar-shared-materials") validPayloads += owner to payload
+            }
+            val documentsCount = indexes.size + legacyDocuments.size
+            // An empty or unreadable feed must never erase previously imported local materials.
+            if (validPayloads.isEmpty()) {
+                return "هیچ فهرست انتشار معتبری دریافت نشد؛ مطالب آنلاین قبلی روی دستگاه حفظ شدند."
             }
             val documentsCount = indexes.size + legacyDocuments.size
             val allClasses = mutableListOf<ClassEntity>()
@@ -309,6 +312,9 @@ object CloudMaterialsSync {
         val oldIndex = Tasks.await(indexRef.get())
         val oldClassIds = (oldIndex.get("classIds") as? List<*>)?.mapNotNull { it as? String }.orEmpty()
         val oldLessonIds = (oldIndex.get("lessonIds") as? List<*>)?.mapNotNull { it as? String }.orEmpty()
+        check(classes.isNotEmpty() || (oldClassIds.isEmpty() && oldLessonIds.isEmpty())) {
+            "فهرست کلاس‌های محلی خالی است؛ برای جلوگیری از پنهان شدن مطالب قبلی، انتشار متوقف شد."
+        }
         val newClassIds = classes.map { it.id.toString() }
         val newLessonIds = lessons.map { it.id.toString() }
 
