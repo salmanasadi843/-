@@ -25,8 +25,8 @@ interface CourseDao {
     @Query("SELECT * FROM courses ORDER BY createdAtMillis ASC")
     suspend fun getAllForBackup(): List<CourseEntity>
 
-    @Insert(onConflict = OnConflictStrategy.REPLACE)
-    suspend fun insertAllForRestore(items: List<CourseEntity>)
+    @Insert(onConflict = OnConflictStrategy.IGNORE)
+    suspend fun insertMissingFromBackup(items: List<CourseEntity>): List<Long>
 
     @Query("DELETE FROM courses")
     suspend fun clearForRestore()

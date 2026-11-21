@@ -57,8 +57,8 @@ interface LectureDao {
     @Query("SELECT * FROM lectures ORDER BY dateMillis ASC")
     suspend fun getAllForBackup(): List<LectureEntity>
 
-    @Insert(onConflict = OnConflictStrategy.REPLACE)
-    suspend fun insertAllForRestore(items: List<LectureEntity>)
+    @Insert(onConflict = OnConflictStrategy.IGNORE)
+    suspend fun insertMissingFromBackup(items: List<LectureEntity>): List<Long>
 
     @Query("DELETE FROM lectures")
     suspend fun clearForRestore()

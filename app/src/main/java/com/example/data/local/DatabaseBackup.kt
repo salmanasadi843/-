@@ -25,7 +25,7 @@ object DatabaseBackup {
 
         val root = JSONObject()
             .put("format", "darsyar-backup")
-            .put("version", 1)
+            .put("version", 2)
             .put("createdAt", System.currentTimeMillis())
             .put("lectures", JSONArray().apply { lectures.forEach { put(it.toJson()) } })
             .put("classes", JSONArray().apply { classes.forEach { put(it.toJson()) } })
@@ -43,7 +43,7 @@ object DatabaseBackup {
         } ?: error("فایل پشتیبان خوانده نشد.")
         val root = JSONObject(text)
         require(root.optString("format") == "darsyar-backup") { "این فایل، پشتیبان معتبر درس‌یار نیست." }
-        require(root.optInt("version") in 1..1) { "نسخه فایل پشتیبان پشتیبانی نمی‌شود." }
+        require(root.optInt("version") in 1..2) { "نسخه فایل پشتیبان پشتیبانی نمی‌شود." }
 
         val lectures = root.optJSONArray("lectures").toEntitiesTyped { it.toLecture() }
         val classes = root.optJSONArray("classes").toEntitiesTyped { it.toClassEntity() }
@@ -51,20 +51,27 @@ object DatabaseBackup {
         val folders = root.optJSONArray("folders").toEntitiesTyped { it.toFolder() }
         val db = AppDatabase.getDatabase(context)
 
-        kotlinx.coroutines.runBlocking {
+        require(classes.map { it.id }.distinct().size == classes.size) { "شناسه کلاس تکراری است؛ بازیابی متوقف شد." }
+        require(courses.map { it.id }.distinct().size == courses.size) { "شناسه درس تکراری است؛ بازیابی متوقف شد." }
+        require(lectures.map { it.id }.distinct().size == lectures.size) { "شناسه جلسه تکراری است؛ بازیابی متوقف شد." }
+        require(folders.map { it.id }.distinct().size == folders.size) { "شناسه پوشه تکراری است؛ بازیابی متوقف شد." }
+        require(classes.none { it.id == 0L } && courses.none { it.id == 0L } && lectures.none { it.id == 0L } && folders.none { it.id == 0L }) {
+            "فایل پشتیبان دارای شناسه نامعتبر است؛ هیچ اطلاعاتی تغییر نکرد."
+        }
+
+        val inserted = kotlinx.coroutines.runBlocking {
             db.withTransaction {
-                // Clear child records first, then restore parent records before courses.
-                db.lectureDao().clearForRestore()
-                db.courseDao().clearForRestore()
-                db.classDao().clearForRestore()
-                db.teacherFolderDao().clearForRestore()
-                db.teacherFolderDao().insertAllForRestore(folders)
-                db.classDao().insertAllForRestore(classes)
-                db.courseDao().insertAllForRestore(courses)
-                db.lectureDao().insertAllForRestore(lectures)
+                // Additive restore: never clear or replace existing local records.
+                // Existing IDs are preserved; conflicting backup rows are skipped.
+                val folderResults = db.teacherFolderDao().insertMissingFromBackup(folders)
+                val classResults = db.classDao().insertMissingFromBackup(classes)
+                val courseResults = db.courseDao().insertMissingFromBackup(courses)
+                val lectureResults = db.lectureDao().insertMissingFromBackup(lectures)
+                listOf(folderResults.count { it != -1L }, classResults.count { it != -1L },
+                    courseResults.count { it != -1L }, lectureResults.count { it != -1L })
             }
         }
-        return "بازیابی انجام شد: ${lectures.size} جلسه، ${classes.size} کلاس و ${courses.size} درس."
+        return "بازیابی افزایشی انجام شد؛ اطلاعات قبلی پاک یا جایگزین نشد. افزوده‌شده: ${inserted[3]} جلسه، ${inserted[1]} کلاس، ${inserted[2]} درس و ${inserted[0]} پوشه. موارد دارای شناسه تکراری نادیده گرفته شدند."
     }
 
     private fun JSONArray?.toEntities(convert: (JSONObject) -> Any): List<Any> {
@@ -82,9 +89,9 @@ object DatabaseBackup {
         .put("professorName", professorName).put("classId", classId ?: JSONObject.NULL)
         .put("courseId", courseId ?: JSONObject.NULL).put("dateMillis", dateMillis)
         .put("audioUrl", audioUrl ?: JSONObject.NULL).put("audioDurationMs", audioDurationMs)
-        .put("transcript", transcript).put("aiSummary", aiSummary ?: JSONObject.NULL)
+        .put("transcript", transcript).put("originalTranscript", originalTranscript).put("aiSummary", aiSummary ?: JSONObject.NULL)
         .put("aiKeyPoints", aiKeyPoints ?: JSONObject.NULL).put("aiQuizJson", aiQuizJson ?: JSONObject.NULL)
-        .put("tags", tags).put("isFavorite", isFavorite).put("lastEditedMillis", lastEditedMillis).put("sortOrder", sortOrder)
+        .put("tags", tags).put("isFavorite", isFavorite).put("isPublished", isPublished).put("lastEditedMillis", lastEditedMillis).put("sortOrder", sortOrder)
 
     private fun JSONObject.toLecture() = LectureEntity(
         id = optLong("id"), title = getString("title"), courseName = optString("courseName"),
@@ -92,9 +99,10 @@ object DatabaseBackup {
         courseId = optNullableLong("courseId"), dateMillis = optLong("dateMillis"),
         audioFilePath = null, audioUrl = optNullableString("audioUrl"),
         audioDurationMs = optLong("audioDurationMs"), transcript = optString("transcript"),
+        originalTranscript = optString("originalTranscript", optString("transcript")),
         aiSummary = optNullableString("aiSummary"), aiKeyPoints = optNullableString("aiKeyPoints"),
         aiQuizJson = optNullableString("aiQuizJson"), tags = optString("tags"),
-        isFavorite = optBoolean("isFavorite"), lastEditedMillis = optLong("lastEditedMillis", System.currentTimeMillis()),
+        isFavorite = optBoolean("isFavorite"), isPublished = optBoolean("isPublished", true), lastEditedMillis = optLong("lastEditedMillis", System.currentTimeMillis()),
         sortOrder = optInt("sortOrder", 0)
     )
 
