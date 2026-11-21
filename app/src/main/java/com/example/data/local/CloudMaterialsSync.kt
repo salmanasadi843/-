@@ -52,7 +52,12 @@ object CloudMaterialsSync {
                 val refs = classIds.map { firestore.collection("published_classes").document("${owner}__${it}") } +
                     lessonIds.map { firestore.collection("published_lessons").document("${owner}__${it}") }
                 val snapshots = refs.chunked(100).flatMap { chunk ->
-                    if (chunk.isEmpty()) emptyList() else Tasks.await(firestore.getAll(*chunk.toTypedArray()))
+                    if (chunk.isEmpty()) emptyList()
+                    else Tasks.await(
+                        Tasks.whenAllSuccess<com.google.firebase.firestore.DocumentSnapshot>(
+                            chunk.map { it.get() }
+                        )
+                    )
                 }
                 val classesArray = JSONArray()
                 val coursesById = linkedMapOf<String, JSONObject>()
@@ -135,10 +140,13 @@ object CloudMaterialsSync {
             }
             val documentsCount = indexes.size + legacyDocuments.size
             // An empty or unreadable feed must never erase previously imported local materials.
-            if (validPayloads.isEmpty()) {
-                return "هیچ فهرست انتشار معتبری دریافت نشد؛ مطالب آنلاین قبلی روی دستگاه حفظ شدند."
+            if (validPayloads.isEmpty() || validPayloads.none { (_, payload) ->
+                    (payload.optJSONArray("classes")?.length() ?: 0) > 0 ||
+                        (payload.optJSONArray("courses")?.length() ?: 0) > 0 ||
+                        (payload.optJSONArray("lectures")?.length() ?: 0) > 0
+                }) {
+                return "هیچ مطلب منتشرشده معتبری دریافت نشد؛ مطالب آنلاین قبلی روی دستگاه حفظ شدند."
             }
-            val documentsCount = indexes.size + legacyDocuments.size
             val allClasses = mutableListOf<ClassEntity>()
             val allCourses = mutableListOf<CourseEntity>()
             val allLectures = mutableListOf<LectureEntity>()
@@ -258,7 +266,7 @@ object CloudMaterialsSync {
             }
             "مطالب آنلاین به‌روزرسانی شد: ${uniqueLectures.size} جلسه یکتا از $documentsCount حساب استاد."
         }
-
+    }
 
     private fun publishSplitDocuments(
         context: Context,
