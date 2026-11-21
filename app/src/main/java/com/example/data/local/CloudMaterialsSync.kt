@@ -358,7 +358,7 @@ object CloudMaterialsSync {
             group.forEach { ref -> batch.set(ref, mapOf("isPublished" to false), com.google.firebase.firestore.SetOptions.merge()) }
             Tasks.await(batch.commit())
         }
-        "انتشار مطالب موفق بود: ${classes.size} کلاس و ${lessons.size} جلسه. داده‌ها در اسناد جداگانه ذخیره شدند."
+        return "انتشار مطالب موفق بود: ${classes.size} کلاس و ${lessons.size} جلسه. داده‌ها در اسناد جداگانه ذخیره شدند."
     }
 
     private fun stableId(owner: String, key: String): Long {
