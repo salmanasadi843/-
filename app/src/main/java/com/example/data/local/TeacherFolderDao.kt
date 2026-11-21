@@ -28,8 +28,8 @@ interface TeacherFolderDao {
     @Delete
     suspend fun delete(folder: TeacherFolderEntity)
 
-    @Insert(onConflict = OnConflictStrategy.REPLACE)
-    suspend fun insertAllForRestore(items: List<TeacherFolderEntity>)
+    @Insert(onConflict = OnConflictStrategy.IGNORE)
+    suspend fun insertMissingFromBackup(items: List<TeacherFolderEntity>): List<Long>
 
     @Query("DELETE FROM teacher_folders")
     suspend fun clearForRestore()
