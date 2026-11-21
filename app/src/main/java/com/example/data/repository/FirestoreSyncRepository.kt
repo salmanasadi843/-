@@ -171,7 +171,7 @@ class FirestoreSyncRepository(
         validateAndReplaceLocalData(classes, courses, lectures)
         teacherFolderDao?.let { dao ->
             dao.clearForRestore()
-            if (folders.isNotEmpty()) dao.insertAllForRestore(folders)
+            if (folders.isNotEmpty()) dao.insertMissingFromBackup(folders)
         }
     }
 
@@ -219,9 +219,9 @@ class FirestoreSyncRepository(
         lectureDao.clearForRestore()
         courseDao.clearForRestore()
         classDao.clearForRestore()
-        if (classes.isNotEmpty()) classDao.insertAllForRestore(classes)
-        if (courses.isNotEmpty()) courseDao.insertAllForRestore(courses)
-        if (lectures.isNotEmpty()) lectureDao.insertAllForRestore(lectures)
+        if (classes.isNotEmpty()) classDao.insertMissingFromBackup(classes)
+        if (courses.isNotEmpty()) courseDao.insertMissingFromBackup(courses)
+        if (lectures.isNotEmpty()) lectureDao.insertMissingFromBackup(lectures)
     }
 
     private fun ClassEntity.toCloudMap(): Map<String, Any?> = mapOf(
