@@ -57,8 +57,12 @@ fun ClassScreen(
         val foreignPositiveClasses = allClasses.filter {
             it.id > 0L && it.ownerUid.isNotBlank() && it.ownerUid != ownerUid
         }
-        val sharedClasses = allClasses.filter { it.id < 0L && it.isPublished }
-            .distinctBy {
+        // A teacher's own published class can also exist as a negative-ID feed copy.
+        // Do not show that mirror in the "other teachers" section beside its local row.
+        val sharedClasses = allClasses.filter {
+            it.id < 0L && it.isPublished &&
+                (ownerUid.isBlank() || it.ownerUid != ownerUid)
+        }.distinctBy {
                 listOf(it.name, it.teacherName, it.term)
                     .joinToString("|") { value ->
                         value.trim().lowercase()
