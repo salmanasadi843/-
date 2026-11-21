@@ -76,7 +76,12 @@ fun TeacherFoldersScreen(
         } else {
             val owned = allClasses.filter { it.id > 0L && (it.ownerUid == uid || it.ownerUid.isBlank()) }
             val foreignPositive = allClasses.filter { it.id > 0L && it.ownerUid.isNotBlank() && it.ownerUid != uid }
-            val shared = allClasses.filter { it.id < 0L && it.isPublished }.distinctBy {
+            // Exclude the signed-in teacher's own published mirror; its positive-ID
+            // local class is already represented in the owned group.
+            val shared = allClasses.filter {
+                it.id < 0L && it.isPublished &&
+                    (uid.isBlank() || it.ownerUid != uid)
+            }.distinctBy {
                 listOf(it.name, it.teacherName, it.term).joinToString("|") { value ->
                     value.trim().lowercase().replace('ي', 'ی').replace('ك', 'ک')
                         .replace(Regex("[\\u200c\\u200d]"), "").replace(Regex("\\s+"), " ")
