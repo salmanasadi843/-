@@ -20,6 +20,8 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import com.example.data.local.ClassEntity
+import com.example.data.local.CourseEntity
+import com.example.data.local.LectureEntity
 import com.example.data.local.AppDatabase
 import kotlinx.coroutines.launch
 
@@ -32,6 +34,51 @@ internal fun teacherFolderKey(clazz: com.example.data.local.ClassEntity, current
         .replace(Regex("[\\u200c\\u200d]"), "")
         .replace(Regex("\\s+"), " ")
     return "name:" + normalized.ifBlank { "بدون-نام" }
+}
+
+
+/**
+ * Returns true only when a published feed row is the same class as a local row.
+ * Stable owner identity is decisive; legacy/different-owner mirrors require exact
+ * metadata and matching published course/session fingerprints to avoid hiding
+ * genuinely different classes that merely share a name.
+ */
+internal fun isPublishedMirrorOfOwnedClass(
+    shared: ClassEntity,
+    owned: ClassEntity,
+    courses: List<CourseEntity>,
+    lectures: List<LectureEntity>
+): Boolean {
+    if (shared.id >= 0L || owned.id <= 0L) return false
+    if (shared.ownerUid.isNotBlank() && shared.ownerUid == owned.ownerUid) return true
+
+    fun normalize(value: String): String = value.trim().lowercase()
+        .replace('ي', 'ی').replace('ك', 'ک').replace('ى', 'ی')
+        .replace(Regex("[\\u200c\\u200d]"), "")
+        .replace(Regex("\\s+"), " ")
+
+    val sameMetadata = listOf(shared.name, shared.teacherName, shared.term)
+        .map(::normalize) == listOf(owned.name, owned.teacherName, owned.term).map(::normalize)
+    if (!sameMetadata) return false
+
+    fun courseFingerprint(classId: Long) = courses.asSequence()
+        .filter { it.classId == classId }
+        .map { listOf(normalize(it.name), normalize(it.teacherName), normalize(it.description)).joinToString("~") }
+        .sorted().toList()
+
+    fun lectureFingerprint(classId: Long) = lectures.asSequence()
+        .filter { it.classId == classId && it.isPublished }
+        .map { listOf(normalize(it.title), normalize(it.courseName), it.dateMillis.toString()).joinToString("~") }
+        .sorted().toList()
+
+    val sharedCourses = courseFingerprint(shared.id)
+    val ownedCourses = courseFingerprint(owned.id)
+    val sharedLectures = lectureFingerprint(shared.id)
+    val ownedLectures = lectureFingerprint(owned.id)
+    val hasContentEvidence = sharedCourses.isNotEmpty() || sharedLectures.isNotEmpty()
+    return hasContentEvidence &&
+        sharedCourses == ownedCourses &&
+        sharedLectures == ownedLectures
 }
 
 private const val UNFILED_TEACHERS_KEY = "__unfiled_teachers__"
@@ -58,6 +105,8 @@ fun TeacherFoldersScreen(
     val uid = AuthPreferences.currentUid(context).orEmpty().ifBlank { "local" }
     val prefs = remember(uid) { teacherFolderPrefs(context, uid) }
     val allClasses by viewModel.repository.allClasses.collectAsState(initial = emptyList())
+    val allCourses by viewModel.repository.allCoursesDetailed.collectAsState(initial = emptyList())
+    val allLectures by viewModel.repository.allLectures.collectAsState(initial = emptyList())
     val syncStatus by viewModel.studentMaterialsSyncStatus.collectAsState()
     val canManage = userRole == UserRole.TEACHER || AuthPreferences.isPrimaryTeacher(context)
     // Cloud refresh is manual; keep locally cached published classes visible.
@@ -76,11 +125,14 @@ fun TeacherFoldersScreen(
         } else {
             val owned = allClasses.filter { it.id > 0L && (it.ownerUid == uid || it.ownerUid.isBlank()) }
             val foreignPositive = allClasses.filter { it.id > 0L && it.ownerUid.isNotBlank() && it.ownerUid != uid }
-            // Exclude the signed-in teacher's own published mirror; its positive-ID
-            // local class is already represented in the owned group.
-            val shared = allClasses.filter {
-                it.id < 0L && it.isPublished &&
-                    (uid.isBlank() || it.ownerUid != uid)
+            // Exclude exact mirrors of this teacher's local classes. UID matching is
+            // preferred; legacy/different-UID copies require matching metadata and
+            // published course/session fingerprints so same-named distinct classes remain.
+            val shared = allClasses.filter { candidate ->
+                candidate.id < 0L && candidate.isPublished &&
+                    owned.none { local ->
+                        isPublishedMirrorOfOwnedClass(candidate, local, allCourses, allLectures)
+                    }
             }.distinctBy {
                 listOf(it.name, it.teacherName, it.term).joinToString("|") { value ->
                     value.trim().lowercase().replace('ي', 'ی').replace('ك', 'ک')
