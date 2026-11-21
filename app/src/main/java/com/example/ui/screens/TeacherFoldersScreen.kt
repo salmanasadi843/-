@@ -118,7 +118,7 @@ fun TeacherFoldersScreen(
     var folderToDelete by remember { mutableStateOf<TeacherFolderRow?>(null) }
     val scope = rememberCoroutineScope()
 
-    val visibleClasses = remember(allClasses, canManage, studentReady, uid) {
+    val visibleClasses = remember(allClasses, allCourses, allLectures, canManage, studentReady, uid) {
         if (!canManage) {
             if (studentReady) allClasses.filter { it.id < 0L && it.isPublished }
             else emptyList()
