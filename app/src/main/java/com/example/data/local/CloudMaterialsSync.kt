@@ -241,9 +241,9 @@ object CloudMaterialsSync {
                     db.lectureDao().clearCloudSharedData()
                     db.courseDao().clearCloudSharedData()
                     db.classDao().clearCloudSharedData()
-                    db.classDao().insertAllForRestore(allClasses.distinctBy { it.id })
-                    db.courseDao().insertAllForRestore(allCourses.distinctBy { it.id })
-                    db.lectureDao().insertAllForRestore(uniqueLectures.distinctBy { it.id })
+                    db.classDao().insertMissingFromBackup(allClasses.distinctBy { it.id })
+                    db.courseDao().insertMissingFromBackup(allCourses.distinctBy { it.id })
+                    db.lectureDao().insertMissingFromBackup(uniqueLectures.distinctBy { it.id })
                 }
             }
             "مطالب آنلاین به‌روزرسانی شد: ${uniqueLectures.size} جلسه یکتا از ${documents.size} حساب استاد."
