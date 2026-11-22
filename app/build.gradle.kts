@@ -18,8 +18,8 @@ android {
         applicationId = "com.aistudio.lecturehub.kqmzv"
         minSdk = 24
         targetSdk = 36
-        versionCode = 17
-        versionName = "1.1.6"
+        versionCode = 19
+        versionName = "1.1.8"
 
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
     }
