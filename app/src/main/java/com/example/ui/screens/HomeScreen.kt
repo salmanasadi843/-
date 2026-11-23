@@ -61,6 +61,8 @@ fun HomeScreen(
     onNavigateToDetail: (Long) -> Unit,
     onNavigateToAiSummary: (Long) -> Unit
 ) {
+    val context = LocalContext.current
+    val currentUid = AuthPreferences.currentUid(context).orEmpty()
     val allClasses by viewModel.repository.allClasses.collectAsState(initial = emptyList())
     val allCourses by viewModel.repository.allCoursesDetailed.collectAsState(initial = emptyList())
     val allLectures by viewModel.repository.allLectures.collectAsState(initial = emptyList())
@@ -73,7 +75,7 @@ fun HomeScreen(
             // The home "My Classes" list must use the same mirror filter as ClassScreen.
             // Keep database rows intact; hide only negative-ID published feed mirrors of owned classes.
             val ownedClasses = allClasses.filter {
-                it.id > 0L && (it.ownerUid == AuthPreferences.currentUid(LocalContext.current).orEmpty() || it.ownerUid.isBlank())
+                it.id > 0L && (it.ownerUid == currentUid || it.ownerUid.isBlank())
             }
             val visibleSharedClasses = allClasses.filter { candidate ->
                 candidate.id < 0L && candidate.isPublished &&
@@ -99,7 +101,6 @@ fun HomeScreen(
     } else allLectures
     val isTeacher = userRole == UserRole.TEACHER
     val isPrimaryTeacher = isTeacher && AuthPreferences.isPrimaryTeacher(LocalContext.current)
-    val context = LocalContext.current
     val isOnline = rememberNetworkConnection()
     var showBulkExportDialog by androidx.compose.runtime.remember { androidx.compose.runtime.mutableStateOf(false) }
     var showAdvancedSearch by remember { mutableStateOf(false) }
