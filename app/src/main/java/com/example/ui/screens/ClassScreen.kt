@@ -40,6 +40,8 @@ fun ClassScreen(
     val canManageClasses = userRole == UserRole.TEACHER || AuthPreferences.isPrimaryTeacher(context)
     val canCreateInSelectedTeacher = canManageClasses && (teacherKey == null || teacherKey == ownerUid)
     val allClasses by viewModel.repository.allClasses.collectAsState(initial = emptyList())
+    val allCourses by viewModel.repository.allCoursesDetailed.collectAsState(initial = emptyList())
+    val allLectures by viewModel.repository.allLectures.collectAsState(initial = emptyList())
     // Never expose teacher-local or unpublished classes in student mode.
     val studentSyncStatus by viewModel.studentMaterialsSyncStatus.collectAsState()
     // Cloud refresh is manual; keep locally cached published classes visible.
@@ -57,8 +59,15 @@ fun ClassScreen(
         val foreignPositiveClasses = allClasses.filter {
             it.id > 0L && it.ownerUid.isNotBlank() && it.ownerUid != ownerUid
         }
-        val sharedClasses = allClasses.filter { it.id < 0L && it.isPublished }
-            .distinctBy {
+        // Exclude exact mirrors of this teacher's local classes. UID matching is
+        // preferred; legacy/different-UID copies require matching metadata and
+        // published course/session fingerprints so same-named distinct classes remain.
+        val sharedClasses = allClasses.filter { candidate ->
+            candidate.id < 0L && candidate.isPublished &&
+                ownedClasses.none { local ->
+                    isPublishedMirrorOfOwnedClass(candidate, local, allCourses, allLectures)
+                }
+        }.distinctBy {
                 listOf(it.name, it.teacherName, it.term)
                     .joinToString("|") { value ->
                         value.trim().lowercase()

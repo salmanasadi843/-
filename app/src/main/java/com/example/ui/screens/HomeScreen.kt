@@ -61,22 +61,46 @@ fun HomeScreen(
     onNavigateToDetail: (Long) -> Unit,
     onNavigateToAiSummary: (Long) -> Unit
 ) {
+    val context = LocalContext.current
+    val currentUid = AuthPreferences.currentUid(context).orEmpty()
     val allClasses by viewModel.repository.allClasses.collectAsState(initial = emptyList())
+    val allCourses by viewModel.repository.allCoursesDetailed.collectAsState(initial = emptyList())
     val allLectures by viewModel.repository.allLectures.collectAsState(initial = emptyList())
     val studentSyncStatus by viewModel.studentMaterialsSyncStatus.collectAsState()
     // Cloud refresh is user-triggered. Show locally cached published material without network access.
     val studentFeedReady = true
-    val classes = if (userRole == UserRole.STUDENT) {
-        if (studentFeedReady) allClasses.filter { it.id < 0L && it.isPublished }
-        else emptyList()
-    } else allClasses
+    val classes = when (userRole) {
+        UserRole.STUDENT -> if (studentFeedReady) allClasses.filter { it.id < 0L && it.isPublished } else emptyList()
+        UserRole.TEACHER -> {
+            // The home "My Classes" list must use the same mirror filter as ClassScreen.
+            // Keep database rows intact; hide only negative-ID published feed mirrors of owned classes.
+            val ownedClasses = allClasses.filter {
+                it.id > 0L && (it.ownerUid == currentUid || it.ownerUid.isBlank())
+            }
+            val visibleSharedClasses = allClasses.filter { candidate ->
+                candidate.id < 0L && candidate.isPublished &&
+                    ownedClasses.none { local ->
+                        isPublishedMirrorOfOwnedClass(candidate, local, allCourses, allLectures)
+                    }
+            }.distinctBy { clazz ->
+                listOf(clazz.name, clazz.teacherName, clazz.term).joinToString("|") { value ->
+                    value.trim().lowercase().replace('ي', 'ی').replace('ك', 'ک')
+                        .replace(Regex("[\\u200c\\u200d]"), "").replace(Regex("\\s+"), " ")
+                }
+            }
+            ownedClasses + allClasses.filter {
+                it.id > 0L && it.ownerUid.isNotBlank() &&
+                    it.ownerUid != AuthPreferences.currentUid(LocalContext.current).orEmpty()
+            } + visibleSharedClasses
+        }
+        else -> allClasses
+    }
     val visibleClassIds = classes.map { it.id }.toSet()
     val lectures = if (userRole == UserRole.STUDENT) {
         allLectures.filter { it.id < 0L && it.isPublished && it.classId in visibleClassIds }
     } else allLectures
     val isTeacher = userRole == UserRole.TEACHER
     val isPrimaryTeacher = isTeacher && AuthPreferences.isPrimaryTeacher(LocalContext.current)
-    val context = LocalContext.current
     val isOnline = rememberNetworkConnection()
     var showBulkExportDialog by androidx.compose.runtime.remember { androidx.compose.runtime.mutableStateOf(false) }
     var showAdvancedSearch by remember { mutableStateOf(false) }
