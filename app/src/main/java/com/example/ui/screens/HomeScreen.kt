@@ -25,6 +25,7 @@ import android.net.ConnectivityManager
 import android.net.Network
 import android.net.NetworkCapabilities
 import com.example.data.local.ClassEntity
+import com.example.data.local.CourseEntity
 import com.example.data.local.LectureEntity
 import com.google.firebase.firestore.FirebaseFirestore
 import com.google.firebase.firestore.ListenerRegistration
@@ -65,7 +66,9 @@ fun HomeScreen(
     onNavigateToAiSummary: (Long) -> Unit,
     onNavigateToBackendBrowse: () -> Unit
 ) {
+    val currentUid = AuthPreferences.currentUid(LocalContext.current).orEmpty()
     val allClasses by viewModel.repository.allClasses.collectAsState(initial = emptyList())
+    val allCourses by viewModel.repository.allCoursesDetailed.collectAsState(initial = emptyList())
     val allLectures by viewModel.repository.allLectures.collectAsState(initial = emptyList())
     val studentSyncStatus by viewModel.studentMaterialsSyncStatus.collectAsState()
     LaunchedEffect(userRole) { if (userRole == UserRole.STUDENT) viewModel.startStudentMaterialsSync() }
@@ -75,10 +78,24 @@ fun HomeScreen(
         !studentSyncStatus.contains("در حال دریافت") &&
         !studentSyncStatus.contains("دریافت خودکار مطالب انجام نشد")
     )
-    val classes = if (userRole == UserRole.STUDENT) {
-        if (studentFeedReady) allClasses.filter { it.id < 0L && it.isPublished }
-        else emptyList()
-    } else allClasses
+    val classes = when (userRole) {
+        UserRole.STUDENT -> if (studentFeedReady) allClasses.filter { it.id < 0L && it.isPublished } else emptyList()
+        UserRole.TEACHER -> {
+            val ownedClasses = allClasses.filter { it.id > 0L && (it.ownerUid == currentUid || it.ownerUid.isBlank()) }
+            val foreignPositive = allClasses.filter { it.id > 0L && it.ownerUid.isNotBlank() && it.ownerUid != currentUid }
+            val visibleShared = allClasses.filter { candidate ->
+                candidate.id < 0L && candidate.isPublished &&
+                    ownedClasses.none { local -> isPublishedMirrorOfOwnedClass(candidate, local, allCourses, allLectures) }
+            }.distinctBy { clazz ->
+                listOf(clazz.name, clazz.teacherName, clazz.term).joinToString("|") { value ->
+                    value.trim().lowercase().replace('ي', 'ی').replace('ك', 'ک')
+                        .replace(Regex("[\\u200c\\u200d]"), "").replace(Regex("\\s+"), " ")
+                }
+            }
+            ownedClasses + foreignPositive + visibleShared
+        }
+        else -> allClasses
+    }
     val visibleClassIds = classes.map { it.id }.toSet()
     val lectures = if (userRole == UserRole.STUDENT) {
         allLectures.filter { it.id < 0L && it.isPublished && it.classId in visibleClassIds }
