@@ -37,7 +37,8 @@ import androidx.compose.ui.platform.LocalContext
 
 @Composable
 fun AuthScreen(
-    onAuthenticated: (UserRole) -> Unit
+    onAuthenticated: (UserRole) -> Unit,
+    onBrowsePublic: () -> Unit = {}
 ) {
     val context = LocalContext.current
     var registerMode by remember { mutableStateOf(false) }
@@ -275,6 +276,17 @@ fun AuthScreen(
                         shape = RoundedCornerShape(14.dp)
                     ) {
                         Text("ادامه با گوگل")
+                    }
+
+                    if (!registerMode && com.example.data.api.BackendEndpointConfig.isConfigured) {
+                        Spacer(Modifier.height(10.dp))
+                        OutlinedButton(
+                            onClick = onBrowsePublic,
+                            modifier = Modifier.fillMaxWidth().height(48.dp),
+                            shape = RoundedCornerShape(14.dp)
+                        ) {
+                            Text("مشاهده کلاس‌های عمومی بدون ورود")
+                        }
                     }
 
                     if (!registerMode) {

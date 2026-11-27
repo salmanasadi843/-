@@ -15,7 +15,9 @@ import org.robolectric.RobolectricTestRunner
 import org.robolectric.annotation.Config
 
 @RunWith(RobolectricTestRunner::class)
-@Config(sdk = [36])
+// Robolectric's current SDK provider does not support API 36 yet.
+// Running these JVM tests on API 35 does not change the app's compile/target SDK.
+@Config(sdk = [35])
 class ExampleRobolectricTest {
 
   @Test
@@ -53,4 +55,3 @@ class ExampleRobolectricTest {
     db.close()
   }
 }
-

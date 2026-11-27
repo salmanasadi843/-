@@ -2,6 +2,15 @@ name: Build Android APK
 
 on:
   workflow_dispatch:
+  pull_request:
+    paths:
+      - "app/**"
+      - "gradle/**"
+      - "build.gradle.kts"
+      - "settings.gradle.kts"
+      - "gradle.properties"
+      - "gradlew"
+      - ".github/workflows/build-apk.yml"
   push:
 
 permissions:
@@ -41,6 +50,9 @@ jobs:
         uses: gradle/actions/setup-gradle@v6
         with:
           gradle-version: '9.3.1'
+
+      - name: Run Android unit tests
+        run: gradle testDebugUnitTest --stacktrace
 
       - name: Build Debug APK
         run: gradle assembleDebug --stacktrace

@@ -15,6 +15,8 @@ import androidx.compose.material.icons.filled.Settings
 import androidx.compose.material.icons.filled.Search
 import androidx.compose.material.icons.filled.Share
 import androidx.compose.material.icons.filled.School
+import androidx.compose.material.icons.filled.Cloud
+import com.example.data.api.BackendEndpointConfig
 import androidx.compose.material3.*
 import androidx.compose.ui.platform.LocalContext
 import android.content.Context
@@ -59,7 +61,9 @@ fun HomeScreen(
     userRole: UserRole,
     onNavigateToAdd: () -> Unit,
     onNavigateToDetail: (Long) -> Unit,
-    onNavigateToAiSummary: (Long) -> Unit
+    onNavigateToSearchResult: (Long, String) -> Unit,
+    onNavigateToAiSummary: (Long) -> Unit,
+    onNavigateToBackendBrowse: () -> Unit
 ) {
     val allClasses by viewModel.repository.allClasses.collectAsState(initial = emptyList())
     val allLectures by viewModel.repository.allLectures.collectAsState(initial = emptyList())
@@ -202,7 +206,7 @@ fun HomeScreen(
         AdvancedSearchScreen(
             viewModel = viewModel,
             userRole = userRole,
-            onOpenLecture = onNavigateToDetail,
+            onOpenLecture = onNavigateToSearchResult,
             onBack = { showAdvancedSearch = false }
         )
         return
@@ -240,6 +244,11 @@ fun HomeScreen(
                     IconButton(onClick = { showAdvancedSearch = true }) { Icon(Icons.Default.Search, contentDescription = "جستجوی پیشرفته در درس‌ها") }
                     if (isTeacher) IconButton(onClick = { showBulkExportDialog = true }) { Icon(Icons.Default.Share, contentDescription = "ارسال گروهی مطالب") }
                     IconButton(onClick = viewModel::openClasses) { Icon(Icons.Default.School, "کلاس‌ها") }
+                    if (BackendEndpointConfig.isConfigured) {
+                        IconButton(onClick = onNavigateToBackendBrowse) {
+                            Icon(Icons.Default.Cloud, contentDescription = "مرور کلاس‌های استادان")
+                        }
+                    }
                     IconButton(onClick = { viewModel.navigateTo(Screen.Settings) }) { Icon(Icons.Default.Settings, "تنظیمات") }
                 }
             )
@@ -250,6 +259,31 @@ fun HomeScreen(
             contentPadding = PaddingValues(16.dp, 8.dp, 16.dp, 24.dp),
             verticalArrangement = Arrangement.spacedBy(14.dp)
         ) {
+            if (BackendEndpointConfig.isConfigured) {
+                item {
+                    Card(
+                        modifier = Modifier.fillMaxWidth().clickable(onClick = onNavigateToBackendBrowse),
+                        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.secondaryContainer)
+                    ) {
+                        Row(
+                            Modifier.fillMaxWidth().padding(16.dp),
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.spacedBy(12.dp)
+                        ) {
+                            Icon(Icons.Default.Cloud, contentDescription = null, tint = MaterialTheme.colorScheme.onSecondaryContainer)
+                            Column(Modifier.weight(1f)) {
+                                Text("مرور کلاس‌های استادان", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
+                                Text(
+                                    "مشاهده استادان، کلاس‌ها و جلسه‌ها؛ همراه با اعضا، اعلان‌ها و تالار گفتگو",
+                                    style = MaterialTheme.typography.bodySmall,
+                                    color = MaterialTheme.colorScheme.onSecondaryContainer
+                                )
+                            }
+                            Text("ورود", color = MaterialTheme.colorScheme.primary, fontWeight = FontWeight.Bold)
+                        }
+                    }
+                }
+            }
             if (isTeacher) {
                 if (isPrimaryTeacher) {
                     item {

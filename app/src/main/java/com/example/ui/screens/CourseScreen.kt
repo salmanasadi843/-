@@ -35,11 +35,19 @@ fun ClassSessionsScreen(
     val context = LocalContext.current
     val allLectures by viewModel.repository.allLectures.collectAsState(initial = emptyList())
     val allCourses by viewModel.repository.allCoursesDetailed.collectAsState(initial = emptyList())
+    val allClasses by viewModel.repository.allClasses.collectAsState(initial = emptyList())
     var className by remember { mutableStateOf("کلاس") }
     var teacherName by remember { mutableStateOf("") }
     var classOwnerUid by remember { mutableStateOf("") }
     val currentOwnerUid = AuthPreferences.currentUid(context).orEmpty()
     var showDeleteDialog by remember { mutableStateOf<LectureEntity?>(null) }
+    var moveSessionDialog by remember { mutableStateOf<LectureEntity?>(null) }
+    val destinationClasses = remember(allClasses, classId, currentOwnerUid) {
+        allClasses.filter {
+            it.id > 0L && it.id != classId && it.ownerUid == currentOwnerUid &&
+                currentOwnerUid.isNotBlank()
+        }.sortedBy { it.name }
+    }
     val canManageSessions = (userRole == UserRole.TEACHER || AuthPreferences.isPrimaryTeacher(context)) &&
         classId > 0L && classOwnerUid == currentOwnerUid && currentOwnerUid.isNotBlank()
 
@@ -181,6 +189,10 @@ fun ClassSessionsScreen(
                                         }
                                     }
                                 ) { Icon(Icons.Default.KeyboardArrowDown, contentDescription = "کاهش اولویت جلسه") }
+                                TextButton(
+                                    onClick = { moveSessionDialog = lecture },
+                                    enabled = destinationClasses.isNotEmpty()
+                                ) { Text("انتقال") }
                                 IconButton(onClick = { showDeleteDialog = lecture }) {
                                     Icon(Icons.Default.Delete, contentDescription = "حذف جلسه")
                                 }
@@ -190,6 +202,46 @@ fun ClassSessionsScreen(
                 }
             }
         }
+    }
+
+    moveSessionDialog?.let { lecture ->
+        AlertDialog(
+            onDismissRequest = { moveSessionDialog = null },
+            title = { Text("انتقال جلسه به کلاس دیگر") },
+            text = {
+                Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                    Text("جلسه «${lecture.title}» به کدام کلاس منتقل شود؟")
+                    if (destinationClasses.isEmpty()) {
+                        Text(
+                            "کلاس مقصد دیگری برای این استاد وجود ندارد.",
+                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                        )
+                    } else {
+                        destinationClasses.forEach { target ->
+                            TextButton(
+                                onClick = {
+                                    viewModel.moveLectureToClass(lecture.id, target.id) {
+                                        moveSessionDialog = null
+                                    }
+                                },
+                                modifier = Modifier.fillMaxWidth()
+                            ) {
+                                Text(target.name, modifier = Modifier.fillMaxWidth())
+                            }
+                        }
+                    }
+                    Text(
+                        "متن اصلی، متن ویرایش‌شده، خلاصه، نکات، آزمونک و پیوند صوتی جلسه حفظ می‌شود.",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                }
+            },
+            confirmButton = {},
+            dismissButton = {
+                TextButton(onClick = { moveSessionDialog = null }) { Text("انصراف") }
+            }
+        )
     }
 
     showDeleteDialog?.let { lecture ->

@@ -22,6 +22,8 @@ import androidx.compose.ui.platform.LocalLayoutDirection
 import androidx.compose.ui.unit.LayoutDirection
 import androidx.lifecycle.viewmodel.compose.viewModel
 import com.example.ui.screens.AddEditLectureScreen
+import com.example.ui.screens.BackendBrowseScreen
+import com.example.ui.screens.PublicCatalogScreen
 import com.example.ui.screens.AuthPreferences
 import com.example.ui.screens.AuthScreen
 import com.example.ui.screens.ClassScreen
@@ -73,8 +75,13 @@ fun OstadYarApp(
 ) {
     val context = LocalContext.current
     var authenticated by remember { mutableStateOf(AuthPreferences.isLoggedIn(context)) }
+    var guestBrowsing by remember { mutableStateOf(false) }
     var userRole by remember { mutableStateOf(AuthPreferences.currentRole(context)) }
     val currentScreen by viewModel.currentScreen.collectAsState()
+    var pendingSearchQuery by remember { mutableStateOf("") }
+    LaunchedEffect(currentScreen) {
+        if (currentScreen !is Screen.Detail) pendingSearchQuery = ""
+    }
 
     LaunchedEffect(authenticated) {
         if (authenticated) {
@@ -101,9 +108,19 @@ fun OstadYarApp(
         }
     }
 
+    if (guestBrowsing && !authenticated) {
+        BackHandler(enabled = true) { guestBrowsing = false }
+        PublicCatalogScreen(
+            onBack = { guestBrowsing = false },
+            onLogin = { guestBrowsing = false }
+        )
+        return
+    }
+
     if (!authenticated) {
         BackHandler(enabled = false) { }
         AuthScreen(
+            onBrowsePublic = { guestBrowsing = true },
             onAuthenticated = { role ->
                 userRole = role
                 viewModel.setUserRole(role)
@@ -124,7 +141,12 @@ fun OstadYarApp(
                 userRole = userRole,
                 onNavigateToAdd = { viewModel.openClasses() },
                 onNavigateToDetail = { lectureId -> viewModel.navigateTo(Screen.Detail(lectureId)) },
-                onNavigateToAiSummary = { lectureId -> viewModel.navigateTo(Screen.Detail(lectureId)) }
+                onNavigateToSearchResult = { lectureId, query ->
+                    pendingSearchQuery = query
+                    viewModel.navigateTo(Screen.Detail(lectureId))
+                },
+                onNavigateToAiSummary = { lectureId -> viewModel.navigateTo(Screen.Detail(lectureId)) },
+                onNavigateToBackendBrowse = { viewModel.navigateTo(Screen.BackendBrowse) }
             )
         }
 
@@ -172,11 +194,12 @@ fun OstadYarApp(
             LectureDetailScreen(
                 lectureId = screen.lectureId,
                 viewModel = viewModel,
-                onNavigateBack = { viewModel.navigateBack() },
+                onNavigateBack = { pendingSearchQuery = ""; viewModel.navigateBack() },
                 onNavigateToEdit = { editId ->
                     if (userRole == UserRole.TEACHER) viewModel.navigateTo(Screen.AddEdit(editId))
                 },
-                isTeacher = userRole == UserRole.TEACHER
+                isTeacher = userRole == UserRole.TEACHER,
+                initialSearchQuery = pendingSearchQuery
             )
         }
 
@@ -202,6 +225,10 @@ fun OstadYarApp(
                     if (userRole == UserRole.TEACHER) viewModel.navigateTo(Screen.AddEdit(editId))
                 }
             )
+        }
+
+        Screen.BackendBrowse -> {
+            BackendBrowseScreen(onBack = { viewModel.navigateBack() })
         }
 
         Screen.Settings -> {

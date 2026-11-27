@@ -60,6 +60,10 @@ import androidx.compose.ui.text.input.VisualTransformation
 import androidx.compose.ui.unit.dp
 import com.example.data.local.DatabaseBackup
 import com.example.data.local.CloudMaterialsSync
+import com.example.data.api.BackendClassDto
+import com.example.data.api.BackendEndpointConfig
+import com.example.data.api.BackendSessionSummaryDto
+import com.example.data.api.DarsyarReadOnlyApiFactory
 import com.example.data.api.GeminiApiService
 import com.example.data.api.GroqApiService
 import com.example.data.api.SpeechmaticsApiService
@@ -85,6 +89,16 @@ fun SettingsScreen(
 ) {
     val context = LocalContext.current
     val backupScope = rememberCoroutineScope()
+    var backendCheckBusy by remember { mutableStateOf(false) }
+    var backendCheckStatus by remember { mutableStateOf<String?>(null) }
+    var backendCheckError by remember { mutableStateOf(false) }
+    var backendClasses by remember { mutableStateOf<List<BackendClassDto>>(emptyList()) }
+    var backendSelectedClassId by remember { mutableStateOf<String?>(null) }
+    var backendCourses by remember { mutableStateOf<List<com.example.data.api.BackendCourseDto>>(emptyList()) }
+    var backendSessions by remember { mutableStateOf<List<BackendSessionSummaryDto>>(emptyList()) }
+    var backendSelectedSession by remember { mutableStateOf<com.example.data.api.BackendSessionDto?>(null) }
+    var backendContentBusy by remember { mutableStateOf(false) }
+    var backendContentStatus by remember { mutableStateOf<String?>(null) }
     var backupBusy by remember { mutableStateOf(false) }
     var backupStatus by remember { mutableStateOf<String?>(null) }
     var backupError by remember { mutableStateOf(false) }
@@ -233,6 +247,245 @@ fun SettingsScreen(
                         style = MaterialTheme.typography.bodySmall,
                         color = MaterialTheme.colorScheme.onSurfaceVariant
                     )
+                }
+            }
+            Card(
+                colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
+                elevation = CardDefaults.cardElevation(2.dp),
+                modifier = Modifier.fillMaxWidth()
+            ) {
+                Column(modifier = Modifier.padding(18.dp)) {
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        Icon(Icons.Filled.NetworkCheck, contentDescription = null)
+                        Spacer(Modifier.width(8.dp))
+                        Text("آزمایش اتصال سرور جدید", style = MaterialTheme.typography.titleLarge)
+                    }
+                    Spacer(Modifier.height(8.dp))
+                    Text(
+                        if (BackendEndpointConfig.isConfigured)
+                            "این بخش فقط اتصال آزمایشیِ خواندنی را بررسی می‌کند؛ اطلاعاتی در سرور، Room یا فایربیس تغییر نمی‌دهد."
+                        else
+                            "نشانی سرور هنوز هنگام ساخت برنامه تنظیم نشده است. تا زمان استقرار و تأیید سرور، این بخش غیرفعال می‌ماند.",
+                        style = MaterialTheme.typography.bodyMedium,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                    Spacer(Modifier.height(12.dp))
+                    OutlinedButton(
+                        onClick = {
+                            backendCheckBusy = true
+                            backendCheckStatus = null
+                            backendCheckError = false
+                            AuthPreferences.getFirebaseIdToken(context) { tokenResult ->
+                                tokenResult.fold(
+                                    onSuccess = { token ->
+                                        backupScope.launch {
+                                            val result = withContext(Dispatchers.IO) {
+                                                runCatching {
+                                                    DarsyarReadOnlyApiFactory.create().loadSnapshot(token)
+                                                }
+                                            }
+                                            backendCheckBusy = false
+                                            backendCheckError = result.isFailure
+                                            backendCheckStatus = result.fold(
+                                                onSuccess = { snapshot ->
+                                                    backendClasses = snapshot.classes
+                                                    backendSelectedClassId = null
+                                                    backendCourses = emptyList()
+                                                    backendSessions = emptyList()
+                                                    backendSelectedSession = null
+                                                    backendContentStatus = null
+                                                    "اتصال موفق بود؛ نقش‌های حساب: ${snapshot.account.roles.joinToString()}؛ تعداد کلاس‌های قابل مشاهده: ${snapshot.classes.size}. برای دیدن دوره‌ها و جلسه‌ها، یک کلاس را انتخاب کنید."
+                                                },
+                                                onFailure = { error ->
+                                                    "اتصال ناموفق بود: ${error.localizedMessage ?: "خطای نامشخص"}"
+                                                }
+                                            )
+                                        }
+                                    },
+                                    onFailure = { error ->
+                                        backendCheckBusy = false
+                                        backendCheckError = true
+                                        backendCheckStatus = error.localizedMessage ?: "دریافت توکن ورود ناموفق بود."
+                                    }
+                                )
+                            }
+                        },
+                        enabled = BackendEndpointConfig.isConfigured && !backendCheckBusy
+                    ) {
+                        if (backendCheckBusy) {
+                            CircularProgressIndicator(modifier = Modifier.size(18.dp), strokeWidth = 2.dp)
+                            Spacer(Modifier.width(8.dp))
+                        }
+                        Text("بررسی اتصال (فقط خواندن)")
+                    }
+                    backendCheckStatus?.let { message ->
+                        Spacer(Modifier.height(8.dp))
+                        Text(
+                            message,
+                            style = MaterialTheme.typography.bodyMedium,
+                            color = if (backendCheckError) MaterialTheme.colorScheme.error
+                            else MaterialTheme.colorScheme.primary
+                        )
+                    }
+                    if (backendClasses.isNotEmpty()) {
+                        Spacer(Modifier.height(12.dp))
+                        Text("کلاس‌های قابل مشاهده", style = MaterialTheme.typography.titleMedium)
+                        backendClasses.sortedBy { it.sortOrder }.forEach { backendClass ->
+                            Card(
+                                modifier = Modifier.fillMaxWidth(),
+                                colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant)
+                            ) {
+                                Row(
+                                    modifier = Modifier.fillMaxWidth().padding(10.dp),
+                                    verticalAlignment = Alignment.CenterVertically,
+                                    horizontalArrangement = Arrangement.spacedBy(8.dp)
+                                ) {
+                                    Column(Modifier.weight(1f)) {
+                                        Text(backendClass.title, style = MaterialTheme.typography.titleSmall)
+                                        Text(
+                                            if (backendClass.visibility == "public") "عمومی" else "خصوصی",
+                                            style = MaterialTheme.typography.bodySmall,
+                                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                                        )
+                                    }
+                                    OutlinedButton(
+                                        enabled = !backendContentBusy,
+                                        onClick = {
+                                            backendContentBusy = true
+                                            backendContentStatus = null
+                                            backendSelectedClassId = backendClass.id
+                                            backendCourses = emptyList()
+                                            backendSessions = emptyList()
+                                            backendSelectedSession = null
+                                            AuthPreferences.getFirebaseIdToken(context) { tokenResult ->
+                                                tokenResult.fold(
+                                                    onSuccess = { token ->
+                                                        backupScope.launch {
+                                                            val result = withContext(Dispatchers.IO) {
+                                                                runCatching {
+                                                                    val repository = DarsyarReadOnlyApiFactory.create()
+                                                                    val courses = repository.loadCourses(token, backendClass.id)
+                                                                    val sessions = repository.loadSessions(token, backendClass.id)
+                                                                    courses to sessions
+                                                                }
+                                                            }
+                                                            backendContentBusy = false
+                                                            result.fold(
+                                                                onSuccess = { content ->
+                                                                    backendCourses = content.first
+                                                                    backendSessions = content.second
+                                                                    backendContentStatus = "دوره‌ها و فهرست جلسه‌ها دریافت شد؛ متن کامل جلسه‌ها هنوز دریافت نشده است."
+                                                                },
+                                                                onFailure = { error ->
+                                                                    backendContentStatus = "دریافت محتوای کلاس ناموفق بود: ${error.localizedMessage ?: "خطای نامشخص"}"
+                                                                }
+                                                            )
+                                                        }
+                                                    },
+                                                    onFailure = { error ->
+                                                        backendContentBusy = false
+                                                        backendContentStatus = error.localizedMessage ?: "دریافت توکن ورود ناموفق بود."
+                                                    }
+                                                )
+                                            }
+                                        }
+                                    ) { Text(if (backendSelectedClassId == backendClass.id && backendContentBusy) "در حال دریافت..." else "نمایش محتوا") }
+                                }
+                            }
+                        }
+                    }
+                    if (backendSelectedClassId != null) {
+                        Spacer(Modifier.height(10.dp))
+                        Text("دوره‌های کلاس انتخاب‌شده", style = MaterialTheme.typography.titleMedium)
+                        if (backendCourses.isEmpty()) {
+                            Text("دوره‌ای برای این کلاس ثبت نشده است.", style = MaterialTheme.typography.bodySmall)
+                        } else {
+                            backendCourses.sortedBy { it.sortOrder }.forEach { course ->
+                                Text("• ${course.title}", style = MaterialTheme.typography.bodyMedium)
+                            }
+                        }
+                        Spacer(Modifier.height(8.dp))
+                        Text("جلسه‌ها", style = MaterialTheme.typography.titleMedium)
+                        if (backendSessions.isEmpty()) {
+                            Text("جلسه‌ای برای این کلاس ثبت نشده است.", style = MaterialTheme.typography.bodySmall)
+                        } else {
+                            backendSessions.sortedBy { it.sortOrder }.forEach { session ->
+                                OutlinedButton(
+                                    modifier = Modifier.fillMaxWidth(),
+                                    enabled = !backendContentBusy,
+                                    onClick = {
+                                        backendContentBusy = true
+                                        backendContentStatus = null
+                                        backendSelectedSession = null
+                                        AuthPreferences.getFirebaseIdToken(context) { tokenResult ->
+                                            tokenResult.fold(
+                                                onSuccess = { token ->
+                                                    backupScope.launch {
+                                                        val result = withContext(Dispatchers.IO) {
+                                                            runCatching {
+                                                                DarsyarReadOnlyApiFactory.create().loadSessionDetail(
+                                                                    token, session.classId, session.id
+                                                                )
+                                                            }
+                                                        }
+                                                        backendContentBusy = false
+                                                        result.fold(
+                                                            onSuccess = { detail ->
+                                                                backendSelectedSession = detail
+                                                                backendContentStatus = "جزئیات فقط برای جلسه انتخاب‌شده دریافت شد."
+                                                            },
+                                                            onFailure = { error ->
+                                                                backendContentStatus = "دریافت جزئیات جلسه ناموفق بود: ${error.localizedMessage ?: "خطای نامشخص"}"
+                                                            }
+                                                        )
+                                                    }
+                                                },
+                                                onFailure = { error ->
+                                                    backendContentBusy = false
+                                                    backendContentStatus = error.localizedMessage ?: "دریافت توکن ورود ناموفق بود."
+                                                }
+                                            )
+                                        }
+                                    }
+                                ) {
+                                    Text(session.title)
+                                }
+                            }
+                        }
+                    }
+                    backendSelectedSession?.let { detail ->
+                        Spacer(Modifier.height(8.dp))
+                        Card(
+                            modifier = Modifier.fillMaxWidth(),
+                            colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant)
+                        ) {
+                            Column(Modifier.padding(12.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                                Text(detail.title, style = MaterialTheme.typography.titleMedium)
+                                detail.aiSummary?.takeIf { it.isNotBlank() }?.let {
+                                    Text("خلاصه هوشمند", style = MaterialTheme.typography.titleSmall)
+                                    Text(it, style = MaterialTheme.typography.bodyMedium)
+                                }
+                                detail.aiKeyPoints?.takeIf { it.isNotBlank() }?.let {
+                                    Text("کلیدواژه‌ها و نکات", style = MaterialTheme.typography.titleSmall)
+                                    Text(it, style = MaterialTheme.typography.bodyMedium)
+                                }
+                                Text("متن جلسه", style = MaterialTheme.typography.titleSmall)
+                                Text(
+                                    detail.transcript.ifBlank { "متنی برای این جلسه ثبت نشده است." },
+                                    style = MaterialTheme.typography.bodySmall
+                                )
+                            }
+                        }
+                    }
+                    backendContentStatus?.let {
+                        Spacer(Modifier.height(6.dp))
+                        Text(
+                            it,
+                            style = MaterialTheme.typography.bodySmall,
+                            color = if (it.contains("ناموفق")) MaterialTheme.colorScheme.error
+                            else MaterialTheme.colorScheme.primary
+                        )
+                    }
                 }
             }
             Card(

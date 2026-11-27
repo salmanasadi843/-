@@ -1,0 +1,8 @@
+.gradle/
+build/
+.env
+.env.*
+!.env.example
+backups/
+*.dump
+*.dump.manifest.json

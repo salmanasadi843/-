@@ -53,6 +53,7 @@ sealed class Screen {
     data class AddEdit(val lectureId: Long? = null, val classId: Long? = null) : Screen()
     data class AiStudy(val lectureId: Long) : Screen()
     object Settings : Screen()
+    object BackendBrowse : Screen()
 }
 
 data class ChatMessage(
@@ -554,6 +555,9 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
             Screen.Settings -> {
                 _currentScreen.value = Screen.Home
             }
+            Screen.BackendBrowse -> {
+                _currentScreen.value = Screen.Home
+            }
             Screen.Home -> {
                 // Keep the app open on Home.
             }
@@ -957,6 +961,61 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
             } catch (e: Exception) {
                 Log.e(TAG, "Reordering class sessions failed", e)
                 _cloudSyncStatus.value = "ذخیره ترتیب جلسات ناموفق بود: ${e.localizedMessage ?: "خطای نامشخص"}"
+            }
+        }
+    }
+
+    /** Move a session between two classes owned by the signed-in teacher. */
+    fun moveLectureToClass(
+        lectureId: Long,
+        targetClassId: Long,
+        onMoved: () -> Unit = {}
+    ) {
+        viewModelScope.launch {
+            if (!teacherPermissionGranted()) {
+                denyTeacherMutation()
+                return@launch
+            }
+
+            val uid = AuthPreferences.currentUid(getApplication<Application>()).orEmpty()
+            val lecture = repository.getLecture(lectureId)
+            val targetClass = repository.getClass(targetClassId)
+            val sourceClassId = lecture?.classId ?: lecture?.courseId?.let { courseId ->
+                repository.getCourse(courseId)?.classId
+            }
+            val sourceClass = sourceClassId?.let { repository.getClass(it) }
+
+            if (uid.isBlank() || lecture == null || lecture.id <= 0L ||
+                targetClassId <= 0L || targetClass == null || sourceClass == null ||
+                sourceClass.ownerUid != uid || targetClass.ownerUid != uid ||
+                sourceClass.id == targetClass.id
+            ) {
+                _cloudSyncStatus.value = "انتقال فقط برای جلسه و کلاس‌هایی مجاز است که مالکیت هر دو برای همین حساب تأیید شده باشد."
+                return@launch
+            }
+
+            val moved = lecture.copy(
+                classId = targetClass.id,
+                // Keep the descriptive course title; clear only the class-bound course relation.
+                courseId = null,
+                courseName = lecture.courseName,
+                professorName = lecture.professorName,
+                sortOrder = 0,
+                lastEditedMillis = System.currentTimeMillis()
+            )
+
+            try {
+                repository.saveLecture(moved)
+                withContext(Dispatchers.IO) {
+                    CloudMaterialsSync.sync(getApplication<Application>())
+                }
+                _cloudSyncStatus.value = "جلسه با حفظ متن‌ها، خلاصه‌ها و پیوند صوتی به کلاس مقصد منتقل شد."
+                onMoved()
+            } catch (error: Exception) {
+                // Do not leave a local-only move that failed to reach the shared store.
+                runCatching { repository.saveLecture(lecture) }
+                Log.e(TAG, "Moving session to another class failed", error)
+                _cloudSyncStatus.value = "انتقال جلسه ذخیره نشد: ${error.localizedMessage ?: "خطای نامشخص"}"
             }
         }
     }

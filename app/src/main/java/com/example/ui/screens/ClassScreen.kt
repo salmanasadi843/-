@@ -136,7 +136,7 @@ fun ClassScreen(
     val visibleOwnedClasses = classes.filter {
         it.id > 0L &&
             (it.ownerUid == ownerUid || it.ownerUid.isBlank()) &&
-            (teacherKey != null || it.folderId == selectedFolderId)
+            it.folderId == selectedFolderId
     }
     val canManageSelectedTeacher = canManageClasses &&
         (teacherKey == null || teacherKey == ownerUid)
@@ -214,7 +214,7 @@ fun ClassScreen(
                 contentPadding = PaddingValues(16.dp, 12.dp, 16.dp, 96.dp),
                 verticalArrangement = Arrangement.spacedBy(12.dp)
             ) {
-                if (canManageClasses && teacherKey == null) {
+                if (canManageSelectedTeacher) {
                     item {
                         Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
                             Row(verticalAlignment = Alignment.CenterVertically) {

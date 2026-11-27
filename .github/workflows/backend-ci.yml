@@ -1,0 +1,185 @@
+name: Backend CI
+
+on:
+  push:
+    paths:
+      - "backend/**"
+      - ".github/workflows/backend-ci.yml"
+  pull_request:
+    paths:
+      - "backend/**"
+      - ".github/workflows/backend-ci.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: backend-ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  test-and-migrate:
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:17
+        env:
+          POSTGRES_DB: darsyar_staging
+          POSTGRES_USER: darsyar_ci
+          POSTGRES_PASSWORD: ci_only_password
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U darsyar_ci -d darsyar_staging"
+          --health-interval 5s
+          --health-timeout 3s
+          --health-retries 20
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v6
+      - name: Set up JDK 17
+        uses: actions/setup-java@v5
+        with:
+          distribution: temurin
+          java-version: "17"
+      - name: Set up Gradle
+        uses: gradle/actions/setup-gradle@v6
+        with:
+          gradle-version: "9.3.1"
+      - name: Run backend unit and PostgreSQL integration tests
+        env:
+          AUTH_REPOSITORY_TEST_DB_URL: jdbc:postgresql://localhost:5432/darsyar_staging
+          AUTH_REPOSITORY_TEST_DB_USER: darsyar_ci
+          AUTH_REPOSITORY_TEST_DB_PASSWORD: ci_only_password
+          AUTH_REPOSITORY_TEST_DB_SCHEMA: auth_repository_test
+        run: gradle -p backend test
+      - name: Build backend distribution
+        run: gradle -p backend installDist
+      - name: Start backend against disposable PostgreSQL
+        env:
+          DB_URL: jdbc:postgresql://localhost:5432/darsyar_staging
+          DB_USER: darsyar_ci
+          DB_PASSWORD: ci_only_password
+          HOST: 127.0.0.1
+          PORT: 8080
+        run: |
+          backend/build/install/darsyar-backend/bin/darsyar-backend > /tmp/darsyar-backend.log 2>&1 &
+          echo $! > /tmp/darsyar-backend.pid
+          for attempt in $(seq 1 40); do
+            if curl --fail --silent http://127.0.0.1:8080/health/ready; then
+              exit 0
+            fi
+            sleep 2
+          done
+          cat /tmp/darsyar-backend.log
+          exit 1
+      - name: Install PostgreSQL client tools
+        run: |
+          sudo apt-get update
+          sudo apt-get install --yes postgresql-client
+
+      - name: Verify backup and restore on a second empty database
+        env:
+          PGHOST: localhost
+          PGPORT: 5432
+          PGUSER: darsyar_ci
+          PGPASSWORD: ci_only_password
+          PGDATABASE: darsyar_staging
+          BACKUP_DIR: /tmp/darsyar-backups
+        run: |
+          bash backend/scripts/backup-postgres.sh
+          DUMP_FILE="$(find /tmp/darsyar-backups -name '*.dump' -print -quit)"
+          test -n "$DUMP_FILE"
+          createdb darsyar_restore_test
+          export PGDATABASE=darsyar_restore_test
+          bash backend/scripts/restore-postgres.sh "$DUMP_FILE"
+          RESTORED_TABLES="$(psql -X -Atqc "SELECT count(*) FROM information_schema.tables WHERE table_schema='public' AND table_type='BASE TABLE'")"
+          test "$RESTORED_TABLES" -ge 15
+
+          psql -X -v ON_ERROR_STOP=1 -c "CREATE TABLE restore_safety_sentinel (value text NOT NULL)"
+          psql -X -v ON_ERROR_STOP=1 -c "INSERT INTO restore_safety_sentinel(value) VALUES ('must-survive')"
+          if bash backend/scripts/restore-postgres.sh "$DUMP_FILE"; then
+            echo "Restore unexpectedly accepted a non-empty database" >&2
+            exit 1
+          fi
+          SENTINEL="$(psql -X -Atqc "SELECT value FROM restore_safety_sentinel")"
+          test "$SENTINEL" = "must-survive"
+
+          cp "$DUMP_FILE" /tmp/corrupt-backup.dump
+          cp "$DUMP_FILE.manifest.json" /tmp/corrupt-backup.dump.manifest.json
+          printf 'corruption' >> /tmp/corrupt-backup.dump
+          createdb darsyar_corrupt_restore_test
+          export PGDATABASE=darsyar_corrupt_restore_test
+          if bash backend/scripts/restore-postgres.sh /tmp/corrupt-backup.dump; then
+            echo "Restore unexpectedly accepted a checksum-mismatched backup" >&2
+            exit 1
+          fi
+          CORRUPT_TARGET_TABLES="$(psql -X -Atqc "SELECT count(*) FROM information_schema.tables WHERE table_schema NOT IN ('pg_catalog','information_schema') AND table_type='BASE TABLE'")"
+          test "$CORRUPT_TARGET_TABLES" = "0"
+
+      - name: Verify one-time first super-admin bootstrap
+        env:
+          PGHOST: localhost
+          PGPORT: 5432
+          PGUSER: darsyar_ci
+          PGPASSWORD: ci_only_password
+          PGDATABASE: darsyar_staging
+          BOOTSTRAP_FIREBASE_UID: ci-bootstrap-firebase-uid
+          BOOTSTRAP_ADMIN_EMAIL: bootstrap-ci@example.invalid
+          BOOTSTRAP_ADMIN_NAME: CI Bootstrap Administrator
+          CONFIRM_SUPER_ADMIN_BOOTSTRAP: I_HAVE_VERIFIED_THE_FIREBASE_UID
+        run: |
+          bash -n backend/scripts/bootstrap-first-super-admin.sh
+          bash backend/scripts/bootstrap-first-super-admin.sh
+          ROLE_COUNT="$(psql -X -Atqc "SELECT count(*) FROM app_roles r JOIN auth_identities i ON i.user_id = r.user_id WHERE r.role_name='super_admin' AND i.provider='firebase' AND i.provider_subject='ci-bootstrap-firebase-uid'")"
+          test "$ROLE_COUNT" = "1"
+          if bash backend/scripts/bootstrap-first-super-admin.sh > /tmp/bootstrap-retry.log 2>&1; then
+            echo "Bootstrap unexpectedly allowed a second first-admin creation" >&2
+            exit 1
+          fi
+          grep -F "Refusing bootstrap: a super-admin already exists." /tmp/bootstrap-retry.log
+          ROLE_COUNT_AFTER_RETRY="$(psql -X -Atqc "SELECT count(*) FROM app_roles r JOIN auth_identities i ON i.user_id = r.user_id WHERE r.role_name='super_admin' AND i.provider='firebase' AND i.provider_subject='ci-bootstrap-firebase-uid'")"
+          test "$ROLE_COUNT_AFTER_RETRY" = "1"
+
+      - name: Verify guarded legacy Firebase identity linking
+        env:
+          PGHOST: localhost
+          PGPORT: 5432
+          PGUSER: darsyar_ci
+          PGPASSWORD: ci_only_password
+          PGDATABASE: darsyar_staging
+          LINK_FIREBASE_UID: ci-legacy-firebase-uid
+          LINK_TARGET_USER_ID: 22222222-2222-4222-8222-222222222222
+          CONFIRM_FIREBASE_IDENTITY_LINK: I_VERIFIED_UID_AND_TARGET_ACCOUNT
+        run: |
+          bash -n backend/scripts/link-existing-firebase-identity.sh
+          psql -X -v ON_ERROR_STOP=1 -c "INSERT INTO app_users(id, display_name, status) VALUES ('22222222-2222-4222-8222-222222222222', 'CI legacy account', 'active')"
+          bash backend/scripts/link-existing-firebase-identity.sh
+          LINK_COUNT="$(psql -X -Atqc "SELECT count(*) FROM auth_identities WHERE provider='firebase' AND provider_subject='ci-legacy-firebase-uid' AND user_id='22222222-2222-4222-8222-222222222222'")"
+          test "$LINK_COUNT" = "1"
+          ROLE_COUNT="$(psql -X -Atqc "SELECT count(*) FROM app_roles WHERE user_id='22222222-2222-4222-8222-222222222222'")"
+          test "$ROLE_COUNT" = "0"
+          AUDIT_COUNT="$(psql -X -Atqc "SELECT count(*) FROM audit_log WHERE action='identity.firebase.linked_by_operator' AND entity_id='22222222-2222-4222-8222-222222222222'")"
+          test "$AUDIT_COUNT" = "1"
+          if bash backend/scripts/link-existing-firebase-identity.sh > /tmp/identity-link-retry.log 2>&1; then
+            echo "Identity link unexpectedly allowed a duplicate Firebase UID" >&2
+            exit 1
+          fi
+          grep -F "Refusing link: this Firebase UID is already linked" /tmp/identity-link-retry.log
+          LINK_COUNT_AFTER_RETRY="$(psql -X -Atqc "SELECT count(*) FROM auth_identities WHERE provider='firebase' AND provider_subject='ci-legacy-firebase-uid'")"
+          test "$LINK_COUNT_AFTER_RETRY" = "1"
+          ROLE_COUNT_AFTER_RETRY="$(psql -X -Atqc "SELECT count(*) FROM app_roles WHERE user_id='22222222-2222-4222-8222-222222222222'")"
+          test "$ROLE_COUNT_AFTER_RETRY" = "0"
+
+      - name: Verify liveness and API version
+        run: |
+          curl --fail --silent http://127.0.0.1:8080/health/live
+          curl --fail --silent http://127.0.0.1:8080/health/ready
+          curl --fail --silent http://127.0.0.1:8080/api/v1
+          AUTH_STATUS="$(curl --silent --output /tmp/auth-response.json --write-out '%{http_code}' http://127.0.0.1:8080/api/v1/me)"
+          test "$AUTH_STATUS" = "401"
+          CLASS_AUTH_STATUS="$(curl --silent --output /tmp/classes-auth-response.json --write-out '%{http_code}' http://127.0.0.1:8080/api/v1/classes)"
+          test "$CLASS_AUTH_STATUS" = "401"
+          DELETED_SESSIONS_AUTH_STATUS="$(curl --silent --output /tmp/deleted-sessions-auth-response.json --write-out '%{http_code}' http://127.0.0.1:8080/api/v1/sessions/deleted)"
+          test "$DELETED_SESSIONS_AUTH_STATUS" = "401"
