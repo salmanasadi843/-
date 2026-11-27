@@ -310,7 +310,7 @@ object CloudMaterialsSync {
                     "createdAtMillis" to course.createdAtMillis
                 )
             }
-            firestore.collection("published_classes").document("${uid}__$generationId__${id}") to mapOf<String, Any?>(
+            firestore.collection("published_classes").document("${uid}__${generationId}__${id}") to mapOf<String, Any?>(
                 "ownerUid" to uid, "classId" to id, "name" to item.name,
                 "teacherName" to item.teacherName, "description" to item.description,
                 "term" to item.term, "classDateMillis" to item.classDateMillis,
@@ -323,7 +323,7 @@ object CloudMaterialsSync {
             val id = item.id.toString()
             val course = item.courseId?.let { courseById[it] }
             val classId = item.classId!!.toString()
-            firestore.collection("published_lessons").document("${uid}__$generationId__${id}") to mapOf<String, Any?>(
+            firestore.collection("published_lessons").document("${uid}__${generationId}__${id}") to mapOf<String, Any?>(
                 "ownerUid" to uid, "lessonId" to id, "classId" to classId,
                 "courseId" to item.courseId?.toString(), "title" to item.title,
                 "courseName" to (course?.name ?: item.courseName),
