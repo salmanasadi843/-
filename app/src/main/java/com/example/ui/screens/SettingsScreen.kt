@@ -106,6 +106,8 @@ fun SettingsScreen(
     var cloudStatus by remember { mutableStateOf<String?>(null) }
     var cloudError by remember { mutableStateOf(false) }
     var showPublishConfirm by remember { mutableStateOf(false) }
+    var showPrivateCloudReplaceConfirm by remember { mutableStateOf(false) }
+    var showKeepLocalCloudConfirm by remember { mutableStateOf(false) }
     var teacherName by remember { mutableStateOf(AuthPreferences.currentName(context)) }
     var teacherField by remember { mutableStateOf("") }
     var institutionName by remember { mutableStateOf("") }
@@ -196,6 +198,44 @@ fun SettingsScreen(
         )
     }
 
+    if (showPrivateCloudReplaceConfirm) {
+        androidx.compose.material3.AlertDialog(
+            onDismissRequest = { showPrivateCloudReplaceConfirm = false },
+            title = { Text("جایگزینی اطلاعات با نسخهٔ ابری") },
+            text = {
+                Text("این عملیات ممکن است کلاس‌ها، درس‌ها و جلسه‌های محلیِ متفاوت با نسخهٔ ابری را جایگزین کند. پیش از ادامه، فایل پشتیبان همین دستگاه را ساخته و در محل امن نگه دارید. آیا با این جایگزینی آگاهانه موافقید؟")
+            },
+            confirmButton = {
+                Button(onClick = {
+                    showPrivateCloudReplaceConfirm = false
+                    viewModel.startCloudSync(allowLocalReplace = true)
+                }) { Text("تأیید و ادامه") }
+            },
+            dismissButton = {
+                OutlinedButton(onClick = { showPrivateCloudReplaceConfirm = false }) { Text("انصراف") }
+            }
+        )
+    }
+
+    if (showKeepLocalCloudConfirm) {
+        androidx.compose.material3.AlertDialog(
+            onDismissRequest = { showKeepLocalCloudConfirm = false },
+            title = { Text("حفظ اطلاعات گوشی و به‌روزرسانی ابر") },
+            text = {
+                Text("نسخهٔ فعلی این دستگاه به‌عنوان نسخهٔ فعال پشتیبان ابری ثبت می‌شود. نسخه‌های قبلی ابری حذف نمی‌شوند، اما نسخهٔ فعال به اطلاعات فعلی گوشی تغییر می‌کند. پیش از ادامه، فایل پشتیبان همین دستگاه را در محل امن نگه دارید. آیا ادامه می‌دهید؟")
+            },
+            confirmButton = {
+                Button(onClick = {
+                    showKeepLocalCloudConfirm = false
+                    viewModel.startCloudSync(preferLocalData = true)
+                }) { Text("حفظ نسخهٔ گوشی و ادامه") }
+            },
+            dismissButton = {
+                OutlinedButton(onClick = { showKeepLocalCloudConfirm = false }) { Text("انصراف") }
+            }
+        )
+    }
+
     Scaffold(
         topBar = {
             TopAppBar(
@@ -241,6 +281,30 @@ fun SettingsScreen(
                         enabled = !cloudBusy
                     ) {
                         Text("بررسی و تلاش دوباره")
+                    }
+                    if (AuthPreferences.currentRole(context) == UserRole.TEACHER) {
+                        OutlinedButton(
+                            onClick = { showPrivateCloudReplaceConfirm = true },
+                            enabled = !cloudBusy && backupStatus?.startsWith("پشتیبان با موفقیت") == true
+                        ) {
+                            Text("بازیابی ابری با اجازهٔ جایگزینی")
+                        }
+                        Text(
+                            "این گزینه پس از ساخت فایل پشتیبان فعال می‌شود و فقط با تأیید دوباره، نسخهٔ ابری را بر اطلاعات محلی ترجیح می‌دهد.",
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                        )
+                        OutlinedButton(
+                            onClick = { showKeepLocalCloudConfirm = true },
+                            enabled = !cloudBusy && backupStatus?.startsWith("پشتیبان با موفقیت") == true
+                        ) {
+                            Text("حفظ اطلاعات گوشی و به‌روزرسانی ابر")
+                        }
+                        Text(
+                            "این گزینه نیز فقط پس از ساخت فایل پشتیبان فعال می‌شود؛ با تأیید شما، اطلاعات همین گوشی نسخهٔ فعال ابر خواهد شد.",
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                        )
                     }
                     Text(
                         "موفقیت این بخش یعنی برنامه توانسته عملیات ابری را انجام دهد؛ برای تأیید نهایی ذخیره داده‌ها می‌توان بعداً فایربیس را هم بررسی کرد.",
