@@ -21,6 +21,8 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.dp
 import com.example.data.local.ClassEntity
+import com.example.data.local.CourseEntity
+import com.example.data.local.LectureEntity
 import com.example.data.local.AppDatabase
 import com.example.data.local.TeacherFolderEntity
 import kotlinx.coroutines.launch
@@ -40,6 +42,8 @@ fun ClassScreen(
     val canManageClasses = userRole == UserRole.TEACHER || AuthPreferences.isPrimaryTeacher(context)
     val canCreateInSelectedTeacher = canManageClasses && (teacherKey == null || teacherKey == ownerUid)
     val allClasses by viewModel.repository.allClasses.collectAsState(initial = emptyList())
+    val allCourses by viewModel.repository.allCoursesDetailed.collectAsState(initial = emptyList())
+    val allLectures by viewModel.repository.allLectures.collectAsState(initial = emptyList())
     // Never expose teacher-local or unpublished classes in student mode.
     val studentSyncStatus by viewModel.studentMaterialsSyncStatus.collectAsState()
     val studentFeedReady = canManageClasses || (
@@ -60,8 +64,9 @@ fun ClassScreen(
         val foreignPositiveClasses = allClasses.filter {
             it.id > 0L && it.ownerUid.isNotBlank() && it.ownerUid != ownerUid
         }
-        val sharedClasses = allClasses.filter { it.id < 0L && it.isPublished }
-            .distinctBy {
+        val sharedClasses = allClasses.filter { candidate -> candidate.id < 0L && candidate.isPublished &&
+            ownedClasses.none { local -> isPublishedMirrorOfOwnedClass(candidate, local, allCourses, allLectures) }
+        }.distinctBy {
                 listOf(it.name, it.teacherName, it.term)
                     .joinToString("|") { value ->
                         value.trim().lowercase()
