@@ -86,11 +86,6 @@ fun HomeScreen(
             val visibleShared = allClasses.filter { candidate ->
                 candidate.id < 0L && candidate.isPublished &&
                     ownedClasses.none { local -> isPublishedMirrorOfOwnedClass(candidate, local, allCourses, allLectures) }
-            }.distinctBy { clazz ->
-                listOf(clazz.name, clazz.teacherName, clazz.term).joinToString("|") { value ->
-                    value.trim().lowercase().replace('ي', 'ی').replace('ك', 'ک')
-                        .replace(Regex("[\\u200c\\u200d]"), "").replace(Regex("\\s+"), " ")
-                }
             }
             ownedClasses + foreignPositive + visibleShared
         }
