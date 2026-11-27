@@ -42,7 +42,6 @@ internal fun isPublishedMirrorOfOwnedClass(
     courses: List<CourseEntity>, lectures: List<LectureEntity>
 ): Boolean {
     if (shared.id >= 0L || owned.id <= 0L) return false
-    if (shared.ownerUid.isNotBlank() && shared.ownerUid == owned.ownerUid) return true
     fun norm(v: String) = v.trim().lowercase().replace('ي','ی').replace('ك','ک').replace('ى','ی')
         .replace(Regex("[\\u200c\\u200d]"), "").replace(Regex("\\s+"), " ")
     if (listOf(shared.name,shared.teacherName,shared.term).map(::norm) !=
@@ -109,11 +108,6 @@ fun TeacherFoldersScreen(
             val foreignPositive = allClasses.filter { it.id > 0L && it.ownerUid.isNotBlank() && it.ownerUid != uid }
             val shared = allClasses.filter { candidate -> candidate.id < 0L && candidate.isPublished &&
                 owned.none { local -> isPublishedMirrorOfOwnedClass(candidate, local, allCourses, allLectures) }
-            }.distinctBy {
-                listOf(it.name, it.teacherName, it.term).joinToString("|") { value ->
-                    value.trim().lowercase().replace('ي', 'ی').replace('ك', 'ک')
-                        .replace(Regex("[\\u200c\\u200d]"), "").replace(Regex("\\s+"), " ")
-                }
             }
             owned + foreignPositive + shared
         }
