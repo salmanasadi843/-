@@ -137,7 +137,6 @@ service cloud.firestore {
                             && (
                               (
                                 'generationId' in request.resource.data
-                                && 'generationId' in request.resource.data
                                 && request.resource.data.generationId is string
                                 && request.resource.data.generationId.size() > 0
                                 && publicationId == request.auth.uid + '__' + request.resource.data.generationId + '__' + request.resource.data.classId
@@ -182,7 +181,8 @@ service cloud.firestore {
                             && request.resource.data.isPublished is bool
                             && (
                               (
-                                request.resource.data.generationId is string
+                                'generationId' in request.resource.data
+                                && request.resource.data.generationId is string
                                 && request.resource.data.generationId.size() > 0
                                 && publicationId == request.auth.uid + '__' + request.resource.data.generationId + '__' + request.resource.data.lessonId
                                 && (
