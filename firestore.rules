@@ -127,10 +127,24 @@ service cloud.firestore {
                     resource.data.ownerUid == request.auth.uid
                     || (resource.data.isPublished == true && activeTeacher(resource.data.ownerUid))
                   );
+      // New generation-scoped IDs prevent a partial publication from overwriting
+      // the currently active generation. Keep the legacy ID format readable/writable
+      // for older app builds that do not send generationId.
       allow create, update: if approvedTeacher(request.auth.uid)
                             && request.resource.data.ownerUid == request.auth.uid
-                            && publicationId == request.auth.uid + '__' + request.resource.data.classId
-                            && request.resource.data.isPublished is bool;
+                            && request.resource.data.classId is string
+                            && request.resource.data.isPublished is bool
+                            && (
+                              (
+                                request.resource.data.generationId is string
+                                && request.resource.data.generationId.size() > 0
+                                && publicationId == request.auth.uid + '__' + request.resource.data.generationId + '__' + request.resource.data.classId
+                              )
+                              || (
+                                !('generationId' in request.resource.data)
+                                && publicationId == request.auth.uid + '__' + request.resource.data.classId
+                              )
+                            );
       allow delete: if approvedTeacher(request.auth.uid)
                     && resource.data.ownerUid == request.auth.uid;
     }
@@ -143,20 +157,53 @@ service cloud.firestore {
                       resource.data.isPublished == true
                       && activeTeacher(resource.data.ownerUid)
                       && resource.data.classId is string
-                      && exists(/databases/$(database)/documents/published_classes/$(resource.data.ownerUid + '__' + resource.data.classId))
-                      && get(/databases/$(database)/documents/published_classes/$(resource.data.ownerUid + '__' + resource.data.classId)).data.isPublished == true
+                      && (
+                        (
+                          resource.data.generationId is string
+                          && exists(/databases/$(database)/documents/published_classes/$(resource.data.ownerUid + '__' + resource.data.generationId + '__' + resource.data.classId))
+                          && get(/databases/$(database)/documents/published_classes/$(resource.data.ownerUid + '__' + resource.data.generationId + '__' + resource.data.classId)).data.ownerUid == resource.data.ownerUid
+                          && get(/databases/$(database)/documents/published_classes/$(resource.data.ownerUid + '__' + resource.data.generationId + '__' + resource.data.classId)).data.generationId == resource.data.generationId
+                          && get(/databases/$(database)/documents/published_classes/$(resource.data.ownerUid + '__' + resource.data.generationId + '__' + resource.data.classId)).data.isPublished == true
+                        )
+                        || (
+                          !('generationId' in resource.data)
+                          && exists(/databases/$(database)/documents/published_classes/$(resource.data.ownerUid + '__' + resource.data.classId))
+                          && get(/databases/$(database)/documents/published_classes/$(resource.data.ownerUid + '__' + resource.data.classId)).data.isPublished == true
+                        )
+                      )
                     )
                   );
       allow create, update: if approvedTeacher(request.auth.uid)
                             && request.resource.data.ownerUid == request.auth.uid
-                            && publicationId == request.auth.uid + '__' + request.resource.data.lessonId
+                            && request.resource.data.lessonId is string
                             && request.resource.data.isPublished is bool
                             && (
-                              request.resource.data.isPublished == false
+                              (
+                                request.resource.data.generationId is string
+                                && request.resource.data.generationId.size() > 0
+                                && publicationId == request.auth.uid + '__' + request.resource.data.generationId + '__' + request.resource.data.lessonId
+                                && (
+                                  request.resource.data.isPublished == false
+                                  || (
+                                    request.resource.data.classId is string
+                                    && existsAfter(/databases/$(database)/documents/published_classes/$(request.auth.uid + '__' + request.resource.data.generationId + '__' + request.resource.data.classId))
+                                    && getAfter(/databases/$(database)/documents/published_classes/$(request.auth.uid + '__' + request.resource.data.generationId + '__' + request.resource.data.classId)).data.ownerUid == request.auth.uid
+                                    && getAfter(/databases/$(database)/documents/published_classes/$(request.auth.uid + '__' + request.resource.data.generationId + '__' + request.resource.data.classId)).data.generationId == request.resource.data.generationId
+                                    && getAfter(/databases/$(database)/documents/published_classes/$(request.auth.uid + '__' + request.resource.data.generationId + '__' + request.resource.data.classId)).data.isPublished == true
+                                  )
+                                )
+                              )
                               || (
-                                request.resource.data.classId is string
-                                && existsAfter(/databases/$(database)/documents/published_classes/$(request.auth.uid + '__' + request.resource.data.classId))
-                                && getAfter(/databases/$(database)/documents/published_classes/$(request.auth.uid + '__' + request.resource.data.classId)).data.isPublished == true
+                                !('generationId' in request.resource.data)
+                                && publicationId == request.auth.uid + '__' + request.resource.data.lessonId
+                                && (
+                                  request.resource.data.isPublished == false
+                                  || (
+                                    request.resource.data.classId is string
+                                    && existsAfter(/databases/$(database)/documents/published_classes/$(request.auth.uid + '__' + request.resource.data.classId))
+                                    && getAfter(/databases/$(database)/documents/published_classes/$(request.auth.uid + '__' + request.resource.data.classId)).data.isPublished == true
+                                  )
+                                )
                               )
                             );
       allow delete: if approvedTeacher(request.auth.uid)
