@@ -66,16 +66,7 @@ fun ClassScreen(
         }
         val sharedClasses = allClasses.filter { candidate -> candidate.id < 0L && candidate.isPublished &&
             ownedClasses.none { local -> isPublishedMirrorOfOwnedClass(candidate, local, allCourses, allLectures) }
-        }.distinctBy {
-                listOf(it.name, it.teacherName, it.term)
-                    .joinToString("|") { value ->
-                        value.trim().lowercase()
-                            .replace('ي', 'ی')
-                            .replace('ك', 'ک')
-                            .replace(Regex("[\\u200c\\u200d]"), "")
-                            .replace(Regex("\\s+"), " ")
-                    }
-            }
+        }
         ownedClasses + foreignPositiveClasses + sharedClasses
     }
     val folderPrefs = remember(ownerUid) {
