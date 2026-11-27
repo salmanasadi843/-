@@ -66,7 +66,10 @@ object CloudMaterialsSync {
                         )
                     )
                 }
-                check(snapshots.size == refs.size && snapshots.all { it.exists() && it.getString("ownerUid") == owner }) {
+                check(snapshots.size == refs.size && snapshots.all { doc ->
+                    doc.exists() && doc.getString("ownerUid") == owner &&
+                        (generationId.isBlank() || doc.getString("generationId") == generationId)
+                }) {
                     "انتشار استاد ${owner} ناقص است؛ برای حفظ اطلاعات دستگاه، بازیابی متوقف شد."
                 }
                 check(snapshots.all { doc ->
@@ -311,7 +314,7 @@ object CloudMaterialsSync {
                 )
             }
             firestore.collection("published_classes").document("${uid}__${generationId}__${id}") to mapOf<String, Any?>(
-                "ownerUid" to uid, "classId" to id, "name" to item.name,
+                "ownerUid" to uid, "generationId" to generationId, "classId" to id, "name" to item.name,
                 "teacherName" to item.teacherName, "description" to item.description,
                 "term" to item.term, "classDateMillis" to item.classDateMillis,
                 "createdAtMillis" to item.createdAtMillis, "isPublished" to true,
@@ -324,7 +327,7 @@ object CloudMaterialsSync {
             val course = item.courseId?.let { courseById[it] }
             val classId = item.classId!!.toString()
             firestore.collection("published_lessons").document("${uid}__${generationId}__${id}") to mapOf<String, Any?>(
-                "ownerUid" to uid, "lessonId" to id, "classId" to classId,
+                "ownerUid" to uid, "generationId" to generationId, "lessonId" to id, "classId" to classId,
                 "courseId" to item.courseId?.toString(), "title" to item.title,
                 "courseName" to (course?.name ?: item.courseName),
                 "professorName" to item.professorName, "dateMillis" to item.dateMillis,
