@@ -20,6 +20,8 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import com.example.data.local.ClassEntity
+import com.example.data.local.CourseEntity
+import com.example.data.local.LectureEntity
 import com.example.data.local.AppDatabase
 import kotlinx.coroutines.launch
 
@@ -32,6 +34,26 @@ internal fun teacherFolderKey(clazz: com.example.data.local.ClassEntity, current
         .replace(Regex("[\\u200c\\u200d]"), "")
         .replace(Regex("\\s+"), " ")
     return "name:" + normalized.ifBlank { "بدون-نام" }
+}
+
+/** Filter exact published mirrors of a teacher's own local classes. */
+internal fun isPublishedMirrorOfOwnedClass(
+    shared: ClassEntity, owned: ClassEntity,
+    courses: List<CourseEntity>, lectures: List<LectureEntity>
+): Boolean {
+    if (shared.id >= 0L || owned.id <= 0L) return false
+    if (shared.ownerUid.isNotBlank() && shared.ownerUid == owned.ownerUid) return true
+    fun norm(v: String) = v.trim().lowercase().replace('ي','ی').replace('ك','ک').replace('ى','ی')
+        .replace(Regex("[\\u200c\\u200d]"), "").replace(Regex("\\s+"), " ")
+    if (listOf(shared.name,shared.teacherName,shared.term).map(::norm) !=
+        listOf(owned.name,owned.teacherName,owned.term).map(::norm)) return false
+    fun courseIds(id: Long) = courses.filter { it.classId == id }
+        .map { listOf(norm(it.name),norm(it.teacherName),norm(it.description)).joinToString("~") }.sorted()
+    fun lessonIds(id: Long) = lectures.filter { it.classId == id && it.isPublished }
+        .map { listOf(norm(it.title),norm(it.courseName),it.dateMillis.toString()).joinToString("~") }.sorted()
+    val sc=courseIds(shared.id); val oc=courseIds(owned.id)
+    val sl=lessonIds(shared.id); val ol=lessonIds(owned.id)
+    return (sc.isNotEmpty() || sl.isNotEmpty()) && sc == oc && sl == ol
 }
 
 private const val UNFILED_TEACHERS_KEY = "__unfiled_teachers__"
@@ -58,6 +80,8 @@ fun TeacherFoldersScreen(
     val uid = AuthPreferences.currentUid(context).orEmpty().ifBlank { "local" }
     val prefs = remember(uid) { teacherFolderPrefs(context, uid) }
     val allClasses by viewModel.repository.allClasses.collectAsState(initial = emptyList())
+    val allCourses by viewModel.repository.allCoursesDetailed.collectAsState(initial = emptyList())
+    val allLectures by viewModel.repository.allLectures.collectAsState(initial = emptyList())
     val syncStatus by viewModel.studentMaterialsSyncStatus.collectAsState()
     val canManage = userRole == UserRole.TEACHER || AuthPreferences.isPrimaryTeacher(context)
     val studentReady = canManage || (
@@ -76,14 +100,16 @@ fun TeacherFoldersScreen(
     var folderToDelete by remember { mutableStateOf<TeacherFolderRow?>(null) }
     val scope = rememberCoroutineScope()
 
-    val visibleClasses = remember(allClasses, canManage, studentReady, uid) {
+    val visibleClasses = remember(allClasses, allCourses, allLectures, canManage, studentReady, uid) {
         if (!canManage) {
             if (studentReady) allClasses.filter { it.id < 0L && it.isPublished }
             else emptyList()
         } else {
             val owned = allClasses.filter { it.id > 0L && (it.ownerUid == uid || it.ownerUid.isBlank()) }
             val foreignPositive = allClasses.filter { it.id > 0L && it.ownerUid.isNotBlank() && it.ownerUid != uid }
-            val shared = allClasses.filter { it.id < 0L && it.isPublished }.distinctBy {
+            val shared = allClasses.filter { candidate -> candidate.id < 0L && candidate.isPublished &&
+                owned.none { local -> isPublishedMirrorOfOwnedClass(candidate, local, allCourses, allLectures) }
+            }.distinctBy {
                 listOf(it.name, it.teacherName, it.term).joinToString("|") { value ->
                     value.trim().lowercase().replace('ي', 'ی').replace('ك', 'ک')
                         .replace(Regex("[\\u200c\\u200d]"), "").replace(Regex("\\s+"), " ")
